@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { t } from '../i18n';
 import type { Connection, SessionRow } from '../connection';
+import { SESSION_KIND_SUNX } from '../connection';
 import { relTime, withMinSpin } from '../ui-util';
 import { wsName } from '../sidebar/project-menu-util';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
@@ -38,12 +39,13 @@ async function loadBoard(conn: Connection): Promise<{ cards: SunxCard[] }> {
   const snaps = new Map<string, SunxSnapSlice>();
   await Promise.all(
     rows
-      .filter((x) => x.kind === 'sunx' && x.liveSessionId !== undefined)
+      .filter((x): x is typeof x & { liveSessionId: string } => x.kind === SESSION_KIND_SUNX && x.liveSessionId !== undefined)
       .map(async (x) => {
+        const liveId = x.liveSessionId; // 谓词收窄(2026-11-16 技术债补审 I3:替两处 as string)
         const s = await conn
-          .sessionSnapshot(x.liveSessionId as string, undefined, { bumpSeq: false }) // 只读通道:防抬 seq 基线
+          .sessionSnapshot(liveId, undefined, { bumpSeq: false }) // 只读通道:防抬 seq 基线
           .then(sunxSnapOf, () => null); // 失败该行降级(null)——不击穿整页
-        if (s !== null) snaps.set(x.liveSessionId as string, s);
+        if (s !== null) snaps.set(liveId, s);
       }),
   );
   return { cards: assembleSunxCards(rows, (liveId) => snaps.get(liveId) ?? null) };

@@ -3,6 +3,7 @@ import { Archive, ArchiveRestore, Bot, Check, ChevronDown, Code2, Copy, GitCompa
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
+import { SESSION_KIND_SUNX } from '../../connection';
 import type { Connection } from '../../connection';
 import type { NavControls } from '../../nav-history';
 import { NavButtons } from '../../NavButtons';
@@ -288,7 +289,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   };
   // sunx 会话:置顶/归档会话两件退役(2026-11-15 用户实测裁定「置顶和编辑会话不是已经去掉了吗」
   // ——Sunx 归档与会话归档彻底分开,唯一归档入口=侧栏 SUNX 组头归档层);standard 三件原样
-  const isSunx = sessionKind === 'sunx';
+  const isSunx = sessionKind === SESSION_KIND_SUNX;
   const menuItems = [
     ...(!isSunx
       ? [
@@ -321,10 +322,10 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       : []),
     {
       id: 'rename',
-      label: sessionKind === 'sunx' ? t('Edit Sunx', '编辑 Sunx') : t('Rename session', '重命名会话'),
+      label: sessionKind === SESSION_KIND_SUNX ? t('Edit Sunx', '编辑 Sunx') : t('Rename session', '重命名会话'),
       icon: <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />,
       onSelect: () => {
-        if (sessionKind === 'sunx') {
+        if (sessionKind === SESSION_KIND_SUNX) {
           setCharterOpen(true); // sunx:重命名语义=编辑这个 Sunx(品性/定义;名称即身份走创建名)
           return;
         }
@@ -343,7 +344,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     { id: 'divider-2', divider: true, label: '', onSelect: () => undefined },
     {
       id: 'copy-id',
-      label: sessionKind === 'sunx' ? t('Copy Sunx ID', '复制 Sunx ID') : t('Copy session ID', '复制会话 ID'),
+      label: sessionKind === SESSION_KIND_SUNX ? t('Copy Sunx ID', '复制 Sunx ID') : t('Copy session ID', '复制会话 ID'),
       icon: copiedTag === 'id' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />,
       keepOpen: true,
       onSelect: () => copyText(sessionId, 'id'),

@@ -15,15 +15,17 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { userConfigDir } from '../config/env';
+import { sunxContainerDir } from '../config/data-dir';
 import { parseAgentFrontmatter } from '../harness/subagent';
 import type { Listing, Scope } from './types';
 
-/** sunx 模板落位单点（镜像 agentsDir/teamsDir）：project=<root>/.sunshinex/sunx、global=<userConfigDir>/sunx；
- *  globalDir 显式传参 = 测试/重定向口。project 分支 root:null → cwd 回退仅为签名全整改（沿 agentsDir
- *  同形）；listSunxTemplates 对 root:null 刻意整体跳过项目级（见该函数注释），不经此回退。 */
+/** sunx 模板落位单点（镜像 agentsDir/teamsDir）：project=<root>/.sunshinex/sunx、global=<sunx 容器根>；
+ *  globalDir 显式传参 = 测试/重定向口。global 层与持久化域同容器（sunxContainerDir 单点——settings
+ *  语义键 sunxDir 一次切换两处同迁,防「域迁新容器模板仍扫旧目录」漂移,2026-11-16 技术债补审 G1）。
+ *  project 分支 root:null → cwd 回退仅为签名全整改（沿 agentsDir 同形）；listSunxTemplates 对
+ *  root:null 刻意整体跳过项目级（见该函数注释），不经此回退。 */
 export function sunxDir(scope: Scope, root: string | null, globalDir?: string): string {
-  if (scope === 'global') return path.join(globalDir ?? userConfigDir(), 'sunx');
+  if (scope === 'global') return globalDir ?? sunxContainerDir();
   return path.join(root ?? process.cwd(), '.sunshinex', 'sunx');
 }
 

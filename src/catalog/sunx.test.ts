@@ -110,13 +110,22 @@ test('listSunxTemplates: root:null 项目级整体跳过（只列全局，沿 li
   });
 });
 
-test('sunxDir: 落位单点——project=<root>/.sunshinex/sunx、global=<userConfigDir>/sunx；globalDir 显式传参=测试/重定向口', () => {
+test('sunxDir: 落位单点——project=<root>/.sunshinex/sunx、global=域容器根（sunxContainerDir 单点,2026-11-16 补审 G1 同源）；globalDir 显式传参=测试/重定向口', () => {
   withFixture((root) => {
     assert.equal(sunxDir('project', root), path.join(root, '.sunshinex', 'sunx'));
     assert.equal(sunxDir('global', root), path.join(root, 'uhome', '.sunshinex', 'sunx'));
-    // 显式 globalDir 直指（镜像 agentsDir 全目录测试口语义）
-    assert.equal(sunxDir('global', root, path.join(root, 'explicit')), path.join(root, 'explicit', 'sunx'));
-    writeTpl(path.join(root, 'explicit', 'sunx'), 'x', '---\nname: X\n---\n章程');
+    // SUNSHINEX_SUNX_DIR 覆盖（≡settings 语义键 sunxDir）直指容器根——模板全局层与持久化域同迁（G1 同源语义）
+    const prevEnv = process.env.SUNSHINEX_SUNX_DIR;
+    process.env.SUNSHINEX_SUNX_DIR = path.join(root, 'container');
+    try {
+      assert.equal(sunxDir('global', root), path.join(root, 'container'));
+    } finally {
+      if (prevEnv === undefined) delete process.env.SUNSHINEX_SUNX_DIR;
+      else process.env.SUNSHINEX_SUNX_DIR = prevEnv;
+    }
+    // 显式 globalDir 全路径直指（测试/重定向口,不再追 /sunx 后缀——2026-11-16 补审 G1 起与容器同形）
+    assert.equal(sunxDir('global', root, path.join(root, 'explicit')), path.join(root, 'explicit'));
+    writeTpl(path.join(root, 'explicit'), 'x', '---\nname: X\n---\n章程');
     assert.deepEqual(
       listSunxTemplates(root, path.join(root, 'explicit')).entries.map((e) => e.id),
       ['x'],

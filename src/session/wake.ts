@@ -179,6 +179,10 @@ export interface WakeControllerOpts {
   maxChain?: number;
 }
 
+/** 缺省单点（2026-11-16 技术债补审 I2：三处 `?? 10`/`?? 1500` 字面量重复收编） */
+export const WAKE_MAX_CHAIN_DEFAULT = 10;
+export const WAKE_BATCH_MS_DEFAULT = 1500;
+
 /** 唤醒控制器（session 层单点，daemon/TUI 各一实例）：登记/合批/用户优先/复检/防循环。
  *  零 IO（timer 除外）；宿主 teardown 调 reset() 清 timer（防句柄泄漏） */
 export class WakeController {
@@ -202,7 +206,7 @@ export class WakeController {
    *  （调用方放弃本次起轮——定时唤醒受同一防循环上限约束）；未触顶计一并返回 true。
    *  与任务唤醒同账本（chain 单一）——用户消息 markUserActivity / reset 归零语义共用 */
   consumeChain(): boolean {
-    if (this.chain >= (this.opts.maxChain ?? 10)) {
+    if (this.chain >= (this.opts.maxChain ?? WAKE_MAX_CHAIN_DEFAULT)) {
       this.opts.onLimit?.();
       return false;
     }
@@ -238,7 +242,7 @@ export class WakeController {
     this.timer = setTimeout(() => {
       this.timer = undefined;
       this.tryFire(false); // timer 直调：空批返回值弃置，闭读写归 onTurnEnded 专管
-    }, this.opts.batchMs ?? 1500);
+    }, this.opts.batchMs ?? WAKE_BATCH_MS_DEFAULT);
   }
 
   private tryFire(prevWaking: boolean): boolean {
@@ -246,7 +250,7 @@ export class WakeController {
     const batch = this.pending.filter((t) => !this.opts.receipted(t.id));
     this.pending = [];
     if (batch.length === 0) return prevWaking; // 空批（timer 已先受理/全部已 receipted）：回报入口读得的在途态，不新起轮
-    if (this.chain >= (this.opts.maxChain ?? 10)) {
+    if (this.chain >= (this.opts.maxChain ?? WAKE_MAX_CHAIN_DEFAULT)) {
       this.opts.onLimit?.();
       this.waking = false;
       return false;

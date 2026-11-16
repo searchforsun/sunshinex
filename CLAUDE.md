@@ -67,8 +67,8 @@ src/
   images.ts           # 图片附件共享面（MAX_IMAGES ≤8/校验/钳制/占位标记；serve+TUI+GUI 单源）
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
-  catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、teams、plugins、mcp、skills、approvals、permissions 读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
-  config/             # env.ts、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts / permissions / providers / termination-config / memory-config / data-dir / plugins / image-history
+  catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、teams、plugins、mcp、skills、approvals、permissions、sunx 品性模板读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
+  config/             # env.ts、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts / permissions / providers / termination-config / memory-config / data-dir（sunx 域目录 sunxDomainDir/sunxContainerDir，settings 语义键 sunxDir） / plugins / image-history
   tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/、markdown/md-ansi/highlight 呈现、md-theme 双链共享常量单点、session-journal（v3 段级行；INDEX.md 索引 + <id>.transcript.md 可读镜像，jsonl 为逐字节权威）/session-snapshots、ui-state-disk（§13 分层）、clipboard-image（Ctrl+V 贴图）
   harness/
     index.ts          # Harness 门面（生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
@@ -88,6 +88,7 @@ src/
     plugin-host.ts    # 插件宿主装配单点（browser-use 连接改写为每进程宿主 HTTP 连接）
     tools/task-stop.ts # task_stop 与 agent_team_task_stop（agentTeams 开时注册）
     tools/task-wait.ts # task_wait 与 agent_team_task_wait（同上）
+    tools/schedule-tools.ts # schedule_wakeup/schedule_task（sunx 定时唤醒/定时派发,TimerController 接缝）
     tools/artifact-collector.ts # 产物收集/声明双写入口（report_artifacts 声明与 bash 新建交付物并网）
     tasks.ts          # 统一后台任务账本（exec/spawn ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输；入口探活+断链重连 ≤2 次）
@@ -103,8 +104,8 @@ src/
   eval/               # 长任务基准集（eval-run.mjs 数据面）
   taskboard/          # 智能体团队域模型与协调器（model/board/store/translate/teammate/team-registry/inbox/executors）
   delegation/         # 委派投影（spawn/后台/graph 节点统一生命周期，TUI/GUI 同源）
-  session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）
-  serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows）
+  session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）、timer.ts（sunx 定时唤醒/派发 Timer）、wake-host.ts（daemon/TUI 宿主装配件：板名解析+通知文装配）
+  serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows；/sunx 组路由=域枚举/attach/rename/charter，sessionKind 'sunx' 域绑定 dataDir）
   storage/            # 本地 JSON 存储底座；archive.ts（归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘/全局快捷键/无边框窗控/NSIS 打包；壳与主仓零编译期耦合）
@@ -174,7 +175,7 @@ GUI 规划选型唯一登记于 §13 组件选型表，不在此重复。
 ## 7. 提交与验证
 
 - 提交前必须过 `pnpm build`（tsc strict 零报错）；涉加载/解析逻辑补示例物料并 selfcheck
-- 运行时数据统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_PROJECTS_DIR` 重定向；工作区保持干净）。`SUNSHINEX_DATA_DIR`（整目录直指、不按工作区隔离）为开发与测试专用重定向口，留在 env 面不进 settings 语义键表
+- 运行时数据统一落盘 `~/.sunshinex/projects/<工作区>/data`（`SUNSHINEX_PROJECTS_DIR` 重定向；工作区保持干净）。sunx 编排会话独立持久化域 `~/.sunshinex/sunx/<journalId>/data`（一 Sunx 一域出生即铸档,域容器随语义键 `sunxDir`）。`SUNSHINEX_DATA_DIR`（整目录直指、不按工作区隔离）为开发与测试专用重定向口，留在 env 面不进 settings 语义键表
 - **SUNSHINEX_* 环境槽是语义键的运行时载体**（`SEMANTIC_KEYS` 为全仓唯一权威；装载链按「显式 env > 语义键落槽」写槽）：运行面读槽属契约消费，槽是装载链输出端而非第二配置面
 
 ## 8. 边界与约束

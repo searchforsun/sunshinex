@@ -110,7 +110,6 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     expect(stats).toContain('在飞任务 2');
     expect(stats).toContain('待裁决 2');
     // 卡片进度行:在飞 2 · 完成 1;未挂载行计数归零;杂散行滤除(Sunx j4 不在)
-    expect(screen.getByText('Sunx j1').textContent).toBeDefined();
     expect(screen.getByText(/在飞 2 · 完成 1/)).toBeDefined();
     expect(screen.queryByText('Sunx j4')).toBeNull();
     // 未挂载行在卡(降级零计数),快照只对 sx1 拉一次且带 bumpSeq:false

@@ -297,18 +297,18 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   // 影子投影装载(G14.2xx 断线重连):board/delegation 事件行回种——重启后快照/补发不再空板空委派
   session.seedShadow(replayEvents);
   // 会话选择面回放(G14.2xx 公共持久化归位):model/effort/mode 运行中切换即落 meta 旁车,
-  // attach 按档归位——重启/重开不再回落装配缺省(CLAUDE.md §13 持久化分层口径)
-  const selMeta = readSessionMeta(dataDir, journalId);
-  if (selMeta.effort !== undefined) session.setEffort(selMeta.effort);
-  if (selMeta.model !== undefined) session.setModel(selMeta.model);
-  if (selMeta.mode !== undefined) {
+  // attach 按档归位——重启/重开不再回落装配缺省(CLAUDE.md §13 持久化分层口径)。
+  // 复用 attach 头部一次性整读的 meta(2026-11-16 技术债补审 I1:原此处二次读盘,与「零二次读盘」注释失符)
+  if (meta.effort !== undefined) session.setEffort(meta.effort);
+  if (meta.model !== undefined) session.setModel(meta.model);
+  if (meta.mode !== undefined) {
     // 权限档回放只认现值三档(2026-10-24 用户裁定「不要有兼容逻辑,旧会话记录可以删」:旧值
     // manual/dontAsk 一律回落缺省档+warn,沿 MANUAL-GUI「不保旧档」开发期先例);'plan' 是流程
     // 标记非档,照写不照回——arm 不跨重启(spec §5.2),静默落缺省档。
     // setMode 异步化后(终审修复:disarm 收口)此处 fire-and-forget 仍同步生效——attach 只落在从未
     // 附档的新会话(idle+plan 流程必不在途,复附有上 guard 拦),setMode 无 await 点直落换新,随后的
     // attachJournal 挂的就是换新后的运行时;带流程在途的 setMode 只经 mode 端点(async)行走
-    const mode = selMeta.mode;
+    const mode = meta.mode;
     if (mode === 'read-only' || mode === 'acceptEdits' || mode === 'full-access') void session.setMode(mode);
     else if (mode !== 'plan') console.warn(`[serve] session mode in meta not restorable: ${String(mode)} — falling back to default`);
   }

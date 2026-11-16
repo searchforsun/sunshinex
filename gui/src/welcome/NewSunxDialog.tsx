@@ -83,8 +83,10 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   /** 模板清单(创建模式):空数组=无模板态(选择器隐藏);templateId=下拉当前选中(空串=未选) */
   const [templates, setTemplates] = useState<SunxTemplateEntry[]>([]);
   const [templateId, setTemplateId] = useState('');
-  /** 编辑模式品性预填(GET /session/:id/charter;失败静默锁空——替换语义空文 400 禁保存) */
+  /** 编辑模式品性预填(GET /session/:id/charter;失败=加载失败态,保存禁用+错误行可见——
+   *  2026-11-16 技术债补审 I2:原失败静默置 loaded=true,用户保存吃裸 400 无前置提示) */
   const [charterLoaded, setCharterLoaded] = useState(false);
+  const [charterError, setCharterError] = useState(false);
   /** 编辑模式品性回源基线(GET 应答原文;提交时与现文比较——未变不重发) */
   const [fetchedCharter, setFetchedCharter] = useState<string | null>(null);
   /** 工作目录(欢迎页 hook 单点复用):picked=选中根(空串=未锚,回源后落默认锚);
@@ -114,9 +116,10 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setProjOpen(false);
     setHint('');
     setDirOpen(false);
+    setCharterError(false);
   }, [open]);
 
-  /** 编辑模式品性预填(GET /session/:id/charter;失败静默锁空——替换语义空文 400 禁保存) */
+  /** 编辑模式品性预填(GET /session/:id/charter;失败=charterError 可见态) */
   useEffect(() => {
     if (!open || !isEdit || edit === undefined) return;
     let alive = true;
@@ -133,6 +136,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
         setCharter('');
         setFetchedCharter('');
         setCharterLoaded(true);
+        setCharterError(true); // 预填失败:禁保存+错误行(替代静默放行吃裸 400)
       });
     return () => {
       alive = false;
@@ -192,7 +196,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
   })();
   /** 姓名必填(trim 后非空)+ busy 锁(提交中禁重复提交) */
-  const canSubmit = name.trim() !== '' && !busy && (isEdit ? charterLoaded : true);
+  const canSubmit = name.trim() !== '' && !busy && (isEdit ? charterLoaded && !charterError : true);
 
   /** 创建提交 */
   const submitCreate = (): void => {
@@ -368,10 +372,16 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
             aria-label={t('Charter', '品性')}
             rows={6}
             value={charter}
+            disabled={charterError}
             placeholder={t('Personality and rules for this Sunx.', '这个 Sunx 的品性与守则')}
             onChange={(e) => setCharter(e.target.value)}
           />
         </label>
+        {charterError && (
+          <p className="dirpicker-error" role="alert">
+            {t('Failed to load current charter — editing is disabled. Close and reopen the dialog to retry.', '品性读取失败,编辑已禁用。关闭弹窗重开可重试。')}
+          </p>
+        )}
         {error !== '' && (
           <p className="dirpicker-error" role="alert">
             {error}

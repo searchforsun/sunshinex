@@ -427,14 +427,24 @@ describe('NewSunxDialog 编辑模式(2026-11-15 用户裁定「编辑 Sunx 复�
     expect(onEdited).toHaveBeenCalledWith('旧名');
   });
 
-  it('品性预填失败静默:textarea 锁空可保存(替换语义空文即清空);仅改名分派单端点', async () => {
+  it('品性预填失败:错误行可见+textarea/保存禁用(2026-11-16 技术债补审 I2:静默放行吃裸 400 退役);重开弹窗重试复位', async () => {
     const conn = makeConn();
     (conn.sessionCharter as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('404'));
-    render(<EditHarness conn={conn} />);
+    const r = render(<EditHarness conn={conn} />);
     await waitFor(() => expect((screen.getByLabelText(bi('Name', '姓名')) as HTMLInputElement).value).toBe('旧名'));
+    // 失败态:错误行 + textarea 锁 + 保存禁(改名也被拦——品性未回源不能半提交)
+    expect(screen.getByRole('alert')).not.toBeNull();
+    expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: bi('Save', '保存') }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '只改名' } });
-    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
-    await waitFor(() => expect(conn.renameSession).toHaveBeenCalledWith('sx-1', '只改名'));
-    expect(conn.editCharter).not.toHaveBeenCalled(); // 空文=不重发(留空=清空语义由端点替换语义承载)
+    expect((screen.getByRole('button', { name: bi('Save', '保存') }) as HTMLButtonElement).disabled).toBe(true);
+    expect(conn.renameSession).not.toHaveBeenCalled();
+    expect(conn.editCharter).not.toHaveBeenCalled();
+    // 重开弹窗=重试口:open 翻转复位错误态(成功路径下保存恢复可用)
+    (conn.sessionCharter as ReturnType<typeof vi.fn>).mockResolvedValue({ text: '章程', charterRev: 1 });
+    r.unmount();
+    render(<EditHarness conn={conn} />);
+    await waitFor(() => expect((screen.getByLabelText(bi('Charter', '品性')) as HTMLTextAreaElement).value).toBe('章程'));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

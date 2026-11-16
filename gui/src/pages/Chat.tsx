@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { SESSION_KIND_SUNX } from '../connection';
 import type { ReactNode } from 'react';
 import { ArrowDown, Eye, NotebookPen, ShieldCheck, Unlock } from 'lucide-react';
 import { ImageLightbox } from '../ImageLightbox';
@@ -1059,7 +1060,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onOpenSession={onOpenSession}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
-        sunxName={kind === 'sunx' ? displayTitle.trim() : undefined}
+        sunxName={kind === SESSION_KIND_SUNX ? displayTitle.trim() : undefined}
         chatScrollRef={chatScrollRef}
         onScroll={handleChatScroll}
         onWheel={handleChatWheel}

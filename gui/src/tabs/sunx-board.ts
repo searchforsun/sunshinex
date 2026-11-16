@@ -1,4 +1,5 @@
 import type { SessionRow, SnapshotResponse } from '../connection';
+import { SESSION_KIND_SUNX } from '../connection';
 import type { Delegation } from '../projection';
 
 /**
@@ -50,7 +51,7 @@ const TERMINAL: ReadonlySet<Delegation['status']> = new Set<Delegation['status']
 /** /sessions 行 kind 过滤 + updatedAt 新→旧(卡片网格行序=R10 组内序) */
 export function sunxRowsOf(rows: ReadonlyArray<SessionRow & { root?: string; slug?: string }>): Array<SessionRow & { root: string; slug: string }> {
   return rows
-    .filter((r): r is SessionRow & { root: string; slug: string } => r.kind === 'sunx' && typeof r.root === 'string' && r.root !== '' && typeof r.slug === 'string')
+    .filter((r): r is SessionRow & { root: string; slug: string } => r.kind === SESSION_KIND_SUNX && typeof r.root === 'string' && r.root !== '' && typeof r.slug === 'string')
     .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 

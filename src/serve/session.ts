@@ -392,6 +392,13 @@ export class SessionRuntime {
     return boardTaskTitleOf(ledgerId, this.board.tasks);
   }
 
+  /** 唤醒 notice 落链单点（G2 收敛,2026-11-16）：宿主泵（帧缓冲+WS 广播+kernel.pump 全链——直调
+   *  kernel.pump 只落档不发帧,GUI live 收不到）+ 链尾 note。任务/定时/恢复三种唤醒轮共用 */
+  private pumpWakeNotice(md: string, payload: { wake?: unknown; schedule?: boolean; restored?: boolean }): void {
+    this.pump({ type: 'notice', text: md, payload, ts: Date.now() });
+    this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+  }
+
   /** 唤醒轮入口（fire 接缝）：plan 武装态不受理（批次回队）；真 submit 双态收口，快照/统计/续发全共用 */
   private submitWake(tasks: WakeTaskInput[]): boolean {
     if (this.planArmed()) return false;
@@ -1426,21 +1433,16 @@ ${this.sessionCharter ?? ''}` }
       const md = buildWakeNotice(refs, this.runtimeImpl.harness.tasks);
       // 唤醒 notice 走宿主泵(帧缓冲+WS 广播+kernel.pump 全链)——直调 kernel.pump 只落档不发帧,
       // GUI live 收不到事件帧,前缀只在切会话(快照 seed)后出现(用户实测 2026-11-14)
-      this.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
-      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+      this.pumpWakeNotice(md, { wake: refs });
     } else if (wake !== undefined && wake.schedule !== undefined) {
       // 定时唤醒轮（P2 Task 3）：submitWake 同管线双态第二员——notice 携 schedule 标记
       // （scheduledWakeOfRun 独立配对，不混 WakeRef 词汇）+ 链尾 note；错过注明延迟（R7/busy 排队）
-      const md = buildScheduleWakeNotification(wake.schedule.note, wake.schedule.lateMs);
-      this.pump({ type: 'notice', text: md, payload: { schedule: true }, ts: Date.now() });
-      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+      this.pumpWakeNotice(buildScheduleWakeNotification(wake.schedule.note, wake.schedule.lateMs), { schedule: true });
     } else if (wake !== undefined && wake.restored !== undefined) {
       // 恢复唤醒轮（R9,P2 Task 5）：submitWake 同管线第三员——notice 携 restored 标记
       // （sessionRestoredOfRun 独立配对,与 wake/schedule 词汇零交集）+ 链尾 note;无 wake 引用——
       // 打断清单/素材列在通知文正文（人读投影）,显示走普通 run 行（<session-restored> 安静清单不显示）
-      const md = buildSessionRestoredNotification(wake.restored.interrupted, wake.restored.materials);
-      this.pump({ type: 'notice', text: md, payload: { restored: true }, ts: Date.now() });
-      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: md }]);
+      this.pumpWakeNotice(buildSessionRestoredNotification(wake.restored.interrupted, wake.restored.materials), { restored: true });
     } else {
       this.kernel.submit(goal, images);
       this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
