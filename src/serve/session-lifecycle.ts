@@ -370,12 +370,19 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
   if (session.sessionKind === 'sunx') {
     const h = session.runtime.harness;
     const materials = session.pendingMaterial();
-    if (materials.length > 0 || h.taskboard.restartRecovered().length > 0 || h.tasks.restartOrphans().length > 0) {
+    const ledgerOrphans = h.tasks.restartOrphans();
+    const boardRecovered = h.taskboard.restartRecovered();
+    if (materials.length > 0 || boardRecovered.length > 0 || ledgerOrphans.length > 0) {
       const interrupted: RestoredInterrupted[] = [
-        ...h.taskboard.restartRecovered().map((t) => ({ name: t.title, id: t.id, status: 'cancelled' })),
-        ...h.tasks.restartOrphans().map((t) => ({ name: t.title ?? t.label, id: t.id, status: 'stopped' })),
+        ...boardRecovered.map((t) => ({ name: t.title, id: t.id, status: 'cancelled' })),
+        ...ledgerOrphans.map((t) => ({ name: t.title ?? t.label, id: t.id, status: 'stopped' })),
       ];
-      session.submitRestoredRound(interrupted, materials);
+      if (session.submitRestoredRound(interrupted, materials)) {
+        // 一次性消化(2026-11-16 用户实测重复拍醒根修):恢复轮起跑成功即回执 ack——账本 ack 行落档
+        // (重放即知)+board 集清空;后续 attach 对同批孤儿零重复拍醒(真损失首轮已补救,余为陈旧账目)
+        h.tasks.ackInterruptOrphans(ledgerOrphans.map((t) => t.id));
+        h.taskboard.clearRestartRecovered();
+      }
     }
   }
   io.setActive(id);

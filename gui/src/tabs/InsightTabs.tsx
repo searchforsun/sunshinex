@@ -300,6 +300,17 @@ export function BgTasksTab({
                   {isSub ? <Bot size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" /> : <SquareTerminal size={14} strokeWidth={1.75} aria-hidden="true" className="bg-kind-icon" />}
                   {/* 任务名优先(exec 的 purpose,2026-11-07 用户裁定「显示任务名称而不是命令原文」);命令原文留展开明细 */}
                   <span className={`todo-card-goal${r.title !== undefined ? '' : ' bg-cmd'}`} data-tip={r.title ?? r.label}>{r.title ?? r.label}</span>
+                  {/* 取消类型徽标(2026-11-16 用户裁定「任务取消时记录取消类型,exec/spawn 同步」):
+                      仅 stopped 行;manual 人为取消(页签钮)/agent agent 自主(task_stop 工具)/
+                      cascade 连带停止(owner 收割)/interrupt 异常中断(重启自愈,中断唤醒唯一源) */}
+                  {r.status === 'stopped' && r.stopReason !== undefined && (
+                    <span className="bg-stop-reason" data-tip={t('Cancel type', '取消类型')}>
+                      {r.stopReason === 'manual' ? t('Manual stop', '人为取消')
+                        : r.stopReason === 'agent' ? t('Agent stop', 'agent 取消')
+                          : r.stopReason === 'cascade' ? t('Cascade stop', '连带停止')
+                            : t('Interrupted', '异常中断')}
+                    </span>
+                  )}
                   {/* 停止:空心方块图标与智能体团队同形;running 行 hover 显现;
                       二段确认——首击武装(红边框),3s 内再击执行,超时解除 */}
                   {r.status === 'running' && typeof conn.taskStop === 'function' && (

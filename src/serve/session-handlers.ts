@@ -300,6 +300,7 @@ export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerRespons
     label: t2.label,
     ...(t2.title !== undefined ? { title: t2.title } : {}),
     status: t2.status,
+    ...(t2.stopReason !== undefined ? { stopReason: t2.stopReason } : {}), // 取消类型(2026-11-16 用户裁定)
     startedAt: t2.startedAt,
     ...(t2.endedAt !== undefined ? { endedAt: t2.endedAt } : {}),
     ...(t2.exitCode !== undefined ? { exitCode: t2.exitCode } : {}),
@@ -320,7 +321,7 @@ export function handleTaskStop(io: SessionHandlerIo, res: http.ServerResponse, i
   if (t.status !== 'running') {
     return io.send(res, 200, { id: t.id, status: t.status, receipt: `task ${t.id} already finished with status ${t.status}` });
   }
-  abortLedger(session.runtime.harness.tasks, t);
+  abortLedger(session.runtime.harness.tasks, t, 'manual'); // 人为取消(2026-11-16 用户裁定:页签停止钮走 HTTP 直停)
   io.send(res, 200, { id: t.id, status: session.runtime.harness.tasks.get(tid)?.status ?? 'stopped' });
 }
 

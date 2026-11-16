@@ -311,6 +311,7 @@ export class Harness {
             label: task.label,
             ...(task.title !== undefined ? { title: task.title } : {}),
             status: task.status,
+            ...(task.stopReason !== undefined ? { stopReason: task.stopReason } : {}), // 取消类型(2026-11-16 用户裁定)
             startedAt: task.startedAt,
             ...(task.endedAt !== undefined ? { endedAt: task.endedAt } : {}),
             ...(task.exitCode !== undefined ? { exitCode: task.exitCode } : {}),

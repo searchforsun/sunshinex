@@ -19,6 +19,8 @@ export interface BackgroundTask {
   /** 终态时刻（finish 落定；running 无——GUI 运行时长=(endedAt ?? now)-startedAt） */
   endedAt?: number;
   exitCode?: number;
+  /** 取消类型(2026-11-16 用户裁定):仅 stopped 态可能携带;重放自 finish 行 reason/孤儿标定恢复 */
+  stopReason?: TaskStopReason;
   ownerRun?: string;
   /** 停止执行单点（exec=进程 kill、subagent=中断线 abort）；提交方挂载，账本透传——kill 与 abort 两类差异收敛在提交方闭包，账本零 kind 分派 */
   stop?: () => void;
@@ -44,9 +46,15 @@ const ownerStorage = new AsyncLocalStorage<string>();
  *  增量行,重放重建账本——文件与 **journalId** 绑定（稳定身份;daemon 会话 sun-id 每次打开都新铸,
  *  磁盘绑定不得用它）。submit 行带 pid:重放时 running 行按 pid 判孤儿（异进程=已死→stopped;
  *  同进程=别处活账→保持 running）。stop 句柄不入档（函数不可序列化,JSON.stringify 自然剥离） */
+/** 取消类型(2026-11-16 用户裁定「任务取消时记录取消类型」):manual=人为取消(后台任务页签
+ *  停止钮,HTTP 直停)/agent=agent 自主取消(task_stop 工具)/cascade=连带停止(owner 收割)/
+ *  interrupt=异常中断(重启孤儿自愈标定,中断唤醒唯一推导源) */
+export type TaskStopReason = 'manual' | 'agent' | 'cascade' | 'interrupt';
+
 type TaskLedgerRow =
   | { op: 'submit'; pid: number; task: BackgroundTask }
-  | { op: 'finish'; id: string; status: 'done' | 'failed' | 'stopped'; endedAt: number; exitCode?: number };
+  | { op: 'finish'; id: string; status: 'done' | 'failed' | 'stopped'; endedAt: number; exitCode?: number; reason?: TaskStopReason }
+  | { op: 'ack-interrupt'; ids: string[] };
 
 // id 业务段方言：label ASCII 化 slug ≤16 字符（正则链单点 src/slug.ts）；CJK 等非拉丁标签全折叠
 // 回退 kind（业务全称由 /tasks label 列与任务日志承载，id 段只做可读助记）
@@ -63,6 +71,8 @@ export class TaskRegistry {
    *  不在此列）。读面推导缓存非生产状态：仅内存、随实例生灭、重放逐次并集（已终态行零副作用），
    *  零盘面写入 */
   private readonly restartStoppedIds = new Set<string>();
+  /** 已消费的异常中断 id(ack-interrupt 行重放恢复+内存即时):restartOrphans 读面排除 */
+  private readonly restartAckedIds = new Set<string>();
   /** 运行态变更旁路(submit/finish 后触发;装载/adopt 重放零回调——避免开会话刷屏) */
   private onChange?: (task: BackgroundTask) => void;
 
@@ -123,10 +133,15 @@ export class TaskRegistry {
         const parsed = JSON.parse(line) as TaskLedgerRow;
         if (parsed.op === 'submit' && typeof parsed.task?.id === 'string') row = parsed;
         else if (parsed.op === 'finish' && typeof parsed.id === 'string') row = parsed;
+        else if (parsed.op === 'ack-interrupt' && Array.isArray(parsed.ids)) row = parsed;
       } catch {
         row = undefined; // 坏行(崩溃截断/半写)跳过:回放尽力而为,单行不炸装配
       }
       if (row === undefined) continue;
+      if (row.op === 'ack-interrupt') {
+        for (const id of row.ids) this.restartAckedIds.add(id); // 一次性消化(2026-11-16 用户实测重复拍醒根修):已消费的异常中断不再进恢复素材
+        continue;
+      }
       if (row.op === 'submit') {
         if (this.tasks.has(row.task.id)) continue; // live 胜出:本实例已在账的条目不被账本回填覆盖
         const live = row.pid === process.pid ? liveTasks.get(row.task.id) : undefined;
@@ -139,6 +154,7 @@ export class TaskRegistry {
           t.status = row.status;
           t.endedAt = row.endedAt;
           if (row.exitCode !== undefined) t.exitCode = row.exitCode;
+          if (row.reason !== undefined) t.stopReason = row.reason;
           foreignRunning.delete(row.id); // finish 已权威收口,不再孤儿标
         }
       }
@@ -149,6 +165,7 @@ export class TaskRegistry {
       if (t !== undefined && t.status === 'running') {
         t.status = 'stopped';
         t.endedAt = now;
+        t.stopReason = 'interrupt'; // 取消类型(2026-11-16 用户裁定):重启自愈=异常中断——中断唤醒唯一推导源
         this.restartStoppedIds.add(id); // R9 恢复轮推导源（2026-11-15 sunx P2 Task 5）：自愈产物可观测
       }
     }
@@ -220,7 +237,7 @@ export class TaskRegistry {
   }
 
   /** 终态（规格 D3）：带 exitCode 落 [exit N]；带 marker 落 marker 行（subagent 结论/失败补丁行）；否则 [status]；重复终止幂等 */
-  finish(taskId: string, status: 'done' | 'failed' | 'stopped', opts?: { exitCode?: number; marker?: string }): BackgroundTask | undefined {
+  finish(taskId: string, status: 'done' | 'failed' | 'stopped', opts?: { exitCode?: number; marker?: string; reason?: TaskStopReason }): BackgroundTask | undefined {
     const t = this.tasks.get(taskId);
     if (!t || t.status !== 'running') return t;
     const line = opts?.marker ?? (opts?.exitCode !== undefined ? `[exit ${opts.exitCode}]` : `[${status}]`);
@@ -228,6 +245,7 @@ export class TaskRegistry {
     t.status = status;
     t.endedAt = Date.now();
     if (opts?.exitCode !== undefined) t.exitCode = opts.exitCode;
+    if (opts?.reason !== undefined) t.stopReason = opts.reason; // 取消类型(2026-11-16 用户裁定)
     liveTasks.delete(taskId);
     this.appendLedger({
       op: 'finish',
@@ -235,6 +253,7 @@ export class TaskRegistry {
       status,
       endedAt: t.endedAt,
       ...(opts?.exitCode !== undefined ? { exitCode: opts.exitCode } : {}),
+      ...(opts?.reason !== undefined ? { reason: opts.reason } : {}),
     });
     this.onChange?.(t);
     return t;
@@ -248,7 +267,16 @@ export class TaskRegistry {
    *  账本重放时标 stopped 的异进程 running 孤儿（P1 语义「重启后台任务不唤醒」的产物在此转为
    *  恢复轮可观测清单——attach 序已有信息的读面投影,零新增生产状态） */
   restartOrphans(): BackgroundTask[] {
-    return this.list().filter((t) => t.status === 'stopped' && this.restartStoppedIds.has(t.id));
+    return this.list().filter((t) => t.status === 'stopped' && this.restartStoppedIds.has(t.id) && !this.restartAckedIds.has(t.id));
+  }
+
+  /** 异常中断一次性消化(2026-11-16 用户实测重复拍醒根修):恢复轮起跑成功后由调用方回执——
+   *  ack 行落账本(重放即知)+内存集排除,后续 attach 不再对同批孤儿重复拍醒 */
+  ackInterruptOrphans(ids: readonly string[]): void {
+    const fresh = ids.filter((id) => this.restartStoppedIds.has(id) && !this.restartAckedIds.has(id));
+    if (fresh.length === 0) return;
+    for (const id of fresh) this.restartAckedIds.add(id);
+    this.appendLedger({ op: 'ack-interrupt', ids: fresh });
   }
 
 
@@ -291,7 +319,7 @@ export class TaskRegistry {
     for (const t of this.tasks.values()) {
       if (t.status === 'running' && t.ownerRun === ownerRun) {
         t.stop?.();
-        this.finish(t.id, 'stopped', { marker: '[stopped: owner finished]' });
+        this.finish(t.id, 'stopped', { marker: '[stopped: owner finished]', reason: 'cascade' });
         out.push(t);
       }
     }

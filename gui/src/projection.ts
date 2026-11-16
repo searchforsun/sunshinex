@@ -71,6 +71,8 @@ export type BgTaskRow = {
   /** 任务名(exec 的 purpose);缺省显示回落 label */
   title?: string;
   status: string;
+  /** 取消类型(2026-11-16 用户裁定;仅 stopped 行):manual/agent/cascade/interrupt */
+  stopReason?: string;
   startedAt: number;
   endedAt?: number;
   exitCode?: number;
@@ -88,6 +90,7 @@ export function applyBgTaskEvent(rows: readonly BgTaskRow[], e: SessionEvent): B
   const label = typeof p.label === 'string' ? p.label : id;
   const title = typeof p.title === 'string' && p.title !== '' ? p.title : undefined;
   const status = typeof p.status === 'string' ? p.status : 'running';
+  const stopReason = typeof p.stopReason === 'string' ? p.stopReason : undefined;
   const startedAt = typeof p.startedAt === 'number' ? p.startedAt : e.ts;
   const endedAt = typeof p.endedAt === 'number' ? p.endedAt : undefined;
   const exitCode = typeof p.exitCode === 'number' ? p.exitCode : undefined;
@@ -99,6 +102,7 @@ export function applyBgTaskEvent(rows: readonly BgTaskRow[], e: SessionEvent): B
     label,
     ...(title !== undefined ? { title } : {}),
     status,
+    ...(stopReason !== undefined ? { stopReason } : {}),
     startedAt,
     ...(endedAt !== undefined ? { endedAt } : {}),
     ...(exitCode !== undefined ? { exitCode } : {}),

@@ -272,6 +272,9 @@ export interface SessionTaskRow {
   /** 任务名(exec 的 purpose,2026-11-07);缺省=无名任务,显示回落 label(命令原文) */
   title?: string;
   status: string;
+  /** 取消类型(2026-11-16 用户裁定):仅 stopped 行可能携带——manual 人为取消/agent agent 自主
+   *  取消/cascade 连带停止/interrupt 异常中断(重启自愈,中断唤醒唯一源) */
+  stopReason?: string;
   startedAt: number;
   endedAt?: number;
   exitCode?: number;

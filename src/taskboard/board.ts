@@ -136,6 +136,12 @@ export class TaskBoard {
   /** 重启自愈 cancelled 任务读面（2026-11-15 sunx P2 Task 5,R9 恢复轮「打断任务清单」推导源之一）：
    *  init 装载恢复时打开态被自愈 cancelled 的任务行（recoverOnLoad 产物——快照行无 note 字段,
    *  「自愈 vs 用户取消」只能由本读面区分）。attach 序已有信息的读面投影,零新增生产状态 */
+  /** 恢复轮一次性消化(2026-11-16 用户实测重复拍醒根修):起跑成功后清本 init 自愈集——
+   *  后续 attach 零重复拍醒(换板/换档重装载时 init 重产语义不变) */
+  clearRestartRecovered(): void {
+    this.restartRecoveredIds.clear();
+  }
+
   restartRecovered(): BoardTask[] {
     const out: BoardTask[] = [];
     for (const id of this.restartRecoveredIds) {

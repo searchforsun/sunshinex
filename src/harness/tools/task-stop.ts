@@ -3,7 +3,7 @@
 // 分域拒识：task_stop 遇板 id → INVALID_ARG 点名 agent_team_task_stop；对称拒识纯台账 id。
 // 终态幂等回执当前态，不重复 abort。成员按名只打断当前任务，成员继续存活并领取后续板任务。
 import { CodedToolError, RegisteredTool } from '../tools';
-import type { BackgroundTask, TaskRegistry } from '../tasks';
+import type { BackgroundTask, TaskRegistry, TaskStopReason } from '../tasks';
 import type { TeamRegistry } from '../../taskboard/teammate';
 import { BOARD_TERMINAL } from '../../taskboard/model';
 import { dispatchTag, type TaskBoard } from '../../taskboard/board';
@@ -62,13 +62,14 @@ export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: stri
   return ok({ taskId: boardKey, status: 'cancelled', title: before.title, alreadyFinished: false });
 }
 
-/** 执行体中止并收口台账。stop 句柄由提交方挂载（fork/teammate=abort，external=强杀）；已终态的 finish 幂等 */
-export function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefined): void {
+/** 执行体中止并收口台账。stop 句柄由提交方挂载（fork/teammate=abort，external=强杀）；已终态的 finish 幂等。
+ *  reason(2026-11-16 用户裁定「取消类型」):task_stop 工具=agent 自主取消;HTTP 直停(后台任务页签钮)=manual */
+export function abortLedger(tasks: TaskRegistry, ledger: BackgroundTask | undefined, reason: TaskStopReason = 'agent'): void {
   if (ledger === undefined) return;
   ledger.stop?.();
   const now = tasks.get(ledger.id);
   if (now !== undefined && now.status === 'running') {
-    tasks.finish(ledger.id, 'stopped', { marker: '[stopped: task_stop]' });
+    tasks.finish(ledger.id, 'stopped', { marker: '[stopped: task_stop]', reason });
   }
 }
 
