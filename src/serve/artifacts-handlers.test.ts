@@ -112,3 +112,28 @@ test('scanArtifactsJsonl:空文本/无 run-open 前缀的 runmeta 不认', () =>
   assert.deepEqual(scanArtifactsJsonl(''), []);
   assert.deepEqual(scanArtifactsJsonl(JSON.stringify({ t: 'runmeta', artifacts: [{ path: 'x.md', source: 'write' }] })), []);
 });
+
+test('全链复现(2026-11-16 用户实测同文件声明卡+自动卡并存):write 落盘+显式声明同文件,drain→merge 全链单卡且声明版胜', async () => {
+  const { builtinTools } = await import('../harness/tools/builtin');
+  const { SafetyChain } = await import('../harness/security/chain');
+  const { SecurityGuard } = await import('../harness/security/guard');
+  const { PolicyEngine } = await import('../harness/security/policy');
+  const { ProcessSandbox } = await import('../harness/security/sandbox');
+  const { ArtifactCollector } = await import('../harness/tools/artifact-collector');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-archain-'));
+  const collector = new ArtifactCollector();
+  const safety = new SafetyChain(new SecurityGuard(new PolicyEngine(), 'full-access'), new ProcessSandbox(), root);
+  const tools = builtinTools(safety, root, { artifacts: collector });
+  const write = tools.find((t) => t.name === 'write')!;
+  const report = tools.find((t) => t.name === 'report_artifacts')!;
+  await write.executor({ path: '01-structure-techstack.md', content: '# report\n' }); // record 进 pending
+  await report.executor({ artifacts: [{ kind: 'file', path: '01-structure-techstack.md', title: '分析报告', desc: '只读分析报告。' }] }); // declare 同文件
+  const declared = collector.drain();
+  const scan = scanDeliverableFiles(root, Date.now() - 60000, Date.now() + 60000);
+  const merged = mergeRunArtifacts(declared, [], scan);
+  const cards = merged.filter((a) => a.kind === 'file' && a.path.endsWith('01-structure-techstack.md'));
+  assert.equal(cards.length, 1, `同文件全链必须单卡,实测 ${cards.length} 条: ${JSON.stringify(merged)}`);
+  assert.equal(cards[0]!.source, 'tool', '胜出者=显式声明(模型意图优先)');
+  assert.equal((cards[0] as { desc?: string }).desc, '只读分析报告。', '声明 desc 在场');
+  fs.rmSync(root, { recursive: true, force: true });
+});

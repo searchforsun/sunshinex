@@ -30,4 +30,36 @@ describe('runmeta.artifacts 摄入', () => {
     const s2 = fold([ev('model-start'), ev('done', 'x'), ev('runmeta', undefined, { seconds: 1 })]);
     expect(s2.entries.find((e) => e.kind === 'run')?.artifacts).toBeUndefined();
   });
+
+  it('跨轮声明遮蔽(2026-11-16 用户实测同文件声明卡+自动卡并存,裁定「主动注册的应该大于解析出来的」):落盘轮自动卡+声明轮声明卡同 key 并存→自动卡隐去,声明轮显声明版', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('done', 'a'),
+      ev('runmeta', undefined, { seconds: 5, artifacts: [{ kind: 'file', path: 'analysis/01-x.md', source: 'bash' }] }),
+      ev('model-start'),
+      ev('done', 'b'),
+      ev('runmeta', undefined, { seconds: 3, artifacts: [{ kind: 'file', path: 'analysis/01-x.md', source: 'tool', title: '分析报告', desc: '只读分析报告。' }] }),
+    ]);
+    const runs = s.entries.filter((e) => e.kind === 'run');
+    expect(runs).toHaveLength(2);
+    expect(runs[0]?.artifacts).toBeUndefined(); // 落盘轮自动卡被声明遮蔽→整卡隐去(该轮无其余产物=无卡区)
+    expect(runs[1]?.artifacts).toEqual([{ kind: 'file', path: 'analysis/01-x.md', source: 'tool', title: '分析报告', desc: '只读分析报告。' }]);
+  });
+
+  it('遮蔽与轮序无关:声明轮在前、落盘轮在后→后轮同 key 自动卡同样隐去;不同 key 互不波及', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('done', 'a'),
+      ev('runmeta', undefined, { seconds: 2, artifacts: [{ kind: 'file', path: 'docs/a.md', source: 'tool', title: 'A' }] }),
+      ev('model-start'),
+      ev('done', 'b'),
+      ev('runmeta', undefined, { seconds: 4, artifacts: [
+        { kind: 'file', path: 'docs/a.md', source: 'write' }, // 同 key 自动卡→遮
+        { kind: 'file', path: 'docs/b.md', source: 'bash' }, // 不同 key→留
+      ] }),
+    ]);
+    const runs = s.entries.filter((e) => e.kind === 'run');
+    expect(runs[0]?.artifacts).toEqual([{ kind: 'file', path: 'docs/a.md', source: 'tool', title: 'A' }]);
+    expect(runs[1]?.artifacts).toEqual([{ kind: 'file', path: 'docs/b.md', source: 'bash' }]);
+  });
 });

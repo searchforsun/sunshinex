@@ -1,4 +1,5 @@
 import type { SessionEvent, TurnFileChange, Artifact } from '../../src/types';
+import { artifactKey } from '../../src/types';
 import { applySeed, applySubagentEvent, initialKernelState, isQuietNotice, type KernelEntry, type KernelState, type WakeRef } from '../../src/session/entry';
 import { localizeNotice } from './i18n-notice';
 import { getLanguage, t } from './i18n';
@@ -285,6 +286,27 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
     pendingWake = undefined;
     pendingSchedule = undefined;
     pendingRestored = undefined;
+  }
+  // 轮末产物跨轮声明遮蔽(2026-11-16 用户裁定「主动注册的应该大于解析出来的」):编排/委派流里
+  // 落盘轮(subagent/编排早轮)的自动卡与声明轮的显式卡同 key 并存——内核单轮 drain 遮蔽
+  // (collector 声明遮蔽同键推导)管不到跨轮,投影层会话级补遮:同 key 存在任一轮的声明版
+  // (source='tool')时,其他轮的同 key 自动卡自卡区隐去,声明版只在声明轮显示;无声明版不动
+  // (多轮重写各有改动语境,照旧各显)。滤后数组重赋值(view 可能是缓存复用对象,不原地改);
+  // 幂等——reuse 路径复用的视图已滤过,再滤零变化
+  const declaredArtifactKeys = new Set<string>();
+  for (const en of out) {
+    if (en.artifacts === undefined) continue;
+    for (const a of en.artifacts) if (a.source === 'tool') declaredArtifactKeys.add(artifactKey(a));
+  }
+  if (declaredArtifactKeys.size > 0) {
+    for (const en of out) {
+      if (en.artifacts === undefined) continue;
+      const filtered = en.artifacts.filter((a) => a.source === 'tool' || !declaredArtifactKeys.has(artifactKey(a)));
+      if (filtered.length !== en.artifacts.length) {
+        if (filtered.length === 0) delete en.artifacts; // 全滤空=该轮卡区整体隐去(空数组不落字段口径)
+        else en.artifacts = filtered;
+      }
+    }
   }
   const mapped = mergeSplitThinking(out);
   mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped, lang });
