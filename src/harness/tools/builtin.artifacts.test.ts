@@ -79,6 +79,27 @@ test('report_artifacts 显式声明面:file 存在性校验防虚报/url 形态/
   assert.equal(declared.length, 3, '校验失败的批次不得部分登记');
 });
 
+test('desc 卡面硬钳(2026-11-16 用户裁定「描述一点过要严格限制长度」):超 40 字符截断加省略号,≤40 原样', async () => {
+  const root = tmp();
+  fs.writeFileSync(path.join(root, 'a.md'), 'x\n');
+  const declared: Artifact[] = [];
+  const tools = makeTools(root, { record: () => {}, declare: (es) => declared.push(...es) });
+  const report = tools.find((t) => t.name === 'report_artifacts')!;
+  const short = '短描述';
+  const long = '只读分析报告：顶层目录树、Maven 构建体系、11 个入口点、1535 个 Java 文件规模统计与技术结论一览';
+  assert.ok([...long].length > 40, '前置:样例确实超长');
+  await report.executor({
+    artifacts: [
+      { kind: 'file', path: 'a.md', desc: short },
+      { kind: 'file', path: 'a.md', desc: long },
+    ],
+  });
+  assert.equal(declared[0]!.desc, short, '限内原样透传');
+  const clamped = declared[1]!.desc ?? '';
+  assert.equal([...clamped].length, 40, '钳后恒 40 字符(39+省略号)');
+  assert.ok(clamped.endsWith('…'), '尾部省略号');
+});
+
 test('report_artifacts:file 声明钉项目根相对路径(绝对路径入参归一)', async () => {
   const root = tmp();
   fs.mkdirSync(path.join(root, 'docs'), { recursive: true });

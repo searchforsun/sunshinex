@@ -52,6 +52,7 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
               a={a}
               conn={conn}
               root={root}
+              variant="library"
               actions={{
                 onOpenFile,
                 onOpenWeb,

@@ -22,16 +22,21 @@ export interface ArtifactCardActions {
 
 /** 单产物卡(2026-11-14 kind 化三分支;同轮样式裁定:第一行展示原始名称(文件名/网址/命令全称),
  *  第二行 desc 限长省略不换行;动作钮统一「打开 ▾」胶囊格式——两侧收窄/适当增高/弧度不变;
- *  示例图片不用缩略图,统一 FileIcon 图标(用户裁定,弧度一致) */
-export function ArtifactCardView({ a, conn, root, actions }: {
+ *  示例图片不用缩略图,统一 FileIcon 图标(用户裁定,弧度一致)。
+ *  variant(2026-11-16 用户裁定):strip=正文卡零 hover(名称/desc 不挂原生 title,整体性优先);
+ *  library=侧栏产物页签卡 hover 显完整 desc/name 全文(窄栏截断时的补读路径) */
+export function ArtifactCardView({ a, conn, root, actions, variant = 'strip' }: {
   a: Artifact;
   conn: Connection;
   root?: string;
   actions: ArtifactCardActions;
+  variant?: 'strip' | 'library';
 }): JSX.Element {
   const { status, copy } = useCopyFeedback();
   const name = artifactTitleOf(a);
   const label = a.desc !== undefined && a.desc !== '' ? a.desc : artifactKindLabel(a);
+  const nameTip = variant === 'library' ? (a.kind === 'file' ? a.path : a.kind === 'url' ? a.url : a.command) : undefined;
+  const descTip = variant === 'library' && a.desc !== undefined && a.desc !== '' ? a.desc : undefined;
   const openExternal = (p: string, id: string): void => {
     void conn.openInEditor(p, id, root).catch((err: unknown) => actions.onOpError?.(err));
   };
@@ -106,10 +111,10 @@ export function ArtifactCardView({ a, conn, root, actions }: {
     <div className="sx-artifacts-card">
       {tile}
       <span className="sx-artifacts-main">
-        <span className="sx-artifacts-name" title={a.kind === 'file' ? a.path : a.kind === 'url' ? a.url : a.command}>
+        <span className="sx-artifacts-name" title={nameTip}>
           {name}
         </span>
-        <span className="sx-artifacts-kind">{label}</span>
+        <span className="sx-artifacts-kind" title={descTip}>{label}</span>
       </span>
       {actionRow}
     </div>

@@ -74,7 +74,6 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   const nameEl = first !== undefined && first.name !== undefined ? (
     <span
       className="wake-name"
-      data-tip={first.name}
       role="button"
       tabIndex={0}
       onClick={(e) => {
@@ -302,6 +301,7 @@ export function ImageMissing({ name, size = 96 }: { name: string; size?: number 
       className="img-missing"
       role="img"
       aria-label={t('Image unavailable', '图片不可用')}
+      data-tip={`${t('Image unavailable', '图片不可用')}
 ${name}`}
       style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4, width: size, height: size, borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border)', color: 'var(--fg-secondary)', background: 'color-mix(in srgb, var(--fg-secondary) 6%, transparent)', fontSize: 10, overflow: 'hidden', padding: 4, textAlign: 'center', wordBreak: 'break-all', lineHeight: 1.2 }}
     >
@@ -492,8 +492,10 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
             onImageOpen={setEditLightbox}
             footRight={
               <div className="composer-pills">
+                <button type="button" className="user-edit-cancel" aria-label="cancel edit" data-tip={t('Cancel', '取消')} onClick={() => setEditing(false)}>
                   <X size={16} strokeWidth={2} aria-hidden="true" />
                 </button>
+                <button type="button" className="send tip-right" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendEdit}>
                   <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
                 </button>
               </div>
@@ -702,8 +704,10 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           }}
           footRight={
             <div className="composer-pills">
+              <button type="button" className="user-edit-cancel" aria-label="cancel edit" data-tip={t('Cancel', '取消')} onClick={() => setNoticeEditing(false)}>
                 <X size={16} strokeWidth={2} aria-hidden="true" />
               </button>
+              <button type="button" className="send tip-right" aria-label="send edit" data-tip={`${t('Send', '发送')} · Enter`} onClick={sendNoticeEdit}>
                 <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
               </button>
             </div>

@@ -1066,11 +1066,13 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     fire({ type: 'tool-call', text: 'update_agent_team_task', ts: Date.now(), payload: { callId: 'u1', input: { taskId: 't1', action: 'assign', assignee: 'w1' } } });
     fire({ type: 'tool-result', text: 'assigned', ts: Date.now(), payload: { callId: 'u1' } });
     const stopLink = document.querySelector('.entry-tool .tool-agent-link') as HTMLElement;
-    expect(stopLink?.getAttribute('data-tip')).toMatch(/后台任务|background tasks/);
+    // hover 提示退役(2026-11-16 用户裁定「复合直觉的就不需要再加 hover」:蓝链手型已暗示可点);
+    // 定位语义由点击承接,断言 data-tip 不在场防回潜
+    expect(stopLink?.getAttribute('data-tip')).toBeNull();
     fireEvent.click(stopLink);
     expect(onOpenTask).toHaveBeenCalledWith('bg:exec-1');
     const boardLinks = [...document.querySelectorAll('.entry-tool .tool-agent-link')].filter((el) =>
-      /智能体团队|agent teams/.test(el.getAttribute('data-tip') ?? ''),
+      /t1/.test(el.getAttribute('data-task-ref') ?? el.textContent ?? ''),
     );
     expect(boardLinks.length).toBeGreaterThan(0);
     fireEvent.click(boardLinks[0]!);

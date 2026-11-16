@@ -644,8 +644,6 @@ export const ToolEntryView = memo(function ToolEntryView({
               role="button"
               tabIndex={-1}
               className="tool-file-base tool-agent-link tool-link-chip"
-                ? t('Locate in background tasks', '在后台任务中定位')
-                : t('Locate in agent teams', '在智能体团队中定位')}
               onClick={(e) => {
                 e.stopPropagation();
                 const id = typeof input.taskId === 'string' ? input.taskId : taskOpName;

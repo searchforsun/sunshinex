@@ -830,7 +830,7 @@ export function builtinTools(
               url: { type: ['string', 'null'], description: 'kind=url (required, others null): http(s) URL of the running service / deployed page' },
               command: { type: ['string', 'null'], description: 'kind=command (required, others null): the command a user can run to launch / reproduce' },
               title: { type: ['string', 'null'], description: "Human-facing artifact name shown on the card (user's language)" },
-              desc: { type: ['string', 'null'], description: 'One-line description of what it is / how to use it' },
+              desc: { type: ['string', 'null'], description: 'One-line description, AT MOST 40 characters — it renders on a single card line and is hard-truncated beyond that; put details in the file itself, not here' },
             },
           },
         },
@@ -852,7 +852,10 @@ export function builtinTools(
       for (const item of raw) {
         const o = (item ?? {}) as Record<string, unknown>;
         const title = typeof o.title === 'string' ? o.title : undefined;
-        const desc = typeof o.desc === 'string' ? o.desc : undefined;
+        // desc 卡面单行硬钳(2026-11-16 用户裁定「描述一点过要严格限制长度」):40 字符截断加省略号,
+        // 模型超长也落卡不破版;细节归文件本身
+        const descRaw = typeof o.desc === 'string' ? o.desc : undefined;
+        const desc = descRaw !== undefined && [...descRaw].length > 40 ? [...descRaw].slice(0, 39).join('') + '…' : descRaw;
         if (o.kind === 'file') {
           const p = typeof o.path === 'string' ? o.path.trim() : '';
           if (p === '') throw new CodedToolError('INVALID_ARG', 'kind=file requires path');
