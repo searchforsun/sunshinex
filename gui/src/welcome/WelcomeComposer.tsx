@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
 import { WelcomeProjectPop } from './welcome-project-pop';
-import { dropRefsOf, pathBasename } from '../ui-util';
+import { dropRefsOf, pathBasename, insertRefBase, insertRefToken } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
@@ -112,11 +112,10 @@ export function WelcomeComposer({
   const [heldNew, setHeldNew] = useState('');
   /** 隔离未选异于当前的分支(2026-11-13 用户裁定「发送后没有提示创建新的分支,直接自动创建了
    *  任意分支?应该又弹窗提示啊?」):发送前弹「将创建新分支」确认——留空=显式同意随机命名,
-   *  填名=按名新建/签出;重选分支=重开分支菜单。isoRandomRef=弹窗内确认随机的一次性通行证
-   *  (免 send 二次拦截回环) */
+   *  填名=按名新建/签出;重选分支=重开分支菜单。弹窗内确认随机经 send({isoRandom:true}) 直传
+   *  放行拦截(D72:可变通行证 ref+重入回环退役) */
   const [isoBranchPending, setIsoBranchPending] = useState(false);
   const [isoNewName, setIsoNewName] = useState('');
-  const isoRandomRef = useRef(false);
   /** 缺省模型名(G13 反馈轮):settings model 键回显(拉取失败留 undefined → 「默认模型」兜底) */
   const [defaultModel, setDefaultModel] = useState<string | undefined>(undefined);
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
@@ -215,8 +214,8 @@ export function WelcomeComposer({
   useEffect(() => {
     onPickedChange?.(picked);
   }, [picked, onPickedChange]);
-  const sendRef = useRef<() => void>(() => undefined);
-  const send = (): void => {
+  const sendRef = useRef<(opts?: { isoRandom?: boolean }) => void>(() => undefined);
+  const send = (opts?: { isoRandom?: boolean }): void => {
     // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
     const target = picked !== '' ? picked : (presetRoot ?? '');
     // G14.124 @短写发送期展开为 md 绝对链接(与会话内 submitText 同口径)
@@ -242,12 +241,11 @@ export function WelcomeComposer({
     // 隔离但未选异于当前的分支(pick 当前分支=清空选中,treeBranch 缺场即 daemon 静默随机建
     // worktree-<随机名>)→ 先弹「将创建新分支」确认;留空确认=显式同意随机(一次性通行证)
     const isolateArmed = isolate === true && gitBr !== null && gitBr.current !== '';
-    if (isolateArmed && selectedBranch === '' && !isoRandomRef.current) {
+    if (isolateArmed && selectedBranch === '' && opts?.isoRandom !== true) {
       setIsoNewName('');
       setIsoBranchPending(true);
       return;
     }
-    isoRandomRef.current = false;
     void doSend(target, undefined, undefined);
   };
   /** 真实发送(switchBranch 在场=先提交并切换再建会话) */
@@ -419,8 +417,8 @@ export function WelcomeComposer({
             onCreate={(b) => {
               setIsoBranchPending(false);
               if (b !== '') setSelBranch(b);
-              else isoRandomRef.current = true; // 留空=显式同意随机,放行 send 拦截
-              setTimeout(() => sendRef.current(), 0);
+              // 留空=显式同意随机,isoRandom 直传放行 send 拦截(setTimeout 等分支态刷新落定)
+              setTimeout(() => sendRef.current(b === '' ? { isoRandom: true } : undefined), 0);
             }}
           />
         )}
@@ -481,31 +479,14 @@ export function WelcomeComposer({
           onPasteFiles={attachImages}
           highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true)}
           onDropFile={(rel) => {
-            // 与会话内同构:拖入 → @文件名短写+账本记绝对/相对路径(目录保尾斜杠)
-            const bare = rel.replace(/[\\/]+$/, '');
-            const isDir = bare !== rel;
-            const ta = goalRef.current;
-            const pos = ta?.selectionStart ?? goal.length;
-            const base = bare.split(/[\\/]/).filter(Boolean).pop() ?? bare;
-            pickRelRef.current.set(base, isDir ? `${bare}/` : bare);
-            setGoal((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
-            goalRef.current?.focus();
-            requestAnimationFrame(() => {
-              const g = goalRef.current;
-              if (g === null) return;
-              const to = Math.min(pos + base.length + 2, g.value.length);
-              g.setSelectionRange(to, to);
-            });
+            // 与会话内同构:拖入 → @文件名短写+账本记绝对/相对路径(insertRefToken 单点,目录保尾斜杠标记)
+            insertRefToken(rel, { get: () => goal, set: setGoal, ta: () => goalRef.current, ledger: pickRelRef.current });
           }}
           onDropPaths={(paths) => {
             // 外部拖拽(2026-11-14 资源管理器拖文件/文件夹):绝对路径归一 @短写(picked 根下相对化),同内部拖入语言
             for (const { base, ledger } of dropRefsOf(paths, picked)) {
-              const ta = goalRef.current;
-              const pos = ta?.selectionStart ?? goal.length;
-              pickRelRef.current.set(base, ledger);
-              setGoal((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+              insertRefBase(base, ledger, { get: () => goal, set: setGoal, ta: () => goalRef.current, ledger: pickRelRef.current });
             }
-            goalRef.current?.focus();
           }}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
@@ -801,7 +782,7 @@ export function WelcomeComposer({
                 aria-label="send"
                 data-tip={`${t('Send', '发送')} · Enter`}
                 disabled={busy || (goal.trim() === '' && images.length === 0) || picked === ''}
-                onClick={send}
+                onClick={() => send()}
               >
                 <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
               </button>

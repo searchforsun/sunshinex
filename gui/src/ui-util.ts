@@ -330,3 +330,37 @@ export function chaseScrollBottom(el: HTMLElement): void {
     1,
   );
 }
+
+/** @短写插入核心（D72-③ 收敛,2026-11-15）：composer caret 处插 `@base `+账本记账,内部拖入
+ *  （onDropFile）与外部拖拽（onDropPaths）共用。base=短写文件名,value=账本值（绝对/相对路径,
+ *  目录带尾斜杠内部标记）。pinCaret=rAF 钉光标到 token 后（内部拖入单插用,外部多路径不钉） */
+export function insertRefBase(
+  base: string,
+  value: string,
+  io: { get: () => string; set: (u: (prev: string) => string) => void; ta: () => HTMLTextAreaElement | null; ledger: Map<string, string>; pinCaret?: boolean },
+): void {
+  const ta = io.ta();
+  const pos = ta?.selectionStart ?? io.get().length;
+  io.ledger.set(base, value);
+  io.set((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+  ta?.focus();
+  if (io.pinCaret !== true) return;
+  requestAnimationFrame(() => {
+    const g = io.ta();
+    if (g === null) return;
+    const to = Math.min(pos + base.length + 2, g.value.length);
+    g.setSelectionRange(to, to);
+  });
+}
+
+/** 内部拖入载荷解析+插入单点：rel 尾斜杠=目录内部标记（插入文本不带斜杠——用户裁定,记账保
+ *  标记值供芯片/展开判目录）,基名取最后一段 */
+export function insertRefToken(
+  rel: string,
+  io: { get: () => string; set: (u: (prev: string) => string) => void; ta: () => HTMLTextAreaElement | null; ledger: Map<string, string> },
+): void {
+  const bare = rel.replace(/[\/]+$/, '');
+  const isDir = bare !== rel;
+  const base = bare.split(/[\/]/).filter(Boolean).pop() ?? bare;
+  insertRefBase(base, isDir ? `${bare}/` : bare, { ...io, pinCaret: true });
+}

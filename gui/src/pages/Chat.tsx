@@ -9,7 +9,7 @@ import type { ChatEntry, ChatState } from '../chat-reducer';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 import { CommandPalette } from '../CommandPalette';
-import { chaseScrollBottom, pathBasename , dropRefsOf } from '../ui-util';
+import { chaseScrollBottom, pathBasename, dropRefsOf, insertRefBase, insertRefToken } from '../ui-util';
 import { autoSeenSuppressed, stampSeen } from '../sidebar/project-menu-util';
 import type { CmdItem } from '../CommandPalette';
 import { t } from '../i18n';
@@ -49,7 +49,7 @@ import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, 
 import { SelActionsOverlay } from './chat/SelActionsOverlay';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
-export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS } from './chat/md-render';
+export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
 import { DirResolverContext, MdImageContext } from './chat/md-render';
 export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
@@ -1275,34 +1275,15 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         highlight={renderHighlightSpans(input)}
         onInputClick={onInputClick}
         onDropFile={(rel) => {
-          // G14.144 拖入文件 → caret 处插 @文件名(短写,账本解析;G14.211 原 @全相对路径过长)。
-          // 目录载荷(尾斜杠=内部标记):插入文本不带斜杠(用户裁定),记账存标记值供芯片/展开判目录
-          const bare = rel.replace(/[\\/]+$/, '');
-          const isDir = bare !== rel;
-          const ta = inputRef.current;
-          const pos = ta?.selectionStart ?? input.length;
-          const base = bare.split(/[\\/]/).filter(Boolean).pop() ?? bare;
-          pickRelRef.current.set(base, isDir ? `${bare}/` : bare);
-          setInput((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
-          inputRef.current?.focus();
-          // G14.211 光标钉在插入 token 之后(同 onPick:旧光标位恢复=token 中间)
-          requestAnimationFrame(() => {
-            const ta2 = inputRef.current;
-            if (ta2 === null) return;
-            const to = Math.min(pos + base.length + 2, ta2.value.length);
-            ta2.setSelectionRange(to, to);
-          });
+          // G14.144 拖入文件 → caret 处插 @短写(insertRefToken 单点;G14.211 光标钉位随单点)
+          insertRefToken(rel, { get: () => input, set: setInput, ta: () => inputRef.current, ledger: pickRelRef.current });
         }}
         onDropPaths={(paths) => {
           // 外部拖拽(2026-11-14 资源管理器拖文件/文件夹进输入框):绝对路径归一 @短写(根下相对化),
           // 与内部树拖入同语言(高亮可点,发送期 @ 展开解析)
           for (const { base, ledger } of dropRefsOf(paths, root)) {
-            const ta = inputRef.current;
-            const pos = ta?.selectionStart ?? input.length;
-            pickRelRef.current.set(base, ledger);
-            setInput((prev) => prev.slice(0, pos) + `@${base} ` + prev.slice(pos));
+            insertRefBase(base, ledger, { get: () => input, set: setInput, ta: () => inputRef.current, ledger: pickRelRef.current });
           }
-          inputRef.current?.focus();
         }}
         footLeft={
           <ComposerPillsLeft

@@ -1,6 +1,6 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
+import type { Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, Database, GitFork, Info, MessageSquare, PenLine, Sparkles, X, ImageOff } from 'lucide-react';
 import { t, getLanguage } from '../../i18n';
 import { BUBBLE_MAX_HEIGHT, ClampToggle, useClampMotion } from '../../clamp-block';
@@ -12,7 +12,7 @@ import type { Connection } from '../../connection';
 import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import type { WakeRef } from '../../../../src/session/entry';
-import { buildMdComponents, keepUrl, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from '../Chat';
+import { buildMdComponents, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MarkdownCached, renderMdCached } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ArtifactsStrip } from './ArtifactsStrip';
 import { ImageLightbox } from '../../ImageLightbox';
@@ -432,11 +432,8 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
       setConfirm({ text, ...(draftImages.length > 0 ? { images: draftImages } : {}) });
       return;
     }
-    const result = onSend?.(text, draftImages.length > 0 ? draftImages : undefined);
-    if (result === undefined) {
-      setEditing(false); // 未配 onSend 的测试桩:直接关卡
-      return;
-    }
+    const result = onSend !== undefined ? onSend(text, draftImages.length > 0 ? draftImages : undefined) : undefined;
+    if (result === undefined) return; // 编辑钮仅在 onSend 在场时渲染;undefined=类型窄化空档直退
     // 成功才关卡;失败保卡保草稿(spec §9:提交失败草稿不丢,错误条已由 submitText 落)
     void result.then(
       () => setEditing(false),
@@ -605,11 +602,7 @@ function noticeAccentOf(entry: ChatEntry): { icon: ReactNode; md: string; tag?: 
  *  推翻此前零 render 等闭合策略);闭合后正式成图入缓存。尾块=在途块,晋升并入 memo 头 */
 const MarkdownHead = memo(function MarkdownHead({ md, components }: { md: string; components: Components }): JSX.Element {
   if (md === '') return <></>;
-  return (
-    <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={components}>
-      {md}
-    </ReactMarkdown>
-  );
+  return <>{renderMdCached(md, components)}</>;
 });
 
 /** 斜杠命令三态系统提示行(2026-10-31 用户裁定「显示成系统提示行,不是普通工具行;系统提示也要
@@ -727,13 +720,9 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
     // (notice 非回退锚点,无 rewind 语义);conn/composerEnv 缺席(旁路面)退纯壳兜底
     const sendNoticeEdit = (): void => {
       const text = noticeDraft.trim();
-      if (text === '') return;
-      const result = onSend?.(text);
-      if (result === undefined || result === null) {
-        setNoticeEditing(false); // 未配 onSend 的测试桩:直接关卡
-        return;
-      }
-      void result.then(() => setNoticeEditing(false), () => undefined);
+      if (text === '' || onSend === undefined) return; // 编辑钮仅在 onSend 在场时渲染(空档直退)
+      const r = onSend(text); // onSend 契约允许返回 undefined(壳缺 composerEnv 面),仅承诺在场才关卡
+      if (r !== undefined) void r.then(() => setNoticeEditing(false), () => undefined);
     };
     return (
       <div className="entry entry-user entry-user-insert" data-entry-key={entry.key}>
@@ -810,14 +799,13 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
               {/* 尾块:未闭合 mermaid=live 试渲随流成图;闭合后正式成图(迁头块,缓存命中零闪) */}
               {tailMd !== '' && (
                 <div className="entry-stream-tail-md">
-                  <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdcTail}>
-                    {tailMd}
-                  </ReactMarkdown>
+                  {/* draft=true:流式尾块逐批新串绕缓存(不污染窗口);processor 单例仍省装配 */}
+                  <MarkdownCached md={tailMd} components={mdcTail} draft />
                 </div>
               )}
             </>
           ) : (
-            <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdc}>{accent !== null ? accent.md : entry.md}</ReactMarkdown>
+            <MarkdownCached md={accent !== null ? accent.md : entry.md} components={mdc} />
           )}
         </div>
       </div>

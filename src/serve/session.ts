@@ -23,11 +23,10 @@ import { kernelEventRows, reduceWakeScheduleRows, reducePendingRows } from '../s
 import type { SegRowLike, WakeScheduleRecord, PendingMaterial } from '../session/seglog';
 import type { KernelEntry } from '../session/entry';
 import { sanitizeTurn } from '../session/entry';
-import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification, buildScheduleWakeNotification, buildSessionRestoredNotification, SCHEDULE_WAKE_GOAL, RESTORED_WAKE_GOAL } from '../session/wake';
+import { WakeController, WAKE_GOAL, toWakeRefs, buildScheduleWakeNotification, buildSessionRestoredNotification, SCHEDULE_WAKE_GOAL, RESTORED_WAKE_GOAL } from '../session/wake';
+import { boardTaskTitleOf, buildWakeNotice } from '../session/wake-host';
 import type { WakeTaskInput, RestoredInterrupted, RestoredMaterial } from '../session/wake';
 import { TimerController } from '../session/timer';
-import { WAKE_HINT_RECEIPT_TOOL } from '../harness/tasks';
-import { receiptBody } from '../harness/tools/task-wait';
 import { forkDispatch } from '../harness/subagent';
 import { readSessionMeta, writeSessionMeta, sessionsDir, parseJournalFile, journalDisplayTitle } from '../tui/session-journal';
 import { resolveRunWindow, reactorMaxStepsEnv, subagentTokenCapEnv } from '../config/termination-config';
@@ -37,8 +36,7 @@ import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
 import { lineDiffCounts } from '../harness/tools/write-diffstat';
 import type { Artifact, ChangeFile, TurnFileChange } from '../types';
-import { artifactKey } from '../types';
-import { mergeRunArtifacts, scanArtifactsJsonl, scanDeliverableFiles, type AggregatedArtifact } from './artifacts-handlers';
+import { mergeRunArtifacts, scanArtifactsJsonl, scanDeliverableFiles, mergeAggregated, type AggregatedArtifact } from './artifacts-handlers';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
@@ -389,11 +387,9 @@ export class SessionRuntime {
     this.pendingMaterials = reducePendingRows(rows).open;
   }
 
-  /** 板任务名解析（daemon 侧板投影）：台账 label(dispatchTag) → 板 id → 板存储 title；缺省 undefined=无名 */
+  /** 板任务名解析（daemon 侧板投影）：wake-host 单点委托，板投影来源（this.board.tasks）为宿主差异面 */
   private boardTaskTitle(ledgerId: string): string | undefined {
-    const m = /^task-(t\d+)$/.exec(ledgerId);
-    const boardId = m !== null ? m[1]! : ledgerId;
-    return this.board.tasks[boardId]?.title;
+    return boardTaskTitleOf(ledgerId, this.board.tasks);
   }
 
   /** 唤醒轮入口（fire 接缝）：plan 武装态不受理（批次回队）；真 submit 双态收口，快照/统计/续发全共用 */
@@ -1115,26 +1111,20 @@ ${this.sessionCharter ?? ''}` }
   /** 产物库聚合（2026-11-12 spec §6.2;2026-11-14 kind 化:key=artifactKey）：内存当轮面 + journal 落档面合并，跨 run
    *  去重保留最新 run（库语义），runSeq 倒序；含子 run（journal 全量扫） */
   artifactsAggregated(): { items: AggregatedArtifact[] } {
-    const best = new Map<string, AggregatedArtifact>();
-    const consider = (row: AggregatedArtifact): void => {
-      const key = artifactKey(row);
-      const prev = best.get(key);
-      if (prev !== undefined && prev.runSeq >= row.runSeq) return;
-      best.set(key, row);
-    };
+    const rows: AggregatedArtifact[] = [];
     for (const [runSeq, list] of this.runArtifacts) {
-      for (const a of list) consider({ ...a, runSeq });
+      for (const a of list) rows.push({ ...a, runSeq });
     }
     const id = this.journal?.currentId;
     if (id !== undefined) {
       try {
         const file = path.join(this.dataDir, 'sessions', `${id}.jsonl`);
-        for (const row of scanArtifactsJsonl(fs.readFileSync(file, 'utf8'))) consider(row);
+        rows.push(...scanArtifactsJsonl(fs.readFileSync(file, 'utf8')));
       } catch {
         // 无档/读失败=仅内存面
       }
     }
-    return { items: [...best.values()].sort((x, y) => y.runSeq - x.runSeq) };
+    return { items: mergeAggregated(rows) };
   }
 
   attachJournal(journal: SessionJournal): void {
@@ -1433,10 +1423,7 @@ ${this.sessionCharter ?? ''}` }
     if (wake !== undefined && wake.tasks !== undefined) {
       // 任务终态唤醒轮（spec §5.3）：通知 notice 条 + 链尾 note——无 user 条、无指令行；模型输入与恢复面同构
       const refs = toWakeRefs(wake.tasks, (ledgerId) => this.boardTaskTitle(ledgerId));
-      const md = buildWakeNotification(refs, (id) => {
-        const t = this.runtimeImpl.harness.tasks.get(id);
-        return t !== undefined ? receiptBody(t, WAKE_HINT_RECEIPT_TOOL) : `${id} (ledger) finished`;
-      });
+      const md = buildWakeNotice(refs, this.runtimeImpl.harness.tasks);
       // 唤醒 notice 走宿主泵(帧缓冲+WS 广播+kernel.pump 全链)——直调 kernel.pump 只落档不发帧,
       // GUI live 收不到事件帧,前缀只在切会话(快照 seed)后出现(用户实测 2026-11-14)
       this.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });

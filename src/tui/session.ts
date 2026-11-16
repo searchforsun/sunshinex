@@ -31,10 +31,9 @@ import * as path from 'path';
 import { SessionJournal, newSessionId, markSessionArchived, purgeSession, readSessionMeta, writeSessionMeta } from './session-journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import { isQuietNotice, type KernelEntry, type WakeRef } from '../session/entry';
-import { WakeController, WAKE_GOAL, toWakeRefs, buildWakeNotification } from '../session/wake';
+import { WakeController, WAKE_GOAL, toWakeRefs } from '../session/wake';
 import type { WakeTaskInput } from '../session/wake';
-import { receiptBody } from '../harness/tools/task-wait';
-import { WAKE_HINT_RECEIPT_TOOL } from '../harness/tasks';
+import { boardTaskTitleOf, buildWakeNotice } from '../session/wake-host';
 import { kernelEventRows } from '../session/seglog';
 import { resolveDataDir } from '../config/data-dir';
 import { resolveMemoryConfig, setMemorySessionOverride } from '../config/memory-config';
@@ -929,12 +928,9 @@ export class SessionController {
       const imgs = images !== undefined && images.length > 0 ? images : undefined;
       if (opts?.wakeTasks !== undefined) {
         // 唤醒轮（bg-wake spec §5.3）：notice 条 + 链尾 note，无 user 行、无指令行（live 与恢复同构）——
-        // 与 daemon submit 双态同构；Spinner 轮标（§6.5）随轮置位（通知文不渲染=isQuietNotice 净化）
+        // 与 daemon submit 双态同构（wake-host 单点）；Spinner 轮标（§6.5）随轮置位（通知文不渲染=isQuietNotice 净化）
         const refs = toWakeRefs(opts.wakeTasks, (ledgerId) => this.boardTaskTitle(ledgerId));
-        const md = buildWakeNotification(refs, (id) => {
-          const t2 = this.runtime.harness.tasks.get(id);
-          return t2 !== undefined ? receiptBody(t2, WAKE_HINT_RECEIPT_TOOL) : `${id} (ledger) finished`;
-        });
+        const md = buildWakeNotice(refs, this.runtime.harness.tasks);
         this.kernel.pump({ type: 'notice', text: md, payload: { wake: refs }, ts: Date.now() });
         this.wakeLabel = this.wakePrefixOf(refs);
         this.state = { ...this.state, wakePrefix: this.wakeLabel };
@@ -982,11 +978,9 @@ export class SessionController {
       : t('Woken by background task', '后台任务唤醒');
   }
 
-  /** 板任务名解析（daemon 同构）：台账 label(dispatchTag) → 板 id → 板投影 title；缺省 undefined=无名 */
+  /** 板任务名解析（TUI 板投影）：wake-host 单点委托，板投影来源（this.state.board.tasks）为宿主差异面 */
   private boardTaskTitle(ledgerId: string): string | undefined {
-    const m = /^task-(t\d+)$/.exec(ledgerId);
-    const boardId = m !== null ? m[1]! : ledgerId;
-    return this.state.board.tasks[boardId]?.title;
+    return boardTaskTitleOf(ledgerId, this.state.board.tasks);
   }
 
   /** /goal 完整修正环（规格 2026-09-15-tui-goal D2/D3 + 2026-09-16-goal-template D2/D5）：模板为内部装配机制，用户面零暴露；
