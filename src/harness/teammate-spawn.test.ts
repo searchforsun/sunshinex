@@ -214,10 +214,11 @@ test('mountTeammate 链注 ask/kind(P2 Task 1):sunx 装配成员面路由 ask(as
     assert.ok(okA, `成员应消化板任务(ask 裁决回填后收口):${JSON.stringify(h.taskboard.snapshot().tasks[idA])}`);
     assert.equal(seen.length, 1, '路由 ask 恰一次到装配接缝');
     assert.deepEqual(seen[0].askedBy, { label: 'w1', taskId: idA }, '归因=成员名+板任务 id(mountTeammate 闭包转交 deriveTeammateRegistry)');
-    assert.ok(prompts[0]?.includes('You are a worker agent dispatched by the Sunx orchestrator'), `sunx 装配的成员=clean worker 身份槽(2026-11-16 用户裁定「执行者上下文纯净」,自有 fresh ctx 既有):${prompts[0]?.slice(0, 200)}`);
+    assert.ok(prompts[0]?.includes('You are the SunshineX agent'), `sunx 装配的成员=standard 身份面(2026-11-16 二轮裁定「根部不加工具和分派工具,不需要反向约束,更加纯净」;自有 fresh ctx 既有):${prompts[0]?.slice(0, 200)}`);
     assert.ok(!prompts[0]?.includes('You are the Sunx orchestrator'), '零编排者身份行(成员是 worker,矛盾从根上不产生)');
     assert.ok(!prompts[0]?.includes('never do the work yourself'), '零编排章程行组(随身份槽一并退出)');
     assert.ok(!prompts[0]?.includes('Override:'), '零覆写尾行(覆写是 chain 同面通道补丁,clean 面不需要)');
+    assert.ok(!prompts[0]?.includes('dispatch_task tool'), '零反向约束(工具清单自会说话,提示词不重复干工具描述的活)');
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();

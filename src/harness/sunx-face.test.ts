@@ -201,7 +201,7 @@ test('fork 子代 kind 继承：sunx 装配 fork child 稳定段带 Sunx 身份�
   }
 });
 
-test('clean 派发通道（2026-11-16 用户裁定「执行者上下文纯净」）：dispatch_task 缺省 clean——子代只见自包含简报，零主链/零章程/零编排者指令', async () => {
+test('clean 派发通道（2026-11-16 用户裁定「执行者上下文纯净」+二轮「根部不加工具和分派工具,不需要反向约束,更加纯净」）：dispatch_task 缺省 clean——子代=standard 身份面+纯简报,零主链/零章程/零编排者指令/零 dispatch 字样', async () => {
   const tmp3 = mktmp('sunshinex-sunxface-dispatch-clean-');
   try {
     const seen = { prompts: [] as string[], toolNames: [] as string[] };
@@ -223,17 +223,18 @@ test('clean 派发通道（2026-11-16 用户裁定「执行者上下文纯净」
     assert.equal(r.done, true, '主链正常收口');
     const childPrompt = seen.prompts[1] ?? '';
     assert.ok(childPrompt.includes('CLEAN-BRIEF-ONLY'), '第 2 轮 prompt=clean 子代（携带简报任务行）');
-    assert.ok(childPrompt.includes('You are a worker agent dispatched by the Sunx orchestrator'), '子代身份=worker 身份槽（SUNX_WORKER_IDENTITY_LINE）');
+    assert.ok(childPrompt.includes('You are the SunshineX agent'), '子代身份=standard 面（二轮裁定：零专属 worker 身份行，与全体 standard 会话字节同面）');
     assert.ok(!childPrompt.includes('You are the Sunx orchestrator'), '零编排者身份行（矛盾从根上不产生）');
     assert.ok(!childPrompt.includes('never do the work yourself'), '零编排章程行组');
     assert.ok(!childPrompt.includes('Override:'), '零覆写尾行（覆写是 chain 同面通道补丁，clean 面不需要）');
+    assert.ok(!childPrompt.includes('dispatch_task tool'), '零反向约束（工具清单自会说话，提示词不重复干工具描述的活）');
     assert.ok(!childPrompt.includes('CHARTER-ASSEMBLED-SECRET'), '零品性层（fresh ContextManager，快照只剩工作区约定族）');
     assert.ok(!childPrompt.includes('主任务不应进入子代'), 'bare 种子：主链内容零进入（执行体只见自包含简报）');
     h.tasks.stopAll();
   } finally {
     fs.rmSync(tmp3, { recursive: true, force: true });
   }
-  // chain 反向锚：context:'chain' 显式回旧形——同面稳定段+覆写尾行+主链快照在场
+  // chain 反向锚：context:'chain' 显式回旧形——同面稳定段+覆写尾行（二轮修剪后仅结构性废黜）+主链快照在场
   const tmp4 = mktmp('sunshinex-sunxface-dispatch-chain-');
   try {
     const seen = { prompts: [] as string[], toolNames: [] as string[] };
@@ -255,7 +256,7 @@ test('clean 派发通道（2026-11-16 用户裁定「执行者上下文纯净」
     const childPrompt = seen.prompts[1] ?? '';
     assert.ok(childPrompt.includes('You are the Sunx orchestrator'), 'chain 通道=父同面稳定段（§17.2）');
     assert.ok(childPrompt.includes('Override: you are a WORKER'), 'chain 通道=覆写尾行（2026-11-15 补丁保留）');
-    assert.ok(!childPrompt.includes('worker agent dispatched by the Sunx orchestrator'), 'chain 通道不走 worker 身份槽（与 clean 面互斥）');
+    assert.ok(!childPrompt.includes('You are the SunshineX agent:'), 'chain 通道不走 standard 面（与 clean 通道互斥）');
     h.tasks.stopAll();
   } finally {
     fs.rmSync(tmp4, { recursive: true, force: true });

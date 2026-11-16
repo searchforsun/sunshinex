@@ -93,11 +93,11 @@ export const IMAGE_PLACEMENT_LINE =
 export const SUNX_IDENTITY_LINE =
   'You are the Sunx orchestrator: decompose the user\'s goal and dispatch every unit of work via the dispatch_task tool — never do the work yourself; you have no execution tools.';
 
-/** Sunx worker 身份行（2026-11-16 用户裁定「执行者上下文纯净」：clean 派发通道稳定段槽位）：
- *  clean 子执行体不见主链不见章程（自有 fresh ContextManager + bare 种子），身份行直给 worker 语义
- *  ——零编排者指令在场，无需覆写；全 clean worker 跨实例逐字节同面（前缀共享最大化） */
-export const SUNX_WORKER_IDENTITY_LINE =
-  'You are a worker agent dispatched by the Sunx orchestrator: complete the task given by the task line below with your own tools; you have no dispatch_task tool and must not dispatch further work — give your conclusion as your final response.';
+// （2026-11-16 二轮裁定：clean worker 不设专属身份行——clean 子执行体走 standard IDENTITY_LINE。
+//   理由「根部不加工具和分派工具，不需要反向约束，提示词不重复干工具描述的活」：dispatch 工具
+//   本就不在子面（SUNX_ORCHESTRATION_TOOLS 剔除），提示词再declare「你没有 dispatch 工具」是
+//   替工具清单干活的反向约束废话；首版 SUNX_WORKER_IDENTITY_LINE（worker 身份+禁分派）即删，
+//   clean worker 面=standard 面——与全体 standard 会话字节同面，前缀共享最大化。）
 
 /** 派发纪律：简报自包含契约（goal/事实/路径/约束/验收）。2026-11-16 用户裁定「执行者上下文纯净」：
  *  worker 只见简报（clean 通道：无主链快照、无品性层）——简报是任务唯一权威，没写进去的事实 worker 不可见 */
@@ -124,13 +124,14 @@ export const SUNX_LOOP_LINE =
 export const SUNX_ASK_LINE =
   'Use ask_question only for decisions that change the direction of the task line; settle everything else yourself.';
 
-/** worker 覆写尾行（2026-11-15 用户实测严重 bug 修复）：fork 子代/板成员的稳定段与 Sunx 逐字节
- *  同面（§17.2 前缀缓存裁定），身份行/编排章程随行——但子代工具面剔除 dispatch_task/task_status
- *  （防子生孙自派发），「你没有执行工具、一切靠 dispatch」对 worker 是假命题，实测子代自认调度器
- *  拒绝干活。覆写行随**子代**稳定段纯尾追（缓存纪律唯一合法动态通道）：首帧仍与父逐字节前缀连续，
- *  尾行显式废黜编排者指令——worker 亲自执行、不可再分派 */
+/** worker 覆写尾行（2026-11-15 用户实测严重 bug 修复；2026-11-16 二轮修剪）：fork chain 通道的
+ *  稳定段与 Sunx 逐字节同面（§17.2 前缀缓存裁定），身份行/编排章程随行——但子代工具面剔除
+ *  dispatch_task/task_status（防子生孙自派发），「你没有执行工具、一切靠 dispatch」对 worker 是
+ *  假命题，实测子代自认调度器拒绝干活。覆写行随**子代**稳定段纯尾追（缓存纪律唯一合法动态通道）。
+ *  二轮修剪（用户裁定「提示词不重复干工具描述的活」）：「你没有 dispatch_task 工具/不得再分派」
+ *  删除——工具清单自会说话，尾行只保留结构性废黜（编排者规则不适用+亲自执行） */
 export const SUNX_WORKER_TAIL =
-  'Override: you are a WORKER dispatched by the Sunx orchestrator, not the orchestrator itself — the orchestrator rules above do not apply to you. Execute the assigned task yourself with your own tools; you have no dispatch_task tool and must not dispatch further work.';
+  'Override: you are a WORKER dispatched by the Sunx orchestrator, not the orchestrator itself — the orchestrator rules above do not apply to you; execute the assigned task yourself and give your conclusion as your final response.';
 
 /** 编排章程行组（stableSegmentOf 尾随追加槽位；身份行不在组内——它走槽位替换） */
 export const SUNX_CHARTER_LINES: readonly string[] = [
@@ -160,18 +161,15 @@ export function stableSegmentOf(opts: {
   contextRoot: string;
   /** 会话形态（缺省/其余值 = standard 原样）：仅 'sunx' 触发身份槽替换与章程行尾随 */
   kind?: SessionKind;
-  /** worker 覆写尾行（sunx 分派通道专用，2026-11-15）：true=段尾追 SUNX_WORKER_TAIL——仅 fork
-   *  chain 通道子代消费（spawn 工具路径：稳定段与父同面+尾行废黜编排者指令），Sunx 主链恒 false。
-   *  尾追=纯追加，主链与子代共享前缀到段尾为止，缓存纪律不破 */
+  /** worker 覆写尾行（sunx 分派通道专用，2026-11-15；2026-11-16 二轮修剪文案）：true=段尾追
+   *  SUNX_WORKER_TAIL——仅 fork chain 通道子代消费（spawn 工具路径：稳定段与父同面+尾行废黜
+   *  编排者指令），Sunx 主链恒 false。尾追=纯追加，主链与子代共享前缀到段尾为止，缓存纪律不破。
+   *  clean 通道无任何旗标（2026-11-16 二轮裁定：clean worker=standard 面，零专属身份行零反向约束） */
   sunxWorkerTail?: boolean;
-  /** worker 身份槽（clean 派发通道专用，2026-11-16 用户裁定「执行者上下文纯净」）：true=身份槽
-   *  整行替换为 SUNX_WORKER_IDENTITY_LINE（无编排者指令在场、无章程行尾随）——clean 子执行体
-   *  专用，与 kind 互斥（clean 子代不传 kind）；全 clean worker 跨实例同面=前缀共享最大化 */
-  workerIdentity?: boolean;
 }): string {
   const sunx = opts.kind === 'sunx';
   return [
-    sunx ? SUNX_IDENTITY_LINE : opts.workerIdentity === true ? SUNX_WORKER_IDENTITY_LINE : IDENTITY_LINE,
+    sunx ? SUNX_IDENTITY_LINE : IDENTITY_LINE,
     outputStyleLine(opts.outputStyle),
     PHASE_SENTENCE_LINE,
     TOOL_POLICY_LINE,

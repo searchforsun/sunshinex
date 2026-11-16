@@ -85,15 +85,12 @@ export interface ReactorDeps {
    *  缺席/standard 前缀基线字节不变。与 HarnessOptions.kind 同名同域；loop 内 Reactor 的同源透传
    *  在装配根（createKernelRuntime LoopDeps，后续任务接线） */
   kind?: SessionKind;
-  /** worker 覆写尾行（2026-11-15 严重 bug 修复）：true=稳定段尾追 SUNX_WORKER_TAIL——子执行体
-   *  （fork/板成员）继承 sunx 同面稳定段但无 dispatch 工具，身份行「你没有执行工具」是假命题，
-   *  实测子代自认调度器拒活；尾行显式废黜编排者指令（装配点：subagent.spawn/teammate 逐任务
-   *  Reactor，父 kind==='sunx' 才注入；主链/standard 恒缺席） */
+  /** worker 覆写尾行（2026-11-15 严重 bug 修复；2026-11-16 二轮修剪文案）：true=稳定段尾追
+   *  SUNX_WORKER_TAIL——chain 通道子执行体继承 sunx 同面稳定段但无 dispatch 工具，身份行
+   *  「你没有执行工具」是假命题，实测子代自认调度器拒活；尾行只保留结构性废黜（编排者规则
+   *  不适用+亲自执行，反向约束删除——工具清单自会说话）。装配点：subagent chain 路径，父
+   *  kind==='sunx' 才注入；主链/standard/clean 通道恒缺席（clean=standard 面，零旗标） */
   sunxWorker?: boolean;
-  /** worker 身份槽（clean 派发通道专用，2026-11-16 用户裁定「执行者上下文纯净」）：true=稳定段
-   *  身份槽替换为 SUNX_WORKER_IDENTITY_LINE（零编排者指令、零章程行）——clean 子代专用，与 kind
-   *  互斥（clean 子代不传 kind）；跨 worker/跨实例同面=前缀共享最大化 */
-  workerIdentity?: boolean;
   /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，config/image-history.ts 装配期解析注入）：
    *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
   imageHistoryLimit?: number;
@@ -511,7 +508,6 @@ export class Reactor {
       ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
       ...(this.deps.kind ? { kind: this.deps.kind } : {}),
       ...(this.deps.sunxWorker ? { sunxWorkerTail: true } : {}),
-      ...(this.deps.workerIdentity ? { workerIdentity: true } : {}),
       activeRoot: this.deps.activeRoot,
       ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
       contextRoot: this.deps.context.root,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { stableSegmentOf, IDENTITY_LINE, SUNX_IDENTITY_LINE, SUNX_WAKE_LINE, SUNX_CHARTER_LINES, SUNX_WORKER_TAIL, SUNX_WORKER_IDENTITY_LINE } from './shared';
+import { stableSegmentOf, IDENTITY_LINE, SUNX_IDENTITY_LINE, SUNX_WAKE_LINE, SUNX_CHARTER_LINES, SUNX_WORKER_TAIL } from './shared';
 import { Harness } from '../index';
 
 /** Sunx 提示词面（2026-11-14 设计 §6/§17.1 + 2026-11-15 控制裁定）：总章程稳定段 kind 分叉。
@@ -43,26 +43,22 @@ test('stableSegmentOf: sunx 分支=身份槽整行替换 + 章程行组尾随追
   assert.deepEqual(sunx.slice(base.length), SUNX_CHARTER_LINES, '章程行组恒尾随（固定位置，前缀字节稳定）');
 });
 
-test('stableSegmentOf: sunxWorkerTail=段尾追 worker 覆写行——同面稳定段纯尾追（前缀连续），主链恒缺席', () => {
+test('stableSegmentOf: sunxWorkerTail=段尾追 worker 覆写行——同面稳定段纯尾追（前缀连续），主链恒缺席（2026-11-16 二轮修剪）', () => {
   const sunx = stableSegmentOf({ contextRoot: '/r', kind: 'sunx' });
   const worker = stableSegmentOf({ contextRoot: '/r', kind: 'sunx', sunxWorkerTail: true });
   assert.ok(worker.startsWith(sunx), '子代稳定段=父同面字节 + 纯尾追（首帧前缀连续，缓存纪律）');
   assert.ok(worker.endsWith(SUNX_WORKER_TAIL), '覆写行恒在最尾（后出指令废黜编排者身份行/章程行）');
-  assert.ok(worker.includes('not the orchestrator itself') && worker.includes('must not dispatch further work'), '覆写行双锚：废黜身份+禁再分派');
+  assert.ok(worker.includes('not the orchestrator itself') && worker.includes('do not apply to you'), '覆写行锚：废黜身份+规则不适用');
+  assert.ok(!worker.includes('must not dispatch further work'), '二轮修剪锚：反向约束删除（工具清单自会说话）');
+  assert.ok(!worker.includes('no dispatch_task tool'), '零工具清单复述（提示词不重复干工具描述的活）');
   assert.ok(!sunx.includes('Override:'), '主链无覆写行（编排者指令只在子代被废黜）');
 });
 
-test('stableSegmentOf: workerIdentity=身份槽换 SUNX_WORKER_IDENTITY_LINE——零编排者指令/零章程行/零尾行(clean 通道面,2026-11-16)', () => {
-  const std = stableSegmentOf({ contextRoot: '/r' });
-  const w1 = stableSegmentOf({ contextRoot: '/r', workerIdentity: true });
-  const w2 = stableSegmentOf({ contextRoot: '/r', workerIdentity: true });
-  assert.equal(w1, w2, 'clean worker 面逐字节确定（跨 worker/跨实例前缀共享最大化）');
-  assert.ok(w1.startsWith(SUNX_WORKER_IDENTITY_LINE + '\n'), '身份槽=worker 身份行（零矛盾在场，无需覆写）');
-  assert.ok(!w1.includes(SUNX_IDENTITY_LINE), '零编排者身份行');
-  for (const line of SUNX_CHARTER_LINES) assert.ok(!w1.includes(line), '零编排章程行');
-  assert.ok(!w1.includes('Override:'), '零覆写尾行（覆写是 chain 同面通道的补丁，clean 面不需要）');
-  assert.ok(!w1.includes(SUNX_WORKER_TAIL), 'workerIdentity 与 sunxWorkerTail 正交（clean 面无尾行）');
-  assert.equal(w1.split('\n').length, std.split('\n').length, '槽位数与 standard 相同（仅身份槽单点替换）');
+test('clean worker 面=standard 面零 dispatch 字样（2026-11-16 二轮裁定：根部不加工具和分派工具，不需要反向约束，更加纯净）', () => {
+  // clean 通道子代不传任何 sunx 旗标——stableSegmentOf 形参面回归 standard golden（上方既有钉）；
+  // 本钉防未来 re-introduce worker 专属身份行/反向约束字样
+  assert.ok(!IDENTITY_LINE.includes('dispatch'), 'standard 身份面零 dispatch 字样（clean worker 提示词纯度锚）');
+  assert.ok(!SUNX_WORKER_TAIL.includes('no dispatch_task tool') && !SUNX_WORKER_TAIL.includes('must not dispatch'), '覆写行不再复述工具清单');
 });
 
 /** Harness 装配透传（brief Interfaces：kind 自 Harness 透传到稳定段装配点，单发/loop 内 Reactor 同源禁第二拼装）：

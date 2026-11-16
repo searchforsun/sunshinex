@@ -457,7 +457,7 @@ export class SubagentRunner {
       throw new CodedToolError('NOT_SUPPORTED', 'background spawn requires a task registry (not wired in this assembly)');
     }
     // context 通道（2026-11-16 用户裁定「执行者上下文纯净」）：'clean'=bare 种子+自有 fresh ctx+
-    // worker 身份槽（dispatch fork 通道）；缺席/'chain'=旧形（主链快照+共享父面+同面稳定段+worker
+    // standard 身份面（dispatch fork 通道）；缺席/'chain'=旧形（主链快照+共享父面+同面稳定段+worker
     // 覆写尾行）。**缺省不在此翻转**——普通 spawn 工具后台分支（GUI 子智能体主链快照体验）直走本
     // 方法，clean 缺省收口在 forkDispatch（dispatch/schedule 两消费面）；非法值 fail-fast
     if (opts?.context !== undefined && opts.context !== 'clean' && opts.context !== 'chain') {
@@ -517,10 +517,11 @@ export class SubagentRunner {
       taskId?: string;
       /** 板任务契约:seed 不含主链(只 role/task 尾),执行体只见自包含 spec——与 create_agent_team_task 文案「sees ONLY this」对齐 */
       bare?: boolean;
-      /** clean 派发通道(2026-11-16 用户裁定「执行者上下文纯净,所需上下文由调度器注入简报」):
-       *  true=bare 种子(无主链快照)+自有 fresh ContextManager(无品性层——快照只剩工作区约定族:
-       *  SUNSHINE.md/技能/记忆索引)+worker 身份槽稳定段(SUNX_WORKER_IDENTITY_LINE,零编排者指令,
-       *  跨 worker/跨实例同面=前缀共享最大化)。与 opts.bare 同传(bare 管种子,cleanFace 管面) */
+      /** clean 派发通道(2026-11-16 用户裁定「执行者上下文纯净,所需上下文由调度器注入简报」;
+       *  二轮裁定「根部不加工具和分派工具,不需要反向约束,更加纯净」):true=bare 种子(无主链快照)
+       *  +自有 fresh ContextManager(无品性层——快照只剩工作区约定族:SUNSHINE.md/技能/记忆索引)
+       *  +standard 身份面(零任何 sunx 旗标——dispatch 工具本就不在子面,提示词零 dispatch 字样,
+       *  与全体 standard 会话字节同面)。与 opts.bare 同传(bare 管种子,cleanFace 管面) */
       cleanFace?: boolean;
     },
   ): Promise<Result<{ reply: string; tokens: number }>> {
@@ -603,7 +604,7 @@ export class SubagentRunner {
       // bare=板任务干净会话:主链不进 seed(防执行体看见 leader 的 create_agent_team_task/task_wait 编排而「自等」);
       // 普通 spawn 仍 fork=主链快照+尾追(前缀缓存第一要义)。
       // cleanFace(2026-11-16 用户裁定):dispatch fork 通道缺省——自有 fresh ContextManager(无品性层,
-      // 快照只剩工作区约定族)+worker 身份槽稳定段;root 锚=活动根(worktree 进出语义与子 Reactor 同源)
+      // 快照只剩工作区约定族)+standard 身份面(零任何 sunx 旗标);root 锚=活动根(worktree 进出语义与子 Reactor 同源)
       const cleanFace = opts?.cleanFace === true;
       const base = opts?.bare === true ? [] : this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
@@ -636,12 +637,15 @@ export class SubagentRunner {
         ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
         // fork 子代 kind 继承（2026-11-15 sunx P1 Task 3，spec §17.2 裁定）：sunx 派发的子智能体
         // 稳定段与父逐字节同面（Sunx 身份行/编排章程行随 Reactor kind）；缺席=standard 原样。
-        // worker 覆写尾行（2026-11-15 严重 bug 修复）：子面已剔 dispatch_task/task_status，
-        // 「一切靠 dispatch/你没有执行工具」对子代是假命题——尾行废黜编排者指令（纯尾追，缓存不破）。
-        // clean 通道（2026-11-16 用户裁定）改走 worker 身份槽：零编排者指令在场、零章程行，
-        // 跨 worker/跨实例同面——覆写矛盾从根上不产生（与 kind 互斥，clean 子代不传 kind）
+        // worker 覆写尾行（2026-11-15 严重 bug 修复；2026-11-16 二轮修剪文案）：子面已剔
+        // dispatch_task/task_status，「一切靠 dispatch/你没有执行工具」对子代是假命题——尾行只保留
+        // 结构性废黜（反向约束删除：工具清单自会说话，提示词不重复干工具描述的活）。
+        // clean 通道（2026-11-16 二轮裁定「根部不加工具和分派工具，不需要反向约束，更加纯净」）：
+        // 零任何旗标=standard 身份面——dispatch 工具本就不在子面，提示词零 dispatch 字样；
+        // clean worker 与全体 standard 会话字节同面（前缀共享最大化，且无首版 worker 身份行的
+        // 反向约束残留）
         ...(cleanFace
-          ? { workerIdentity: true }
+          ? {}
           : {
               ...(this.deps.kind ? { kind: this.deps.kind } : {}),
               ...(this.deps.kind === 'sunx' ? { sunxWorker: true } : {}),
