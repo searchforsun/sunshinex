@@ -405,7 +405,7 @@ export function builtinTools(
       },
       name: 'edit',
       description:
-        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally against the CURRENT file content and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file with the read tool BEFORE editing — always when editing a file for the first time in this run or when editing many files in one batch (read each target first, then edit), and again whenever the file may have changed since your last read; this is enforced: editing a file you have not read, or that changed since your last read, is rejected (NOT_READ / STALE_READ); file creation and whole-content replacement belong to write; edits outside the trusted roots go through permission checks (approval or rejection)',
+        'Edit an existing file by exact string replacement — modify file content in place (token cost scales with the change, not the file size); old_string is matched literally against the CURRENT file content and must appear exactly once in the file unless replaceAll is true; new_string is the replacement text (empty string deletes the match); read the file with the read tool BEFORE editing — always when editing a file for the first time in this run or when editing many files in one batch (read each target first, then edit), and again whenever the file may have changed since your last read; this is enforced: editing a file you have not read, or that changed since your last read, is rejected (NOT_READ / STALE_READ); file creation and whole-content replacement belong to write; line endings are handled transparently: matching tolerates CRLF vs LF differences and replacements preserve the existing line endings of the file (CRLF files stay CRLF); edits outside the trusted roots go through permission checks (approval or rejection)',
       category: 'write',
       display: { verb: 'EDIT', targetFields: ['path'] },
       executor: async (input: ToolInput) => {
@@ -424,12 +424,45 @@ export function builtinTools(
           if ((err as NodeJS.ErrnoException | null)?.code !== 'ENOENT') throw err;
           throw new CodedToolError('INVALID_ARG', `file not found: ${target} — edit modifies an existing file; use write to create one`);
         }
-        const count = content.split(oldString).length - 1;
         readGuard?.ensureRead(target, content); // 先读守卫(2026-10-31 用户裁定):NOT_READ/STALE_READ 硬闸——匹配失败前先拦「凭记忆编辑」
-        if (count === 0) throw new CodedToolError('INVALID_ARG', `old_string not found in ${target} — the file content differs from what you assumed; read the file now and base old_string on its current text, do not retry from memory`);
+        let count = content.split(oldString).length - 1;
+        let newContent: string | null = count > 0 ? content.split(oldString).join(newString) : null;
+        // 行尾自适应匹配(2026-11-14 使用者 issue:autocrlf=true 工作树文件 CRLF、模型串 LF,字面匹配
+        // 必然失配且重读无解):字面未命中且 old_string 跨行时剥归一定位、按映射回原始字节替换,
+        // 插入串按命中区间的实际行尾形态写回——文件行尾保持原样不混杂;LF 文件归一是恒等,零行为变化
+        if (newContent === null && oldString.includes('\n')) {
+          const map: number[] = [];
+          let norm = '';
+          for (let i = 0; i < content.length; i += 1) {
+            if (content[i] === '\r') continue; // \r(含 \r\n 前半)从归一形态剥离——不落映射(映射键=归一位)
+            norm += content[i];
+            map.push(i);
+          }
+          map.push(content.length); // 归一末位→原始末位(尾锚)
+          const normOld = oldString.replace(/\r\n/g, '\n');
+          const normNew = newString.replace(/\r\n/g, '\n');
+          const starts: number[] = [];
+          for (let i = norm.indexOf(normOld); i !== -1; i = norm.indexOf(normOld, i + normOld.length)) starts.push(i);
+          if (starts.length > 0) {
+            if (starts.length > 1 && !replaceAll) throw new CodedToolError('INVALID_ARG', `old_string matches ${starts.length} locations in ${target} (modulo line endings) — include more surrounding context to make it unique, or pass replaceAll=true`);
+            count = starts.length;
+            // 逐段拼接:命中区间的原始字节不动(行尾保真),插入串按区间实际行尾形态归一
+            let out = '';
+            let cursor = 0;
+            for (const st of starts) {
+              const origStart = map[st]!;
+              const origEnd = map[st + normOld.length - 1]! + 1; // 末命中字符+1: 边界 CR 归文件(不进区间)
+              out += content.slice(cursor, origStart);
+              const region = content.slice(origStart, origEnd);
+              out += region.includes('\r\n') ? normNew.replace(/\n/g, '\r\n') : normNew;
+              cursor = origEnd;
+            }
+            out += content.slice(cursor);
+            newContent = out;
+          }
+        }
+        if (newContent === null) throw new CodedToolError('INVALID_ARG', `old_string not found in ${target} — the file content differs from what you assumed; read the file now and base old_string on its current text, do not retry from memory`);
         if (count > 1 && !replaceAll) throw new CodedToolError('INVALID_ARG', `old_string matches ${count} locations in ${target} — include more surrounding context to make it unique, or pass replaceAll=true`);
-        // 字面替换单点（split/join 规避 String.replace 的 $ 模式语义）；replaceAll 只放宽唯一性要求，替换实现同一份
-        const newContent = content.split(oldString).join(newString);
         readGuard?.record(target, newContent); // 守卫快照随编辑前进:连环编辑基于上一次编辑后的态,无需重读
         // 记忆写入接缝/影子快照/diff 统计同 write 一份实现（commitFileWrite 单点；edit 已读原文直传 pre-image）
         return commitFileWrite(p, newContent, content, 'edited');
