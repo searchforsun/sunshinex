@@ -452,6 +452,8 @@ parameters:
 
 已知噪声面与对策（按序）：chain 形态下子执行体可见 Sunx 链上的兄弟任务简报与唤醒回执——板通道当年为此设了 bare 先例（防「自等」）。①章程角色框定 + 简报自包含纪律（简报是任务唯一权威，链行只是背景）；②P2 若实测串扰，`dispatch_task` 增 `context:'clean'`（映射既有 bare 通道 + 品性块子面剔除的装配变体，跨实例干净面共享缓存）——一行翻转的退路，P1 不预置。
 
+**②已翻转（2026-11-16 用户裁定「执行者上下文纯净」：fork 加入主对话快照不稳定、影响 worker 发挥；所需上下文由调度器注入简报——调度器并无细节，链上快照对 worker 价值趋零）**：`dispatch_task` 增 `context` 参数（`'clean' | 'chain'`，**缺省 'clean'**）。clean 形态三件套：bare 种子（板通道先例复用，主链快照零进入）+ 自有 fresh ContextManager（品性块子面剔除——快照只剩工作区约定族 SUNSHINE.md/技能/记忆索引）+ worker 身份槽稳定段（`SUNX_WORKER_IDENTITY_LINE`，零编排者指令在场——覆写矛盾从根上不产生）。全 clean worker 跨实例逐字节同面 → 前缀共享最大化。`chain` 显式保留（legacy：同面稳定段 + worker 覆写尾行 + 主链快照）。缺省收口在 `forkDispatch`（dispatch 与 schedule 到点派发两消费面同采 clean 缺省）；普通 spawn 工具不经该单点，GUI 子智能体主链快照体验不受影响。板通道成员同步换 worker 身份槽（成员本就自有 fresh ctx）。简报自包含纪律升级为硬契约：`SUNX_BRIEF_LINE` 与 dispatch_task 工具文案改口径——「worker 只见简报，没写进简报的事实 worker 不可见」。
+
 ### 17.3 SUNX 总览页（裁定：按此形态实施）
 
 侧栏 SUNX 组头加**看板钮**（图标钮 24px 命中盒 / data-tip 既有铁律）→ 主区打开**单例 `sunx` 页签**：

@@ -214,9 +214,10 @@ test('mountTeammate 链注 ask/kind(P2 Task 1):sunx 装配成员面路由 ask(as
     assert.ok(okA, `成员应消化板任务(ask 裁决回填后收口):${JSON.stringify(h.taskboard.snapshot().tasks[idA])}`);
     assert.equal(seen.length, 1, '路由 ask 恰一次到装配接缝');
     assert.deepEqual(seen[0].askedBy, { label: 'w1', taskId: idA }, '归因=成员名+板任务 id(mountTeammate 闭包转交 deriveTeammateRegistry)');
-    assert.ok(prompts[0]?.includes('You are the Sunx orchestrator'), `sunx 装配的成员稳定段带 Sunx 身份行(kind 经 mountTeammate 透传):${prompts[0]?.slice(0, 200)}`);
-    assert.ok(prompts[0]?.includes('never do the work yourself'), '编排章程行随行(spec §17.2 同语义)');
-    assert.ok(prompts[0]?.includes('Override: you are a WORKER dispatched by the Sunx orchestrator'), '成员段尾带 worker 覆写行(2026-11-15 严重 bug 修复:成员是 worker 不是编排者,子面无 dispatch_task)');
+    assert.ok(prompts[0]?.includes('You are a worker agent dispatched by the Sunx orchestrator'), `sunx 装配的成员=clean worker 身份槽(2026-11-16 用户裁定「执行者上下文纯净」,自有 fresh ctx 既有):${prompts[0]?.slice(0, 200)}`);
+    assert.ok(!prompts[0]?.includes('You are the Sunx orchestrator'), '零编排者身份行(成员是 worker,矛盾从根上不产生)');
+    assert.ok(!prompts[0]?.includes('never do the work yourself'), '零编排章程行组(随身份槽一并退出)');
+    assert.ok(!prompts[0]?.includes('Override:'), '零覆写尾行(覆写是 chain 同面通道补丁,clean 面不需要)');
   } finally {
     h?.team.stopAll();
     h?.tasks.stopAll();

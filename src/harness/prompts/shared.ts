@@ -93,9 +93,16 @@ export const IMAGE_PLACEMENT_LINE =
 export const SUNX_IDENTITY_LINE =
   'You are the Sunx orchestrator: decompose the user\'s goal and dispatch every unit of work via the dispatch_task tool — never do the work yourself; you have no execution tools.';
 
-/** 派发纪律：简报自包含契约（goal/事实/路径/约束/验收），worker 不可见主链对话（spec §「模糊委派」教训） */
+/** Sunx worker 身份行（2026-11-16 用户裁定「执行者上下文纯净」：clean 派发通道稳定段槽位）：
+ *  clean 子执行体不见主链不见章程（自有 fresh ContextManager + bare 种子），身份行直给 worker 语义
+ *  ——零编排者指令在场，无需覆写；全 clean worker 跨实例逐字节同面（前缀共享最大化） */
+export const SUNX_WORKER_IDENTITY_LINE =
+  'You are a worker agent dispatched by the Sunx orchestrator: complete the task given by the task line below with your own tools; you have no dispatch_task tool and must not dispatch further work — give your conclusion as your final response.';
+
+/** 派发纪律：简报自包含契约（goal/事实/路径/约束/验收）。2026-11-16 用户裁定「执行者上下文纯净」：
+ *  worker 只见简报（clean 通道：无主链快照、无品性层）——简报是任务唯一权威，没写进去的事实 worker 不可见 */
 export const SUNX_BRIEF_LINE =
-  'Make every dispatch brief self-contained: state the goal, the relevant facts, file paths, constraints, and explicit ACCEPTANCE criteria — the worker works from the brief plus a frozen snapshot of this session taken at dispatch, never from live updates.';
+  'Make every dispatch brief self-contained: state the goal, the relevant facts, file paths, constraints, and explicit ACCEPTANCE criteria — the worker sees ONLY the brief in a clean context (no session snapshot, no charter); anything not stated in the brief is unknown to the worker, and it never sees live updates.';
 
 /** 分解上限指引（防「简单任务过度分解」）：2-5 路并行为主，只沿真实依赖缝再拆 */
 export const SUNX_DECOMPOSITION_LINE =
@@ -154,13 +161,17 @@ export function stableSegmentOf(opts: {
   /** 会话形态（缺省/其余值 = standard 原样）：仅 'sunx' 触发身份槽替换与章程行尾随 */
   kind?: SessionKind;
   /** worker 覆写尾行（sunx 分派通道专用，2026-11-15）：true=段尾追 SUNX_WORKER_TAIL——仅 fork
-   *  子代/板成员消费（subagent/teammate 装配点按父 kind==='sunx' 注入），Sunx 主链恒 false。
+   *  chain 通道子代消费（spawn 工具路径：稳定段与父同面+尾行废黜编排者指令），Sunx 主链恒 false。
    *  尾追=纯追加，主链与子代共享前缀到段尾为止，缓存纪律不破 */
   sunxWorkerTail?: boolean;
+  /** worker 身份槽（clean 派发通道专用，2026-11-16 用户裁定「执行者上下文纯净」）：true=身份槽
+   *  整行替换为 SUNX_WORKER_IDENTITY_LINE（无编排者指令在场、无章程行尾随）——clean 子执行体
+   *  专用，与 kind 互斥（clean 子代不传 kind）；全 clean worker 跨实例同面=前缀共享最大化 */
+  workerIdentity?: boolean;
 }): string {
   const sunx = opts.kind === 'sunx';
   return [
-    sunx ? SUNX_IDENTITY_LINE : IDENTITY_LINE,
+    sunx ? SUNX_IDENTITY_LINE : opts.workerIdentity === true ? SUNX_WORKER_IDENTITY_LINE : IDENTITY_LINE,
     outputStyleLine(opts.outputStyle),
     PHASE_SENTENCE_LINE,
     TOOL_POLICY_LINE,

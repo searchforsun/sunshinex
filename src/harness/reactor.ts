@@ -90,6 +90,10 @@ export interface ReactorDeps {
    *  实测子代自认调度器拒活；尾行显式废黜编排者指令（装配点：subagent.spawn/teammate 逐任务
    *  Reactor，父 kind==='sunx' 才注入；主链/standard 恒缺席） */
   sunxWorker?: boolean;
+  /** worker 身份槽（clean 派发通道专用，2026-11-16 用户裁定「执行者上下文纯净」）：true=稳定段
+   *  身份槽替换为 SUNX_WORKER_IDENTITY_LINE（零编排者指令、零章程行）——clean 子代专用，与 kind
+   *  互斥（clean 子代不传 kind）；跨 worker/跨实例同面=前缀共享最大化 */
+  workerIdentity?: boolean;
   /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，config/image-history.ts 装配期解析注入）：
    *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
   imageHistoryLimit?: number;
@@ -507,6 +511,7 @@ export class Reactor {
       ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
       ...(this.deps.kind ? { kind: this.deps.kind } : {}),
       ...(this.deps.sunxWorker ? { sunxWorkerTail: true } : {}),
+      ...(this.deps.workerIdentity ? { workerIdentity: true } : {}),
       activeRoot: this.deps.activeRoot,
       ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
       contextRoot: this.deps.context.root,

@@ -13,6 +13,7 @@ import { agentsDir, listAgents, migrateLegacyAgentsOnce } from '../catalog/agent
 import type { AgentEntry } from '../catalog/agents';
 import { SafetyChain } from './security/chain';
 import { ContextManager } from './context';
+import type { StorageAdapter } from '../storage/adapter';
 import { MemoryStore } from './memory/store';
 import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
@@ -309,6 +310,9 @@ interface SubagentRunnerDeps {
   /** 持久化域目录（2026-11-15 sunx P3 Task 1 注入缝）：子智能体自有记忆（memory/agents/<id>）随域；
    *  缺席=resolveDataDir(root) 既有推导（逐字节同今日） */
   dataDir?: string;
+  /** 存储适配器（2026-11-16 clean 派发通道）：clean 子代自有 fresh ContextManager 构造入参
+   *  （装配根 harness/index.ts 透传 FileStore 单例——与主链同仓）；缺席=clean 通道兜底回共享面 */
+  store?: StorageAdapter;
 }
 
 /** 子智能体生命周期唯一权威：spawn 工具与 graph 节点都是薄入口，只传参不拼装（防两处拼装漂移）。
@@ -324,6 +328,16 @@ export class SubagentRunner {
 
   /** 父任务中断信号（attachParent 同点挂载，run 起止生命周期）：前台 spawn 级联进子 Reactor、后台 spawn 级联进任务 abort */
   private parentSignal?: AbortSignal;
+
+  /** clean 子代自有 ContextManager（2026-11-16 用户裁定「执行者上下文纯净」）：无品性层（构造
+   *  第三参缺省=charter 缺席）——快照只剩工作区约定族（SUNSHINE.md/技能/记忆索引），与主链快照
+   *  解耦；root 锚活动根（worktree 进出与子 Reactor 同源），域目录随 deps（子代自有记忆随域）。
+   *  store 缺席（旧装配桩）兜底回共享父面——行为=chain 通道旧形，不产第二套行为 */
+  private cleanChildContext(): ContextManager {
+    const root = this.forkRoot() ?? this.deps.root;
+    if (root === undefined || this.deps.store === undefined) return this.deps.context;
+    return new ContextManager(root, this.deps.store, undefined, this.deps.dataDir !== undefined ? { dataDir: this.deps.dataDir } : undefined);
+  }
 
   constructor(private deps: SubagentRunnerDeps, private agents: AgentRegistry) {
     this.rootProvider = deps.rootProvider ?? null;
@@ -436,12 +450,20 @@ export class SubagentRunner {
    * spawnBackground 返回值承载、spawn 工具回执串尾追（fork 面缺省 undefined 零变化）。
    * opts.tier（2026-11-15 sunx P1 Task 3，dispatch_task 消费）：覆盖合并进父预算（{...budget, tier}）——
    * 单次分派档位覆盖，不影响父链其余分派；预算缺省（未 attachParent）原样透传（NOT_SUPPORTED 路径零变化） */
-  spawnBackground(rawInput: SubagentSpawnInput, opts?: { tier?: ModelTier }): { taskId: string; outputFilePath: string; wakeHint?: string } {
+  spawnBackground(rawInput: SubagentSpawnInput, opts?: { tier?: ModelTier; context?: 'clean' | 'chain' }): { taskId: string; outputFilePath: string; wakeHint?: string } {
     const input = normalizeSpawnInput(rawInput);
     const ledger = this.deps.tasks;
     if (ledger === undefined) {
       throw new CodedToolError('NOT_SUPPORTED', 'background spawn requires a task registry (not wired in this assembly)');
     }
+    // context 通道（2026-11-16 用户裁定「执行者上下文纯净」）：'clean'=bare 种子+自有 fresh ctx+
+    // worker 身份槽（dispatch fork 通道）；缺席/'chain'=旧形（主链快照+共享父面+同面稳定段+worker
+    // 覆写尾行）。**缺省不在此翻转**——普通 spawn 工具后台分支（GUI 子智能体主链快照体验）直走本
+    // 方法，clean 缺省收口在 forkDispatch（dispatch/schedule 两消费面）；非法值 fail-fast
+    if (opts?.context !== undefined && opts.context !== 'clean' && opts.context !== 'chain') {
+      throw new CodedToolError('INVALID_ARG', `Unknown context channel: ${String(opts.context)} (only 'clean' | 'chain')`);
+    }
+    const clean = opts?.context === 'clean';
     // 账本 label 与 spec.label 同源（input.label ?? agent_id ?? 'subagent'）：旧口径只取 agent_id——
     // 模型按 label 出牌时 /tasks 业务列两行同显 'subagent'（2026-10-03 用户实据）；此 label 亦为 id 业务段语义源
     const label = input.label ?? input.agent_id ?? 'subagent';
@@ -463,6 +485,8 @@ export class SubagentRunner {
           ...(effectiveBudget !== undefined ? { budget: effectiveBudget } : {}),
           signal: abort.signal,
           taskId: task.id,
+          // clean 通道=bare 种子+fresh 面（2026-11-16 用户裁定；chain=旧形逐字节同今日）
+          ...(clean ? { bare: true, cleanFace: true } : {}),
         });
         if (r.ok) {
           // 结论全文落任务日志（多行报告完整可读回）：首行前置 [conclusion] 标记供 finish 判据/快速定位，
@@ -493,6 +517,11 @@ export class SubagentRunner {
       taskId?: string;
       /** 板任务契约:seed 不含主链(只 role/task 尾),执行体只见自包含 spec——与 create_agent_team_task 文案「sees ONLY this」对齐 */
       bare?: boolean;
+      /** clean 派发通道(2026-11-16 用户裁定「执行者上下文纯净,所需上下文由调度器注入简报」):
+       *  true=bare 种子(无主链快照)+自有 fresh ContextManager(无品性层——快照只剩工作区约定族:
+       *  SUNSHINE.md/技能/记忆索引)+worker 身份槽稳定段(SUNX_WORKER_IDENTITY_LINE,零编排者指令,
+       *  跨 worker/跨实例同面=前缀共享最大化)。与 opts.bare 同传(bare 管种子,cleanFace 管面) */
+      cleanFace?: boolean;
     },
   ): Promise<Result<{ reply: string; tokens: number }>> {
     const budget = opts?.budget ?? this.getBudget?.();
@@ -572,7 +601,10 @@ export class SubagentRunner {
         }
       }
       // bare=板任务干净会话:主链不进 seed(防执行体看见 leader 的 create_agent_team_task/task_wait 编排而「自等」);
-      // 普通 spawn 仍 fork=主链快照+尾追(前缀缓存第一要义)
+      // 普通 spawn 仍 fork=主链快照+尾追(前缀缓存第一要义)。
+      // cleanFace(2026-11-16 用户裁定):dispatch fork 通道缺省——自有 fresh ContextManager(无品性层,
+      // 快照只剩工作区约定族)+worker 身份槽稳定段;root 锚=活动根(worktree 进出语义与子 Reactor 同源)
+      const cleanFace = opts?.cleanFace === true;
       const base = opts?.bare === true ? [] : this.deps.context.chainView();
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
       const seedHistory: StepRecord[] = [...base];
@@ -591,7 +623,9 @@ export class SubagentRunner {
       const child = new Reactor({
         safety: childSafety,
         registry: this.deriveChildRegistry({ label: finalLabel, ...(opts && opts.taskId !== undefined ? { taskId: opts.taskId } : {}) }),
-        context: this.deps.context,
+        // clean 通道=fresh ContextManager(无品性层,快照=工作区约定族;fork 作用域零回写不变量下
+        // 仅快照/根观测消费);chain 通道=共享父面(总章程+品性随行,§17.2 前缀缓存裁定)
+        context: cleanFace ? this.cleanChildContext() : this.deps.context,
         model: this.deps.model,
         // 主任务暂停级联（2026-10-02 用户裁决）：显式 opts.signal 优先（后台两段式已带任务 abort），
         // 缺省取父中断信号——前台 spawn 的子 Reactor 步边界与在途模型调用随父 Esc/Ctrl+C 即刻中止
@@ -603,9 +637,15 @@ export class SubagentRunner {
         // fork 子代 kind 继承（2026-11-15 sunx P1 Task 3，spec §17.2 裁定）：sunx 派发的子智能体
         // 稳定段与父逐字节同面（Sunx 身份行/编排章程行随 Reactor kind）；缺席=standard 原样。
         // worker 覆写尾行（2026-11-15 严重 bug 修复）：子面已剔 dispatch_task/task_status，
-        // 「一切靠 dispatch/你没有执行工具」对子代是假命题——尾行废黜编排者指令（纯尾追，缓存不破）
-        ...(this.deps.kind ? { kind: this.deps.kind } : {}),
-        ...(this.deps.kind === 'sunx' ? { sunxWorker: true } : {}),
+        // 「一切靠 dispatch/你没有执行工具」对子代是假命题——尾行废黜编排者指令（纯尾追，缓存不破）。
+        // clean 通道（2026-11-16 用户裁定）改走 worker 身份槽：零编排者指令在场、零章程行，
+        // 跨 worker/跨实例同面——覆写矛盾从根上不产生（与 kind 互斥，clean 子代不传 kind）
+        ...(cleanFace
+          ? { workerIdentity: true }
+          : {
+              ...(this.deps.kind ? { kind: this.deps.kind } : {}),
+              ...(this.deps.kind === 'sunx' ? { sunxWorker: true } : {}),
+            }),
         ...(this.deps.onEvent
           ? { onEvent: (e: SessionEvent) => this.deps.onEvent!({ ...e, payload: { ...e.payload, subagent: finalLabel, ...(opts && opts.taskId !== undefined ? { subagentTaskId: opts.taskId } : {}) } }) }
           : {}),
@@ -760,7 +800,7 @@ export function teamDependsOnError(state: TaskBoardState, dependsOn: readonly st
  *  到点派发无工具回执——结论只经台账终态唤醒轮回流） */
 export function forkDispatch(
   runner: SubagentRunner,
-  input: { spec?: string; agent_id?: string; label?: string; isolation?: 'worktree'; tier?: ModelTier },
+  input: { spec?: string; agent_id?: string; label?: string; isolation?: 'worktree'; tier?: ModelTier; context?: 'clean' | 'chain' },
 ): { taskId: string; outputFilePath: string; wakeHint?: string } {
   const specInput: SubagentSpawnInput = {
     prompt: typeof input.spec === 'string' && input.spec.length > 0 ? input.spec : undefined,
@@ -770,7 +810,13 @@ export function forkDispatch(
   };
   const spec = normalizeSpawnInput(specInput);
   runner.validateSpawnInput(spec);
-  return runner.spawnBackground(spec, input.tier !== undefined ? { tier: input.tier } : undefined);
+  // context 缺省='clean'（2026-11-16 用户裁定「执行者上下文纯净」）——dispatch 与 schedule 到点
+  // 派发两消费面同采 clean 缺省（定时简报 taskSpec 同为自包含物料）；普通 spawn 工具不经本单点，
+  // 主链快照体验不受影响
+  return runner.spawnBackground(spec, {
+    ...(input.tier !== undefined ? { tier: input.tier } : {}),
+    ...(input.context !== undefined ? { context: input.context } : { context: 'clean' }),
+  });
 }
 
 /** dispatch_task 工具工厂（2026-11-15 sunx P1 Task 3；P2 Task 2 增 target='team' 板通道）：sunx 编排
@@ -788,30 +834,38 @@ export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: Dispatc
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['spec', 'agent_id', 'label', 'tier', 'isolation', 'target', 'depends_on'],
+      required: ['spec', 'agent_id', 'label', 'tier', 'isolation', 'target', 'depends_on', 'context'],
       properties: {
-        spec: { type: 'string', description: 'Self-contained task brief for the dispatched executor: goal, key facts, paths, constraints, and ACCEPTANCE criteria (it works from the brief plus a frozen session snapshot taken at dispatch — the brief must stand alone)' },
+        spec: { type: 'string', description: 'Self-contained task brief for the dispatched executor: goal, key facts, file paths, constraints, and ACCEPTANCE criteria. The worker sees ONLY this brief in a clean context — no session snapshot, no charter; anything not stated here is unknown to it' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null = inline subagent (fork) / developer preset member (team)' },
         label: { type: ['string', 'null'], description: 'Short card title; null defaults to agent_id ?? subagent (fork) — on team it titles the board task and slugs the bootstrapped team' },
         tier: { type: ['string', 'null'], enum: ['small', 'medium', 'large', null], description: 'Optional model tier override for this dispatch only (fork channel); null inherits the session tier' },
         isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask (fork channel); null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
         target: { type: ['string', 'null'], enum: ['fork', 'team', null], description: 'Execution channel; null = "fork". "fork" (default) = one-shot background subagent (receipt: task id + output log). "team" = agent-team board task: team + teammate for agent_id are bootstrapped on first use (default preset developer), then a living teammate claims or is assigned it (receipt: board task id + team)' },
         depends_on: { type: ['array', 'null'], items: { type: 'string' }, description: 'team channel only: board task ids that must reach success before this task is claimable; JSON null = none. Passing it with target "fork" is rejected' },
+        context: { type: ['string', 'null'], enum: ['clean', 'chain', null], description: 'Fork-channel context mode; null = "clean" (default). "clean" = the worker starts from ONLY this brief in a fresh context (no session snapshot, no charter) — put every needed fact in the brief. "chain" = legacy: the brief plus a frozen snapshot of this session taken at dispatch. The team channel is always clean regardless' },
       },
     },
     name: 'dispatch_task',
     description:
-      'Dispatch one work unit and return immediately. target selects the channel: "fork" (default) registers a background task — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path, no report comes back in this tool result. "team" places a board task on the agent-team board — on first use the team and a teammate for the requested agent_id (default preset: developer) are bootstrapped, then a living teammate claims or is assigned the task and the receipt names the board task id and its team; depends_on (team channel only) lists board task ids that must reach success first. In both channels the spec must be a self-contained brief (goal, key facts, paths, constraints, ACCEPTANCE criteria) because the executor works from the brief plus a frozen session snapshot taken at dispatch — the brief must stand alone; agent_id references a registered agent or preset role (null = inline subagent on fork / developer preset member on team); tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree (fork channel concerns). After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait (fork) or get_agent_team_board (team), or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
+      'Dispatch one work unit and return immediately. target selects the channel: "fork" (default) registers a background task — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path, no report comes back in this tool result. "team" places a board task on the agent-team board — on first use the team and a teammate for the requested agent_id (default preset: developer) are bootstrapped, then a living teammate claims or is assigned the task and the receipt names the board task id and its team; depends_on (team channel only) lists board task ids that must reach success first. In both channels the spec must be a fully self-contained brief (goal, key facts, file paths, constraints, ACCEPTANCE criteria): the worker starts from ONLY the brief in a clean context (default context:"clean" — no session snapshot, no charter; context:"chain" restores the legacy frozen-snapshot behavior on the fork channel) and never sees live updates; agent_id references a registered agent or preset role (null = inline subagent on fork / developer preset member on team); tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree (fork channel concerns). After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait (fork) or get_agent_team_board (team), or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown; target?: unknown; depends_on?: unknown };
+      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown; target?: unknown; depends_on?: unknown; context?: unknown };
       // 通道归一（schema 闭合枚举外的防御）：'team' → 板通道；'fork'/缺席/null 字面 → fork（缺省路径
       // 逐字节原样）；其余字面 → INVALID_ARG（与 isolation 同款 fail-fast，防观察行原样回流成同参重试死循环）
       if (raw.target !== undefined && !jsonAbsent(raw.target) && raw.target !== 'fork' && raw.target !== 'team') {
         throw new CodedToolError('INVALID_ARG', `Unknown target: ${String(raw.target)} (only 'fork' | 'team')`);
       }
       const target: 'fork' | 'team' = raw.target === 'team' ? 'team' : 'fork';
+      // context 归一（2026-11-16 用户裁定）：'chain' 字面 → 旧形；'clean'/缺席/null → 缺省（forkDispatch
+      // 内 clean 缺省）；其余字面 INVALID_ARG。板通道恒 clean（成员自有 fresh ctx 既有）——context 在 team
+      // 通道无意义，静默忽略（不拒：参数无破坏性，与 depends_on 的破坏性误传不同）
+      if (raw.context !== undefined && !jsonAbsent(raw.context) && raw.context !== 'clean' && raw.context !== 'chain') {
+        throw new CodedToolError('INVALID_ARG', `Unknown context: ${String(raw.context)} (only 'clean' | 'chain')`);
+      }
+      const context = raw.context === 'chain' ? 'chain' as const : raw.context === 'clean' ? 'clean' as const : undefined;
       const specInput: SubagentSpawnInput = {
         prompt: typeof raw.spec === 'string' && raw.spec.length > 0 ? raw.spec : undefined,
         ...(typeof raw.agent_id === 'string' && raw.agent_id.length > 0 ? { agent_id: raw.agent_id } : {}),
@@ -837,6 +891,7 @@ export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: Dispatc
           ...(typeof raw.label === 'string' && raw.label.length > 0 ? { label: raw.label } : {}),
           ...(raw.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
           ...(tier !== undefined ? { tier } : {}),
+          ...(context !== undefined ? { context } : {}),
         });
         return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
       }

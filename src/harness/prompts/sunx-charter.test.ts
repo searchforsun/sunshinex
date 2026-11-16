@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { stableSegmentOf, IDENTITY_LINE, SUNX_IDENTITY_LINE, SUNX_WAKE_LINE, SUNX_CHARTER_LINES, SUNX_WORKER_TAIL } from './shared';
+import { stableSegmentOf, IDENTITY_LINE, SUNX_IDENTITY_LINE, SUNX_WAKE_LINE, SUNX_CHARTER_LINES, SUNX_WORKER_TAIL, SUNX_WORKER_IDENTITY_LINE } from './shared';
 import { Harness } from '../index';
 
 /** Sunx 提示词面（2026-11-14 设计 §6/§17.1 + 2026-11-15 控制裁定）：总章程稳定段 kind 分叉。
@@ -50,6 +50,19 @@ test('stableSegmentOf: sunxWorkerTail=段尾追 worker 覆写行——同面稳�
   assert.ok(worker.endsWith(SUNX_WORKER_TAIL), '覆写行恒在最尾（后出指令废黜编排者身份行/章程行）');
   assert.ok(worker.includes('not the orchestrator itself') && worker.includes('must not dispatch further work'), '覆写行双锚：废黜身份+禁再分派');
   assert.ok(!sunx.includes('Override:'), '主链无覆写行（编排者指令只在子代被废黜）');
+});
+
+test('stableSegmentOf: workerIdentity=身份槽换 SUNX_WORKER_IDENTITY_LINE——零编排者指令/零章程行/零尾行(clean 通道面,2026-11-16)', () => {
+  const std = stableSegmentOf({ contextRoot: '/r' });
+  const w1 = stableSegmentOf({ contextRoot: '/r', workerIdentity: true });
+  const w2 = stableSegmentOf({ contextRoot: '/r', workerIdentity: true });
+  assert.equal(w1, w2, 'clean worker 面逐字节确定（跨 worker/跨实例前缀共享最大化）');
+  assert.ok(w1.startsWith(SUNX_WORKER_IDENTITY_LINE + '\n'), '身份槽=worker 身份行（零矛盾在场，无需覆写）');
+  assert.ok(!w1.includes(SUNX_IDENTITY_LINE), '零编排者身份行');
+  for (const line of SUNX_CHARTER_LINES) assert.ok(!w1.includes(line), '零编排章程行');
+  assert.ok(!w1.includes('Override:'), '零覆写尾行（覆写是 chain 同面通道的补丁，clean 面不需要）');
+  assert.ok(!w1.includes(SUNX_WORKER_TAIL), 'workerIdentity 与 sunxWorkerTail 正交（clean 面无尾行）');
+  assert.equal(w1.split('\n').length, std.split('\n').length, '槽位数与 standard 相同（仅身份槽单点替换）');
 });
 
 /** Harness 装配透传（brief Interfaces：kind 自 Harness 透传到稳定段装配点，单发/loop 内 Reactor 同源禁第二拼装）：

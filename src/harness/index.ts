@@ -472,6 +472,9 @@ export class Harness {
         // 持久化域目录(2026-11-15 sunx P3 Task 1):子智能体自有记忆(memory:true 的 agent.md)随域——
         // 缺席=resolveDataDir(root) 既有推导
         ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
+        // 存储适配器(2026-11-16 clean 派发通道):clean 子代自有 fresh ContextManager 构造入参——
+        // 与主链同仓 FileStore 单例(ContextManager 构造入参 _store 现阶段未消费,透传为形态完备)
+        store,
       },
       agents,
     );

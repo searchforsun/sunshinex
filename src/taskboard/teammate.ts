@@ -321,9 +321,10 @@ ${task.spec}` },
     // 逐任务 Reactor:fork 作用域(零主链回写);不传 runner——两 reactor 共享 runner 会互相覆盖
     // attachParent 挂载位(reactor.ts run 起止挂摘),teammate 自身不持 spawn 预算源(T3 派生面落地同点评估)
     // 路由 ask 归因(P2 Task 1):label=成员名,taskId=板任务 id——registryFactory 闭包转交
-    // deriveTeammateRegistry;ask 接缝缺席的装配派生面自然维持剔除旧制。kind 随装配透传(sunx 稳定段同面);
-    // worker 覆写尾行(2026-11-15 严重 bug 修复):成员是 worker 不是编排者——同面稳定段的编排者指令
-    // 对成员是假命题,尾行废黜(纯尾追,跨成员共享前缀不破)
+    // deriveTeammateRegistry;ask 接缝缺席的装配派生面自然维持剔除旧制。kind 随装配透传;
+    // worker 身份槽(2026-11-16 用户裁定「执行者上下文纯净」):sunx 装配的成员=clean worker——
+    // 自有 fresh ContextManager(无品性层)+bare 种子既有,稳定段换 SUNX_WORKER_IDENTITY_LINE
+    // (零编排者指令在场,与 fork clean 通道同面:跨成员/跨实例前缀共享最大化);非 sunx 装配 kind 透传旧制
     const buildFace: NonNullable<TeammateDeps['registryFactory']> =
       this.deps.registryFactory ?? ((base: ToolRegistry) => base.derive({ exclude: [] }));
     const reactor = new Reactor({
@@ -334,8 +335,9 @@ ${task.spec}` },
       root: this.deps.root,
       onEvent: tagger,
       signal: taskAbort.signal,
-      ...(this.deps.kind ? { kind: this.deps.kind } : {}),
-      ...(this.deps.kind === 'sunx' ? { sunxWorker: true } : {}),
+      ...(this.deps.kind === 'sunx'
+        ? { workerIdentity: true }
+        : { ...(this.deps.kind ? { kind: this.deps.kind } : {}) }),
     });
     let r: RunResult;
     try {

@@ -639,7 +639,7 @@ test('teammate face 路由 ask(P2 Task 1):execute 经 registryFactory 带 askedB
   }
 });
 
-test('teammate Reactor 稳定段随 kind(P2 Task 1,spec §17.2):sunx 带 Sunx 身份行/章程;缺席=standard 字节不变', async () => {
+test('teammate Reactor 稳定段随 kind(P2 Task 1;2026-11-16 clean 翻转):sunx=worker 身份槽(零编排者指令);缺席=standard 字节不变', async () => {
   const tmp = tmpdir('sunshinex-tm-kind-');
   let rig: ReturnType<typeof makeRig> | undefined;
   try {
@@ -652,8 +652,10 @@ test('teammate Reactor 稳定段随 kind(P2 Task 1,spec §17.2):sunx 带 Sunx �
     await w1.runTask(rig.board.snapshot().tasks[idA]!);
     assert.ok(await until(() => rig!.board.snapshot().tasks[idA]?.status === 'success'), 'sunx 成员任务收口');
     assert.ok(sunxModel.chats.length >= 1, 'sunx 成员发起过 chat');
-    assert.ok(sunxModel.chats[0]!.includes('You are the Sunx orchestrator'), `sunx 成员稳定段带 Sunx 身份行(kind 透传,缺接线即回 SunshineX):${sunxModel.chats[0]!.slice(0, 200)}`);
-    assert.ok(sunxModel.chats[0]!.includes('never do the work yourself'), '编排章程行随行(身份槽替换+章程尾随)');
+    assert.ok(sunxModel.chats[0]!.includes('You are a worker agent dispatched by the Sunx orchestrator'), `sunx 成员=clean worker 身份槽(2026-11-16 用户裁定「执行者上下文纯净」;缺接线即回 SunshineX):${sunxModel.chats[0]!.slice(0, 200)}`);
+    assert.ok(!sunxModel.chats[0]!.includes('You are the Sunx orchestrator'), '零编排者身份行(成员是 worker,矛盾从根上不产生)');
+    assert.ok(!sunxModel.chats[0]!.includes('never do the work yourself'), '零编排章程行组(随身份槽一并退出)');
+    assert.ok(!sunxModel.chats[0]!.includes('Override:'), '零覆写尾行(覆写是 chain 同面通道补丁,clean 面不需要)');
     // standard 反向锚:缺席 kind 字节不变(零 Sunx 泄漏)
     const stdModel = new CountingAdapter();
     const w2 = rig.addTeammate('w2', stdModel);

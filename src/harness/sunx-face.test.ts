@@ -201,6 +201,67 @@ test('fork 子代 kind 继承：sunx 装配 fork child 稳定段带 Sunx 身份�
   }
 });
 
+test('clean 派发通道（2026-11-16 用户裁定「执行者上下文纯净」）：dispatch_task 缺省 clean——子代只见自包含简报，零主链/零章程/零编排者指令', async () => {
+  const tmp3 = mktmp('sunshinex-sunxface-dispatch-clean-');
+  try {
+    const seen = { prompts: [] as string[], toolNames: [] as string[] };
+    const h = new Harness({
+      root: tmp3,
+      mode: 'full-access',
+      kind: 'sunx',
+      charter: 'CHARTER-ASSEMBLED-SECRET',
+      model: probeAdapter(
+        new ScriptedAdapter([
+          JSON.stringify({ tool: 'dispatch_task', input: { spec: 'CLEAN-BRIEF-ONLY 任务简报', label: 'cw' } }),
+          JSON.stringify({ done: true, reply: 'child done' }),
+          JSON.stringify({ done: true, reply: 'main done' }),
+        ]),
+        seen,
+      ),
+    });
+    const r = await h.reactor.run({ goal: '主任务不应进入子代' }, { maxSteps: 5 });
+    assert.equal(r.done, true, '主链正常收口');
+    const childPrompt = seen.prompts[1] ?? '';
+    assert.ok(childPrompt.includes('CLEAN-BRIEF-ONLY'), '第 2 轮 prompt=clean 子代（携带简报任务行）');
+    assert.ok(childPrompt.includes('You are a worker agent dispatched by the Sunx orchestrator'), '子代身份=worker 身份槽（SUNX_WORKER_IDENTITY_LINE）');
+    assert.ok(!childPrompt.includes('You are the Sunx orchestrator'), '零编排者身份行（矛盾从根上不产生）');
+    assert.ok(!childPrompt.includes('never do the work yourself'), '零编排章程行组');
+    assert.ok(!childPrompt.includes('Override:'), '零覆写尾行（覆写是 chain 同面通道补丁，clean 面不需要）');
+    assert.ok(!childPrompt.includes('CHARTER-ASSEMBLED-SECRET'), '零品性层（fresh ContextManager，快照只剩工作区约定族）');
+    assert.ok(!childPrompt.includes('主任务不应进入子代'), 'bare 种子：主链内容零进入（执行体只见自包含简报）');
+    h.tasks.stopAll();
+  } finally {
+    fs.rmSync(tmp3, { recursive: true, force: true });
+  }
+  // chain 反向锚：context:'chain' 显式回旧形——同面稳定段+覆写尾行+主链快照在场
+  const tmp4 = mktmp('sunshinex-sunxface-dispatch-chain-');
+  try {
+    const seen = { prompts: [] as string[], toolNames: [] as string[] };
+    const h = new Harness({
+      root: tmp4,
+      mode: 'full-access',
+      kind: 'sunx',
+      model: probeAdapter(
+        new ScriptedAdapter([
+          JSON.stringify({ tool: 'dispatch_task', input: { spec: 'CHAIN-BRIEF 任务简报', label: 'cw', context: 'chain' } }),
+          JSON.stringify({ done: true, reply: 'child done' }),
+          JSON.stringify({ done: true, reply: 'main done' }),
+        ]),
+        seen,
+      ),
+    });
+    const r = await h.reactor.run({ goal: '主链目标' }, { maxSteps: 5 });
+    assert.equal(r.done, true);
+    const childPrompt = seen.prompts[1] ?? '';
+    assert.ok(childPrompt.includes('You are the Sunx orchestrator'), 'chain 通道=父同面稳定段（§17.2）');
+    assert.ok(childPrompt.includes('Override: you are a WORKER'), 'chain 通道=覆写尾行（2026-11-15 补丁保留）');
+    assert.ok(!childPrompt.includes('worker agent dispatched by the Sunx orchestrator'), 'chain 通道不走 worker 身份槽（与 clean 面互斥）');
+    h.tasks.stopAll();
+  } finally {
+    fs.rmSync(tmp4, { recursive: true, force: true });
+  }
+});
+
 test('呈现表去单例（P2 Task 1）：混合 kind 两次 assemble 各自返回各自 toolDisplay——互不覆盖', () => {
   const tmp = mktmp('sunshinex-sunxface-tooldisp-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
