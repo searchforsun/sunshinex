@@ -4276,9 +4276,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunxboard-dot.live { background: var(--ok); }
 /* 卡片网格(按工作区分节 R10):节头=目录名(SunxSection 组头同族);auto-fill 网格随右栏宽自适应 */
 .sx-sunxboard-ws { padding: 6px 8px 2px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sx-sunxboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; padding: 2px 8px 4px; }
-.sx-sunxboard-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; text-align: left; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px; cursor: pointer; font-size: calc(14px * var(--fz)); }
-.sx-sunxboard-card:hover { border-color: var(--border-strong); }
+/* 卡片网格(2026-11-17 用户实测「默认宽度太窄,加宽一些」):列宽 220→300、上限 420(面板很宽时
+   卡片封顶不再被 1fr 拉成超宽条),列距 8→10 */
+.sx-sunxboard-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px; padding: 2px 8px 4px; justify-items: start; }
+/* 实例卡(2026-11-17 用户实测「不要加边框,背景色参考其他卡片,当前的太深了」):口径对齐待办卡/
+   任务板卡(.todo-card/.tb-card 同族)——无边框 + surface-elevated 面(亮色比页面更白一档、暗色比
+   页面更亮一档,此前 surface-soft 在亮色下是 #ececec 灰块);hover 以面底微提代替描边变亮(悬停
+   语言与卡片族同源) */
+.sx-sunxboard-card { display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: 420px; min-width: 0; text-align: left; background: var(--surface-elevated); color: var(--fg); border: none; border-radius: var(--radius-md); padding: 10px 12px; cursor: pointer; font-size: calc(14px * var(--fz)); }
+.sx-sunxboard-card:hover { background: color-mix(in srgb, var(--surface-elevated) 93%, var(--fg) 7%); }
 .sx-sunxboard-cardline { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sx-sunxboard-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-sunxboard-progress { color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
