@@ -496,8 +496,8 @@ export function WelcomeComposer({
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
           placeholder={
             officeMode
-              ? t('Say what you want done, the rest is handled', '想做点什么,说一声就行')
-              : t('Say what you want done, @ adds context, / picks commands', '想做点什么直接说,@ 添上下文、/ 选命令')
+              ? t('Describe the goal, results are delivered', '描述目标即可交付结果')
+              : t('Describe the goal to start (@ adds context, / picks commands)', '描述目标开始任务（@ 添加上下文、/ 选择命令）')
           }
           onChange={(v) => {
             setGoal(v);

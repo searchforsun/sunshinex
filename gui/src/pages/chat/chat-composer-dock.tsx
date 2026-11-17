@@ -129,18 +129,18 @@ export function ChatComposerDock(props: {
    *  分档——占位=动作邀请而非说明书:运行中讲清可插话,辅助对话讲清不打断主任务,计划模式讲清
    *  先计划后执行,只读讲清不改文件 */
   const composerPlaceholder = running
-    ? t('Add anything, right here', '有补充就直接说')
+    ? t('Add more whenever you like', '有补充可直接说明')
     : sideChat === true
-      ? t('Ask away, the main task keeps running', '问吧,不影响主任务')
+      ? t('Questions here do not affect the main task', '提问不影响主任务')
       : sunxName !== undefined
-        ? t(`Give ${sunxName} a task`, `给 ${sunxName} 派个任务`)
+        ? t(`Assign ${sunxName} a task`, `给 ${sunxName} 指派任务`)
         : sessMode === 'plan'
-          ? t('Say what to do, plan first then execute', '说说想做什么,先出计划再动手')
+          ? t('Describe the goal to plan first', '描述目标以规划执行方案')
           : sessMode === 'read-only'
-            ? t('Say what to look at, nothing gets changed', '说说要分析什么,不会改文件')
+            ? t('Describe what needs read-only analysis', '描述需只读分析的目标')
             : emptyChat
-              ? t('Say what you want done', '想做点什么,直接说')
-              : t('Keep going, or ask for details', '接着说,或者追问细节');
+              ? t('Describe the goal to begin', '描述目标即可开始')
+              : t('Continue or ask for details', '继续交代或追问细节');
   return (
     <div className="chat-dock" ref={dockRef}>
       <div className="chat-dock-fade" aria-hidden="true" />
