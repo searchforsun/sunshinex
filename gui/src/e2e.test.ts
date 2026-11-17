@@ -55,6 +55,11 @@ async function findOpenSessionRow(): Promise<HTMLElement> {
   await waitFor(() => expect(document.querySelectorAll('.sx-collapse.open [data-session-row]').length).toBeGreaterThan(0), { timeout: 5_000 });
   return document.querySelectorAll('.sx-collapse.open [data-session-row]')[0] as HTMLElement;
 }
+/** 2026-11-17 「+」菜单普通态四常驻(tasks/artifacts/web/sidechat):非常驻项(agents/terminal 等)
+ *  先点菜单末行「更多」展开,再点原目标——保留普通态用户路径,不改变原断言 */
+function revealHiddenMenuItems(): void {
+  fireEvent.click(screen.getByRole('menuitem', { name: /^(?:More|更多)$/ }));
+}
 // @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { ScriptedAdapter } from '../../dist/model/adapter';
 // @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
@@ -914,6 +919,7 @@ describe('G6 Board 全链:队卡 + 五态行 → DAG 节点 → Stop → cancell
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      revealHiddenMenuItems();
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
       const openLabel = new RegExp(`^${taskId} \\[(pending|running)\\] HoldDemo$`);
       await waitFor(() => expect(screen.getByRole('button', { name: openLabel })).toBeDefined(), { timeout: 10_000 });
@@ -1202,6 +1208,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
 
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      revealHiddenMenuItems();
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).toContain('active'); // sx-tab active
@@ -1297,6 +1304,7 @@ describe('G8a-T6 场景B(看板消费·任务标签):CARDS 全链 → 切任务�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      revealHiddenMenuItems();
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
 
@@ -1461,6 +1469,7 @@ describe('G8b 场景②:pty 全链——终端标签降级面(App)+ 裸 WS 分�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      revealHiddenMenuItems();
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Terminal', '终端') }));
       // 终端标签题=项目名(44a4b0a:basename(root),单终端不带序号)——fixture 工作区尾段 'root'
       await waitFor(() => expect(tabsByTitle(container, 'root').length).toBe(1), { timeout: 5_000 });
@@ -1771,6 +1780,7 @@ describe('G8d-T6 场景B(Agents live 卡·标签聚合):CARDS fork 子智能体�
       await expandPanel();
       fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
       await screen.findByRole('menu', { name: 'new tab types' }, { timeout: 5_000 });
+      revealHiddenMenuItems();
       fireEvent.click(screen.getByRole('menuitem', { name: bi('Agent teams', '智能体团队') }));
       await waitFor(() => expect(tabsByTitle(container, bi('Agent teams', '智能体团队')).length).toBe(1), { timeout: 5_000 });
       expect(tabsByTitle(container, bi('Agent teams', '智能体团队'))[0]!.className).toContain('active');

@@ -112,6 +112,12 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(handlers.onOpenType).toHaveBeenCalledWith('tasks');
   });
 
+  it('2026-11-17 欢迎页普通态不渲染「更多」行(欢迎页分支不消费 showMore,死控件收口)', () => {
+    render(<TabStrip {...base} tabs={[]} activeUid={null} welcomeOnly />);
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    expect(screen.queryByRole('menuitem', { name: /More|更多/ })).toBeNull();
+  });
+
   it('+ 在滚区内跟末签;宽裕不钉 is-pinned', () => {
     let s = ensureSession({}, 's1', registryProbe());
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, registryProbe());

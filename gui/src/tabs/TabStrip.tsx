@@ -326,7 +326,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
               </div>
             );
           })}
-          {!dev && (
+          {!dev && !welcomeOnly && (
             <button type="button" role="menuitem" className="sx-menuitem" aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
               {showMore ? t('Collapse', '收起') : t('More', '更多')}
             </button>

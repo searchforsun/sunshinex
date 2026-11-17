@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { applyDeveloperMode } from '../developer-mode';
 // mermaid 成功 stub(G14.122 起 zoom 钮受渲染成败门控——成功态才可开 lightbox):
 // initialize/render 落定回 svg,走 onStatus(true) 正链
 vi.mock('mermaid', () => ({
@@ -1708,6 +1709,11 @@ describe('G14.41 write 行 diffstat 保留', () => {
 
 
 describe('G14.177 顶栏动态计数按钮', () => {
+  // 2026-11-17 开发者模式减法:普通态顶栏计数组整体收起,本块断言的是计数组自身语义
+  // (团队开关/待办计数/收尾快照),按开发者模式装配;普通态收起由 ChatTopbar.developer-gate 专测钉住
+  beforeEach(() => applyDeveloperMode(true));
+  afterEach(() => applyDeveloperMode(false));
+
   it('agentTeamsOn=false → 团队任务计数钮不渲染(待办钮仍可显)', async () => {
     const onOpenTab = vi.fn();
     const board = {
