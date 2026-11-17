@@ -28,6 +28,7 @@ import { defaultScopeOptions, scopeTargetLabel } from './components';
 import type { WorkspaceRow } from '../connection';
 import { useConfigChanged } from './use-config-changed';
 import type { ConfigChangedSource } from './use-config-changed';
+import { useDeveloperMode } from '../developer-mode';
 
 /**
  * G8c T8/T9 设置态壳(设置重构轮):App settingsOpen 时整体替换三栏内容——左栏(顶栏「← 返回」
@@ -84,11 +85,12 @@ export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, 
   workspaces(): Promise<WorkspaceRow[]>;
 }
 
-/** 全十项导航(G10-C5 Codex 分组制:Personal/Coding/Integrations + 权限/高级殿后)。
- *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
-const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; readonly zh: string } | ''; readonly items: ReadonlyArray<{ readonly id: string; readonly title: { readonly en: string; readonly zh: string } }> }> = [
+/** 导航分组(通用/高级两组):通用组恒显(通用/模型与提供方/快捷键);高级组(advanced:true)
+ *  仅开发者模式开启时渲染(Paths & shell 独立 pane 归入高级组,与 SettingForm 的 'paths' pane
+ *  对应)。标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
+const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; readonly zh: string } | ''; readonly advanced?: boolean; readonly items: ReadonlyArray<{ readonly id: string; readonly title: { readonly en: string; readonly zh: string } }> }> = [
   {
-    group: { en: 'Personal', zh: '个人' },
+    group: { en: 'General', zh: '通用' },
     items: [
       { id: 'general', title: { en: 'General', zh: '通用' } },
       { id: 'providers', title: { en: 'Models & providers', zh: '模型与提供方' } },
@@ -96,27 +98,27 @@ const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; re
     ],
   },
   {
-    group: { en: 'Coding', zh: '编码' },
+    group: { en: 'Advanced', zh: '高级' },
+    advanced: true,
     items: [
       { id: 'limits', title: { en: 'Context & limits', zh: '上下文与限额' } },
       { id: 'memory', title: { en: 'Memory', zh: '记忆' } },
       { id: 'global-rules', title: { en: 'Global norms', zh: '全局规范' } },
       { id: 'kb', title: { en: 'Knowledge & search', zh: '知识库与搜索' } },
-    ],
-  },
-  {
-    group: { en: 'Integrations', zh: '集成' },
-    items: [
+      { id: 'paths', title: { en: 'Paths & shell', zh: '路径与执行环境' } },
       { id: 'skills', title: { en: 'Skills', zh: '技能' } },
       { id: 'mcp', title: { en: 'MCP', zh: 'MCP' } },
       { id: 'plugins', title: { en: 'Plugins', zh: '插件' } },
       { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
       { id: 'teams', title: { en: 'Agent Teams', zh: '智能体团队' } },
+      { id: 'permissions', title: { en: 'Permissions', zh: '权限' } },
+      { id: 'raw', title: { en: 'Advanced', zh: '高级' } },
     ],
   },
-  { group: '', items: [{ id: 'permissions', title: { en: 'Permissions', zh: '权限' } }, { id: 'raw', title: { en: 'Advanced', zh: '高级' } }] },
 ];
 const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
+/** 高级组 pane id 集(普通态回退锚点) */
+const ADVANCED_IDS = new Set(SETTINGS_GROUPS.filter((g) => g.advanced === true).flatMap((g) => g.items.map((i) => i.id)));
 
 /** 错误文案归一:G8e-T2 抽共享 ui-util */
 
@@ -150,6 +152,12 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
   useEffect(() => {
     if (requestedPane !== undefined) setActivePane(requestedPane.id);
   }, [requestedPane]);
+  /** Task 3 导航分层:开发者模式关(普通态)隐藏高级组导航;停在高级 pane(如刚关掉开关)时
+   *  回退到通用,避免渲染不可见页面 */
+  const dev = useDeveloperMode();
+  useEffect(() => {
+    if (!dev && ADVANCED_IDS.has(activePane)) setActivePane('general');
+  }, [dev, activePane]);
   /** G14.213 语言切换 tick:SettingsForm 语言键保存 → onLanguageChanged → 本壳重渲染
    *  (t 非响应式——导航/分组/壳头等本组件的 t() 面不 tick 不翻面) */
   const [, setLangTick] = useState(0);
@@ -272,7 +280,7 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
               (scope 状态仍本壳持有,经 scope+onScopeChange 下发,见 renderPane) */}
         </header>
         <ul className="sx-settings-nav">
-          {SETTINGS_GROUPS.map((g) => (
+          {SETTINGS_GROUPS.filter((g) => g.advanced !== true || dev).map((g) => (
             <li key={g.group === '' ? 'plain' : g.group.en}>
               {g.group !== '' && <div className="sx-settings-group">{t(g.group.en, g.group.zh)}</div>}
               <ul className="sx-settings-group-items">

@@ -35,12 +35,14 @@ const connOf = (view: SettingsView): { conn: SettingsFormConn } => ({
 });
 
 describe('SettingsForm 行过滤(SETTINGS_PANES 顶部 SearchBar)', () => {
-  it('按行标签过滤:输入 shell → 仅 Shell 行留;特例行(theme/zoom/font)与他不匹配行滤除;清空恢复', async () => {
-    const { conn } = connOf(viewOf([keyRow('language'), keyRow('projectsDir'), keyRow('userSkillsDir'), keyRow('globalSunshine'), keyRow('shell')]));
-    render(<SettingsForm conn={conn} root="/w/proj" pane={SETTINGS_PANES[0]} />);
-    expect(await screen.findByText('Shell')).toBeDefined(); // 初始全行在
+  /** 路径/执行环境行独立 pane(Task 3:从通用页抽出) */
+  const pathsPane = SETTINGS_PANES.find((p) => p.id === 'paths')!;
+
+  it('按行标签过滤:输入 shell → 仅 Shell 行留;他不匹配行滤除;清空恢复', async () => {
+    const { conn } = connOf(viewOf([keyRow('projectsDir'), keyRow('userSkillsDir'), keyRow('globalSunshine'), keyRow('shell')]));
+    render(<SettingsForm conn={conn} root="/w/proj" pane={pathsPane} />);
+    expect(await screen.findByText('Shell')).toBeDefined();
     expect(screen.getByText('Projects directory')).toBeDefined();
-    expect(screen.getByText('Font preset')).toBeDefined(); // 特例行(本地偏好)初始在
     vi.useFakeTimers();
     try {
       fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'shell' } });
@@ -49,14 +51,11 @@ describe('SettingsForm 行过滤(SETTINGS_PANES 顶部 SearchBar)', () => {
       });
       expect(screen.getByText('Shell')).toBeDefined();
       expect(screen.queryByText('Projects directory')).toBeNull();
-      expect(screen.queryByText('Language')).toBeNull();
-      expect(screen.queryByText('Font preset')).toBeNull(); // 过滤激活:特例行一并滤除
       fireEvent.change(screen.getByLabelText('Search'), { target: { value: '' } });
       act(() => {
         vi.advanceTimersByTime(200);
       });
       expect(screen.getByText('Projects directory')).toBeDefined(); // 清空恢复
-      expect(screen.getByText('Font preset')).toBeDefined();
     } finally {
       vi.useRealTimers();
     }
@@ -64,7 +63,7 @@ describe('SettingsForm 行过滤(SETTINGS_PANES 顶部 SearchBar)', () => {
 
   it('按键名过滤:输入 dir → projectsDir/userSkillsDir 两行留(标签含 dir);无匹配 → 空态+组卡全隐', async () => {
     const { conn } = connOf(viewOf([keyRow('projectsDir'), keyRow('userSkillsDir'), keyRow('shell')]));
-    render(<SettingsForm conn={conn} root="/w/proj" pane={SETTINGS_PANES[0]} />);
+    render(<SettingsForm conn={conn} root="/w/proj" pane={pathsPane} />);
     await screen.findByText('Projects directory');
     vi.useFakeTimers();
     try {

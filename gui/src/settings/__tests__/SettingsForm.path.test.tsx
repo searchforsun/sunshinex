@@ -22,13 +22,16 @@ afterEach(() => {
   delete (window as { sunshinex?: unknown }).sunshinex;
 });
 
+/** 路径/执行环境行独立 pane(Task 3:从通用页抽出) */
+const pathsPane = SETTINGS_PANES.find((p) => p.id === 'paths')!;
+
 describe('SettingsForm 路径行选择钮', () => {
   it('桌面壳:目录钮以现值为起点开原生对话框,选定即落库;文件行走 pickFile', async () => {
     const pickFolder = vi.fn(() => Promise.resolve('E:/new-projects'));
     const pickFile = vi.fn(() => Promise.resolve('C:/pwsh/pwsh.exe'));
     (window as { sunshinex?: unknown }).sunshinex = { pickFolder, pickFile };
     const { conn, put } = connOf();
-    render(<SettingsForm conn={conn} root="" pane={SETTINGS_PANES[0]} />);
+    render(<SettingsForm conn={conn} root="" pane={pathsPane} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Browse projectsDir' }));
     expect(pickFolder).toHaveBeenCalledWith('D:/old');
     await waitFor(() => expect(put).toHaveBeenCalledWith('global', undefined, { projectsDir: 'E:/new-projects' }));
@@ -41,7 +44,7 @@ describe('SettingsForm 路径行选择钮', () => {
   it('浏览器态:目录行有 dirpicker 即出钮(开应用内目录浏览),文件行无原生桥不出钮', async () => {
     const dirpicker = vi.fn(() => Promise.resolve({ path: 'C:/', parent: 'C:/', dirs: ['proj'] }));
     const { conn } = connOf({ dirpicker } as unknown as Partial<SettingsFormConn>);
-    render(<SettingsForm conn={conn} root="" pane={SETTINGS_PANES[0]} />);
+    render(<SettingsForm conn={conn} root="" pane={pathsPane} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Browse globalSunshine' }));
     await waitFor(() => expect(dirpicker).toHaveBeenCalled());
     expect(await screen.findByText('proj')).toBeDefined(); // 目录浏览弹层已开

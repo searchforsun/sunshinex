@@ -13,8 +13,10 @@ describe('通用页开发者模式开关', () => {
   it('首组渲染「开发者模式」行,拨动即写 localStorage', async () => {
     localStorage.clear();
     render(<SettingsForm conn={conn} root="" pane={SETTINGS_PANES[0]!} />);
-    // 卡头标题与行标签同为「Developer mode」——findByText 会因多命中而抛,取全部命中判存在
-    expect((await screen.findAllByText('Developer mode')).length).toBeGreaterThan(0);
+    // 卡头标题改「Developer」后,「Developer mode」只剩行标签唯一命中
+    expect(await screen.findByText('Developer mode')).toBeDefined();
+    expect(screen.getByLabelText('developer mode')).toBeDefined();
+    expect(localStorage.getItem('sunshinex.developer-mode')).toBeNull(); // 清空后未拨动:未落键
     const sw = screen.getByLabelText('developer mode');
     fireEvent.click(sw);
     expect(localStorage.getItem('sunshinex.developer-mode')).toBe('1');

@@ -10,6 +10,7 @@ import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
 import { FolderOpen } from 'lucide-react';
 import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
+import { useDeveloperMode } from '../developer-mode';
 
 /**
  * G8c T8 通用键值表单引擎(设置自动保存轮):mount/effect 拉 conn.settings(root)→按 pane 分组
@@ -186,11 +187,18 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: 'general',
     title: { en: 'General', zh: '通用' },
     groups: [
-      { title: { en: 'Developer mode', zh: '开发者模式' }, developerRow: true, fields: [] },
+      { title: { en: 'Developer', zh: '开发者' }, developerRow: true, fields: [] },
       { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, paletteRow: true, fontRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
       ]), sw('terminalDock')] },
+    ],
+  },
+  {
+    // Task 3(2026-11-17 ui-mode-layering):路径/执行环境从通用页抽出独立 pane(高级组)
+    id: 'paths',
+    title: { en: 'Paths & shell', zh: '路径与执行环境' },
+    groups: [
       {
         title: { en: 'Paths', zh: '路径' },
         fields: [dirPath('projectsDir'), dirPath('sunxDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')], // 语义键 sunxDir（SUNSHINEX_SUNX_DIR 写槽）：容器切换对新建 Sunx 生效，既有域不迁移
@@ -283,6 +291,8 @@ export interface SettingsFormProps {
 /** 改动桶(逐项写回来源文件):source='project' → project;global/default → global */
 
 export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFormProps): JSX.Element {
+  /** Task 3:开发者模式关(普通态)不渲染来源徽标——工程细节收起 */
+  const dev = useDeveloperMode();
   /** 键行表(pane 键过滤后;null = 加载中) */
   const [rows, setRows] = useState<Record<string, SettingsKeyRow> | null>(null);
   /** 行过滤词(Task 25 顶部 SearchBar,防抖沿组件契约;trim 小写后匹配) */
@@ -581,7 +591,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
                       <div className="sx-setting-main">
                         <div className="sx-setting-title">
                           <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>
-                          {row.source !== 'global' && row.source !== 'default' && <SourceBadge source={row.source} />}
+                          {dev && row.source !== 'global' && row.source !== 'default' && <SourceBadge source={row.source} />}
                         </div>
                         {/* 2026-10-31 用户裁定「所有配置细项要加上一简要的说明」:KEY_DESCRIPTIONS
                             说明句(此前仅作搜索匹配面)升格为行内描述渲染,与外观行同形态 */}
