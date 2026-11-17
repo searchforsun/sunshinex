@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
+import { useUiMode } from '../ui-mode';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
 import { WelcomeProjectPop } from './welcome-project-pop';
@@ -63,6 +64,8 @@ export function WelcomeComposer({
   const [picked, setPicked] = useState<string>(readPersistedProject);
   // 草稿持久化(2026-11-07 用户裁定「应用重启后,所有输入框内容不丢失」):goal+@引用账本
   // 落 localStorage(欢迎页全局单档;发送清档,openSession 接力不受影响)
+  /** 占位分档(2026-11-17 文案轮):办公模式去技术提示(@ /),只留目标邀请——办公用户不关心语法 */
+  const officeMode = useUiMode() === 'office';
   const [goal, setGoal] = useState<string>(() => {
     try {
       return localStorage.getItem('sx-draft:welcome') ?? '';
@@ -491,7 +494,11 @@ export function WelcomeComposer({
           }}
           value={goal}
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
-          placeholder={t('Ask Sunshinex. Use @ to add context, / for commands or skills', '向 Sunshinex 提问，使用 @ 添加上下文，使用 / 选择命令或技能')}
+          placeholder={
+            officeMode
+              ? t('Describe the goal — everything else is taken care of…', '描述你的目标,剩下的交给它…')
+              : t('State the goal — @ for context, / for commands or skills', '说出你的目标——@ 添加上下文, / 选命令或技能')
+          }
           onChange={(v) => {
             setGoal(v);
             setWelcomeSlashDismissed(null); // G14.213 Esc 收起后任何编辑即重新放行 / 面板

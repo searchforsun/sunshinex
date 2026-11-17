@@ -688,6 +688,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         sessionId={sessionId}
         root={root}
         sideChat={sideChat}
+        sunxName={kind === SESSION_KIND_SUNX ? displayTitle.trim() : undefined}
+        emptyChat={chat.entries.length === 0}
         connState={connState}
         queued={queued}
         setQueued={setQueued}
