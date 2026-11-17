@@ -248,7 +248,14 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 .sx-provider-modelitem { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--border); }
 .sx-provider-modelitem.off { opacity: 0.55; }
 .sx-provider-modelitem .sx-provider-modelname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg); }
-.sx-provider-modelitem .sx-provider-chips { flex: none; margin-right: 8px; } /* 2026-11-17 用户实测「大小位置挡住删除图标」:chips 与操作图标留距 */
+.sx-provider-modelitem .sx-provider-chips { flex: none; margin-right: 8px; }
+.sx-provider-modelitem { cursor: grab; }
+.sx-provider-modelitem.dragging { opacity: 0.5; }
+/* 删除图标钮(2026-11-17):卡片头/模型行统一垃圾箱形,武装态红底白图标 */
+.sx-del-iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border-radius: var(--radius-sm); border: none; background: transparent; color: var(--fg-icon); }
+.sx-del-iconbtn:hover:not(:disabled) { color: var(--err); background: color-mix(in srgb, var(--err) 10%, transparent); }
+.sx-del-iconbtn.sx-del-confirm { background: var(--err); color: #fff; }
+ /* 2026-11-17 用户实测「大小位置挡住删除图标」:chips 与操作图标留距 */
 .sx-provider-modelitem .sx-iconbtn { width: 24px; height: 24px; }
 .sx-provider-modelitem .sx-switch { flex: none; }
 .sx-provider-hint { margin: 2px 0 4px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }

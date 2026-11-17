@@ -173,7 +173,7 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     render(<ProvidersPane conn={conn} />);
     fireEvent.click((await screen.findAllByText('+ Add model'))[0]!);
     await screen.findByRole('dialog', { name: 'New model' });
-    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm3' } });
+    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'm3' } });
     fireEvent.change(screen.getByLabelText('Context tokens'), { target: { value: '128000' } });
     fireEvent.change(screen.getByLabelText('Max output tokens'), { target: { value: '8192' } });
     fireEvent.click(screen.getByLabelText('Image input'));
@@ -229,11 +229,12 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     });
   });
 
-  it('测试连接:调用 probeProvider,连通结果行内展示', async () => {
+  it('测试连接:调用 probeProvider,结果走底部悬浮提示层(2026-11-17 用户裁定)', async () => {
     const { conn } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Test connection m1' }));
-    expect(await screen.findByText(/Connected/)).toBeDefined();
+    const toast = await screen.findByRole('status');
+    expect(toast.textContent).toContain('connected');
   });
 
   it('更多参数非法 JSON:行内报错且零 op', async () => {
@@ -241,7 +242,7 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     render(<ProvidersPane conn={conn} />);
     fireEvent.click((await screen.findAllByText('+ Add model'))[0]!);
     await screen.findByRole('dialog', { name: 'New model' });
-    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm4' } });
+    fireEvent.change(screen.getByLabelText('Model ID'), { target: { value: 'm4' } });
     fireEvent.change(screen.getByLabelText('More parameters'), { target: { value: '{oops' } });
     fireEvent.click(screen.getByText('Save'));
     expect(await screen.findByText(/valid JSON/)).toBeDefined();

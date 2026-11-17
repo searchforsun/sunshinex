@@ -1,5 +1,5 @@
 import { Pencil, PlugZap } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
@@ -107,6 +107,8 @@ interface ProviderForm {
 /** 模型弹窗表单(纵向字段):名称/上下文/最大输出/输入类型/思考强度/推理等级/更多参数(JSON) */
 interface ModelForm {
   model: string;
+  /** 显示名称(2026-11-17):仅展示;空=列表回退 model */
+  displayName: string;
   enabled: boolean;
   contextWindow: string;
   maxOutputTokens: string;
@@ -119,11 +121,12 @@ interface ModelForm {
 }
 
 const EMPTY_PROVIDER: ProviderForm = { name: '', baseUrl: '', apiKey: '' };
-const EMPTY_MODEL: ModelForm = { model: '', enabled: true, contextWindow: '', maxOutputTokens: '', supportsImages: false, supportsVideo: false, reasoningEffort: '', tier: '', paramsText: '' };
+const EMPTY_MODEL: ModelForm = { model: '', displayName: '', enabled: true, contextWindow: '', maxOutputTokens: '', supportsImages: false, supportsVideo: false, reasoningEffort: '', tier: '', paramsText: '' };
 
 /** 模型条目 → 弹窗表单(编辑播种;params 对象 → 格式化 JSON 文本) */
 const modelFormOf = (m: ProviderEntryModel): ModelForm => ({
   model: m.model,
+  displayName: m.displayName ?? '',
   enabled: m.enabled !== false,
   contextWindow: m.contextWindow !== undefined ? String(m.contextWindow) : '',
   maxOutputTokens: m.maxOutputTokens !== undefined ? String(m.maxOutputTokens) : '',
@@ -152,9 +155,18 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
   const [modelModal, setModelModal] = useState<{ provider: string; mode: 'add' | 'edit'; original?: string } | null>(null);
   const [modelForm, setModelForm] = useState<ModelForm>(EMPTY_MODEL);
   const [formError, setFormError] = useState('');
-  /** 连通探测结果(按 provider 名;空串=未测):ok/失败行内展示 */
-  const [testMsg, setTestMsg] = useState<Record<string, string>>({});
+  /** 连通探测结果(2026-11-17 用户裁定「提示显示在下面弹出提示层」):sx-toast 底部浮出 3s 自隐 */
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [testing, setTesting] = useState('');
+  const showToast = (text: string): void => {
+    setToast(text);
+    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 3_000);
+  };
+  useEffect(() => () => {
+    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+  }, []);
 
   const load = useCallback((): void => {
     conn.settings(undefined).then(
@@ -198,6 +210,18 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
   /** 源启停(provider 卡右上开关) */
   const toggleProvider = (e: ProviderEntry): void => runOp({ op: 'setEnabled', name: e.name, enabled: e.enabled === false });
 
+  /** 拖拽态(2026-11-17 用户裁定「模型列表支持拖拽调整上下位置」):provider+model 双键,跨源拖不放 */
+  const [dragModel, setDragModel] = useState<{ provider: string; model: string } | null>(null);
+
+  /** 模型行序调整(拖拽):整组 models 按新序回写(行序=默认模型选序 choices[0]) */
+  const reorderModels = (e: ProviderEntry, from: number, to: number): void => {
+    const next = [...e.models];
+    const [moved] = next.splice(from, 1);
+    if (moved === undefined) return;
+    next.splice(to, 0, moved);
+    runOp({ op: 'update', name: e.name, provider: { models: next.map((m) => ({ ...m } as Record<string, unknown>)) } });
+  };
+
   /** 模型启停(2026-11-17 用户裁定「模型单独禁用,开关放外面」):整组 models 回写,只翻目标条目 */
   const toggleModel = (e: ProviderEntry, model: ProviderEntryModel): void => {
     const models = e.models.map((m) => {
@@ -214,21 +238,19 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
   const probe = (name: string): void => {
     if (testing !== '') return;
     setTesting(name);
-    setTestMsg((m) => ({ ...m, [name]: '' }));
     conn
       .probeProvider(name)
       .then((r) => {
         setTesting('');
-        setTestMsg((m) => ({
-          ...m,
-          [name]: r.ok
-            ? t(`Connected${r.count !== undefined ? ` · ${r.count} models` : ''}`, `连通${r.count !== undefined ? ` · ${r.count} 个模型` : ''}`)
-            : t(`Failed${r.status !== undefined ? ` (${r.status})` : ''}${r.error !== undefined ? `: ${r.error}` : ''}`, `失败${r.status !== undefined ? ` (${r.status})` : ''}${r.error !== undefined ? `: ${r.error}` : ''}`),
-        }));
+        showToast(
+          r.ok
+            ? t(`${name} connected${r.count !== undefined ? ` · ${r.count} models` : ''}`, `${name} 连通${r.count !== undefined ? ` · ${r.count} 个模型` : ''}`)
+            : t(`${name} failed${r.status !== undefined ? ` (${r.status})` : ''}${r.error !== undefined ? `: ${r.error}` : ''}`, `${name} 失败${r.status !== undefined ? ` (${r.status})` : ''}${r.error !== undefined ? `: ${r.error}` : ''}`),
+        );
       })
       .catch((err: unknown) => {
         setTesting('');
-        setTestMsg((m) => ({ ...m, [name]: errText(err) }));
+        showToast(`${name}: ${errText(err)}`);
       });
   };
 
@@ -338,6 +360,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
     }
     return {
       model,
+      ...(modelForm.displayName.trim() !== '' ? { displayName: modelForm.displayName.trim() } : {}),
       ...(modelForm.enabled ? {} : { enabled: false }),
       ...(contextWindow !== undefined ? { contextWindow } : {}),
       ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
@@ -404,7 +427,8 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   <span className={`sx-api-dot ${e.apiKeyPresent ? 'present' : 'missing'}`} data-tip={e.apiKeyEnv} aria-hidden="true" />
                   <span className="sx-rc-title">{e.name}</span>
                   <span className="sx-rc-subtitle">{e.baseUrl}</span>
-                  {/* 编辑/删除图标钮紧贴启用开关左侧(2026-11-17 用户裁定「编辑和删除放到开关左侧图标」) */}
+                  {/* 操作簇(2026-11-17 用户裁定「删除垃圾箱图标放第一个位置」):删除→编辑→启用开关 */}
+                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
                   <button
                     type="button"
                     className="sx-iconbtn sx-provider-headbtn"
@@ -415,10 +439,8 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   >
                     <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
                   </button>
-                  <ConfirmDeleteButton ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
                   <Switch on={e.enabled !== false} onToggle={() => toggleProvider(e)} ariaLabel={`${t('Enable', '启用')} ${e.name}`} />
                 </div>
-                {testMsg[e.name] !== undefined && testMsg[e.name] !== '' && <p className="sx-provider-hint">{testMsg[e.name]}</p>}
                 {/* 模型列表(2026-11-17 用户裁定「卡片里面添加模型」):名称+特点 chips+测试/编辑/开关 */}
                 <div className="sx-provider-models-head">
                   <span className="sx-provider-models-title">{t('Models', '模型列表')}</span>
@@ -430,9 +452,31 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   <p className="sx-provider-hint">{t('No models yet.', '暂无模型。')}</p>
                 ) : (
                   <ul className="sx-provider-modellist">
-                    {e.models.map((m) => (
-                      <li key={m.model} className={`sx-provider-modelitem${m.enabled === false ? ' off' : ''}`}>
-                        <span className="sx-provider-modelname">{m.model}</span>
+                    {e.models.map((m, mi) => (
+                      <li
+                        key={m.model}
+                        className={`sx-provider-modelitem${m.enabled === false ? ' off' : ''}${dragModel?.model === m.model && dragModel.provider === e.name ? ' dragging' : ''}`}
+                        draggable
+                        onDragStart={(ev) => {
+                          setDragModel({ provider: e.name, model: m.model });
+                          ev.dataTransfer.effectAllowed = 'move';
+                          ev.dataTransfer.setData('text/plain', m.model);
+                        }}
+                        onDragOver={(ev) => {
+                          if (dragModel?.provider === e.name) ev.preventDefault();
+                        }}
+                        onDrop={(ev) => {
+                          ev.preventDefault();
+                          if (dragModel === null || dragModel.provider !== e.name || dragModel.model === m.model) return;
+                          const from = e.models.findIndex((x) => x.model === dragModel.model);
+                          const to = mi;
+                          setDragModel(null);
+                          if (from < 0 || from === to) return;
+                          reorderModels(e, from, to);
+                        }}
+                        onDragEnd={() => setDragModel(null)}
+                      >
+                        <span className="sx-provider-modelname">{m.displayName ?? m.model}</span>
                         <span className="sx-provider-chips">
                           {m.contextWindow !== undefined && <span className="sx-provider-chip">{fmtWindow(m.contextWindow)}</span>}
                           {m.supportsImages === true && <span className="sx-provider-chip">{t('Vision', '视觉')}</span>}
@@ -508,8 +552,11 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
           onClose={() => setModelModal(null)}
           onSubmit={submitModel}
         >
-          <ModalField label={t('Model name', '模型名称')}>
-            <input className="sx-setting-input" aria-label={t('Model name', '模型名称')} value={modelForm.model} onChange={(e) => setModelForm({ ...modelForm, model: e.target.value })} spellCheck={false} />
+          <ModalField label={t('Model ID', '模型标识')} hint={t('Sent to the API as the model parameter', '作为 model 参数传给 API')}>
+            <input className="sx-setting-input" aria-label={t('Model ID', '模型标识')} value={modelForm.model} onChange={(e) => setModelForm({ ...modelForm, model: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('Display name', '显示名称')} hint={t('Shown in lists; falls back to the model ID', '列表展示用，缺省显示模型标识')}>
+            <input className="sx-setting-input" aria-label={t('Display name', '显示名称')} value={modelForm.displayName} onChange={(e) => setModelForm({ ...modelForm, displayName: e.target.value })} spellCheck={false} />
           </ModalField>
           <ModalField label={t('Context tokens', '上下文 tokens')}>
             <input className="sx-setting-input" aria-label={t('Context tokens', '上下文 tokens')} value={modelForm.contextWindow} onChange={(e) => setModelForm({ ...modelForm, contextWindow: e.target.value })} spellCheck={false} />
@@ -558,6 +605,11 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
+      )}
+      {toast !== '' && (
+        <div className="sx-toast" role="status">
+          {toast}
+        </div>
       )}
     </div>
   );

@@ -72,7 +72,7 @@ export interface ParsedProviderEntry {
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
-  models: Array<{ model: string; enabled?: boolean; contextWindow?: number; maxOutputTokens?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; supportsVideo?: boolean; tier?: ModelTier; params?: RequestParams }>;
+  models: Array<{ model: string; displayName?: string; enabled?: boolean; contextWindow?: number; maxOutputTokens?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; supportsVideo?: boolean; tier?: ModelTier; params?: RequestParams }>;
   /** 来源级归因（Task 27.5 富化，控制器 T26 评审裁定——全键遮蔽陷阱的观察面）：loadProvidersFull
    *  两级整键遮蔽裁决——项目 providers 键在场（含空数组）即整键遮蔽 → 该面全部条目 origin='project'
    *  （全局条目不可能混列）；否则（含 root:null 仅全局面）origin='global'。单级解析面（parseProvidersAll）
@@ -188,6 +188,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
     });
     for (const item of e.models as unknown[]) {
       let model: string | undefined;
+      let itemDisplay: string | undefined;
       // 模型级启停(2026-11-17 用户裁定「下面的模型支持单独禁用」):缺省启用,false=停用——
       // 条目保留在 models 列表(设置页可见可拨回),choices 不进(/model 选择卡不可见)
       let itemEnabled: boolean | undefined;
@@ -206,8 +207,10 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         continue;
       }
       if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-        const o = item as { model?: unknown; enabled?: unknown; contextWindow?: unknown; maxOutputTokens?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; supportsVideo?: unknown; tier?: unknown; params?: unknown };
+        const o = item as { model?: unknown; displayName?: unknown; enabled?: unknown; contextWindow?: unknown; maxOutputTokens?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; supportsVideo?: unknown; tier?: unknown; params?: unknown };
         model = typeof o.model === 'string' ? o.model.trim() : undefined;
+        // 显示名称(2026-11-17 用户裁定「模型标识是传参,另加显示名称」):仅展示用,不与 model 混
+        itemDisplay = typeof o.displayName === 'string' && o.displayName.trim() !== '' ? o.displayName.trim() : undefined;
         if (o.enabled !== undefined) {
           if (typeof o.enabled === 'boolean') {
             itemEnabled = o.enabled;
@@ -281,6 +284,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         ...(itemImages !== undefined ? { supportsImages: itemImages } : {}),
         ...(itemTier !== undefined ? { tier: itemTier } : {}),
         ...(itemParams !== undefined ? { params: itemParams } : {}),
+        ...(itemDisplay !== undefined ? { displayName: itemDisplay } : {}),
         ...(itemEnabled === false ? { enabled: false } : {}),
         ...(itemMaxOut !== undefined ? { maxOutputTokens: itemMaxOut } : {}),
         ...(itemVideo === true ? { supportsVideo: true } : {}),

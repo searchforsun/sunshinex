@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
@@ -395,7 +396,7 @@ export interface ConfirmDeleteButtonProps {
  *  同一按钮原地两段——首击=武装(变红显「确认删除」并落焦,Enter 同确认),DELETE_CONFIRM_MS
  *  内再击才执行 onConfirm;超时/失焦(点击他处/Tab 离开)自动解除回「删除」。确认前零副作用,
  *  无弹窗无遮罩。aria-label 恒定不变段,accessible name 稳定 */
-export function ConfirmDeleteButton({ ariaLabel, disabled, dataTip, onConfirm }: ConfirmDeleteButtonProps): JSX.Element {
+export function ConfirmDeleteButton({ ariaLabel, disabled, dataTip, onConfirm, icon = false }: ConfirmDeleteButtonProps & { icon?: boolean }): JSX.Element {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const btnRef = useRef<HTMLButtonElement | null>(null);
@@ -414,7 +415,7 @@ export function ConfirmDeleteButton({ ariaLabel, disabled, dataTip, onConfirm }:
     <button
       ref={btnRef}
       type="button"
-      className={armed ? 'sx-del-confirm' : undefined}
+      className={`${armed ? 'sx-del-confirm' : ''}${icon ? ' sx-del-iconbtn' : ''}`.trim() || undefined}
       aria-label={ariaLabel}
       data-tip={dataTip}
       disabled={disabled}
@@ -431,7 +432,7 @@ export function ConfirmDeleteButton({ ariaLabel, disabled, dataTip, onConfirm }:
         if (armed) disarm();
       }}
     >
-      {armed ? t('Confirm delete', '确认删除') : t('Delete', '删除')}
+      {icon ? <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" /> : armed ? t('Confirm delete', '确认删除') : t('Delete', '删除')}
     </button>
   );
 }
