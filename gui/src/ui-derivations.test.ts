@@ -32,8 +32,9 @@ describe('非开发者模式派生默认', () => {
     expect(document.documentElement.dataset.uiMode).toBe('office');
     applyDeveloperMode(true);
     expect(document.documentElement.dataset.uiMode).toBe('code');
-    expect(document.documentElement.dataset.conciseMode).toBeUndefined();
-    expect(document.documentElement.dataset.usageStats).toBeUndefined();
+    // 2026-11-17 缺省反转后:开发者模式缺省=简洁开/用量关(开关与行为一致)
+    expect(document.documentElement.dataset.conciseMode).toBe('1');
+    expect(document.documentElement.dataset.usageStats).toBe('0');
     applyDeveloperMode(false);
     expect(document.documentElement.dataset.conciseMode).toBe('1');
     expect(document.documentElement.dataset.usageStats).toBe('0');

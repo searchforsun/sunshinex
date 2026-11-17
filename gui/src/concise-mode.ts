@@ -5,7 +5,7 @@
  * 跑完向上并入折叠行(纯渲染层识别)。逃逸面(不进折叠层,恒独立行)=子智能体 spawn、智能体
  * 团队/成员/板面工具、交互问询 ask_question、计划提交 exit_plan、工作树 worktree、任务停止——
  * 影响大/有交互/用户核心关注点的行不折叠;其余(查阅/命令/网页/编辑/技能/记忆/待办/等待/思考)
- * 全部并入。结构同 usage-stats.ts:LS+根 data 属性+ui-pref-sync 双写,默认关。
+ * 全部并入。结构同 usage-stats.ts:LS+根 data 属性+ui-pref-sync 双写,默认开(2026-11-17 裁定:与普通态强制值一致)。
  */
 import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
@@ -19,9 +19,10 @@ const listeners = new Set<() => void>();
 
 function readStored(): boolean {
   try {
-    return localStorage.getItem(LS_KEY) === '1';
+    // 2026-11-17 用户裁定「开关开=左侧内容开启」:缺省=开(与普通态强制值一致,开发者模式开关不再反向)
+    return localStorage.getItem(LS_KEY) !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { applyDeveloperMode } from '../developer-mode';
+import { applyUsageStats } from '../usage-stats';
 // mermaid 成功 stub(G14.122 起 zoom 钮受渲染成败门控——成功态才可开 lightbox):
 // initialize/render 落定回 svg,走 onStatus(true) 正链
 vi.mock('mermaid', () => ({
@@ -62,8 +63,14 @@ const hlCounters = highlightMock as unknown as { __calls(): number; __reset(): v
 const sinkRef = { current: null as ChatSink | null };
 /** 2026-11-17 模式派生默认(普通态=办公模式/简洁模式/用量统计关/终端关):本文件断言的是
  *  开发者档转录细节(展开体/折叠行/上下文圆环等),整文件以开发者模式装配,行为回到改造前基线 */
-beforeEach(() => applyDeveloperMode(true));
-afterEach(() => applyDeveloperMode(false));
+beforeEach(() => {
+  applyDeveloperMode(true);
+  applyUsageStats(true); // 2026-11-17 缺省改关:本文件断言步数/tokens 面,显式开启
+});
+afterEach(() => {
+  applyDeveloperMode(false);
+  applyUsageStats(false);
+});
 const DAY1 = new Date(2026, 0, 10, 10).getTime();
 const DAY2 = new Date(2026, 0, 11, 10).getTime();
 

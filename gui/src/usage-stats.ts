@@ -4,7 +4,7 @@
  * ②轮尾操作条步数+tokens ③运行状态行(主对话/子智能体转录页同件)步数+tokens
  * ④会话悬停卡/行 tooltip 轮次步数段。开=缺省(现行为)。
  * 结构同 dark-surfaces.ts:落根 html[data-usage-stats],持久与其余外观偏好同通路
- * (ui-pref-sync 双写);开关默认「开」——存储缺键/非法值一律按显。
+ * (ui-pref-sync 双写);2026-11-17 起默认「关」——与普通态强制值一致(开发者模式开关不反向)。
  */
 import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
@@ -18,9 +18,10 @@ const listeners = new Set<() => void>();
 
 function readStored(): boolean {
   try {
-    return localStorage.getItem(LS_KEY) !== '0';
+    // 2026-11-17 用户裁定「开关开=左侧内容开启」:缺省=关(与普通态强制值一致,开发者模式开关不再反向)
+    return localStorage.getItem(LS_KEY) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 
