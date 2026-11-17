@@ -4337,3 +4337,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .chat-empty-mark { color: var(--fg-secondary); margin-bottom: 2px; }
 .sx-sunxboard-mark { color: var(--fg-secondary); margin-bottom: 6px; }
 .sx-sunx-dialog-mark { color: var(--fg-secondary); flex: none; }
+/* 项目行会话计数(2026-11-17 用户实测「普通项目的数字太深了,参考 sunx 的一样浅」):口径对齐
+   Sunx 组头数量值(.sx-sunx-count:fg 38% 暗淡纯数字、400 字重、无 hover 变色)——原 .ws-count
+   为 fg-secondary(70%)+500 字重,行 hover 浮现时读数比 Sunx 数量值重两档 */
+.ws-count.sx-count { color: color-mix(in srgb, var(--fg) 38%, transparent); font-weight: 400; }
+.ws-count.sx-count:hover { color: color-mix(in srgb, var(--fg) 38%, transparent); }
