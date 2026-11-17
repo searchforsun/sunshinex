@@ -19,6 +19,7 @@ import { applyArtifactCards, readArtifactCards } from '../artifact-cards';
 import { applyConciseMode, readConciseMode } from '../concise-mode';
 import { applyDeveloperMode, readDeveloperMode } from '../developer-mode';
 import { applyChangeCards, readChangeCards } from '../change-cards';
+import { applySessionInfoCards, readSessionInfoCards } from '../session-info-cards';
 import type { Palette } from '../palette';
 
 /** 外观特例行族(SettingsForm 外提,D62 批J):外观/配色/放缩/字体预设/字号/暗色面/用量统计/
@@ -365,6 +366,18 @@ const ChangeCardsRow = (): JSX.Element => (
     apply={applyChangeCards}
   />
 );
+
+/** 会话信息卡显隐行(2026-11-17 用户裁定「会话信息卡,也在普通模式下不显示,开发者默认开,同样放到 diff 下」):
+ *  关=侧栏会话行悬浮信息卡不渲染 */
+const SessionInfoCardsRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Session info card', '会话信息卡')}
+    desc={t('Show the hover card with the session path, branch, turns, and creation time in the sidebar.', '在侧栏会话行悬停时展示路径、分支、轮次与建档时刻卡片。')}
+    aria="session info card"
+    read={readSessionInfoCards}
+    apply={applySessionInfoCards}
+  />
+);
 /** 开发者模式行(2026-11-17 用户裁定「一个开关控制」):关=C 端简洁界面
  *  (隐藏终端/高级设置/工程详情类入口);开=完整工程能力。持久经 developer-mode.ts */
 const DeveloperModeRow = (): JSX.Element => (
@@ -442,6 +455,7 @@ const CodeFontRow = (): JSX.Element => (
 export {
   ArtifactCardsRow,
   ChangeCardsRow,
+  SessionInfoCardsRow,
   CodeFontRow,
   ConciseModeRow,
   DarkBubblesRow,

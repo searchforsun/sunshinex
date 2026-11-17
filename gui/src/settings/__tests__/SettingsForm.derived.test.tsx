@@ -29,7 +29,7 @@ describe('通用页外观行的模式分层', () => {
     applyDeveloperMode(false);
     render(<SettingsForm conn={connOf(view)} root="" pane={PANE} />);
     expect(await screen.findByText('Developer mode')).toBeDefined();
-    for (const label of ['Interface mode', 'Concise mode', 'Usage stats', 'Change cards', 'Terminal']) expect(screen.queryByText(label)).toBeNull();
+    for (const label of ['Interface mode', 'Concise mode', 'Usage stats', 'Change cards', 'Session info card', 'Terminal']) expect(screen.queryByText(label)).toBeNull();
     expect(screen.getByText('Dark bubbles')).toBeDefined(); // 纯外观行仍在
   });
 
@@ -42,5 +42,7 @@ describe('通用页外观行的模式分层', () => {
     expect(labels.indexOf('Terminal')).toBe(labels.indexOf('Concise mode') + 1);
     // 2026-11-17 用户裁定「产物卡下面显示一个改动卡」:顺序钉住
     expect(labels.indexOf('Change cards')).toBe(labels.indexOf('Artifact cards') + 1);
+    // 2026-11-17 用户裁定「同样放到 diff 下」:会话信息卡紧随改动卡
+    expect(labels.indexOf('Session info card')).toBe(labels.indexOf('Change cards') + 1);
   });
 });

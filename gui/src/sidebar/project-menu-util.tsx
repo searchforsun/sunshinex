@@ -3,6 +3,7 @@ import type { WorkspaceRow } from '../connection';
 import { loadStoredMap, pathBasename, persistCappedMap, relTime, shortLocalTime } from '../ui-util';
 import { t } from '../i18n';
 import { readUsageStats } from '../usage-stats';
+import { useSessionInfoCards } from '../session-info-cards';
 import { zoomScale } from '../ui-zoom';
 import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, ListFilter, Pin } from 'lucide-react';
 
@@ -327,6 +328,8 @@ export function SessionRow(props: {
     ) : null;
   // 悬浮卡显隐(2026-10-26 四段卡替代文本 tip):enter 锚 summary 量位,leave/行点击即收;
   // 2026-11-11 用户实测「鼠标无法停留」:行 leave 改 140ms 延时收,卡 enter 取消、卡 leave 即收
+  /** 会话信息卡显隐(2026-11-17 用户裁定:普通态不显示,开发者模式缺省开) */
+  const infoCards = useSessionInfoCards();
   const [hover, setHover] = useState<{ top: number; height: number; menuRight: number } | null>(null);
   const hoverTimer = useRef<number | undefined>(undefined);
   const hoverDelayClose = (): void => {
@@ -368,7 +371,7 @@ export function SessionRow(props: {
       >
         {props.label}
       </span>
-      {hover !== null && (
+      {infoCards && hover !== null && (
         <SessionHoverCard
           label={props.label}
           info={props.info}
