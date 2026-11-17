@@ -61,6 +61,9 @@ interface LoadedProviders {
 export interface ParsedProviderEntry {
   name: string;
   baseUrl: string;
+  /** 源启停（2026-11-17 用户裁定「provider 加开关,默认开」）：absent/true=启用,false=停用——
+   *  停用源条目保留（设置页可见可拨回）但其 models 不进 choices（/model 选择卡不可见） */
+  enabled?: boolean;
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
@@ -115,7 +118,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       warnings.push(`settings.json providers 条目须为对象（${origin}），已跳过`);
       continue;
     }
-    const e = entry as { name?: unknown; baseUrl?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; models?: unknown };
+    const e = entry as { name?: unknown; baseUrl?: unknown; enabled?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; models?: unknown };
     const name = typeof e.name === 'string' ? e.name.trim() : '';
     if (name === '') {
       warnings.push(`settings.json providers 条目缺 name（${origin}），已跳过`);
@@ -129,6 +132,15 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
     if (!Array.isArray(e.models) || e.models.length === 0) {
       warnings.push(`settings.json providers.${name} models 须为非空数组（${origin}），该源已跳过`);
       continue;
+    }
+    // 源启停（默认开）：非布尔告警忽略按启用处理（标注值坏不连坐源本体，supportsImages 同纪律）
+    let providerEnabled: boolean | undefined;
+    if (e.enabled !== undefined) {
+      if (typeof e.enabled === 'boolean') {
+        providerEnabled = e.enabled;
+      } else {
+        warnings.push(`settings.json providers.${name} enabled 须为布尔（${origin}），已忽略`);
+      }
     }
     // 源级缺省（该源各模型的回退值）：非法值告警忽略
     let providerWindow: number | undefined;
@@ -162,6 +174,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       name,
       baseUrl,
       models,
+      ...(providerEnabled === false ? { enabled: false } : {}),
       ...(providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
       ...(providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
       ...(providerImages !== undefined ? { supportsImages: providerImages } : {}),
@@ -224,6 +237,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         ...(itemImages !== undefined ? { supportsImages: itemImages } : {}),
         ...(itemTier !== undefined ? { tier: itemTier } : {}),
       });
+      if (providerEnabled === false) continue; // 停用源:models 列表保真(设置页渲染),choices 不进(/model 不可见)
       choices.push({
         id,
         provider: name,

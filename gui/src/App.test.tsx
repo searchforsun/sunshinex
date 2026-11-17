@@ -2034,8 +2034,10 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     await waitFor(() => expect(conn.memoryStatsCalls).toEqual(['/w/root-a']));
     await waitFor(() => expect(screen.getByText(/12 memories/)).toBeDefined());
     expect(screen.getByText(/last write/)).toBeDefined();
-    // 面板行照常(select 触发钮显当值 on + 保存)
-    expect(screen.getByLabelText('autoMemory').textContent).toContain('on');
+    // 面板行照常(2026-11-17 开关化:autoMemory Switch 显当值 on——aria-checked + on 类)
+    const autoMem = screen.getByLabelText('autoMemory');
+    expect(autoMem.getAttribute('aria-checked')).toBe('true');
+    expect(autoMem.className).toContain('on');
     unmount();
   });
 

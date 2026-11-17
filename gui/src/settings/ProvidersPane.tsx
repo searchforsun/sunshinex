@@ -196,6 +196,24 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       });
   };
 
+  /** 源启停翻转(2026-11-17 用户裁定「provider 右侧加开关,默认开」):saving 门 → op setEnabled →
+   *  成功重拉(config-changed 双保险);choices 即刻生效=停用源模型退出 /model 选择卡 */
+  const runSetEnabled = (name: string, enabled: boolean): void => {
+    if (saving) return;
+    setSaving(true);
+    setActionError('');
+    conn
+      .putProviderOp(opInput({ op: 'setEnabled', name, enabled }))
+      .then(() => {
+        setSaving(false);
+        load();
+      })
+      .catch((err: unknown) => {
+        setSaving(false);
+        setActionError(errText(err));
+      });
+  };
+
   /** 抽屉打开(添加=空表单单空行;编辑=entries 播种——baseUrl/models 回显,apiKey 恒空串不回显) */
   const openDrawer = (e: ProviderEntry | null): void => {
     setFormError('');
@@ -350,6 +368,8 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   }
                   title={e.name}
                   subtitle={e.baseUrl}
+                  enabled={e.enabled !== false}
+                  onToggle={() => runSetEnabled(e.name, e.enabled === false)}
                   chips={
                     <>
                       {e.models.map((m) => (

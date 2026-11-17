@@ -44,7 +44,7 @@ import { listSkills } from '../catalog/skills';
 import { removeLearnedSkill } from '../harness/skills';
 import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
 // Task 16 providers/permissions 写面：op 端点收口 catalog 单点（读面 GET /settings 同源 listProviders）
-import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../catalog/providers';
+import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setEnabledProvider, setProviderApiKey, upsertProvider } from '../catalog/providers';
 import type { ProviderModelInput, ProviderUpsertPatch } from '../catalog/providers';
 import { addPermission, removePermission } from '../catalog/permissions';
 import { CatalogWriteError, writeJsonAtomic } from '../catalog/io';
@@ -582,11 +582,11 @@ export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingM
   }
   const body = parsed.body as {
     op?: unknown; scope?: unknown; root?: unknown; name?: unknown;
-    provider?: unknown; model?: unknown; entry?: unknown; direction?: unknown; apiKey?: unknown;
+    provider?: unknown; model?: unknown; entry?: unknown; direction?: unknown; apiKey?: unknown; enabled?: unknown;
   } | null;
   const op = body?.op;
-  if (op !== 'add' && op !== 'update' && op !== 'remove' && op !== 'modelAdd' && op !== 'modelRemove' && op !== 'modelMove' && op !== 'setKey') {
-    io.send(res, 400, { error: 'op must be "add" | "update" | "remove" | "modelAdd" | "modelRemove" | "modelMove" | "setKey"' });
+  if (op !== 'add' && op !== 'update' && op !== 'remove' && op !== 'modelAdd' && op !== 'modelRemove' && op !== 'modelMove' && op !== 'setKey' && op !== 'setEnabled') {
+    io.send(res, 400, { error: 'op must be "add" | "update" | "remove" | "modelAdd" | "modelRemove" | "modelMove" | "setKey" | "setEnabled"' });
     return;
   }
   const scope = body?.scope;
@@ -628,6 +628,9 @@ export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingM
   } else if (op === 'setKey' && typeof body?.apiKey !== 'string') {
     io.send(res, 400, { error: 'apiKey must be a string (empty string clears the slot)' });
     return;
+  } else if (op === 'setEnabled' && typeof body?.enabled !== 'boolean') {
+    io.send(res, 400, { error: 'enabled must be a boolean' });
+    return;
   }
   // global 恒忽略 root（定位面——与其余配置写面同裁定）；project 必有（上方守卫）
   const root = scope === 'project' ? path.resolve(rootRaw as string) : null;
@@ -639,6 +642,9 @@ export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingM
         break;
       case 'remove':
         removeProvider(root, scope, name);
+        break;
+      case 'setEnabled':
+        setEnabledProvider(root, scope, name, body?.enabled as boolean);
         break;
       case 'modelAdd':
         modelAdd(root, scope, name, body?.entry as ProviderModelInput);

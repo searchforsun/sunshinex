@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { listProviders, upsertProvider, removeProvider, modelAdd, modelRemove, modelMove, setProviderApiKey } from './providers';
+import { listProviders, upsertProvider, removeProvider, modelAdd, modelRemove, modelMove, setEnabledProvider, setProviderApiKey } from './providers';
 import { parseProvidersSpec } from '../config/providers';
 import { loadGlobalSettings, loadProjectSettings } from '../config/settings';
 import { CatalogWriteError } from './io';
@@ -326,5 +326,35 @@ test('global scope 写面：upsert/remove 落全局 settings；project 写 root=
     removeProvider(null, 'global', 'g');
     assert.deepEqual(listProviders(null).providers, [], '移除后全局面为空');
     assert.ok(fs.existsSync(gFile), '全局文件由写面原子创建');
+  });
+});
+
+/** 源启停(2026-11-17 用户裁定「provider 右侧加开关,默认开」):setEnabledProvider 翻转写 enabled:false /
+    删键归默认;停用源条目保留(设置页可见)但 models 不进 choices(/model 不可见) */
+test('setEnabledProvider:翻转写停/删键归默认;停用源 choices 剔除而条目保留', () => {
+  withHome((_fakeHome, proj) => {
+    upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1', models: [{ model: 'm1' }] });
+    assert.equal(listProviders(proj).choices.some((c) => c.id === 'p/m1'), true, '启用(默认)模型在 choices');
+
+    setEnabledProvider(proj, 'project', 'p', false);
+    const off = listProviders(proj);
+    assert.equal(off.choices.some((c) => c.id === 'p/m1'), false, '停用源模型退出 choices(/model 不可见)');
+    const entry = off.providers.find((x) => x.name === 'p');
+    assert.equal(entry?.enabled, false, '停用态随条目上报(设置页开关显 off)');
+    assert.equal(off.providers.length, 1, '停用源条目保留(设置页可见可拨回)');
+    const doc = JSON.parse(fs.readFileSync(loadProjectSettings(proj), 'utf8'));
+    assert.equal(doc.providers[0].enabled, false, '盘上写 enabled:false');
+
+    setEnabledProvider(proj, 'project', 'p', true);
+    const on = listProviders(proj);
+    assert.equal(on.choices.some((c) => c.id === 'p/m1'), true, '重启用模型回归 choices');
+    const doc2 = JSON.parse(fs.readFileSync(loadProjectSettings(proj), 'utf8'));
+    assert.equal('enabled' in doc2.providers[0], false, '启用=删键归默认(absent 即开,文件最小化)');
+
+    assert.throws(
+      () => setEnabledProvider(proj, 'project', 'ghost', true),
+      (e: unknown) => e instanceof CatalogWriteError && e.code === 'INVALID',
+      '源不在 → INVALID',
+    );
   });
 });

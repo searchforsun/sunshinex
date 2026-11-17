@@ -71,6 +71,9 @@ export interface ProviderModelInput {
 export interface ProviderUpsertPatch {
   name?: string;
   baseUrl?: string;
+  /** 源启停（2026-11-17 用户裁定「provider 加开关,默认开」）：true=启用（写面删键归默认）、
+   *  false=停用（写 enabled:false）；缺席不动。解析面语义：absent/true=启用,false=停用不进 choices */
+  enabled?: boolean;
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
@@ -225,9 +228,13 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
     if (patchName !== undefined && patchName !== label) {
       throw new CatalogWriteError('INVALID', `providers 新建的 name 身份来自 name 参数，patch.name=${JSON.stringify(patchName)} 与之不符`);
     }
+    if (patch.enabled !== undefined && typeof patch.enabled !== 'boolean') {
+      throw new CatalogWriteError('INVALID', `providers.${label} enabled 须为布尔，收到 ${JSON.stringify(patch.enabled)}`);
+    }
     arr.push({
       name: label,
       baseUrl,
+      ...(patch.enabled === false ? { enabled: false } : {}),
       ...(patch.contextWindow !== undefined ? { contextWindow: patch.contextWindow } : {}),
       ...(patch.reasoningEffort !== undefined ? { reasoningEffort: patch.reasoningEffort } : {}),
       ...(patch.supportsImages !== undefined ? { supportsImages: patch.supportsImages } : {}),
@@ -246,6 +253,13 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
     next['name'] = patchName;
   }
   if (baseUrl !== undefined) next['baseUrl'] = baseUrl;
+  if (patch.enabled !== undefined) {
+    if (typeof patch.enabled !== 'boolean') {
+      throw new CatalogWriteError('INVALID', `providers.${label} enabled 须为布尔，收到 ${JSON.stringify(patch.enabled)}`);
+    }
+    if (patch.enabled) delete next['enabled']; // 启用=删键归默认(absent 即开,文件最小化)
+    else next['enabled'] = false;
+  }
   if (patch.contextWindow !== undefined) next['contextWindow'] = patch.contextWindow;
   if (patch.reasoningEffort !== undefined) next['reasoningEffort'] = patch.reasoningEffort;
   if (patch.supportsImages !== undefined) next['supportsImages'] = patch.supportsImages;
@@ -272,6 +286,25 @@ export function removeProvider(root: string | null, scope: Scope, name: string):
   if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
   arr.splice(idx, 1);
   finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
+}
+
+/** 源启停翻转（2026-11-17 用户裁定「provider 右侧加开关,默认开」）：enabled=true 删键归默认
+ *  （absent 即开）、false 写 enabled:false；源不在 → INVALID（幂等收口属调用面裁量） */
+export function setEnabledProvider(root: string | null, scope: Scope, name: string, enabled: boolean): void {
+  const { file, read } = readWriteDoc(root, scope);
+  const label = providerLabel(name);
+  const doc = read.doc;
+  const arr = providersArrayOf(doc);
+  const idx = entryIndexByName(arr, label);
+  if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
+  const cur = arr[idx] as Record<string, unknown>;
+  const next = { ...cur };
+  if (enabled) delete next['enabled'];
+  else next['enabled'] = false;
+  if (JSON.stringify(cur) !== JSON.stringify(next)) {
+    arr[idx] = next;
+    finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
+  }
 }
 
 /** 追加一个模型到指定源：同源同模型名已存在（字符串速记/对象两形态都算同名）→ INVALID（幂等拒绝）；

@@ -3,7 +3,7 @@ import type { SettingsKeyRow, SettingsView } from '../connection';
 import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
 import type { SelectOption } from './controls';
-import { EmptyState, SearchBar } from './components';
+import { EmptyState, SearchBar, Switch } from './components';
 import { CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
@@ -31,8 +31,9 @@ import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
 
 export interface SettingsFieldDef {
   readonly key: string;
-  /** text/number=自由输入;select=闭集弹层;combo=自由文本+动态建议;path=文本+右侧选择钮(pick 定目录/文件) */
-  readonly control: 'text' | 'number' | 'select' | 'combo' | 'path';
+  /** text/number=自由输入;select=闭集弹层;combo=自由文本+动态建议;path=文本+右侧选择钮(pick 定目录/文件);
+   *  switch=布尔开关(2026-11-17 用户裁定「有开关的下拉都换开关,默认值开或关」——未设置显 SELECT_DEFAULT_VALUES 默认档,拨动写 on/off) */
+  readonly control: 'text' | 'number' | 'select' | 'combo' | 'path' | 'switch';
   /** path 控件选择对象:dir=目录(桌面壳原生对话框,浏览器态回落应用内目录浏览)/file=文件(仅桌面壳) */
   readonly pick?: 'dir' | 'file';
   /** select 选项集;combo 建议集。函数形 = 动态源(入参 models=providers 现配模型去重集) */
@@ -130,12 +131,6 @@ const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: 
   websearchEndpoint: { label: { en: 'Search endpoint', zh: '搜索端点' }, en: 'Web search endpoint', zh: '网页搜索端点' },
 };
 
-/** on/off 二态闭集(on/off 字符串键,daemon 口径) */
-const ON_OFF: readonly SettingsOption[] = [
-  { v: 'on', l: 'on', lz: '开' },
-  { v: 'off', l: 'off', lz: '关' },
-];
-
 /** 行过滤匹配(Task 25):键名/双语标签/双语说明四元大小写不敏感包含——键名、本地化标签、
  *  说明句任一命中即留(空查询=不限;中英混检双侧可达:中文页键 'model'、英文页键 '模型' 均命中) */
 const rowMatches = (fd: SettingsFieldDef, q: string): boolean => {
@@ -164,6 +159,8 @@ const num = (key: string, limits?: { min?: number; max?: number; step?: number; 
 /** 闭集选项(lz=中文标签,渲染期 t 求值——选项标签曾于模块加载期 t() 冻结,切中文后仍显英文) */
 export type SettingsOption = SelectOption & { readonly lz?: string };
 const sel = (key: string, options: readonly SettingsOption[]): SettingsFieldDef => ({ key, control: 'select', options });
+/** 布尔开关行(2026-11-17 用户裁定):on/off 二态键统一换 Switch——未设置按 SELECT_DEFAULT_VALUES 默认档显态 */
+const sw = (key: string): SettingsFieldDef => ({ key, control: 'switch' });
 /* 未设置显默认值(2026-10-30 用户裁定;占位=默认选项的本地化标签,渲染期 t 求值随语言切换;
  *  存值仍=清空删键):键→默认选项的 value(在 options 集里按值找回双语标签) */
 const SELECT_DEFAULT_VALUES: Record<string, string> = {
@@ -191,7 +188,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
       { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, paletteRow: true, fontRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
-      ]), sel('terminalDock', ON_OFF)] },
+      ]), sw('terminalDock')] },
       {
         title: { en: 'Paths', zh: '路径' },
         fields: [dirPath('projectsDir'), dirPath('sunxDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')], // 语义键 sunxDir（SUNSHINEX_SUNX_DIR 写槽）：容器切换对新建 Sunx 生效，既有域不迁移
@@ -204,7 +201,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     title: { en: 'Context & limits', zh: '上下文与限额' },
     groups: [
       { title: { en: 'Context window', zh: '上下文窗口' }, fields: [num('contextWindow'), num('maxTokens'), num('compactionThreshold', { min: 10, max: 95, step: 5, placeholder: '80' })] },
-      { title: { en: 'Subagents & team', zh: '子智能体与团队' }, fields: [num('subagentTokenCap'), num('teamTokenCap'), sel('agentTeams', ON_OFF)] },
+      { title: { en: 'Subagents & team', zh: '子智能体与团队' }, fields: [num('subagentTokenCap'), num('teamTokenCap'), sw('agentTeams')] },
       { title: { en: 'Steps & loops', zh: '步数与循环' }, fields: [num('maxSteps'), num('maxLoopIterations'), num('maxGraphNodes')] },
       {
         title: { en: 'Safety fences', zh: '安全围栏' },
@@ -214,7 +211,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
             { v: 'sensitive', l: 'sensitive', lz: '敏感文件' },
             { v: 'all', l: 'all', lz: '全部文件' },
           ]),
-          sel('sandbox', ON_OFF),
+          sw('sandbox'),
           sel('isolation', [
             { v: 'auto', l: 'auto', lz: '自动' },
             { v: 'landlock', l: 'Landlock' },
@@ -230,7 +227,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     title: { en: 'Memory', zh: '记忆' },
     memoryOverview: true,
     groups: [
-      { title: { en: 'Pipeline switches', zh: '管线开关' }, fields: [sel('autoMemory', ON_OFF), sel('learnedSkills', ON_OFF)] },
+      { title: { en: 'Pipeline switches', zh: '管线开关' }, fields: [sw('autoMemory'), sw('learnedSkills')] },
       { title: { en: 'Capacity & triggers', zh: '容量与触发' }, fields: [num('learnedSkillLimit'), num('memoryIdleKickMs')] },
       { title: { en: 'Turn digests', zh: '轮次摘要' }, fields: [num('stepDigestMaxSteps'), num('stepDigestItemChars'), num('stepDigestTotalChars')] },
     ],
@@ -427,6 +424,23 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
             setValues((vals) => ({ ...vals, [fd.key]: v }));
             persistField(fd, v); // 换项即存(自动生效轮)
           }}
+        />
+      );
+    }
+    if (fd.control === 'switch') {
+      // 未设置=按默认档显态(SELECT_DEFAULT_VALUES 单点;拨动写显式 on/off,daemon 口径)
+      const on = value === '' ? SELECT_DEFAULT_VALUES[fd.key] !== 'off' : value === 'on';
+      return (
+        <Switch
+          on={on}
+          onToggle={() => {
+            const v = on ? 'off' : 'on';
+            setValues((vals) => ({ ...vals, [fd.key]: v }));
+            persistField(fd, v); // 拨动即存(自动生效轮)
+          }}
+          ariaLabel={fd.key}
+          disabled={disabled}
+          title={title}
         />
       );
     }

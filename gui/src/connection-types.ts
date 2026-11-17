@@ -331,6 +331,8 @@ export interface ProviderEntryModel {
 export interface ProviderEntry {
   name: string;
   baseUrl: string;
+  /** 源启停（2026-11-17 用户裁定）：absent/true=启用,false=停用——停用源 models 不进 choices（/model 不可见） */
+  enabled?: boolean;
   contextWindow?: number;
   reasoningEffort?: string;
   supportsImages?: boolean;
@@ -593,7 +595,7 @@ export interface PermissionOpInput {
  *  修复波 2026-10-28）：400=纯请求形状、409=内容/写面错误（COMMENTS → {error,
  *  hint:'use raw editor'}；INVALID → {error} 无 hint）——均以 HTTP 失败抛错 */
 export interface ProviderOpInput {
-  op: 'add' | 'update' | 'remove' | 'modelAdd' | 'modelRemove' | 'modelMove' | 'setKey';
+  op: 'add' | 'update' | 'remove' | 'modelAdd' | 'modelRemove' | 'modelMove' | 'setKey' | 'setEnabled';
   scope: 'project' | 'global';
   /** scope='project' 必带（服务端 400 守卫）；'global' 缺省省参 */
   root?: string;
@@ -608,6 +610,8 @@ export interface ProviderOpInput {
   direction?: 'up' | 'down';
   /** op:'setKey' 键值（空串清槽；GUI 侧仅用户当次键入值——零回显零播种） */
   apiKey?: string;
+  /** op:'setEnabled' 源启停（2026-11-17 用户裁定「provider 右侧加开关,默认开」）：true=启用（删键归默认）/false=停用 */
+  enabled?: boolean;
 }
 
 /** GET /settings/plugins 行（2026-10-26 插件面，对齐 daemon handlePluginsGet 载荷 = EffectivePlugin
