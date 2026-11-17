@@ -21,6 +21,9 @@ export type PendingCard =
  *  （Chat.test 播种/挂起卡/事件组为锚）。 */
 export function useSessionEvents(deps: {
   conn: Connection;
+  /** 前台态(2026-11-18 热切换 keep-alive):false=隐藏的驻留会话——不注册 sink、不播种;变 true
+   *  时(切回)才注册并轻量重播种(seedSig 同判免整替,零重渲) */
+  active?: boolean;
   sessionId: string;
   /** App 持有的转投注册面(见 ChatSink) */
   sinkRef: MutableRefObject<ChatSink | null>;
@@ -64,6 +67,7 @@ export function useSessionEvents(deps: {
 } {
   const {
     conn,
+    active = true,
     sessionId,
     sinkRef,
     chat,
@@ -274,6 +278,9 @@ export function useSessionEvents(deps: {
   );
 
   useEffect(() => {
+    // 2026-11-18 keep-alive:隐藏驻留会话不注册 sink、不播种(切回=显示切换,DOM/滚动位/刻度条
+    // 原样);active 翻 true 时本 effect 重跑→注册+重播种(sig 同判免整替,本地态不重建)
+    if (!active) return;
     // G14.154 辅助对话首问:挂载注入即落输入框(仅一次;2026-11-07 用户裁定「肯定是追加」——
     // 运行中会话再收圈选也应接续既有输入,改追加接续,整替撤)
     if (initialInsert !== undefined && initialInsert !== '') {
@@ -339,13 +346,14 @@ export function useSessionEvents(deps: {
     sinkRef.current = sink;
     reseed();
     return () => {
-      sinkRef.current = null;
+      // 身份守卫(keep-alive 两实例并存):只清自己注册的 sink——切走瞬间新旧交替不误清新前台
+      if (sinkRef.current === sink) sinkRef.current = null;
       flushScrollMem(); // G14.212 滚动位存档落盘(节流尾随写外的兜底)
       pendingRef.current = []; // unmount 清缓冲(组件销毁,无跨会话残留)
       seedGenRef.current++; // G6 终审首优先(G7 落地):在途快照应答的 then 回调经 gen 失配早退——
       // 防 backHome→重开窗口内陈旧会话快照经 onSeeded 污染 App 态(team/board——旧板落新壳)
     };
-  }, [sinkRef, reseed, addCard]);
+  }, [sinkRef, reseed, addCard, active]);
 
   /** 2026-10-26 三期历史链(先上车再补票):尾窗播种落定即自动分段补更老——一页一 effect 轮
    *  (页成 history 换新重触发),失败退避三试置 failed(指示器可点重试重启);Chat 按 sessionId

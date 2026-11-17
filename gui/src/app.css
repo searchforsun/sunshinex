@@ -3140,6 +3140,10 @@ input.sx-setting-input { width: 100%; }
 
 /* ===== 2026-10-28 用户裁定:主对话与侧栏上缘极细边框(与窗顶分隔;内容/导航条不贴窗顶) ===== */
 .sx-main { border-top: 1px solid var(--border-subtle); }
+/* 2026-11-18 热切换 keep-alive 座位:前台座 display:contents 保持 .sx-main 直子(flex)布局不变;
+   驻留座 display:none——DOM/滚动位/刻度条保留但零布局零绘制,切回仅换类名=零重挂无感 */
+.sx-main > .sx-chat-seat { display: contents; }
+.sx-main > .sx-chat-seat.sx-chat-cache { display: none; }
 .sx-sidebar { border-top: 1px solid var(--border-subtle); }
 
 /* ===== 2026-10-28 用户裁定续:①顶栏/页签条下缘分割线(上邻区隔,落到用户画线位) ②主对话滚动

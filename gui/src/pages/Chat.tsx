@@ -86,7 +86,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
+export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -227,6 +227,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
    *  投影态与队列/pill 设定器注入(G6 工具 input 旁路暂存 P11 T7 退役);行为零变化(Chat.test 为锚) */
   const { cards, seeding, sendApproval, sendAsk, sendPlanApproval } = useSessionEvents({
     conn,
+    active,
     sessionId,
     sinkRef,
     chat,
@@ -595,6 +596,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       <TurnLatestContext.Provider value={turnLatestByPath}>
       <TurnUndoContext.Provider value={turnUndoApi}>
 
+      {/* 2026-11-18 keep-alive:隐藏驻留座只保转录 DOM——顶栏/输入卡不渲染(免重复控件同时省白渲);
+          条件位在静态子数组里占槽,转录区索引不变=DOM 原样保留 */}
+      {active ? (
       <ChatTopbar
         fixedTitle={fixedTitle}
         titleEditing={titleEditing}
@@ -627,6 +631,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onToggleMenu={onToggleMenu}
         nav={nav}
       />
+      ) : null}
 
       <ChatTranscript
         history={chat.history}
@@ -687,6 +692,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       {/* G12 统一输入卡:与欢迎页同一份 ComposerCard(唯一差异:无项目选择条,.composer 只提供
        *  会话语境限宽贴底)。textarea 自增高 rows 随换行 1-6 派生;Enter 提交 / Shift+Enter 换行;
        *  发送/停止共用 32px 圆形实心钮(↑/■,aria-label send/stop 保查询性) */}
+      {active ? (
       <ChatComposerDock
         dockRef={dockRef}
         conn={conn}
@@ -770,10 +776,11 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         interrupt={interrupt}
         awaitModelSince={awaitModelSince}
       />
+      ) : null}
       {/* 2026-11-10 终端下栏改版(用户六条):主对话对等区(.sx-main 直子,非 chat-dock 内——主对话滚条
          bottom 让位不再盖进下栏)——分割线+拖动条(侧栏分割条同款横置)+页签条(侧栏页签同形条形)。
          标签 × 走 App 既有 kill 链,面板 × 只收显不 kill——重开经 ptyIdFor 同 uid 重连 replay 还原 */}
-      {terminalDockEnabled && dockOpen && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined && (
+      {active && terminalDockEnabled && dockOpen && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined && (
         <TerminalDock
           conn={conn}
           sessionId={sessionId}

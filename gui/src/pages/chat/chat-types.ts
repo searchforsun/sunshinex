@@ -44,6 +44,9 @@ export interface RewindOps {
 
 export interface ChatProps {
   conn: Connection;
+  /** 前台态(2026-11-18 热切换无感 keep-alive):false=本 Chat 是被 App 驻留的上一会话(display:none
+   *  隐藏),不注册事件 sink、不重播种——切回只是显示切换,DOM/滚动位/刻度条原样。缺省 true */
+  active?: boolean;
   /** 当前会话(:id 动作与播种的维) */
   sessionId: string;
   /** 连接状态机(App 壳单连接透传;composer 门:非 open 禁用) */

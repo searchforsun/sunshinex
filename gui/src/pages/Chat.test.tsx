@@ -1017,6 +1017,26 @@ describe('会话流尾部窗口(D48)', () => {
 
 
 
+describe('热切换 keep-alive(2026-11-18 用户裁定「热切换必须无感」)', () => {
+  it('active 翻转:转录 DOM 原样驻留(节点同实例),顶栏/输入卡仅前台渲染', async () => {
+    const many = Array.from({ length: 200 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user' as const, md: `m${i + 1}` }));
+    const view = render(<Chat conn={connOf(many)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} active />);
+    await flushed();
+    expect((screen.getByLabelText('message input') as HTMLTextAreaElement).disabled).toBe(false);
+    const row = document.querySelector('.entry-user')!;
+    expect(row).not.toBeNull();
+    view.rerender(<Chat conn={connOf(many)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} active={false} />);
+    // 驻留态:输入卡/顶栏不渲染(免隐藏树里的重复控件与白渲),转录 DOM 原样保留
+    expect(screen.queryByLabelText('message input')).toBeNull();
+    expect(document.querySelector('.chat-title-text')).toBeNull();
+    expect(document.querySelector('.entry-user')).toBe(row); // 同一 DOM 节点实例=零重挂
+    view.rerender(<Chat conn={connOf(many)} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} active />);
+    expect(screen.getByLabelText('message input')).toBeDefined(); // 切回:输入卡复原
+    expect(document.querySelector('.entry-user')).toBe(row); // 转录仍未重挂
+    view.unmount();
+  });
+});
+
 describe('G14.31 轮折叠与辅助对话全新视图', () => {
   it('Worked 行点击折叠/展开该轮工具行;chevron 元素恒在(2026-10-24 裁定:完成即自动折叠——初始收合态)', async () => {
     mountChat([]);

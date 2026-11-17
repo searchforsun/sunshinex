@@ -107,6 +107,11 @@ function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...a
 const ProjectMenuMemo = memo(ProjectMenu);
 const TabStripMemo = memo(TabStrip);
 const ChatMemo = memo(Chat);
+/** 驻留座最小道具(2026-11-18 热切换 keep-alive):隐藏实例只保 DOM/滚动位——回调全缺省(不注册
+ *  sink/不播种),board/teams 用模块级空常量(每次新建对象会击穿 ChatMemo 比较=隐藏树白渲) */
+const EMPTY_SEAT_BOARD = EMPTY_PROJECTION().board;
+const EMPTY_SEAT_TEAMS = EMPTY_PROJECTION().teams;
+const noopSeat = (): void => undefined;
 
 /** 2026-10-27 欢迎页全局草稿座:无会话(欢迎页)时侧栏标签落此键——临时会话思想(2026-10-29 定版):发出去(欢迎页建席)整座继承到新会话并重获空座;开既有会话零交集 */
 
@@ -213,6 +218,12 @@ function AppShell(): JSX.Element {
   }, [openSessionId, openJournalId]);
   /** Chat 事件转投面:Chat 装配期注册(卸载注销)——onEvent/onReset 经此投递 */
   const chatSinkRef = useRef<ChatSink | null>(null);
+  /** 热切换 keep-alive 驻留座(2026-11-18 用户裁定「热切换必须无感:内容与刻度条一次就位,都在
+   *  内存里」):切走时把上一会话的 Chat 留在 DOM(display:none),切回=显示切换——转录 DOM/滚动位/
+   *  刻度条原样,零重挂零分批。只驻留最近一个;再切走/回欢迎页即替换释放(内存有界)。
+   *  行内语义=React 19.2 <Activity> 的 React 18 手写等价:隐藏实例不注册事件 sink、不播种
+   *  (useSessionEvents active 门),切回时轻量重播种(seedSig 同判免整替=零重渲) */
+  const [cachedSeat, setCachedSeat] = useState<{ id: string; journalId: string; root: string; kind: string | undefined } | null>(null);
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
   /** side 父会话表(sideId → 主会话 id;2026-11-07 用户裁定「辅助投影挂到主对话下」):板/委派
@@ -434,6 +445,12 @@ function AppShell(): JSX.Element {
         }
       }
     }
+    // 热切换 keep-alive:切走前把当前会话座登记为驻留座(状态即将被新会话覆写,须先取)。
+    // page==='chat' 门:New chat 只切页不清会话态——从欢迎页开新会话时旧 Chat 已不在显示,
+    // 不应凭空驻留(否则白建一棵隐藏树,且测试的「无 s1 条目串扰」契约被打破)
+    if (page === 'chat' && sessionId !== openSessionId && openSessionId !== '') {
+      setCachedSeat({ id: openSessionId, journalId: openJournalId, root: openRoot, kind: openKind });
+    }
     sessionRef.current = sessionId;
     const jid = journalId !== undefined && journalId !== '' ? journalId : sessionId;
     // 显式标记未读压制旗清理(2026-11-07):用户再次进入该会话=openSession,蓝点生命周期到此为止
@@ -497,6 +514,7 @@ function AppShell(): JSX.Element {
 
   /** 返回欢迎态的壳层清场(记录面分离:backHome 记史,导航回放经 applyNav 复用本函数) */
   const leaveToWelcome = useStableCallback((): void => {
+    setCachedSeat(null); // 回欢迎页释放驻留 DOM(内存有界;再开走 chatMem 快路径)
     sessionRef.current = '';
     setOpenSessionId('');
     setOpenJournalId('');
@@ -1040,6 +1058,10 @@ function AppShell(): JSX.Element {
           {/* 中栏:Chat 恒挂(无会话=欢迎空态);归档视图已内驻左栏 ArchiveSection(2026-10-21 裁定) */}
           <main className="sx-main" ref={mainRef}>
             {page === 'chat' && connInstance !== null ? (
+              <>
+              {/* 前台座:wrapper 恒在(display:contents 保持主栏 flex 直子布局),切走→驻留座时
+                  同一 key/同类型 wrapper 只换类名——Chat 实例与 DOM 原样保留(热切换零重挂) */}
+              <div className="sx-chat-seat" key={`seat:${openSessionId}`}>
               <ChatMemo
                 key={openSessionId}
                 nav={navControls}
@@ -1091,6 +1113,27 @@ function AppShell(): JSX.Element {
                 onOpError={showOpError}
                 onRewind={onRewindStable}
               />
+              </div>
+              {cachedSeat !== null && cachedSeat.id !== openSessionId && (
+                <div className="sx-chat-seat sx-chat-cache" key={`seat:${cachedSeat.id}`} aria-hidden="true">
+                  <ChatMemo
+                    key={cachedSeat.id}
+                    active={false}
+                    conn={connInstance}
+                    sessionId={cachedSeat.id}
+                    connState={connState}
+                    onBack={noopSeat}
+                    sinkRef={chatSinkRef}
+                    chatMem={chatMem}
+                    journalId={cachedSeat.journalId}
+                    root={cachedSeat.root}
+                    kindHint={cachedSeat.kind}
+                    board={EMPTY_SEAT_BOARD}
+                    teams={EMPTY_SEAT_TEAMS}
+                  />
+                </div>
+              )}
+              </>
             ) : connInstance !== null ? (
               <>
               {page === 'welcome' && menuClosed && (
