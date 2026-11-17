@@ -283,7 +283,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 .sx-team-details-btn .sx-disc-chev.open { transform: rotate(180deg); }
 /* 详情展开面板整宽(2026-11-17 用户实测「左右还是没对齐」):卡片内缘左右对称,内容不缩边 */
 .sx-rc .sx-rc-body .sx-team-detail { display: flex; flex-direction: column; gap: 8px; }
-.sx-rc .sx-rc-body .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: var(--f-code, 12px); width: 100%; box-sizing: border-box; }
+.sx-rc .sx-rc-body .sx-team-detail pre { margin: 0; padding: 8px 10px; width: 100%; box-sizing: border-box; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--fg); font: calc(14px * var(--fz))/1.7 var(--font-ui); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 .sx-card-actions button, .sx-add-button { padding: 2px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); }.sx-card-actions button:hover:not(:disabled), .sx-add-button:hover:not(:disabled) { border-color: var(--border-strong); color: var(--fg); }.sx-add-button { align-self: flex-start; }.sx-card-form { background: var(--surface-elevated); border: 1px solid var(--border-strong); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }.sx-card-form h3 { margin: 0; font-size: calc(14px * var(--fz)); }.sx-card-form label { display: flex; flex-direction: column; gap: 2px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.sx-card-form input, .sx-card-form select, .sx-card-form textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }.sx-check-row { flex-direction: row !important; align-items: center; gap: 6px !important; }
 
 /* 技能+权限:三源组标 + 权限三列 */.sx-skills-group { display: flex; flex-direction: column; gap: 4px; }.sx-skills-src { align-self: flex-start; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 6px; }.sx-skills-src-project { color: var(--accent); border-color: var(--accent); }.sx-skills-src-user { color: var(--fg-secondary); }.sx-skills-src-learned { color: var(--warn); border-color: var(--warn); }.sx-skill-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.sx-skill-row { display: flex; gap: 8px; align-items: baseline; }.sx-skill-id { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); color: var(--fg); }.sx-skill-desc { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }.sx-perms-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }.sx-perm-col { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; }.sx-perm-level { display: inline-block; font-size: calc(14px * var(--fz)); border-radius: var(--radius-sm); padding: 0 6px; margin-bottom: 6px; border: 1px solid var(--border); color: var(--fg-secondary); }.sx-perm-level-merged { color: var(--accent); border-color: var(--accent); }.sx-perm-level-project { color: var(--accent); border-color: var(--accent); }.sx-perm-level-global { color: var(--fg-secondary); }.sx-perm-rows { margin: 0; font-size: calc(14px * var(--fz)); }.sx-perm-rows dt { color: var(--fg-secondary); margin-top: 4px; }.sx-perm-rows dd { margin: 0; font-family: var(--font-mono); font-size: calc(14px * var(--fz)); overflow-wrap: anywhere; }.sx-perm-deny { color: var(--err); }.sx-perm-allow { color: var(--ok); }.sx-perm-empty { color: var(--fg-secondary); opacity: 0.6; font-style: italic; }.sx-perms-note { margin: 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
@@ -3741,12 +3741,13 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-rc .sx-card-actions 
 .sx-rc .sx-card-actions .sx-team-body > summary { margin-left: auto; }
 .sx-rc .sx-card-actions .sx-team-detail { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: var(--f-code, 12px); }
+.sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 8px 10px; width: 100%; box-sizing: border-box; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--fg); font: calc(14px * var(--fz))/1.7 var(--font-ui); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 /* 2026-11-17 用户实测「这个内容怎么没有支持纵向滚动,过长怎么显示内容」:章程/详情块加 CSS 限高兜底
    (JS ClampBlock 动效之外再加一道,任何挂载路径都不越界)——限高同编辑器 320px,纵向滚动,
    过长内容滚动查看,块下 V 可展开全文 */
 .sx-team-detail { min-height: 0; }
-.sx-team-detail pre { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+/* 2026-11-17 用户复裁定「怎么还不是代码块形式显示,参考侧栏学习技能或者记忆的显示格式」:
+   章程/详情块对齐 .mem-detail .mem-body-text(深底井+描边+圆角+UI 等宽行高+pre-wrap),限高 320 纵滚 */
 .sx-clamp-wrap { min-height: 0; }
 
 /* 2026-11-07 用户裁定「详情入操作行最右;点击展开描述+章程」:details display:contents 入行
@@ -3755,7 +3756,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-rc .sx-card-actions 
 .sx-rc .sx-card-actions .sx-team-body > summary { margin-left: auto; }
 .sx-rc .sx-card-actions .sx-team-detail { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-.sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: var(--f-code, 12px); }
+.sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 8px 10px; width: 100%; box-sizing: border-box; background: var(--surface-code); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--fg); font: calc(14px * var(--fz))/1.7 var(--font-ui); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
 
 /* 状态点只做显示不接点击(2026-11-07 用户实测「运行中左侧点不了置顶」根修):悬停时点仅 opacity:0,
    仍叠在同槽置顶钮之上吞点击——运行/未读行点置顶落成「打开会话」 */
