@@ -31,6 +31,7 @@ import { WelcomeComposer } from './welcome/WelcomeComposer';
 import { readPersistedProject } from './welcome/use-welcome-persisted';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { CHAT_MAX_EVENT, chatMaxFor } from './thread-width';
+import { useDeveloperMode } from './developer-mode';
 import { useAppearanceSync } from './use-appearance-sync';
 import { useOpError } from './use-op-error';
 import { useShellLayout } from './use-shell-layout';
@@ -109,6 +110,12 @@ const ChatMemo = memo(Chat);
 
 /** 2026-10-27 欢迎页全局草稿座:无会话(欢迎页)时侧栏标签落此键——临时会话思想(2026-10-29 定版):发出去(欢迎页建席)整座继承到新会话并重获空座;开既有会话零交集 */
 
+/** 空态快捷入口 id 序列(2026-11-17 用户裁定,按模式定死;终端/审查普通态不上快捷入口) */
+export function emptyTabCardIds(welcome: boolean, dev: boolean): readonly string[] {
+  if (welcome) return dev ? ['terminal', 'web'] : ['web'];
+  return dev ? ['diff', 'web', 'terminal', 'side'] : ['web', 'side'];
+}
+
 export function App(): JSX.Element {
   // G10:token 填写逻辑退役——本地 serve 免鉴权档(恒绑回环),连接不再携带凭证
   return <AppShell />;
@@ -126,6 +133,7 @@ function AppShell(): JSX.Element {
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
   /** 2026-10-27 欢迎页全局草稿:座判定按页面不按 openSessionId——进欢迎页(新对话)不清会话,残留侧栏即此根因 */
   const isWelcome = page === 'welcome';
+  const dev = useDeveloperMode();
   /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
   /** 欢迎页预选意图:root=项目行「+」带来的项目,null=新对话(回默认工作区);seq 每次入口递增——
    *  同值重复点击(欢迎页已挂载、用户在条上改选后再点新对话)也要重新生效 */
@@ -1211,24 +1219,21 @@ function AppShell(): JSX.Element {
                 <div className="sx-tab-empty-title">{t('Open tabs', '打开标签页')}</div>
                 <div className="sx-tab-empty-sub">{t('Choose tabs to open in the side panel.', '选择要在侧边面板中打开的标签。')}</div>
                 <div className="sx-tab-empty-cards">
-                  {(isWelcome
-                    ? [
-                        ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
-                        // 2026-11-14 用户裁定「欢迎页能打开终端」:cwd=当前选工作区(draft 通道),
-                        // 持久化到草稿座,建席随整座继承转移
-                        ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
-                      ] as [string, LucideIcon, string, () => void][]
-                    : [
-                        ['side', MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],
-                        ['web', Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
-                        ['terminal', SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
-                        ['diff', GitCompare, t('Review', '审查'), (): void => openTabInSession('diff')],
-                      ] as [string, LucideIcon, string, () => void][]).map(([key, Icon, label, onClick]) => (
-                    <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
-                      <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-                      <span>{label}</span>
-                    </button>
-                  ))}
+                  {emptyTabCardIds(isWelcome, dev).map((key) => {
+                    const cards: Record<string, [LucideIcon, string, () => void]> = {
+                      web: [Globe, t('Browser', '浏览器'), (): void => openTabInSession('web')],
+                      terminal: [SquareTerminal, t('Terminal', '终端'), (): void => openTabInSession('terminal')],
+                      side: [MessageCircle, t('Side chat', '辅助对话'), (): void => startSideChat()],
+                      diff: [GitCompare, t('Review', '审查'), (): void => openTabInSession('diff')],
+                    };
+                    const [Icon, label, onClick] = cards[key]!;
+                    return (
+                      <button key={key} type="button" className="sx-tab-empty-card" onClick={onClick}>
+                        <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
