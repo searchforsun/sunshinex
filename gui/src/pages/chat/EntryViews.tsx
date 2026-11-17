@@ -775,7 +775,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
       {/* 辅助会话仅裁 fork 入口(2026-11-06 用户裁定「只让去掉 fork 入口」):复制/步数/tokens/时间照常 */}
       {/* 改动条在正文与复制行之间(2026-11-11 用户裁定「正文后审查行放到复制按钮行上面,正文下面」) */}
       {/* 轮末产物卡区(2026-11-12 spec §4):改动条之前;conn/sessionId 缺席面(子智能体转录/测试桩)不渲染 */}
-      {footerRun !== undefined && conn !== undefined && sessionId !== undefined && footerRun.artifacts !== undefined && footerRun.artifacts.length > 0 && (
+      {footerRun !== undefined && footerRun.stopped !== true && conn !== undefined && sessionId !== undefined && footerRun.artifacts !== undefined && footerRun.artifacts.length > 0 && (
         <ArtifactsStrip
           artifacts={footerRun.artifacts}
           conn={conn}
@@ -788,7 +788,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           onOpenArtifacts={onOpenArtifacts}
         />
       )}
-      {footerRun !== undefined && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
+      {footerRun !== undefined && footerRun.stopped !== true && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}
           run={footerRun}
@@ -798,9 +798,10 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           onTurnRestore={onTurnRestore}
         />
       )}
-      {/* 2026-11-16 用户裁定「意外出现暂停时,不显示复制分叉图标行」:停态轮(中断/失败收口,
-          G14.209 stopped)不渲卡点行——意外暂停后同一轮常还有后继条目(自动唤醒续跑),卡点行
-          挂在轮内末条正文上落在流中间;改动条/产物卡照常(撤销与交付面不受暂停影响) */}
+      {/* 2026-11-16 用户裁定「意外出现暂停时,不显示复制分叉图标行」;2026-11-14 用户复裁定
+          「正文中已停止状态不要显示 diff 产物等内容」:停态轮整组不渲——卡点行/改动条(RunChangesBar
+          含 diff 撤销)/产物卡全退场,暂停画面只留正文与错误说明;续跑(激活唤醒)后 stopped 旗
+          撤销,交付面自然回归 */}
       {footerRun !== undefined && footerRun.stopped !== true && <RunFooter text={entry.md} run={footerRun} onFork={sideChat === true ? undefined : onFork} />}
     </div>
   );
