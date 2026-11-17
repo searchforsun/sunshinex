@@ -293,6 +293,9 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
     onRenamed,
     ...(kindHint !== undefined ? { kindHint } : {}),
   });
+  /** Sunx 显示名单点(2026-11-17):kind 已由打开链 hint 首帧定格;标题未载回落品牌名 'Sunx'
+   *  (空名会让 hero/占位露「给  一个目标」) */
+  const sunxLabel = kind === SESSION_KIND_SUNX ? (displayTitle.trim() !== '' ? displayTitle.trim() : 'Sunx') : undefined;
   const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat });
 
   /** 命令执行中(2026-10-31 用户裁定「命令运行态=可插入的运行态,可中断」):命令三态系统行未收终态
@@ -668,7 +671,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         onOpenSession={onOpenSession}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
-        sunxName={kind === SESSION_KIND_SUNX ? displayTitle.trim() : undefined}
+        sunxName={sunxLabel}
         chatScrollRef={chatScrollRef}
         onScroll={handleChatScroll}
         onWheel={handleChatWheel}
@@ -689,7 +692,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         sessionId={sessionId}
         root={root}
         sideChat={sideChat}
-        sunxName={kind === SESSION_KIND_SUNX ? (displayTitle.trim() !== '' ? displayTitle.trim() : 'Sunx') : undefined}
+        sunxName={sunxLabel}
         emptyChat={chat.entries.length === 0}
         connState={connState}
         queued={queued}
