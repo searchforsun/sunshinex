@@ -581,7 +581,9 @@ function AppShell(): JSX.Element {
     () => ({ canBack: navControls.canBack, canForward: navControls.canForward, back: navBackStable, forward: navForwardStable }),
     [navControls.canBack, navControls.canForward, navBackStable, navForwardStable],
   );
-  const openSessionFromMenu = useStableCallback((sessionId: string, root: string, journalId?: string): void => { closeMenuDrawer(); openSession(sessionId, root, journalId); });
+  /** kind 透传(2026-11-17 用户实测「加载会话时的占位是普通欢迎页」):侧栏 attach 链带回的会话形态
+   *  在此曾丢失(只转 3 参)——Sunx 会话加载期落普通欢迎面;补齐第 5 参 */
+  const openSessionFromMenu = useStableCallback((sessionId: string, root: string, journalId?: string, kind?: string): void => { closeMenuDrawer(); openSession(sessionId, root, journalId, false, kind); });
   const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
   const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
   const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
@@ -741,7 +743,7 @@ function AppShell(): JSX.Element {
       .newSession(a.root)
       .then(({ sessionId }) => connInstance.attach(sessionId, a.journalId))
       .then(
-        (r) => openSession(r.sessionId, r.root || a.root, a.journalId),
+        (r) => openSession(r.sessionId, r.root || a.root, a.journalId, false, r.kind),
         (err: unknown) => console.error('[tray] open session failed:', err),
       );
   };
