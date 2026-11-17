@@ -94,6 +94,9 @@ export interface MessageListProps {
   /** 窗口变更上抛(Chat 收 ref 镜像,卸载随 chatMem 写回缓存):回放/手动步进每拍上报。
    *  Chat 侧 useCallback 恒稳,memo 比较器不列 */
   readonly onRenderWindowChange?: (n: number) => void;
+  /** 贴底闩镜像(Chat 持有):false=用户在上方阅读态——窗口顶冻结(见 cut 计算处),流式追加
+   *  不再推走正在读的行。缺省=贴底语义(测试桩/降级面) */
+  readonly chatStickRef?: MutableRefObject<boolean>;
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
@@ -377,15 +380,38 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const [visibleCount, setVisibleCount] = useState(() => Math.max(props.initialRenderWindow ?? 0, RENDER_WINDOW_DEFAULT));
   /** 最近一次用户滚动时刻(空闲回放让路判据:滚动进行中不挂载更早条目) */
   const lastScrollAtRef = useRef(0);
-  /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
-  const expandAnchorRef = useRef<{ h: number } | null>(null);
+  /** 渐进回放视口锚定(2026-11-17 元素锚重写):展开前记「视口顶缘压住的第一个内容块」,挂载后
+   *  把它顶回原视口位。旧实现记 scrollHeight 差值——流式在视口下方的生长被错算进补偿,运行中
+   *  用户滚到上方时每拍回放都被往下推(「时不时直接跳到底部」根因②);元素锚只补上方生长,
+   *  下方增量零项。锚块丢失(流式重排换实例)即弃手动回钉交原生锚定,永不反向拖拽 */
+  const expandAnchorRef = useRef<{ node: Element; top: number } | null>(null);
+  const captureAnchor = (): void => {
+    const el = chatScrollRef.current;
+    if (el === null) {
+      expandAnchorRef.current = null;
+      return;
+    }
+    const cTop = el.getBoundingClientRect().top;
+    let found: { node: Element; top: number } | null = null;
+    for (const child of el.children) {
+      if (child.classList.contains('sx-rail')) continue; // 左侧刻度条 sticky 悬浮不参与内容流,恒不为锚
+      const r = child.getBoundingClientRect();
+      if (r.bottom > cTop) {
+        found = { node: child, top: r.top - cTop };
+        break;
+      }
+    }
+    expandAnchorRef.current = found;
+  };
   useLayoutEffect(() => {
     const saved = expandAnchorRef.current;
     if (saved === null) return;
     expandAnchorRef.current = null;
     const el = chatScrollRef.current;
-    if (el === null) return;
-    el.scrollTop += el.scrollHeight - saved.h;
+    if (el === null || !saved.node.isConnected) return;
+    const cTop = el.getBoundingClientRect().top;
+    const afterTop = saved.node.getBoundingClientRect().top - cTop;
+    el.scrollTop += afterTop - saved.top;
   }, [visibleCount, chatScrollRef]);
   /** P1 回调稳定化(Task 3):宿主回调 ref 镜像 + 零依赖稳定包装——行组件 memo 判等的回调引用
    *  逐渲染恒定;宿主重装配/会话切换由 ref 取最新(免闭包陈旧,对齐 App.tsx sessionRef 手法)。
@@ -422,15 +448,29 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const onTurnRestoreOpt = useCallback(() => opt(onTurnRestoreStable, propsRef.current.onTurnRestore), [onTurnRestoreStable]);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
    *  折叠组随头完整保留 */
-  let cut = entries.length - visibleCount;
+  /** 窗口顶冻结(2026-11-17 用户实测「运行中滚到上面时不时跳到底部」根因①):cut=entries.length-
+   *  visibleCount 随流式追加前移,正在读的行不断从窗口顶掉出,视口被逐步拽向底部。非贴底(stick
+   *  =false)期间冻结窗口顶——追加条目只落在窗口尾内,阅读位纹丝不动;回贴底(发送回显 stick=true)
+   *  恢复窗口跟随尾部。冻结值与回放互取 min:空闲回放/手动步进仍向上揭示 */
+  const stick = props.chatStickRef !== undefined ? props.chatStickRef.current : true;
+  const cutLive = Math.max(0, entries.length - visibleCount);
+  const prevStickRef = useRef(true);
+  const cutFrozenRef = useRef<number | null>(null);
+  if (prevStickRef.current !== stick) {
+    prevStickRef.current = stick;
+    cutFrozenRef.current = stick || entries.length === 0 ? null : cutLive; // 空态不锁(种子未落),锁 0=窗口全开
+  } else if (!stick && cutFrozenRef.current === null && entries.length > 0) {
+    cutFrozenRef.current = cutLive; // 挂载即阅读态(存档恢复路径):条目到位当拍锁窗
+  }
+  const frozen = cutFrozenRef.current;
+  let cut = frozen !== null ? Math.min(frozen, cutLive) : cutLive;
   if (cut > 0) {
     while (cut > 0 && hiddenKeys.has(entries[cut]!.key)) cut -= 1;
   }
   const visible = cut > 0 ? entries.slice(cut) : entries;
   const hiddenCount = entries.length - visible.length;
   const showEarlier = (): void => {
-    const el = chatScrollRef.current;
-    expandAnchorRef.current = { h: el?.scrollHeight ?? 0 };
+    captureAnchor();
     setVisibleCount((v) => v + RENDER_WINDOW_STEP);
   };
   /** 批2 滚动到顶自动回放:硬顶(scrollTop≤0)即触发步进回放——锚定回钉使展开后 scrollTop=Δ>0,
@@ -455,7 +495,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       // 仍会抢主线程;滚动停顿后再续,视口内内容始终优先
       const scrolledAt = lastScrollAtRef.current;
       if (document.visibilityState !== 'visible' || (scrolledAt > 0 && performance.now() - scrolledAt < 400)) { schedule(); return; }
-      expandAnchorRef.current = { h: chatScrollRef.current?.scrollHeight ?? 0 };
+      captureAnchor();
       setVisibleCount((v) => Math.min(v + RENDER_WINDOW_IDLE_STEP, ceiling));
     };
     const schedule = (): void => {

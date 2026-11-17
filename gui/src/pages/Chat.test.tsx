@@ -50,6 +50,7 @@ import { DirOpenerContext } from './chat/md-render';
 import type { ChatSink } from './Chat';
 import type { Connection } from '../connection';
 import type { SessionEvent } from '../../../src/types';
+import { saveScrollPos } from './chat/scroll-mem';
 
 /** P1 计数缝访问器:mock 工厂返回的 __calls/__reset 不在真实模块类型上,运行时经命名空间取 */
 const hlCounters = highlightMock as unknown as { __calls(): number; __reset(): void };
@@ -937,8 +938,7 @@ describe('会话流尾部窗口(D48)', () => {
     }
   });
 
-  it('切回驻留会话窗口原样恢复(2026-11-17 用户裁定「已在内存切回不要重分段」):chatMem 随写 renderWindow,重挂免从 80 重爬', async () => {
-    vi.useFakeTimers(); // 同上:钉泵拍,恢复断言只认手动步进
+  it('切回驻留会话窗口原样恢复(2026-11-17 用户裁定「已在内存切回不要重分段」):chatMem 随写 renderWindow,重挂免从 80 重爬', async () => {    vi.useFakeTimers(); // 同上:钉泵拍,恢复断言只认手动步进
     try {
       const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
       const mem = new Map();
@@ -959,6 +959,28 @@ describe('会话流尾部窗口(D48)', () => {
       expect(document.querySelectorAll('.entry-user').length).toBe(380); // 重挂即恢复,免重爬
       expect(document.querySelector('.chat-earlier')!.textContent).toContain('240'); // 窗口外=620-380
     } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('非贴底读历史窗口顶冻结(2026-11-17 实测「运行中滚到上面时不时跳到底部」根因①):流式追加不再推走正在读的行', async () => {
+    vi.useFakeTimers();
+    try {
+      const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
+      saveScrollPos('s1', 500); // 非贴底存档(>80 阈值)→ stick 初值 false=阅读态
+      mountChat(many as unknown as Seed[]);
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(80); // 入口窗
+      expect(document.querySelector('.chat-earlier')!.textContent).toContain('540'); // cut=540 基线
+      fire({ type: 'user', text: 'stream-1', ts: Date.now() }); // 运行中流式追加三帧
+      fire({ type: 'user', text: 'stream-2', ts: Date.now() });
+      fire({ type: 'user', text: 'stream-3', ts: Date.now() });
+      await flushed();
+      // 旧实现 cut 随 entries.length 前移(540→543):正在读的行从窗口顶掉出,视口被逐步拽向底部
+      expect(document.querySelector('.chat-earlier')!.textContent).toContain('540'); // 冻结不滑
+      expect(document.querySelectorAll('.entry-user').length).toBe(83); // 追加条目落在窗口尾内
+    } finally {
+      saveScrollPos('s1', 0); // 清存档还原贴底语义(滚动存档模块级单例跨用例存活)
       vi.useRealTimers();
     }
   });

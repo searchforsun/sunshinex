@@ -628,6 +628,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
         setChat={setChat}
         initialRenderWindow={renderWindowRef.current}
         onRenderWindowChange={onRenderWindowChange}
+        chatStickRef={chatStickRef}
         onOpenMemory={onOpenMemory}
         onOpenLearned={onOpenLearned}
         onOpenTab={onOpenTab}
