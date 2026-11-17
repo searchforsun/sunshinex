@@ -7,6 +7,7 @@ import type { Connection, ConnectionState } from '../../connection';
 type SessionModelInfo = Awaited<ReturnType<Connection['sessionModel']>>;
 import { baseModelName } from './EntryViews';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
+import { useDeveloperMode } from '../../developer-mode';
 // ModeIcon 值回引宿主(调用期解绑,EntryViews 同款先例;Chat 原路径再导出保 WelcomeComposer 消费)
 import { ModeMenu, sessionModeLabel } from '../../composer/mode-menu';
 import { ModeIcon } from '../Chat';
@@ -118,6 +119,7 @@ interface PillsRightProps {
 
 export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
   const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading } = props;
+  const dev = useDeveloperMode();
   return (
           <div className="composer-pills composer-pills-right">
             {/* 2026-11-10 终端下栏入口(G14.18 圆环左邻):settings·terminalDock=on 才渲染(旁路面
@@ -126,7 +128,7 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
             {/* G14.18 上下文圆环:模型 pill 左侧,hover 弹上下文占用/构成明细/轮次步数/tokens/缓存。
                 2026-11-06 用户裁定「辅助草稿去掉上下文圈」:ctxInfo=null(无会话无共享 ctx)不渲染
                 圆环——会话中 ctxInfo 恒非空不受影响 */}
-            {ctxInfo !== null && (
+            {dev && ctxInfo !== null && (
             <ContextRing
               used={ctxInfo.total}
               window={ctxInfo.window}

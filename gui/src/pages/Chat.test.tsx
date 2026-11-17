@@ -870,6 +870,11 @@ describe('exec 执行中/完成双态(G14.13)', () => {
 });
 
 describe('G14.18 上下文圆环', () => {
+  // 2026-11-17 开发者模式分层:普通态隐藏上下文用量圆环(纯工程指标),开发者模式显示;
+  // 本块断言圆环自身语义,按开发者模式装配;普通态不渲染由紧随其后的专测钉住
+  beforeEach(() => applyDeveloperMode(true));
+  afterEach(() => applyDeveloperMode(false));
+
   it('模型 pill 左侧渲染圆环;hover 弹层示上下文占用/轮次步数/tokens/缓存命中', async () => {
     mountChat([]);
     await flushed();
@@ -897,6 +902,13 @@ describe('G14.18 上下文圆环', () => {
     expect(pop.textContent).not.toContain('Model'); // 模型行去除(pill 在侧,冗余)
     fireEvent.mouseLeave(ring);
     await waitFor(() => expect(document.querySelector('.ctx-pop')).toBeNull());
+  });
+
+  it('普通态(开发者模式关)同一桩不渲染上下文圆环', async () => {
+    applyDeveloperMode(false);
+    mountChat([]);
+    await flushed();
+    expect(document.querySelector('.ctx-ring')).toBeNull();
   });
 });
 

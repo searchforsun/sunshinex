@@ -38,11 +38,13 @@ import { useDeveloperMode } from '../developer-mode';
  * 逐项标示 effective 来源(env/项目/全局/缺省),改动逐项写回来源文件(表单引擎见 SettingsForm);
  * 外观主题移入「通用」首卡(ThemeRow)。root 为隐式项目上下文(App 快照打开设置时的活动工作区),
  * 只读不改——项目级行的读写锚,无顶部切换面。
- * T9 导航扩全十项(spec §2.5 分组列示序):通用/模型与提供方/上下文与限额/记忆/知识库与搜索/
- * 技能/MCP/智能体/权限/高级——四简单面板走 SettingsForm(SETTINGS_PANES 定义),五复杂
- * 面板各自组件(ProvidersPane/McpPane/AgentsPane/SkillsPane/PermissionsPane/RawPane;
- * 设置重构二轮起「技能」「权限」两导航项各自独立面板——原同体渲染致内容重复,已拆分)。
- * 2026-10-26 插件面:导航十一项——Integrations 组 MCP 后插「插件」(PluginsPane,spec §6)。
+ * 导航两分组(SETTINGS_GROUPS,共 15 项):「General/通用」组恒显(通用/模型与提供方/快捷键);
+ * 「Advanced/高级」组仅开发者模式开启时渲染(上下文与限额/记忆/全局规范/知识库与搜索/
+ * 路径与执行环境/技能/MCP/插件/智能体/智能体团队/权限/高级)。五简单页走 SettingsForm
+ * (SETTINGS_PANES:general/limits/memory/kb/paths),其余复杂页各自组件
+ * (ProvidersPane/ShortcutsPane/GlobalRulesPane/SkillsPane/McpPane/PluginsPane/AgentsPane/
+ * TeamsPane/PermissionsPane/RawPane;设置重构二轮起「技能」「权限」两导航项各自独立面板
+ * ——原同体渲染致内容重复,已拆分)。
  * 选中态 activePane 本地 state(默认「通用」),主区以 key={paneId} 挂载(面板互切强制重挂——
  * 键集/输入值面整体复位)。
  * T21(2026-10-28 设置共享组件轮):scope 状态提升本壳('global'|'project',缺省 project、
@@ -59,13 +61,13 @@ import { useDeveloperMode } from '../developer-mode';
  * 于当前打开的会话项目)。壳层状态 targetRoot('' = 全局;缺省=当前打开项目 root)替换旧
  * scope 二值;下发给资源 pane 的换发内容=scope(按 targetRoot 推导)+ root=targetRoot +
  * scopeOptions(选项清单)+ onScopeChange(上抛新 targetRoot 字符串)——pane 读写逻辑零改动,
- * 仅壳层换发内容变。四 SettingsForm 简单页与权限/高级两页维持快照 root 语义(非资源页,不随
+ * 仅壳层换发内容变。五 SettingsForm 简单页与权限/高级两页维持快照 root 语义(非资源页,不随
  * 下拉)。注册表拉取失败时保留缺省选项面(全局+当前打开项目),不阻塞设置态。
  * 2026-10-29 用户裁定(五条修正):①Skills 工具栏合并为**项目下拉**(全部项目|全局|项目们)
  * ——'all' 态壳层不感知(壳不下发 root,SkillsPane 自持 scope=all 拉取);全局/项目两态仍上抛
  * 同步本壳 targetRoot。④提供方页即全局(模型/提供方全局豁免)——本壳不再向 ProvidersPane
  * 下发 root/scope/选项面,页面工具栏只留新增钮。
- * 2026-11-04 agents-teams P1 Task 3:导航十二项——Integrations 组 agents 后插「智能体团队」
+ * 2026-11-04 agents-teams P1 Task 3:高级组 agents 后插「智能体团队」
  * (TeamsPane,spec §6.2):teams 三端点(GET 清单/PUT op 写面/GET body 章程全文)接线,五件套
  * (root/scope/onScopeChange/scopeOptions/refreshTick.teams)下发同款,目标选择器状态留本壳。
  */

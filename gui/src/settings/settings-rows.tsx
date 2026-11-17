@@ -20,7 +20,7 @@ import { applyDeveloperMode, readDeveloperMode } from '../developer-mode';
 import type { Palette } from '../palette';
 
 /** 外观特例行族(SettingsForm 外提,D62 批J):外观/配色/放缩/字体预设/字号/暗色面/用量统计/
- *  简洁模式/界面模式十一枚行组件+配色剪影+选中勾——GUI 本地偏好行,非 settings 键;
+ *  简洁模式/界面模式/开发者模式十二枚行组件+配色剪影+选中勾——GUI 本地偏好行,非 settings 键;
  *  各行读偏好+生效+持久化通路自包含,主表单(SettingsForm)按组开关旗标装配。 */
 
 /** 卡片选中勾(配色/字体预设卡名行最右):与下拉选项勾同一符号与 accent 色(.sx-dd-opt-check),全项目选中态一致 */
