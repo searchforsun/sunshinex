@@ -178,8 +178,10 @@ export const ToolEntryView = memo(function ToolEntryView({
   })();
   /** G14.214 task_* 折叠行/运行态任务名：input.taskId 经 taskNameOf 单点解析（board 直查→转录映射→短 id 兜底，
    *  与 task_wait G14.172 同口径）；set_dependency 额外解析 dependsOn（「任务 ← 依赖目标」双名）。
-   *  缺 taskId/解析器（测试桩、种子条旧格式）不进该分型，回落默认动词行 */
-  const taskOpName = taskOpNameOf(toolName, input, resultText, taskNameOf);
+   *  缺 taskId/解析器（测试桩、种子条旧格式）不进该分型，回落默认动词行。
+   *  2026-11-17 用户实测「停止行显示命令原文不是任务名」：task_stop 人名优先走 taskAgentOf
+   *  （后台命令 purpose/后台 spawn goal 转录映射，taskOpNameOf 内部先于回执 label） */
+  const taskOpName = taskOpNameOf(toolName, input, resultText, taskNameOf, taskAgentOf);
   /** 分派回执解析(2026-11-16 用户实测「分派任务要和子智能体一样显示蓝色任务名和超链接」):
    *  回执形态 task <id> started (output: <path>)——id 据此取(入参无 taskId 面);名=入参 label
    *  (模型自拟卡名,缺省回落 agent_id) */

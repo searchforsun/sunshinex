@@ -309,19 +309,26 @@ export function parseAskAnswer(result: string):
   return { kind: 'dismissed' };
 }
 
-/** task_* 折叠行/运行态任务名解析单点（D62 批G 外提,行为零变化）：input.taskId 经 taskNameOf 链
- *  （board 直查→转录映射→短 id 兜底,G14.214/task_wait G14.172 同口径）；task_stop 完成态优先取
- *  回执 label（后台任务 id 不在 board/转录面）。缺 taskId/解析器（测试桩、种子条旧格式）=undefined，
- *  调用方回落默认动词行 */
-export function taskOpNameOf(toolName: string, input: Record<string, unknown>, resultText: string, taskNameOf: ((id: string) => string | undefined) | undefined): string | undefined {
+/** task_* 折叠行/运行态任务名解析单点（D62 批G 外提）：input.taskId 经 taskNameOf 链
+ *  （board 直查→转录映射→短 id 兜底,G14.214/task_wait G14.172 同口径）；task_stop 完成态回执
+ *  label 兜底。2026-11-17 用户实测「停止行显示命令原文,不是后台任务名称」：
+ *  - taskId 先剥「task 」前缀归一（exec 转后台回执原文带 task 前缀,模型照抄传入——与 resolveId
+ *    容错同拍,剥后任务名映射/回执正则都能命中）；
+ *  - 人名优先：taskAgentOf 转录映射（后台命令 purpose 名/后台 spawn goal 名）命中即用,命令原文
+ *    （回执 label=exec 台账 label=命令行）只作无名 exec 的兜底 */
+export function taskOpNameOf(toolName: string, input: Record<string, unknown>, resultText: string, taskNameOf: ((id: string) => string | undefined) | undefined, taskAgentOf?: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined): string | undefined {
   if (!TASK_OP_TOOLS.has(toolName)) return undefined;
   const id = typeof input.taskId === 'string' && input.taskId !== '' ? input.taskId : undefined;
   if (id === undefined) return undefined;
+  const bare = /^task\s+(.+)$/.exec(id.trim());
+  const nid = bare !== null ? bare[1]! : id;
   if (toolName === 'task_stop') {
-    const m = new RegExp(`task ${id} stopped \((.*)\)`).exec(resultText);
+    const ref = taskAgentOf !== undefined ? taskAgentOf(nid) : undefined;
+    if (ref !== undefined && ref.name !== '') return ref.name;
+    const m = new RegExp(`task ${nid} stopped \\((.*)\\)`).exec(resultText);
     if (m !== null && m[1] !== '') return m[1]!;
   }
-  return taskNameOf !== undefined ? taskNameOf(id) : id;
+  return taskNameOf !== undefined ? taskNameOf(nid) : nid;
 }
 
 /** set_dependency 依赖目标名解析单点（D62 批G 外提,行为零变化）：dependsOn 经 taskNameOf 链 */

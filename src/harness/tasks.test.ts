@@ -107,6 +107,11 @@ test('TaskRegistry.resolveId：板 id 归一单点——直接命中优先,旧 t
     assert.equal(reg.resolveId('task-t5'), legacy.id);
     // 新方言板 id → 前缀命中新条目(台账 id 带 ts/rand 尾)
     assert.equal(reg.resolveId('task-build-parser-k3f2'), modern.id);
+    // 「task <id>」前缀容错(2026-11-17 用户实测「taskid 不对」):exec 转后台回执原文带 task 前缀,
+    //   模型照抄传入 task_stop/task_wait 的 taskId——剥前缀归一本名,首调即中免 INVALID_ARG 重试
+    const exec = reg.submit({ kind: 'exec', label: 'find / -name "x.jar"' });
+    assert.equal(reg.resolveId(`task ${exec.id}`), exec.id, '带空格 task 前缀剥除归一');
+    assert.equal(reg.resolveId(exec.id), exec.id, '裸 id 不受影响');
     // 多命中取最近提交:同板 id 重派发后旧条目让位新条目
     const legacy2 = reg.submit({ kind: 'subagent', label: 'task-t5' });
     assert.equal(reg.resolveId('t5'), legacy2.id);

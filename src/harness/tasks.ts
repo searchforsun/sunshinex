@@ -295,6 +295,12 @@ export class TaskRegistry {
    * 直接命中优先;无前缀命中原样透传由调用面报 INVALID_ARG
    */
   resolveId(id: string): string {
+    // 「task <id>」前缀容错(2026-11-17 用户实测「taskid 不对,停止报错重试两次」):exec 转后台/
+    //   提交回执原文是「task <id> started / moved to background: task <id>」,模型照抄带前缀形态
+    //   传 task_stop/task_wait 的 taskId——剥前缀归一本名,首调即中,免 INVALID_ARG 重试。
+    //   台账 id 恒无空格(slug/tN),「task 」带空格前缀不可能 legit,剥离零误伤
+    const bare = /^task\s+(.+)$/.exec(id.trim());
+    if (bare !== null) id = bare[1]!;
     if (this.tasks.has(id)) return id;
     const legacy = /^(?:task-)?(t\d+)$/.exec(id);
     const modern = /^task-[a-z0-9][a-z0-9-]*-[a-z0-9]{4}$/.exec(id);
