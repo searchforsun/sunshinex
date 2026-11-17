@@ -4,7 +4,7 @@ import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
 import type { SelectOption } from './controls';
 import { EmptyState, SearchBar, Switch } from './components';
-import { CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
+import { CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, DeveloperModeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -58,6 +58,7 @@ export interface SettingsGroupDef {
   readonly zoomRow?: boolean;
   readonly fontRow?: boolean;
   readonly paletteRow?: boolean;
+  readonly developerRow?: boolean;
 }
 
 /** 面板配置:id(导航/重挂键)+title(导航项与面板标题双语对)+groups(分组卡列)+记忆概览行开关 */
@@ -185,6 +186,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     id: 'general',
     title: { en: 'General', zh: '通用' },
     groups: [
+      { title: { en: 'Developer mode', zh: '开发者模式' }, developerRow: true, fields: [] },
       { title: { en: 'Appearance', zh: '界面与外观' }, themeRow: true, zoomRow: true, paletteRow: true, fontRow: true, fields: [sel('language', [
         { v: 'en', l: 'English' },
         { v: 'zh-CN', l: '简体中文' },
@@ -551,13 +553,14 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
       {rows !== null &&
         pane.groups.map((g) => {
           const visible = g.fields.filter((fd) => rows[fd.key] !== undefined && rowMatches(fd, q));
-          if (visible.length === 0 && !(q === '' && (g.themeRow || g.zoomRow || g.paletteRow || g.fontRow))) return null; // 无可见行组卡省略(过滤命中零行同;特例行仅空查询保留)
+          if (visible.length === 0 && !(q === '' && (g.themeRow || g.zoomRow || g.paletteRow || g.fontRow || g.developerRow))) return null; // 无可见行组卡省略(过滤命中零行同;特例行仅空查询保留)
           return (
             <div key={g.title.en} className="sx-card sx-settings-card">
               <div className="sx-card-head">
                 <span className="sx-card-title">{t(g.title.en, g.title.zh)}</span>
               </div>
               <div className="sx-card-rows">
+                {g.developerRow && q === '' && <DeveloperModeRow />}
                 {g.themeRow && q === '' && <ThemeRow />}
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
                 {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'usagestats' as const, 'concisemode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {

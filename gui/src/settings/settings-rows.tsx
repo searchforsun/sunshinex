@@ -16,6 +16,7 @@ import type { UiMode } from '../ui-mode';
 import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from '../dark-surfaces';
 import { applyUsageStats, readUsageStats } from '../usage-stats';
 import { applyConciseMode, readConciseMode } from '../concise-mode';
+import { applyDeveloperMode, readDeveloperMode } from '../developer-mode';
 import type { Palette } from '../palette';
 
 /** 外观特例行族(SettingsForm 外提,D62 批J):外观/配色/放缩/字体预设/字号/暗色面/用量统计/
@@ -338,6 +339,18 @@ const UsageStatsRow = (): JSX.Element => (
   />
 );
 
+/** 开发者模式行(2026-11-17 用户裁定「一个开关控制」):关=C 端简洁界面
+ *  (隐藏终端/高级设置/工程详情类入口);开=完整工程能力。持久经 developer-mode.ts */
+const DeveloperModeRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Developer mode', '开发者模式')}
+    desc={t('Show terminal, advanced settings, and other tools for developers.', '显示终端、高级设置等面向开发者的能力。')}
+    aria="developer mode"
+    read={readDeveloperMode}
+    apply={applyDeveloperMode}
+  />
+);
+
 /** 简洁模式行(2026-11-14 用户裁定「设置页提供简洁模式」):两阶段正文之间的工具/思考段外面
  *  再加一层段级折叠——折叠头=交织双方形图标+类别动词总结(查阅了文件 · 运行了命令…,不带数量);
  *  运行中只显既有聚合行+当前运行行,跑完平滑并入;逃逸面=spawn/团队全家/ask/exit_plan/task_stop */
@@ -405,6 +418,7 @@ export {
   ConciseModeRow,
   DarkBubblesRow,
   DarkCodeRow,
+  DeveloperModeRow,
   FontRow,
   FontSizeRow,
   PaletteRow,
