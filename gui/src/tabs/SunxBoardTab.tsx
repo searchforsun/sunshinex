@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CircleHelp, RefreshCw } from 'lucide-react';
-import { SunxIcon } from '../sunx-icon';
+import { SunxIcon, SunxMark } from '../sunx-icon';
 import { t } from '../i18n';
 import type { Connection, SessionRow } from '../connection';
 import { SESSION_KIND_SUNX } from '../connection';
@@ -146,6 +146,8 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {cards !== null && cards.length === 0 && (
         <div className="board-empty-state" role="status">
+          {/* 空态名片标(2026-11-17 用户裁定):与 Sunx 欢迎面同标同语速 */}
+          <SunxMark size={64} className="sx-sunxboard-mark" />
           <p className="board-empty-title">{t('No Sunx instances yet', '还没有 Sunx 实例')}</p>
           <p className="board-empty-hint">{t('Sunx instances you create will appear here.', '创建的 Sunx 实例会显示在这里。')}</p>
         </div>

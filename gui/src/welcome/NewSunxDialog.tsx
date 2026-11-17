@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Folder } from 'lucide-react';
+import { SunxMark } from '../sunx-icon';
 import type { DirPickerResp, SunxTemplateEntry } from '../connection';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
@@ -262,6 +263,9 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     >
       <div className="modal-body sx-sunx-dialog" role="dialog" aria-label={isEdit ? t('Edit Sunx', '编辑 Sunx') : t('New Sunx', '新建 Sunx')} onClick={(e) => e.stopPropagation()}>
         <header className="dirpicker-head">
+          {/* 弹窗头名片标(2026-11-17 用户裁定「Sunx 图标是产品名片,欢迎页要加上」):与标题同簇,
+              24px 小号;编辑模式同标(同一实例身份) */}
+          <SunxMark size={24} strokeWidth={3.2} className="sx-sunx-dialog-mark" />
           <span>{isEdit ? t('Edit Sunx', '编辑 Sunx') : t('New Sunx', '新建 Sunx')}</span>
           {/* ✕ 同取消钮 disabled={busy}——第三关闭路径 busy 拒关(fix round 1) */}
           <button type="button" aria-label="close sunx dialog" disabled={busy} onClick={onClose}>

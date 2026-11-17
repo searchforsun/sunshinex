@@ -4323,3 +4323,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-switch-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .sx-switch-row .sx-switch-row-label { font-size: calc(14px * var(--fz)); color: var(--fg); }
 .sx-switch-row .sx-mcp-hint { color: var(--fg-tertiary); }
+/* Sunx 品牌名片标(2026-11-17 用户裁定「Sunx 图标是产品名片」):三处欢迎面(会话空态/看板空态/
+   新建弹窗头)统一弱色(同 WelcomeLogo 的 fg-secondary 语速),与标题 12px 呼吸距 */
+.chat-empty-sunx { gap: 10px; }
+.chat-empty-mark { color: var(--fg-secondary); margin-bottom: 2px; }
+.sx-sunxboard-mark { color: var(--fg-secondary); margin-bottom: 6px; }
+.sx-sunx-dialog-mark { color: var(--fg-secondary); flex: none; }
