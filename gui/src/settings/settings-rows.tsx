@@ -18,6 +18,7 @@ import { applyUsageStats, readUsageStats } from '../usage-stats';
 import { applyArtifactCards, readArtifactCards } from '../artifact-cards';
 import { applyConciseMode, readConciseMode } from '../concise-mode';
 import { applyDeveloperMode, readDeveloperMode } from '../developer-mode';
+import { applyChangeCards, readChangeCards } from '../change-cards';
 import type { Palette } from '../palette';
 
 /** 外观特例行族(SettingsForm 外提,D62 批J):外观/配色/放缩/字体预设/字号/暗色面/用量统计/
@@ -352,6 +353,18 @@ const ArtifactCardsRow = (): JSX.Element => (
   />
 );
 
+
+/** 改动卡显隐行(2026-11-17 用户裁定「产物卡下面显示一个改动卡,普通模式下不显示,开发者模式默认是打开的,
+ *  显示 diff 卡条」):关=正文轮末改动卡条整块不渲染;改动仍登记在 runmeta(审查页不受影响) */
+const ChangeCardsRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Change cards', '改动卡')}
+    desc={t('Show the change cards at the end of each turn in the chat. Changes stay registered and visible in review.', '在对话每轮末尾展示改动卡条。改动仍会登记，可在审查页查看。')}
+    aria="change cards"
+    read={readChangeCards}
+    apply={applyChangeCards}
+  />
+);
 /** 开发者模式行(2026-11-17 用户裁定「一个开关控制」):关=C 端简洁界面
  *  (隐藏终端/高级设置/工程详情类入口);开=完整工程能力。持久经 developer-mode.ts */
 const DeveloperModeRow = (): JSX.Element => (
@@ -428,6 +441,7 @@ const CodeFontRow = (): JSX.Element => (
 
 export {
   ArtifactCardsRow,
+  ChangeCardsRow,
   CodeFontRow,
   ConciseModeRow,
   DarkBubblesRow,

@@ -24,6 +24,7 @@ const LOCAL_KEYS = {
   usageStats: 'sunshinex.usage-stats',
   artifactCards: 'sunshinex.artifact-cards',
   conciseMode: 'sunshinex.concise-mode',
+  changeCards: 'sunshinex.change-cards',
   developerMode: 'sunshinex.developer-mode',
 } as const;
 
@@ -37,7 +38,7 @@ let applyingRemote = false;
 let appliers: UiPrefAppliers | null = null;
 
 /** palette:配色偏好已由 flush 写入本地层,回调只需按当前模式重落根 */
-type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void; darkBubbles: (v: string) => void; darkCode: (v: string) => void; usageStats: (v: string) => void; artifactCards: (v: string) => void; conciseMode: (v: string) => void; developerMode: (v: string) => void };
+type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void; darkBubbles: (v: string) => void; darkCode: (v: string) => void; usageStats: (v: string) => void; artifactCards: (v: string) => void; conciseMode: (v: string) => void; developerMode: (v: string) => void; changeCards: (v: string) => void };
 
 /** 远程值落地分发单点(2026-11-07 收敛——此前 flush 内逐键 if 链,每加一项偏好须同改
  *  LOCAL_KEYS/UiPrefAppliers/if 链三处):Record<键,…> 使 LOCAL_KEYS 加键而本表漏配即 tsc 咬住 */
@@ -55,6 +56,7 @@ const APPLY_REMOTE: Record<keyof typeof LOCAL_KEYS, (a: UiPrefAppliers, v: strin
   usageStats: (a, v) => a.usageStats(v),
   artifactCards: (a, v) => a.artifactCards(v),
   conciseMode: (a, v) => a.conciseMode(v),
+  changeCards: (a, v) => a.changeCards(v),
   developerMode: (a, v) => a.developerMode(v),
 };
 

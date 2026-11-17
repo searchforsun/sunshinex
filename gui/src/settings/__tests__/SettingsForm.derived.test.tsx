@@ -25,20 +25,22 @@ const view = viewOf([keyRow('language'), keyRow('terminalDock', { value: 'on' })
 describe('通用页外观行的模式分层', () => {
   afterEach(() => applyDeveloperMode(false));
 
-  it('普通态隐藏 界面模式/简洁模式/用量统计/终端 四行', async () => {
+  it('普通态隐藏 界面模式/简洁模式/用量统计/改动卡/终端 行', async () => {
     applyDeveloperMode(false);
     render(<SettingsForm conn={connOf(view)} root="" pane={PANE} />);
     expect(await screen.findByText('Developer mode')).toBeDefined();
-    for (const label of ['Interface mode', 'Concise mode', 'Usage stats', 'Terminal']) expect(screen.queryByText(label)).toBeNull();
+    for (const label of ['Interface mode', 'Concise mode', 'Usage stats', 'Change cards', 'Terminal']) expect(screen.queryByText(label)).toBeNull();
     expect(screen.getByText('Dark bubbles')).toBeDefined(); // 纯外观行仍在
   });
 
-  it('开发者模式四行恢复,终端行紧随简洁模式', async () => {
+  it('开发者模式行恢复,改动卡紧随产物卡、终端行紧随简洁模式', async () => {
     applyDeveloperMode(true);
     render(<SettingsForm conn={connOf(view)} root="" pane={PANE} />);
     expect(await screen.findByText('Concise mode')).toBeDefined();
     const labels = [...document.querySelectorAll('.sx-setting-label')].map((el) => el.textContent);
     expect(labels).toContain('Terminal');
     expect(labels.indexOf('Terminal')).toBe(labels.indexOf('Concise mode') + 1);
+    // 2026-11-17 用户裁定「产物卡下面显示一个改动卡」:顺序钉住
+    expect(labels.indexOf('Change cards')).toBe(labels.indexOf('Artifact cards') + 1);
   });
 });

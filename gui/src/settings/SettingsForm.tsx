@@ -4,7 +4,7 @@ import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
 import type { SelectOption } from './controls';
 import { EmptyState, SearchBar, Switch } from './components';
-import { ArtifactCardsRow, CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, DeveloperModeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
+import { ArtifactCardsRow, ChangeCardsRow, CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, DeveloperModeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -597,13 +597,14 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
                 {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体)。
                     2026-11-17 用户裁定「非开发者模式下办公模式/简洁模式/用量统计/终端都是关的,没有用且冲突」:
                     普通态隐藏 uimode/usagestats/concisemode/terminaldock 四行(取值由模式派生,见各模块) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? (['uimode', 'darkbubbles', 'darkcode', 'usagestats', 'artifactcards', 'concisemode', 'terminaldock', 'zoom', 'uifont', 'codefont'] as const).filter((k) => dev || (k !== 'uimode' && k !== 'usagestats' && k !== 'concisemode' && k !== 'terminaldock')) : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language' && fd.key !== 'terminalDock')].map((fd) => {
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? (['uimode', 'darkbubbles', 'darkcode', 'usagestats', 'artifactcards', 'changecards', 'concisemode', 'terminaldock', 'zoom', 'uifont', 'codefont'] as const).filter((k) => dev || (k !== 'uimode' && k !== 'usagestats' && k !== 'changecards' && k !== 'concisemode' && k !== 'terminaldock')) : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language' && fd.key !== 'terminalDock')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
                   if (fd === 'uimode') return <UiModeRow key="uimode" />;
                   if (fd === 'darkbubbles') return <DarkBubblesRow key="darkbubbles" />;
                   if (fd === 'darkcode') return <DarkCodeRow key="darkcode" />;
                   if (fd === 'usagestats') return <UsageStatsRow key="usagestats" />;
                   if (fd === 'artifactcards') return <ArtifactCardsRow key="artifactcards" />;
+                  if (fd === 'changecards') return <ChangeCardsRow key="changecards" />;
                   if (fd === 'concisemode') return <ConciseModeRow key="concisemode" />;
                   if (fd === 'terminaldock') return dockDef !== undefined ? renderField(dockDef) : null;
                   if (fd === 'uifont') return <UiFontRow key="uifont" />;

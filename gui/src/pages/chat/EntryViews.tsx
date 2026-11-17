@@ -16,6 +16,7 @@ import type { WakeRef } from '../../../../src/session/entry';
 import { buildMdComponents, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MarkdownCached, renderMdCached } from '../Chat';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ArtifactsStrip } from './ArtifactsStrip';
+import { useChangeCards } from '../../change-cards';
 import { ImageLightbox } from '../../ImageLightbox';
 import { useDirOpener } from './md-render';
 import { ComposerCard } from '../../composer/ComposerCard';
@@ -599,6 +600,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
   /* conn/sessionId/root/onOpError=轮末产物卡区(ArtifactsStrip,2026-11-12 spec §4)数据与动作面;
    *  onOpenArtifacts=产物库页签入口(节头「全部产物 →」链接,App openArtifactsTab 下发;缺席不渲染链接) */
   const office = useUiMode() === 'office';
+  /** 改动卡条显隐(2026-11-17 用户裁定:普通态不显示,开发者模式缺省开) */
+  const changeCards = useChangeCards();
   const msg = agentMessageOf(entry);
   /** 成员报告气泡编辑(2026-11-13 用户裁定「插入的用户气泡不支持编辑」):编辑后作为新用户消息
    *  追加发送——notice 非回退锚点(rewind 按 user 条目计数),不走 rewind 语义;onSend/sideChat
@@ -788,7 +791,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           onOpenArtifacts={onOpenArtifacts}
         />
       )}
-      {footerRun !== undefined && footerRun.stopped !== true && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
+      {changeCards && footerRun !== undefined && footerRun.stopped !== true && footerRun.changes !== undefined && footerRun.changes.length > 0 && (
         <RunChangesBar
           changes={footerRun.changes}
           run={footerRun}

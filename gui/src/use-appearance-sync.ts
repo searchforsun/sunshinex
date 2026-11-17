@@ -10,6 +10,7 @@ import { applyDarkBubbles, applyDarkCode } from './dark-surfaces';
 import { applyUsageStats } from './usage-stats';
 import { applyArtifactCards } from './artifact-cards';
 import { applyConciseMode } from './concise-mode';
+import { applyChangeCards } from './change-cards';
 import { applyDeveloperMode } from './developer-mode';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
@@ -60,6 +61,7 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       usageStats: (v) => applyUsageStats(v === '1'),
       artifactCards: (v) => applyArtifactCards(v === '1'),
       conciseMode: (v) => applyConciseMode(v === '1'),
+      changeCards: (v) => applyChangeCards(v === '1'),
       developerMode: (v) => applyDeveloperMode(v === '1'),
     });
   }, [connInstance]);
