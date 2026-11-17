@@ -4355,7 +4355,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    与 Sunx 名片标同档(欢迎页本体仍 100) */
 .chat-empty-welcome { gap: 12px; padding: 24px 40px; }
 .chat-empty-welcome .welcome-logo { width: 72px; height: 72px; }
-.chat-empty-welcome .welcome-tagline { color: var(--fg-secondary); }
+.chat-empty-welcome .welcome-tagline { color: var(--fg-secondary); text-wrap: balance; } /* 窄栏换行均衡(「一个目/标」断行丑) */
 .chat-empty-sunx { gap: 10px; }
 .chat-empty-mark { color: var(--fg-secondary); margin-bottom: 2px; }
 .sx-sunxboard-mark { color: var(--fg-secondary); margin-bottom: 6px; }
