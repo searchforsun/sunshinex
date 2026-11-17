@@ -43,7 +43,14 @@ export function ArtifactsTab({ conn, sessionId, root, refreshNonce, onOpenFile, 
     <div className="sx-artifacts-page">
       {error !== '' && <div className="sx-artifacts-empty">{error}</div>}
       {error === '' && items === null && <div className="sx-artifacts-empty">{t('Loading…', '加载中…')}</div>}
-      {empty && <div className="sx-artifacts-empty">{t('No artifacts yet — deliverables the assistant produces (docs, images, sheets, links, commands) land here.', '暂无产物——助手产出的文档/图片/表格/网址/启动命令等会出现在这里。')}</div>}
+      {/* 空态与计划页/看板页同语言(2026-11-16 用户实测「暂无产物和其他不一样」):board-empty-state
+          标题+提示、整页居中——不再左上一行灰字 */}
+      {empty && (
+        <div className="board-empty-state" role="status">
+          <p className="board-empty-title">{t('No artifacts yet', '暂无产物')}</p>
+          <p className="board-empty-hint">{t('Documents, images, sheets, links, and launch commands the assistant produces will land here.', '助手产出的文档、图片、表格、网址、启动命令等会出现在这里。')}</p>
+        </div>
+      )}
       {items !== null && items.length > 0 && (
         <div className="sx-artifacts-grid">
           {items.map((a) => (
