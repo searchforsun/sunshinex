@@ -84,7 +84,7 @@ test('spawn 输入校验：双缺 INVALID_ARG / background 两段式开通（D6�
     );
     // T2 起 background:true 走两段式（规格 D6）：不再 NOT_SUPPORTED，改为立即返回任务回执
     const bg = (await spawn!.executor({ prompt: 'x', background: true })) as { stdout: string };
-    assert.match(bg.stdout, /^task \S+ started/, '两段式立即返回任务回执（动态 id：业务-时间-随机方言）');
+    assert.match(bg.stdout, /^\S+ started in background/, '两段式立即返回任务回执（动态 id：业务-时间-随机方言；2026-11-17 根治裸 id 起头+携任务名）');
     // 2026-11-14 spawn tools 口封闭:模型传 tools 亦被 normalize 剥除(不校验不生效)
     const narrowed = (await spawn!.executor({ prompt: 'x', tools: ['ghost'] })) as { stdout: string };
     assert.ok(narrowed.stdout.length > 0, 'tools 幽灵名不再 INVALID_ARG——参数已从模型面撤除,归一即剥');
@@ -162,7 +162,7 @@ test('dispatch_task executor：spec→spawnBackground 带 tier 覆盖透传；�
   assert.equal(calls[0]!.input.prompt, 'do the thing with acceptance', 'spec 承载自包含简报');
   assert.equal(calls[0]!.input.agent_id, undefined, 'JSON null 归一为缺席（normalizeSpawnInput 同缝）');
   assert.equal(calls[0]!.opts?.tier, 'large', 'tier 覆盖透传 spawnBackground');
-  assert.match(r.stdout, /^task task-x-ts01-ab12 started \(output: /, '回执与 spawn 后台分支同形：task <id> started (output: <path>)');
+  assert.match(r.stdout, /^task-x-ts01-ab12 started in background /, '回执与 spawn 后台分支同形：<id> started in background — <名> (output: <path>)（2026-11-17 根治:裸 id+携任务名）');
   assert.ok(r.stdout.includes('You need not wait for it'), '回执尾追 wakeHint（收轮等唤醒）');
   // tier 缺席（null/字面缺）→ 不覆盖（继承会话档）
   await tool.executor({ spec: 'second', tier: null });

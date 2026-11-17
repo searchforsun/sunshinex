@@ -325,7 +325,8 @@ export function taskOpNameOf(toolName: string, input: Record<string, unknown>, r
   if (toolName === 'task_stop') {
     const ref = taskAgentOf !== undefined ? taskAgentOf(nid) : undefined;
     if (ref !== undefined && ref.name !== '') return ref.name;
-    const m = new RegExp(`task ${nid} stopped \\((.*)\\)`).exec(resultText);
+    // 回执格式 2026-11-17 根治同拍:新形「<id> stopped — <任务名>」主匹配;旧形「task <id> stopped (label)」历史档兜底
+    const m = new RegExp(`${nid} stopped — (.*)`).exec(resultText) ?? new RegExp(`task ${nid} stopped \\((.*)\\)`).exec(resultText);
     if (m !== null && m[1] !== '') return m[1]!;
   }
   return taskNameOf !== undefined ? taskNameOf(nid) : nid;

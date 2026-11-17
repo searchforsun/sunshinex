@@ -239,7 +239,10 @@ export function builtinTools(
           }
           // 轮询法在回执点下发（触发才付费）：参数描述只留输入输出契约，后台工作法随两张启动回执走（本行与下方超时转后台行）；
           // 尾段唤醒提示（bg-wake §4.2）：宿主闸①+harness 账本 × 闸②主链归属合成，缺省空串零变化
-          return execOut(`task ${task.id} started (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait${wakeHintSuffix(tasks)}`);
+          // 回执格式(2026-11-17 用户裁定「为什么加了 task 前缀,为什么没有直接获取到任务名」根治):
+          //   裸 id 起头(不冠 task 名词——模型照抄「task <id>」当 taskId 曾致 INVALID_ARG 误报重试),
+          //   随行携任务名(title=purpose,缺省回落 label=命令原文)
+          return execOut(`${task.id} started in background — ${task.title ?? task.label} (output: ${task.outputFilePath}); poll that file (it ends with [exit N] when the command finishes) or block with task_wait${wakeHintSuffix(tasks)}`);
         }
         // 前台超时转后台（规格 D5，对标 CC）：账本在场且非 sleep 开头时带 timeoutToBackground，到点不杀进程、登记转后台
         const wantsBg = tasks !== undefined && !/^\s*sleep(?=\s|$)/.test(cmd.trim());
@@ -262,7 +265,7 @@ export function builtinTools(
           // 收割收敛 killBackground 单点（§14）：按进程树/进程组同步收割（win32 taskkill /T /F，POSIX kill(-pid)）
           task.stop = () => backend.killBackground?.(child.pid ?? 0);
           ledger.append(task.id, '[moved to background after timeout]\n');
-          return execOut(`command moved to background after timeout: task ${task.id} (output: ${task.outputFilePath}) — the command keeps running (not killed); poll that file (it ends with [exit N] when done) or block with task_wait${wakeHintSuffix(ledger)}`);
+          return execOut(`${task.id} moved to background after timeout — ${task.title ?? task.label} (output: ${task.outputFilePath}); the command keeps running (not killed) — poll that file (it ends with [exit N] when done) or block with task_wait${wakeHintSuffix(ledger)}`);
         }
         if (r.ok) return { ...r.value, stdout: fitOut('exec', r.value.stdout) };
         // CodedToolError 保码过界（§4 错误分域）：EXEC_TIMEOUT/EXEC_FAILED 以原码交 registry——

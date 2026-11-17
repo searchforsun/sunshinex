@@ -21,6 +21,11 @@ describe('taskOpNameOf', () => {
     expect(name).toBe('查找 swift framework JsonForm 类定义');
   });
 
+  test('task_stop：新格式回执「<id> stopped — <任务名>」直接出任务名', () => {
+    const name = taskOpNameOf('task_stop', { taskId: 'find-name-swift-20261117T022449Z-z2ww' }, 'find-name-swift-20261117T022449Z-z2ww stopped — 查找 swift framework JsonForm 类定义', undefined);
+    expect(name).toBe('查找 swift framework JsonForm 类定义');
+  });
+
   test('task_stop：无名 exec（无 purpose 映射）回执 label 兜底', () => {
     const name = taskOpNameOf('task_stop', { taskId: 'find-name-swift-20261117T022449Z-z2ww' }, receipt, undefined);
     expect(name).toBe('find / -name "x.jar" 2>/dev/null | head');

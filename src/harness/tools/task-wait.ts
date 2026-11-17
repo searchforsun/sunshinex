@@ -40,7 +40,7 @@ function readTail(filePath: string, lines: number): string {
 /** 终态回执体（bg-wake 批C 导出）：宿主起轮处唤醒通知文复用单点（receiptBody(t, WAKE_HINT_RECEIPT_TOOL)） */
 export function receiptBody(t: BackgroundTask, againTool: string): string {
   const code = t.exitCode !== undefined ? `, exit ${t.exitCode}` : '';
-  const head = `${t.id} (${t.kind}) ${t.status}${code} — ${t.label}`;
+  const head = `${t.id} (${t.kind}) ${t.status}${code} — ${t.title ?? t.label}`; // 任务名优先(2026-11-17 根治同拍)
   if (t.status === 'running') {
     return `${head} (still running; call ${againTool} again to continue waiting, or task_stop / agent_team_task_stop to cancel)`;
   }

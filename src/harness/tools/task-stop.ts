@@ -106,7 +106,7 @@ export function makeTaskStopTool(tasks: TaskRegistry, board?: TaskBoard): Regist
       if (task === undefined) {
         const ledger = tasks
           .list()
-          .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.label}`)
+          .map((t) => `${t.id} (${t.kind}, ${t.status}) ${t.title ?? t.label}`)
           .join('; ');
         throw new CodedToolError(
           'INVALID_ARG',
@@ -115,9 +115,11 @@ export function makeTaskStopTool(tasks: TaskRegistry, board?: TaskBoard): Regist
       }
       if (task.status === 'running') {
         abortLedger(tasks, task);
-        return receipt(`task ${taskId} stopped (${task.label})`);
+        // 回执格式(2026-11-17 用户裁定「为什么加了 task 前缀,为什么没有直接获取到任务名」根治):
+        //   裸 id 起头+任务名直随(title=purpose/转入 label;exec 台账 label=命令原文,不再示命令)
+        return receipt(`${taskId} stopped — ${task.title ?? task.label}`);
       }
-      return receipt(`task ${taskId} already finished with status ${task.status}`);
+      return receipt(`${taskId} already finished with status ${task.status} — ${task.title ?? task.label}`);
     },
   };
 }

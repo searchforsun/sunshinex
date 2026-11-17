@@ -35,9 +35,13 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
     const command = execPurposeOf(e) ?? (typeof e.input?.command === 'string' ? e.input.command.trim().replace(/\s+/g, ' ') : '');
     if (command === '') continue;
     const receipt = e.result?.text ?? e.result?.full ?? '';
-    const started = /task (\S+) started/.exec(receipt);
+    // 回执格式 2026-11-17 根治:裸 id 起头+「started in background/moved to background」(不再冠
+    //   task 名词——模型照抄「task <id>」当 taskId 曾致 task_stop INVALID_ARG 误报重试);旧格式
+    //   历史档 fallback 保留(旧转录回执仍是 task <id> started 旧形)
+    const started = /^(\S+) started in background/.exec(receipt) ?? /task (\S+) started/.exec(receipt);
     if (started !== null) m.set(started[1]!, command);
-    const moved = /command moved to background after timeout: task (\S+)/.exec(receipt);
+    // 新形回执 id 起头(不冠名词);负向 lookahead 排除旧形首词「command」,旧格式历史档走下行兜底
+    const moved = /^(?!command )(\S+) moved to background/.exec(receipt) ?? /command moved to background after timeout: task (\S+)/.exec(receipt);
     if (moved !== null) m.set(moved[1]!, command);
   }
   // 后台 spawn:`task <id> started` → 展示名=label ?? agent_id(CJK label 的 id 业务段会塌成
@@ -50,7 +54,7 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
       || (typeof input.agent_id === 'string' && input.agent_id.trim() !== '' ? input.agent_id.trim() : '');
     if (name === '') continue;
     const receipt = e.result?.text ?? e.result?.full ?? '';
-    const started = /task (\S+) started/.exec(receipt);
+    const started = /^(\S+) started in background/.exec(receipt) ?? /task (\S+) started/.exec(receipt);
     if (started !== null) m.set(started[1]!, name);
   }
   return m;
@@ -97,7 +101,7 @@ export function taskAgentResolverOf(entries: readonly ChatEntry[]): (id: string)
     if (e.kind !== 'tool' || e.name !== 'exec') continue;
     const name = execPurposeOf(e);
     const receipt = e.result?.text ?? e.result?.full ?? '';
-    const started = /task (\S+) started/.exec(receipt) ?? /command moved to background after timeout: task (\S+)/.exec(receipt);
+    const started = /^(\S+) started in background/.exec(receipt) ?? /task (\S+) started/.exec(receipt) ?? /^(?!command )(\S+) moved to background/.exec(receipt) ?? /command moved to background after timeout: task (\S+)/.exec(receipt);
     if (name !== undefined && started !== null) m.set(started[1]!, { name, kind: 'exec' });
   }
   for (const e of entries) {

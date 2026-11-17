@@ -450,7 +450,7 @@ export class SubagentRunner {
    * spawnBackground 返回值承载、spawn 工具回执串尾追（fork 面缺省 undefined 零变化）。
    * opts.tier（2026-11-15 sunx P1 Task 3，dispatch_task 消费）：覆盖合并进父预算（{...budget, tier}）——
    * 单次分派档位覆盖，不影响父链其余分派；预算缺省（未 attachParent）原样透传（NOT_SUPPORTED 路径零变化） */
-  spawnBackground(rawInput: SubagentSpawnInput, opts?: { tier?: ModelTier; context?: 'clean' | 'chain' }): { taskId: string; outputFilePath: string; wakeHint?: string } {
+  spawnBackground(rawInput: SubagentSpawnInput, opts?: { tier?: ModelTier; context?: 'clean' | 'chain' }): { taskId: string; outputFilePath: string; wakeHint?: string; name: string } {
     const input = normalizeSpawnInput(rawInput);
     const ledger = this.deps.tasks;
     if (ledger === undefined) {
@@ -468,6 +468,7 @@ export class SubagentRunner {
     // 模型按 label 出牌时 /tasks 业务列两行同显 'subagent'（2026-10-03 用户实据）；此 label 亦为 id 业务段语义源
     const label = input.label ?? input.agent_id ?? 'subagent';
     const task = ledger.submit({ kind: 'subagent', label, ownerRun: ledger.currentOwner() });
+    const name = label; // 任务名直随回执(2026-11-17 根治:模型/GUI 免转录反推)——label=spec.label ?? agent_id ?? 'subagent'
     const budget = this.getBudget?.();
     const effectiveBudget = budget !== undefined && opts?.tier !== undefined ? { ...budget, tier: opts.tier } : budget;
     const abort = new AbortController();
@@ -503,7 +504,7 @@ export class SubagentRunner {
         ledger.finish(task.id, 'failed');
       }
     })();
-    return { taskId: task.id, outputFilePath: task.outputFilePath, ...(ledger !== undefined && wakeHintGate(ledger) ? { wakeHint: WAKE_HINT } : {}) };
+    return { taskId: task.id, outputFilePath: task.outputFilePath, name, ...(ledger !== undefined && wakeHintGate(ledger) ? { wakeHint: WAKE_HINT } : {}) };
   }
 
   /** 统一入口：解析 → 并发护栏 → fork 组装 → 执行 → 终态一行回写。失败不炸父任务（错误局部化由父模型决策续跑/换路） */
@@ -747,7 +748,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
       // 长驻 teammate 不在本工具面:create_agent_teammate 动词独立承载(两动词两契约,见工厂注释)
       if (spec.background === true) {
         const started = runner.spawnBackground(spec);
-        return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `${started.taskId} started in background — ${started.name} (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
       }
       const r = await runner.runSubagent(spec);
       if (!r.ok) return { exitCode: 1, stdout: r.error.message, stderr: '', timedOut: false };
@@ -805,7 +806,7 @@ export function teamDependsOnError(state: TaskBoardState, dependsOn: readonly st
 export function forkDispatch(
   runner: SubagentRunner,
   input: { spec?: string; agent_id?: string; label?: string; isolation?: 'worktree'; tier?: ModelTier; context?: 'clean' | 'chain' },
-): { taskId: string; outputFilePath: string; wakeHint?: string } {
+): { taskId: string; outputFilePath: string; wakeHint?: string; name: string } {
   const specInput: SubagentSpawnInput = {
     prompt: typeof input.spec === 'string' && input.spec.length > 0 ? input.spec : undefined,
     ...(typeof input.agent_id === 'string' && input.agent_id.length > 0 ? { agent_id: input.agent_id } : {}),
@@ -897,7 +898,7 @@ export function makeDispatchTool(runner: SubagentRunner, opts?: { team?: Dispatc
           ...(tier !== undefined ? { tier } : {}),
           ...(context !== undefined ? { context } : {}),
         });
-        return { exitCode: 0, stdout: `task ${started.taskId} started (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
+        return { exitCode: 0, stdout: `${started.taskId} started in background — ${started.name} (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
       }
       // ---- team 板通道（R6 自举；接缝仅 sunx 装配注入）----
       const team = opts?.team;
