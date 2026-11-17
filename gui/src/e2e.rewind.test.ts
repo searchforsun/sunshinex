@@ -23,6 +23,7 @@ import { GuiDaemon } from '../../dist/serve/daemon';
 // @ts-expect-error dist 发布形态(tsc 不发声明,同 e2e.test.ts)
 import { ScriptedAdapter } from '../../dist/model/adapter';
 import { App } from './App';
+import { applyDeveloperMode } from './developer-mode';
 
 const write = (p: string, content: string): string => JSON.stringify({ tool: 'write', input: { path: p, content } });
 const done = (reply: string): string => JSON.stringify({ done: true, reply });
@@ -70,6 +71,7 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       // (sx-welcome:project)跨 retry 存活,上一把的同 basename 项目('root')会让 line-73 的
       // 「项目条显 root」就绪信号在 adoptWorkspace 落定前假真,提交落在已删的旧根上
       localStorage.clear();
+      applyDeveloperMode(true); // 2026-11-17 模式派生默认:本链走完整工程链路,以开发者模式装配
       const { container } = render(createElement(App));
       await waitFor(() => expect(screen.getByRole('button', { name: 'add workspace' })).toBeDefined(), { timeout: 10_000 });
       Object.defineProperty(window, 'sunshinex', { configurable: true, value: { pickFolder: async () => root } });

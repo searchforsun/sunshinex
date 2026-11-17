@@ -1,6 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { RunChangesBar } from './RunFooter';
+
+
+/** 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件断言开发者档渲染细节,整文件以开发者模式装配 */
+import { applyDeveloperMode } from '../../developer-mode';
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
 
 /** 轮尾改动条(2026-11-11 用户裁定「每轮修改产生快照写死,快照互不影响,只是当时的快照」冻结面):
  *  行=落档记录、行数=冻结统计——live git 不参与(提交不吞数字/跨轮不互染),旧动态渲染退役 */

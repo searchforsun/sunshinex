@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { loadDockSession } from '../../tabs/terminal-dock';
 import { useConfigChanged } from '../../settings/use-config-changed';
+import { useDeveloperMode } from '../../developer-mode';
 import type { ChatProps } from './chat-types';
 
 /**
@@ -20,6 +21,8 @@ export function useChatTerminalDock({ conn, sessionId, root, sideChat }: {
   const [dockOpen, setDockOpen] = useState(() => loadDockSession(sessionId).open);
   const [dockHeight, setDockHeight] = useState(260);
   useEffect(() => { setDockOpen(loadDockSession(sessionId).open); }, [sessionId]);
+  /** 2026-11-17 用户裁定「非开发者模式下终端是关的」:普通态恒关(设置行同时隐藏),开发者模式才读 settings·terminalDock */
+  const dev = useDeveloperMode();
   const [dockEnabled, setDockEnabled] = useState(true);
   const dockCfgTicks = useConfigChanged(conn);
   useEffect(() => {
@@ -29,6 +32,6 @@ export function useChatTerminalDock({ conn, sessionId, root, sideChat }: {
       () => undefined,
     );
   }, [conn, root, dockCfgTicks.settings]);
-  const terminalDockEnabled = dockEnabled && sideChat !== true;
+  const terminalDockEnabled = dev && dockEnabled && sideChat !== true;
   return { dockOpen, setDockOpen, dockHeight, setDockHeight, terminalDockEnabled };
 }

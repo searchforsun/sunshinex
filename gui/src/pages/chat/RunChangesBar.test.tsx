@@ -1,7 +1,13 @@
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RunChangesBar } from './RunFooter';
 import { TurnLatestContext } from './use-live-changes';
+
+
+/** 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件断言开发者档渲染细节,整文件以开发者模式装配 */
+import { applyDeveloperMode } from '../../developer-mode';
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
 
 /** 轮次 checkpoint 汇总条(2026-11-10 用户裁定「每轮精确看到自己的改动、能撤销」;2026-11-11 冻结面):
  *  文件名点击开本轮 diff 页签(run+path);撤销二次确认走 turn-restore,stale 行置灰;

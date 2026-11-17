@@ -60,6 +60,10 @@ const hlCounters = highlightMock as unknown as { __calls(): number; __reset(): v
  *  .entry-user>.user-bubble+.user-actions>.user-action[aria-label=Copy];.chat-day-sep[role=separator]) */
 
 const sinkRef = { current: null as ChatSink | null };
+/** 2026-11-17 模式派生默认(普通态=办公模式/简洁模式/用量统计关/终端关):本文件断言的是
+ *  开发者档转录细节(展开体/折叠行/上下文圆环等),整文件以开发者模式装配,行为回到改造前基线 */
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
 const DAY1 = new Date(2026, 0, 10, 10).getTime();
 const DAY2 = new Date(2026, 0, 11, 10).getTime();
 
@@ -2279,8 +2283,9 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-10" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.click(screen.getByLabelText('add attachment')); // + pill → 附加面板
-    // 2026-11-17 普通态四分区收起:先经「浏览命令与技能」展开(本测断言的是分区自身语义)
-    fireEvent.click(screen.getByText('浏览命令与技能'));
+    // 2026-11-17 普通态四分区收起:有收起行则先展开(开发者模式装配时四区直接在座;本测断言的是分区自身语义)
+    const disclosure = screen.queryByText('浏览命令与技能');
+    if (disclosure !== null) fireEvent.click(disclosure);
     await screen.findByText('devx'); // 智能体/团队区数据异步落位
     const secs = (): Array<string | null> => [...document.querySelectorAll('.sx-plus-sec')].map((el) => el.textContent);
     expect(secs()).toContain('子智能体'); // 实体分组在座(技能后)

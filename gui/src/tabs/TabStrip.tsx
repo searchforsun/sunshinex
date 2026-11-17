@@ -48,10 +48,10 @@ export interface TabStripProps {
   readonly hiddenMenuIds?: ReadonlySet<string>;
 }
 
-/** 「+」菜单分节序:content → session → tools */
+/** 「+」菜单原序(2026-11-17 用户裁定「顺序不要动」):content → session → tools 拍平渲染,
+ *  不分节但保持既有菜单顺序——常驻四项即该序中的待办/产物/辅助对话/浏览器 */
 const GROUP_ORDER: readonly ('content' | 'session' | 'tools')[] = ['content', 'session', 'tools'];
-/** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */
-const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory', 'turndiff']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断;turndiff 被动入口只留轮尾改动条/工具行(2026-11-11 用户裁定「去掉本轮入口」:单文件 diff 落具体页签,无公共裸开面)
+/** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory', 'turndiff']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断;turndiff 被动入口只留轮尾改动条/工具行(2026-11-11 用户裁定「去掉本轮入口」:单文件 diff 落具体页签,无公共裸开面)
 
 /** 常驻四项(2026-11-17 用户裁定「待办,产物,浏览器,辅助对话 这四个常驻」) */
 const RESIDENT_MENU: ReadonlySet<string> = new Set(['tasks', 'artifacts', 'web', 'sidechat']);
@@ -298,37 +298,30 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           role="menu"
           aria-label="new tab types"
         >
-          {GROUP_ORDER.map((g) => {
-            // G14.159 文件/上下文不走「+」菜单:文件由目录树/工具行开档,上下文面板按需经命令;已有标签不受影响
-            const entries = TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && menuEntryVisible(e.id, { dev, showMore, welcomeOnly }));
-            if (entries.length === 0) return null;
+          {/* 2026-11-17 用户裁定「顺序不要动」:按既有 content→session→tools 序拍平渲染(不分节),
+              常驻四项保持原菜单相对序;「显示更多」恒居末行、变暗 */}
+          {GROUP_ORDER.flatMap((g) => TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && menuEntryVisible(e.id, { dev, showMore, welcomeOnly }))).map((e) => {
+            const MenuIcon = TAB_ICONS[e.id] ?? FileText;
             return (
-              <div key={g} role="group" aria-label={g}>
-                {entries.map((e) => {
-                  const MenuIcon = TAB_ICONS[e.id] ?? FileText;
-                  return (
-                    <button
-                      key={e.id}
-                      type="button"
-                      role="menuitem"
-                      className="sx-menuitem"
-                      disabled={disabled}
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onOpenType(e.id);
-                      }}
-                    >
-                      <MenuIcon size={16} strokeWidth={1.75} />
-                      {e.title({})}
-                    </button>
-                  );
-                })}
-              </div>
+              <button
+                key={e.id}
+                type="button"
+                role="menuitem"
+                className="sx-menuitem"
+                disabled={disabled}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onOpenType(e.id);
+                }}
+              >
+                <MenuIcon size={16} strokeWidth={1.75} />
+                {e.title({})}
+              </button>
             );
           })}
           {!dev && !welcomeOnly && (
-            <button type="button" role="menuitem" className="sx-menuitem" aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
-              {showMore ? t('Collapse', '收起') : t('More', '更多')}
+            <button type="button" role="menuitem" className="sx-menuitem sx-menuitem-more" aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
+              {showMore ? t('Show less', '收起') : t('Show more', '显示更多')}
             </button>
           )}
         </div>,

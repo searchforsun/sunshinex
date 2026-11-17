@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { resetTitleCacheForTests } from './pages/chat/use-chat-title';
+import { applyDeveloperMode } from './developer-mode';
 // monaco 真渲染需要浏览器布局——jsdom 挂 stub(内容经 DiffPanel 根 data-* 断言)
 vi.mock('monaco-editor', () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
@@ -37,6 +38,8 @@ import { GuiDaemon } from '../../dist/serve/daemon';
  *  后例,地标按钮缺席与组起始态不定随跑次漂移(全量 4 跑 3 败实测) */
 beforeEach(() => {
   localStorage.clear();
+  // 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件走完整工程链路,整文件以开发者模式装配
+  applyDeveloperMode(true);
   resetTitleCacheForTests();
 });
 
@@ -58,7 +61,9 @@ async function findOpenSessionRow(): Promise<HTMLElement> {
 /** 2026-11-17 「+」菜单普通态四常驻(tasks/artifacts/web/sidechat):非常驻项(agents/terminal 等)
  *  先点菜单末行「更多」展开,再点原目标——保留普通态用户路径,不改变原断言 */
 function revealHiddenMenuItems(): void {
-  fireEvent.click(screen.getByRole('menuitem', { name: /^(?:More|更多)$/ }));
+  // 开发者模式装配下菜单已全平铺(无「显示更多」行);普通态才需要展开
+  const more = screen.queryByRole('menuitem', { name: /^(?:Show more|More|显示更多|更多)$/ });
+  if (more !== null) fireEvent.click(more);
 }
 // @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { ScriptedAdapter } from '../../dist/model/adapter';
@@ -1683,11 +1688,8 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
 
       // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
-      // 2026-11-14 并行线「设置导航分层」后 MCP 归高级组、普通态不渲染导航——用例先开开发者模式
-      // 开发者模式行=开关(aria-label 'developer mode',SettingsForm.developer.test 同款交互);
-      // 设置表单行待加载完成才渲染(rows 就绪前只有导航壳)
-      const devSwitch = await screen.findByLabelText('developer mode', {}, { timeout: 5_000 });
-      fireEvent.click(devSwitch);
+      // 2026-11-14 设置导航分层后 MCP 归高级组;2026-11-17 本文件整文件已装配开发者模式(beforeEach),
+      // 此处不再点开关(再点一次=关掉,导航反而不渲染)——只等导航项落定
       await waitFor(() => expect(screen.getByRole('button', { name: 'MCP' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'MCP' }));
       await screen.findByLabelText('settings pane MCP', {}, { timeout: 5_000 });

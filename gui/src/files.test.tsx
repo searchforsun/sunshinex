@@ -14,7 +14,7 @@ vi.mock('@monaco-editor/react', () => ({
   ),
 }));
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { Files } from './pages/Files';
 import { DiffPanel } from './diff-panel';
@@ -22,6 +22,11 @@ import { Chat } from './pages/Chat';
 import { highlightCode } from './highlight';
 import { emptyBoard } from './projection';
 import type { Connection, DiffResp, FileResp, SnapshotResponse } from './connection';
+import { applyDeveloperMode } from './developer-mode';
+
+/** 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件断言开发者档工具行展开面,整文件以开发者模式装配 */
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
 import type { ChatSink } from './pages/Chat';
 import type { MutableRefObject } from 'react';
 import type { SessionEvent } from '../../src/types';

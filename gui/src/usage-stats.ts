@@ -8,6 +8,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
+import { onDeveloperModeChange, readDeveloperMode } from './developer-mode';
 
 const LS_KEY = 'sunshinex.usage-stats';
 const DATA_ATTR = 'usageStats';
@@ -27,14 +28,14 @@ function readAttr(): boolean {
   return document.documentElement.dataset[DATA_ATTR] !== '0';
 }
 
+/** 有效值(2026-11-17 用户裁定「非开发者模式用量统计是关的」):普通态恒关,
+ *  存储值仅在开发者模式开启时生效 */
 export function readUsageStats(): boolean {
-  return readStored();
+  return readDeveloperMode() ? readStored() : false;
 }
 
 function apply(on: boolean): void {
-  const root = document.documentElement;
-  if (on) delete root.dataset[DATA_ATTR];
-  else root.dataset[DATA_ATTR] = '0';
+  applyAttr();
   try {
     localStorage.setItem(LS_KEY, on ? '1' : '0');
   } catch {
@@ -47,6 +48,19 @@ function apply(on: boolean): void {
 export function applyUsageStats(on: boolean): void {
   apply(on);
 }
+
+/** 有效值落根属性(存储值不动):普通态恒关 */
+function applyAttr(): void {
+  const root = document.documentElement;
+  if (readUsageStats()) delete root.dataset[DATA_ATTR];
+  else root.dataset[DATA_ATTR] = '0';
+}
+
+/** 开发者模式翻转:重落属性并重渲(存储值不动) */
+onDeveloperModeChange(() => {
+  applyAttr();
+  for (const fn of listeners) fn();
+});
 
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);

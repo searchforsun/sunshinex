@@ -9,6 +9,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
+import { onDeveloperModeChange, readDeveloperMode } from './developer-mode';
 
 export type UiMode = 'code' | 'office';
 
@@ -24,13 +25,15 @@ function readStored(): UiMode {
   }
 }
 
+/** 有效模式(2026-11-17 用户裁定「非开发者模式下肯定是办公模式」):普通态恒 office,
+ *  存储值仅在开发者模式开启时生效——普通态切回开发者模式即恢复用户原选择 */
 export function readUiMode(): UiMode {
-  return current;
+  return readDeveloperMode() ? readStored() : 'office';
 }
 
 export function applyUiMode(mode: UiMode): void {
   current = mode;
-  document.documentElement.dataset.uiMode = mode;
+  document.documentElement.dataset.uiMode = readDeveloperMode() ? mode : 'office';
   try {
     localStorage.setItem(KEY, mode);
   } catch {
@@ -39,6 +42,12 @@ export function applyUiMode(mode: UiMode): void {
   notifyUiPref('uiMode', mode);
   for (const fn of listeners) fn();
 }
+
+/** 开发者模式翻转:重落有效模式并重渲(存储值不动) */
+onDeveloperModeChange(() => {
+  document.documentElement.dataset.uiMode = current === 'office' || !readDeveloperMode() ? 'office' : 'code';
+  for (const fn of listeners) fn();
+});
 
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);

@@ -118,6 +118,18 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(screen.queryByRole('menuitem', { name: /More|更多/ })).toBeNull();
   });
 
+  it('2026-11-17 普通态菜单:常驻四项保持原菜单序,「显示更多」居末且带变暗类', () => {
+    render(<TabStrip {...base} tabs={[]} activeUid={null} />);
+    fireEvent.click(screen.getByRole('button', { name: 'new tab' }));
+    const labels = screen.getAllByRole('menuitem').map((el) => el.textContent);
+    expect(labels).toEqual(['Artifacts', 'Todos', 'Side chat', 'Browser', 'Show more']);
+    expect(screen.getByRole('menuitem', { name: 'Show more' }).classList.contains('sx-menuitem-more')).toBe(true);
+    // 点显示更多:其余八项按原序补在末行之前,末行文案转「收起」
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
+    const expanded = screen.getAllByRole('menuitem').map((el) => el.textContent);
+    expect(expanded).toEqual(['Review', 'Artifacts', 'Todos', 'Plans', 'Agent teams', 'Background tasks', 'Memory', 'Learned skills', 'Side chat', 'Terminal', 'Browser', 'Sunx board', 'Show less']);
+  });
+
   it('+ 在滚区内跟末签;宽裕不钉 is-pinned', () => {
     let s = ensureSession({}, 's1', registryProbe());
     s = openTab(s, 's1', 'file', { path: 'a.ts' }, registryProbe());

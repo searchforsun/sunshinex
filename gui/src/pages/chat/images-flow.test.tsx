@@ -1,4 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+/** 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件断言开发者档渲染细节,整文件以开发者模式装配 */
+import { applyDeveloperMode } from '../../developer-mode';
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
+
 // mermaid/monaco stub(Chat.test 同款:jsdom 无渲染管线)
 vi.mock('mermaid', () => ({
   default: {
@@ -87,6 +93,7 @@ function imgFile(name = 'shot.png'): File {
 
 beforeEach(() => {
   localStorage.clear();
+  applyDeveloperMode(true); // 2026-11-17 模式派生默认:清档后重申开发者模式(本文件断言开发者档渲染细节)
 });
 
 describe('PlusPanel 附件区(置首)', () => {

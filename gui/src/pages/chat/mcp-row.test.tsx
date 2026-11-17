@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import { ToolEntryView } from './ToolEntry';
 import { ChatEntryView } from './EntryViews';
@@ -6,6 +6,12 @@ import { applyUiMode } from '../../ui-mode';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
 import { taskAgentResolverOf, taskNameResolverOf } from './use-chat-derived';
+
+
+/** 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件断言开发者档渲染细节,整文件以开发者模式装配 */
+import { applyDeveloperMode } from '../../developer-mode';
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
 
 /** MCP 工具折叠行(2026-11-07 用户裁定):编程模式参数照常显示;办公模式只显名——内置电脑/浏览器工具=本地化名,
  *  接入第三方=「Ran 工具名」;阶段正文两种界面模式下正常显示 */

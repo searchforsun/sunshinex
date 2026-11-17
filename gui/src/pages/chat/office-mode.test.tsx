@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
@@ -9,6 +9,12 @@ import { applyUiMode } from '../../ui-mode';
 import type { ChatEntry } from '../../chat-reducer';
 import type { Connection } from '../../connection';
 import { taskNameResolverOf } from './use-chat-derived';
+
+
+/** 2026-11-17 模式派生默认(普通态=办公/简洁/用量关):本文件断言开发者档渲染细节,整文件以开发者模式装配 */
+import { applyDeveloperMode } from '../../developer-mode';
+beforeEach(() => applyDeveloperMode(true));
+afterEach(() => applyDeveloperMode(false));
 
 /** 办公模式(2026-11-07 用户裁定):工具行数量与编程模式一致、聚合组照常可展开;单个工具行不可展开细节、
  *  非跳转行只显动词头,文件行去 +/-;等待后台任务行普通任务无跳转、含子智能体链接转录页(团队任务保留);

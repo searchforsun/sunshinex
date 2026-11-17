@@ -12,6 +12,15 @@ const DATA_ATTR = 'developerMode';
 const PREF_KEY = 'developerMode';
 
 const listeners = new Set<() => void>();
+/** 模式派生偏好的依赖回调(办公/简洁/用量统计等):开发者模式翻转时重算有效值并重渲。
+ *  各模块自行注册并落根属性,避免跨模块 import 环。 */
+const depListeners = new Set<() => void>();
+
+/** 注册模式派生依赖(返回退订) */
+export function onDeveloperModeChange(fn: () => void): () => void {
+  depListeners.add(fn);
+  return () => depListeners.delete(fn);
+}
 
 function readStored(): boolean {
   try {
@@ -36,6 +45,7 @@ function apply(on: boolean): void {
   }
   notifyUiPref(PREF_KEY, on ? '1' : '0');
   for (const fn of listeners) fn();
+  for (const fn of depListeners) fn();
 }
 
 export function applyDeveloperMode(on: boolean): void {

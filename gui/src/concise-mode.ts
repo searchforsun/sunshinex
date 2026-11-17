@@ -9,6 +9,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
+import { onDeveloperModeChange, readDeveloperMode } from './developer-mode';
 
 const LS_KEY = 'sunshinex.concise-mode';
 const DATA_ATTR = 'conciseMode';
@@ -28,14 +29,14 @@ function readAttr(): boolean {
   return document.documentElement.dataset[DATA_ATTR] === '1';
 }
 
+/** 有效值(2026-11-17 用户裁定「非开发者模式下肯定是简洁模式」):普通态恒开,
+ *  存储值仅在开发者模式开启时生效 */
 export function readConciseMode(): boolean {
-  return readStored();
+  return readDeveloperMode() ? readStored() : true;
 }
 
 function apply(on: boolean): void {
-  const root = document.documentElement;
-  if (on) root.dataset[DATA_ATTR] = '1';
-  else delete root.dataset[DATA_ATTR];
+  applyAttr();
   try {
     localStorage.setItem(LS_KEY, on ? '1' : '0');
   } catch {
@@ -48,6 +49,19 @@ function apply(on: boolean): void {
 export function applyConciseMode(on: boolean): void {
   apply(on);
 }
+
+/** 有效值落根属性(存储值不动):普通态恒开 */
+function applyAttr(): void {
+  const root = document.documentElement;
+  if (readConciseMode()) root.dataset[DATA_ATTR] = '1';
+  else delete root.dataset[DATA_ATTR];
+}
+
+/** 开发者模式翻转:重落属性并重渲(存储值不动) */
+onDeveloperModeChange(() => {
+  applyAttr();
+  for (const fn of listeners) fn();
+});
 
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);

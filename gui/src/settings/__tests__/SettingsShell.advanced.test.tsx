@@ -43,10 +43,14 @@ describe('设置导航高级组分层', () => {
     const first = render(<SettingsShell conn={conn} root="" onBack={vi.fn()} />);
     expect(await screen.findByText('Developer mode')).toBeDefined(); // 等设置面板落定(act 窗口内)
     expect(screen.queryByText('MCP')).toBeNull();
+    expect(screen.getByText('Basics')).toBeDefined(); // 2026-11-17 裁定:基础组恒显
+    expect(screen.queryByText('Context & memory')).toBeNull();
     first.unmount();
     applyDeveloperMode(true);
     const second = render(<SettingsShell conn={conn} root="" onBack={vi.fn()} />);
     expect(await screen.findByText('MCP')).toBeDefined();
+    // 逐语义分组(不再是「高级」一口吞):四个高级组头齐在
+    for (const g of ['Context & memory', 'Execution & extensions', 'Agents', 'System']) expect(screen.getAllByText(g).length).toBeGreaterThan(0);
     second.unmount();
     applyDeveloperMode(false);
   });
