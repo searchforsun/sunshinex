@@ -6,9 +6,11 @@ import { artifactKey, artifactKindLabel, artifactTitleOf, type Artifact } from '
 import { t } from '../../i18n';
 import { openExternalUrl } from '../../ui-util';
 import { useCopyFeedback } from '../../use-copy-feedback';
+import { useArtifactCards } from '../../artifact-cards';
 import type { Connection } from '../../connection';
 
-const FOLD_AT = 8;
+/** 折叠阈值(2026-11-16 用户裁定「产物默认显示 4 个,显示更多」):首屏 4 张,余量经「显示更多」展开 */
+const FOLD_AT = 4;
 
 export interface ArtifactCardActions {
   /** file 类主钮:侧栏预览 */
@@ -123,7 +125,7 @@ export function ArtifactCardView({ a, conn, root, actions, variant = 'strip' }: 
 
 /** 轮末产物卡区(2026-11-12 spec §4;2026-11-14 kind 化):助手正文之后、改动条之前;数据=
  *  runmeta.artifacts 只读投影。无容器框(对标 codex 简洁),网格 auto-fit minmax(min(360px,1fr))
- *  行距 16px——单卡整行/多卡宽处两列/窄处单列;>8 张折叠,「展开全部」居左(hover 灰→主文字色,
+ *  行距 16px——单卡整行/多卡宽处两列/窄处单列;>4 张折叠,「显示更多」居左(hover 灰→主文字色,
  *  与「全部产物」同语言) */
 export function ArtifactsStrip({ artifacts, conn, onRunInTerminal, root, onOpenFile, onOpenWeb, onOpError, onOpenArtifacts }: {
   artifacts: ReadonlyArray<Artifact>;
@@ -138,6 +140,9 @@ export function ArtifactsStrip({ artifacts, conn, onRunInTerminal, root, onOpenF
   onOpenArtifacts?: () => void;
 }): JSX.Element | null {
   const [open, setOpen] = useState(false);
+  // 设置页「产物卡」开关(2026-11-16):关=卡区整块不渲染(产物仍在 runmeta,产物库页签照常)
+  const cardsOn = useArtifactCards();
+  if (!cardsOn) return null;
 
   const visible = open ? artifacts : artifacts.slice(0, FOLD_AT);
   return (
@@ -145,7 +150,7 @@ export function ArtifactsStrip({ artifacts, conn, onRunInTerminal, root, onOpenF
       <div className="sx-artifacts-head">
         {artifacts.length > FOLD_AT && (
           <button type="button" className="sx-artifacts-fold" onClick={() => setOpen((v) => !v)}>
-            {open ? t('Collapse', '收起') : t('Show all', '展开全部')}
+            {open ? t('Collapse', '收起') : t('Show more', '显示更多')}
           </button>
         )}
         {onOpenArtifacts !== undefined && (

@@ -8,6 +8,7 @@ import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, UI_FONT_CHOICES 
 import { applyUiMode } from './ui-mode';
 import { applyDarkBubbles, applyDarkCode } from './dark-surfaces';
 import { applyUsageStats } from './usage-stats';
+import { applyArtifactCards } from './artifact-cards';
 import { applyConciseMode } from './concise-mode';
 import { applyDeveloperMode } from './developer-mode';
 import { applyZoom, type UiZoom } from './ui-zoom';
@@ -57,6 +58,7 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       darkBubbles: (v) => applyDarkBubbles(v === '1'),
       darkCode: (v) => applyDarkCode(v === '1'),
       usageStats: (v) => applyUsageStats(v === '1'),
+      artifactCards: (v) => applyArtifactCards(v === '1'),
       conciseMode: (v) => applyConciseMode(v === '1'),
       developerMode: (v) => applyDeveloperMode(v === '1'),
     });

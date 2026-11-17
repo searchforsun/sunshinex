@@ -8,6 +8,7 @@ import { applyCodeFontSize, applyUiFontSize, readCodeFontSize, readUiFontSize } 
 import { applyUiMode, readUiMode } from './ui-mode';
 import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from './dark-surfaces';
 import { applyUsageStats, readUsageStats } from './usage-stats';
+import { applyArtifactCards, readArtifactCards } from './artifact-cards';
 import { applyConciseMode, readConciseMode } from './concise-mode';
 import './app.css';
 import './tool-io.css'; // 工具展开体 I/O 井统一单点(免触 app.css 用户在途编辑面)
@@ -27,6 +28,7 @@ applyUiMode(readUiMode());
 applyDarkBubbles(readDarkBubbles());
 applyDarkCode(readDarkCode());
 applyUsageStats(readUsageStats());
+applyArtifactCards(readArtifactCards());
 applyConciseMode(readConciseMode()); // 用量统计显隐(默认开;关=圆环弹层留百分比/轮尾与运行行隐步数 tokens/会话卡隐轮次步数)
 const root = document.getElementById('root');
 if (root === null) throw new Error('gui: #root not found');

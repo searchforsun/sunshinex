@@ -4,7 +4,7 @@ import { SourceBadge } from './SourceBadge';
 import { Combo, Select } from './controls';
 import type { SelectOption } from './controls';
 import { EmptyState, SearchBar, Switch } from './components';
-import { CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, DeveloperModeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
+import { ArtifactCardsRow, CodeFontRow, ConciseModeRow, DarkBubblesRow, DarkCodeRow, DeveloperModeRow, FontRow, PaletteRow, ThemeRow, UiFontRow, UiModeRow, UsageStatsRow, ZoomRow } from './settings-rows';
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
@@ -564,6 +564,28 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
         pane.groups.map((g) => {
           const visible = g.fields.filter((fd) => rows[fd.key] !== undefined && rowMatches(fd, q));
           if (visible.length === 0 && !(q === '' && (g.themeRow || g.zoomRow || g.paletteRow || g.fontRow || g.developerRow))) return null; // 无可见行组卡省略(过滤命中零行同;特例行仅空查询保留)
+          /** 通用键值行渲染单点(字段行与 terminalDock 特例共用):标题+来源徽标+说明+右控件 */
+          const renderField = (fd: SettingsFieldDef): JSX.Element => {
+            const row = rows[fd.key]!;
+            const desc = KEY_DESCRIPTIONS[fd.key];
+            return (
+              <div key={fd.key} className="sx-setting-row">
+                <div className="sx-setting-main">
+                  <div className="sx-setting-title">
+                    <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>
+                    {dev && row.source !== 'global' && row.source !== 'default' && <SourceBadge source={row.source} />}
+                  </div>
+                  {/* 2026-10-31 用户裁定「所有配置细项要加上一简要的说明」:KEY_DESCRIPTIONS
+                      说明句(此前仅作搜索匹配面)升格为行内描述渲染,与外观行同形态 */}
+                  {desc !== undefined && <p className="sx-setting-desc">{t(desc.en, desc.zh)}</p>}
+                </div>
+                <div className="sx-setting-ctl">{renderControl(fd, row)}</div>
+              </div>
+            );
+          };
+          /** terminalDock 行(2026-11-17 用户裁定「终端调到简洁模式下方」):从字段序抽出、按
+           *  外观特例行序插在简洁模式之后;普通态(开发者模式关)整行不渲染——终端下栏恒关 */
+          const dockDef = visible.find((fd) => fd.key === 'terminalDock');
           return (
             <div key={g.title.en} className="sx-card sx-settings-card">
               <div className="sx-card-head">
@@ -572,34 +594,23 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
               <div className="sx-card-rows">
                 {g.developerRow && q === '' && <DeveloperModeRow />}
                 {g.themeRow && q === '' && <ThemeRow />}
-                {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体) */}
-                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? ['uimode' as const, 'darkbubbles' as const, 'darkcode' as const, 'usagestats' as const, 'concisemode' as const, 'zoom' as const, 'uifont' as const, 'codefont' as const] : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language')].map((fd) => {
+                {/* 2026-11-06 用户裁定:语言行置第二项(紧随主题,先于放缩/字体)。
+                    2026-11-17 用户裁定「非开发者模式下办公模式/简洁模式/用量统计/终端都是关的,没有用且冲突」:
+                    普通态隐藏 uimode/usagestats/concisemode/terminaldock 四行(取值由模式派生,见各模块) */}
+                {[...visible.filter((fd) => fd.key === 'language'), ...(g.zoomRow && q === '' ? (['uimode', 'darkbubbles', 'darkcode', 'usagestats', 'artifactcards', 'concisemode', 'terminaldock', 'zoom', 'uifont', 'codefont'] as const).filter((k) => dev || (k !== 'uimode' && k !== 'usagestats' && k !== 'concisemode' && k !== 'terminaldock')) : []), ...(g.paletteRow && q === '' ? ['palette' as const] : []), ...(g.fontRow && q === '' ? ['font' as const] : []), ...visible.filter((fd) => fd.key !== 'language' && fd.key !== 'terminalDock')].map((fd) => {
                   if (fd === 'zoom') return <ZoomRow key="zoom" />;
                   if (fd === 'uimode') return <UiModeRow key="uimode" />;
                   if (fd === 'darkbubbles') return <DarkBubblesRow key="darkbubbles" />;
                   if (fd === 'darkcode') return <DarkCodeRow key="darkcode" />;
                   if (fd === 'usagestats') return <UsageStatsRow key="usagestats" />;
+                  if (fd === 'artifactcards') return <ArtifactCardsRow key="artifactcards" />;
                   if (fd === 'concisemode') return <ConciseModeRow key="concisemode" />;
+                  if (fd === 'terminaldock') return dockDef !== undefined ? renderField(dockDef) : null;
                   if (fd === 'uifont') return <UiFontRow key="uifont" />;
                   if (fd === 'codefont') return <CodeFontRow key="codefont" />;
                   if (fd === 'palette') return <PaletteRow key="palette" />;
                   if (fd === 'font') return <FontRow key="font" />;
-                  const row = rows[fd.key]!;
-                  const desc = KEY_DESCRIPTIONS[fd.key];
-                  return (
-                    <div key={fd.key} className="sx-setting-row">
-                      <div className="sx-setting-main">
-                        <div className="sx-setting-title">
-                          <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>
-                          {dev && row.source !== 'global' && row.source !== 'default' && <SourceBadge source={row.source} />}
-                        </div>
-                        {/* 2026-10-31 用户裁定「所有配置细项要加上一简要的说明」:KEY_DESCRIPTIONS
-                            说明句(此前仅作搜索匹配面)升格为行内描述渲染,与外观行同形态 */}
-                        {desc !== undefined && <p className="sx-setting-desc">{t(desc.en, desc.zh)}</p>}
-                      </div>
-                      <div className="sx-setting-ctl">{renderControl(fd, row)}</div>
-                    </div>
-                  );
+                  return renderField(fd);
                 })}
               </div>
             </div>

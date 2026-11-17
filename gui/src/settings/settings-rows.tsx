@@ -15,6 +15,7 @@ import { applyUiMode, useUiMode } from '../ui-mode';
 import type { UiMode } from '../ui-mode';
 import { applyDarkBubbles, applyDarkCode, readDarkBubbles, readDarkCode } from '../dark-surfaces';
 import { applyUsageStats, readUsageStats } from '../usage-stats';
+import { applyArtifactCards, readArtifactCards } from '../artifact-cards';
 import { applyConciseMode, readConciseMode } from '../concise-mode';
 import { applyDeveloperMode, readDeveloperMode } from '../developer-mode';
 import type { Palette } from '../palette';
@@ -339,6 +340,18 @@ const UsageStatsRow = (): JSX.Element => (
   />
 );
 
+/** 产物卡显隐行(2026-11-16 用户裁定「设置页可以控制产物显隐开关」):关=正文轮末产物卡区整块
+ *  不渲染;产物仍登记在 runmeta(产物库页签/回放不受影响,只收渲染层)。持久经 artifact-cards.ts */
+const ArtifactCardsRow = (): JSX.Element => (
+  <DarkSurfaceRow
+    label={t('Artifact cards', '产物卡')}
+    desc={t('Show the artifact cards at the end of each turn in the chat. Artifacts stay registered and visible in the Artifacts tab.', '在对话每轮末尾展示产物卡片。产物仍会登记，可在产物页签查看。')}
+    aria="artifact cards"
+    read={readArtifactCards}
+    apply={applyArtifactCards}
+  />
+);
+
 /** 开发者模式行(2026-11-17 用户裁定「一个开关控制」):关=C 端简洁界面
  *  (隐藏终端/高级设置/工程详情类入口);开=完整工程能力。持久经 developer-mode.ts */
 const DeveloperModeRow = (): JSX.Element => (
@@ -414,6 +427,7 @@ const CodeFontRow = (): JSX.Element => (
 );
 
 export {
+  ArtifactCardsRow,
   CodeFontRow,
   ConciseModeRow,
   DarkBubblesRow,
