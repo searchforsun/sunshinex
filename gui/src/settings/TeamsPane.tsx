@@ -363,7 +363,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                     <>
                       <button
                         type="button"
-                        aria-label={`${t('Edit', '编辑')} ${e.id}(${scopeTag(e.source)})`}
+                        aria-label={`${t('Edit', '编辑')} ${e.id} ${scopeTag(e.source)}`}
                         disabled={!writable || saving}
                         data-tip={writable ? undefined : globalTip}
                         onClick={() => openDrawer(e)}
@@ -371,7 +371,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                         {t('Edit', '编辑')}
                       </button>
                       <ConfirmDeleteButton
-                        ariaLabel={`${t('Delete', '删除')} ${e.id}(${scopeTag(e.source)})`}
+                        ariaLabel={`${t('Delete', '删除')} ${e.id} ${scopeTag(e.source)}`}
                         disabled={!writable || saving}
                         dataTip={writable ? undefined : globalTip}
                         onConfirm={() => runOp(opFor(e, 'delete'))}
@@ -430,13 +430,13 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
           <ModalField label="description">
             <input className="sx-setting-input" aria-label="team description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} spellCheck={false} />
           </ModalField>
-          <ModalField label={t('version (optional)', 'version(可选)')}>
+          <ModalField label={t('Version', '版本')}>
             <input className="sx-setting-input" aria-label="team version" value={form.version} placeholder="0.1.0" onChange={(e) => setForm({ ...form, version: e.target.value })} spellCheck={false} />
           </ModalField>
           {/* R3 成员组合形态(2026-11-17 用户裁定「卡片式选择智能体+支持自定义 agent id」):
               已知 agent=网格卡片(名+id+描述,点击整卡切换);自定义成员=chips 行内输入(回车/添加钮
               入列,chip 摘除)——extraMembers 空格串存储形态不变,提交合并去重保首现(submitDrawer 单点) */}
-          <ModalField label={t('Members (known agents)', '成员(已知智能体)')} hint={t('Pick from created agents — create new ones on the Agents page', '从已创建的智能体中选择——新智能体请先在「智能体」页创建')}>
+          <ModalField label={t('Members', '成员')} hint={t('Choose from existing agents', '从已有智能体中选择')}>
             <div className="sx-agent-pick">
               {knownAgents.map((k) => {
                 const on = form.members.includes(k.id);
@@ -466,7 +466,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
               自定义 agent id 入口是当初有意去掉的(2026-11-17 用户澄清「否则对用户不友好,只能
               通过智能体页先创建」)——新智能体请到「智能体」页创建,此处只做选择 */}
           {customMembers.length > 0 && (
-            <ModalField label={t('Legacy members (not listed above)', '额外成员(不在上方卡片中)')} hint={t('Existing ids kept from the original roster — remove if stale; create agents on the Agents page', '原成员名单保留的既有 id——已过期可摘除;新智能体请在「智能体」页创建')}>
+            <ModalField label={t('Legacy members', '额外成员')} hint={t('Kept from the original roster', '沿自原成员名单')}>
               <div className="sx-custom-members">
                 {customMembers.map((m) => (
                   <span key={m} className="sx-chip">
@@ -492,11 +492,12 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
               onChange={(v) => setForm({ ...form, lead: v })}
             />
           </ModalField>
-          <div className="sx-switch-row">
+          {/* 开关左置(2026-11-17 用户裁定,仅本弹窗):sx-switch-row-lead 归零卡片头右推 margin */}
+          <div className="sx-switch-row sx-switch-row-lead">
             <Switch on={form.enabled} onToggle={() => setForm({ ...form, enabled: !form.enabled })} ariaLabel="team enabled" />
-            <span className="sx-switch-row-label">{t('enabled (takes effect in new sessions)', 'enabled(新会话装配生效)')}</span>
+            <span className="sx-switch-row-label">{t('Enabled', '启用')}</span>
           </div>
-          <ModalField label={t('Body (team.md charter)', '章程(team.md body)')}>
+          <ModalField label={t('Charter', '章程')}>
             <textarea aria-label="team body" className="sx-team-body-editor" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} spellCheck={false} />
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}

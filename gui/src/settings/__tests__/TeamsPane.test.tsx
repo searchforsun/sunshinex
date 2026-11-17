@@ -166,7 +166,7 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
       },
     );
     render(<TeamsPane conn={conn} root="/w/proj" />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit core(Project)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit core Project' }));
     const dialog = await screen.findByRole('dialog', { name: 'Edit core' });
     expect(dialog).toBeDefined();
     const idInput = screen.getByLabelText('team id') as HTMLInputElement;
@@ -205,7 +205,7 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     await waitFor(() => expect(teamsViewCalls).toEqual(['/w/proj', '/w/proj'])); // 保存后重拉
 
     // 失效 lead 守卫:复开后取消勾选原 lead(dev)且不改 lead 选择 → 提交不带 lead 键(lead ∈ members)
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit core(Project)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit core Project' }));
     await screen.findByRole('dialog', { name: 'Edit core' });
     fireEvent.click(screen.getByLabelText('team member dev'));
     fireEvent.click(screen.getByText('Save'));
@@ -266,9 +266,9 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
   it('删除两段确认:同 aria-label 武装+确认 → {op:delete, scope:project, root, id}', async () => {
     const { conn, opCalls } = connOf([row()]);
     render(<TeamsPane conn={conn} root="/w/proj" />);
-    await screen.findByRole('button', { name: 'Delete core(Project)' });
-    fireEvent.click(screen.getByRole('button', { name: 'Delete core(Project)' })); // 武装
-    fireEvent.click(screen.getByRole('button', { name: 'Delete core(Project)' })); // 确认(段名恒定)
+    await screen.findByRole('button', { name: 'Delete core Project' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete core Project' })); // 武装
+    fireEvent.click(screen.getByRole('button', { name: 'Delete core Project' })); // 确认(段名恒定)
     await waitFor(() => expect(opCalls).toEqual([{ op: 'delete', scope: 'project', root: '/w/proj', id: 'core' }]));
   });
 
