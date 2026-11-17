@@ -102,7 +102,6 @@ interface ProviderForm {
   name: string;
   baseUrl: string;
   apiKey: string;
-  enabled: boolean;
 }
 
 /** 模型弹窗表单(纵向字段):名称/上下文/最大输出/输入类型/思考强度/推理等级/更多参数(JSON) */
@@ -119,7 +118,7 @@ interface ModelForm {
   paramsText: string;
 }
 
-const EMPTY_PROVIDER: ProviderForm = { name: '', baseUrl: '', apiKey: '', enabled: true };
+const EMPTY_PROVIDER: ProviderForm = { name: '', baseUrl: '', apiKey: '' };
 const EMPTY_MODEL: ModelForm = { model: '', enabled: true, contextWindow: '', maxOutputTokens: '', supportsImages: false, supportsVideo: false, reasoningEffort: '', tier: '', paramsText: '' };
 
 /** 模型条目 → 弹窗表单(编辑播种;params 对象 → 格式化 JSON 文本) */
@@ -241,7 +240,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       setProviderModal({ mode: 'add' });
       return;
     }
-    setProviderForm({ name: e.name, baseUrl: e.baseUrl, apiKey: '', enabled: e.enabled !== false });
+    setProviderForm({ name: e.name, baseUrl: e.baseUrl, apiKey: '' });
     setProviderModal({ mode: 'edit', original: e.name });
   };
 
@@ -259,7 +258,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       return;
     }
     const target = providerModal.mode === 'edit' ? providerModal.original ?? name : name;
-    const patch: Record<string, unknown> = { baseUrl, enabled: providerForm.enabled };
+    const patch: Record<string, unknown> = { baseUrl }; // 启停只由卡片开关控制(2026-11-17 用户裁定),弹窗保存不触碰
     if (providerModal.mode === 'edit' && name !== target) patch.name = name;
     setSaving(true);
     setFormError('');
@@ -282,13 +281,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
         setSaving(false);
         setFormError(errText(err));
       });
-  };
-
-  /** 模型行序调整(2026-11-17 拆分弹窗后移入模型弹窗):行序=默认模型选序(choices[0]) */
-  const moveModel = (provider: string, model: string, direction: 'up' | 'down'): void => {
-    if (saving || model === '') return;
-    setFormError('');
-    runOp({ op: 'modelMove', name: provider, model, direction });
   };
 
   /** 打开模型弹窗(添加/编辑) */
@@ -412,6 +404,18 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   <span className={`sx-api-dot ${e.apiKeyPresent ? 'present' : 'missing'}`} data-tip={e.apiKeyEnv} aria-hidden="true" />
                   <span className="sx-rc-title">{e.name}</span>
                   <span className="sx-rc-subtitle">{e.baseUrl}</span>
+                  {/* 编辑/删除图标钮紧贴启用开关左侧(2026-11-17 用户裁定「编辑和删除放到开关左侧图标」) */}
+                  <button
+                    type="button"
+                    className="sx-iconbtn sx-provider-headbtn"
+                    aria-label={`${t('Edit', '编辑')} ${e.name}`}
+                    data-tip={t('Edit', '编辑')}
+                    disabled={saving}
+                    onClick={() => openProviderModal(e)}
+                  >
+                    <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                  <ConfirmDeleteButton ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
                   <Switch on={e.enabled !== false} onToggle={() => toggleProvider(e)} ariaLabel={`${t('Enable', '启用')} ${e.name}`} />
                 </div>
                 {testMsg[e.name] !== undefined && testMsg[e.name] !== '' && <p className="sx-provider-hint">{testMsg[e.name]}</p>}
@@ -433,7 +437,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                           {m.contextWindow !== undefined && <span className="sx-provider-chip">{fmtWindow(m.contextWindow)}</span>}
                           {m.supportsImages === true && <span className="sx-provider-chip">{t('Vision', '视觉')}</span>}
                           {m.supportsVideo === true && <span className="sx-provider-chip">{t('Video', '视频')}</span>}
-                          {m.tier !== undefined && <span className="sx-provider-chip">{t(TIER_PAIRS[m.tier]?.en ?? m.tier, TIER_PAIRS[m.tier]?.zh ?? m.tier)}</span>}
                         </span>
                         <button
                           type="button"
@@ -459,12 +462,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                     ))}
                   </ul>
                 )}
-                <div className="sx-card-actions">
-                  <button type="button" aria-label={`${t('Edit', '编辑')} ${e.name}`} disabled={saving} onClick={() => openProviderModal(e)}>
-                    {t('Edit', '编辑')}
-                  </button>
-                  <ConfirmDeleteButton ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
-                </div>
               </li>
             ))}
           </ul>
@@ -500,10 +497,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
               spellCheck={false}
             />
           </ModalField>
-          <div className="sx-switch-row sx-switch-row-lead">
-            <Switch on={providerForm.enabled} onToggle={() => setProviderForm({ ...providerForm, enabled: !providerForm.enabled })} ariaLabel="provider enabled" />
-            <span className="sx-switch-row-label">{t('Enabled', '启用')}</span>
-          </div>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}
@@ -553,24 +546,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
               onChange={(v) => setModelForm({ ...modelForm, tier: v })}
             />
           </ModalField>
-          {modelModal.mode === 'edit' && (
-            <div className="sx-model-order">
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => moveModel(modelModal.provider, modelModal.original ?? '', 'up')}
-              >
-                {t('Move up', '上移')}
-              </button>
-              <button
-                type="button"
-                disabled={saving}
-                onClick={() => moveModel(modelModal.provider, modelModal.original ?? '', 'down')}
-              >
-                {t('Move down', '下移')}
-              </button>
-            </div>
-          )}
           <ModalField label={t('More parameters (JSON)', '更多参数（JSON）')}>
             <textarea
               aria-label={t('More parameters', '更多参数')}

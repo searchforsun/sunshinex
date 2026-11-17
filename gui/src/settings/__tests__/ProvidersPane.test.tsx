@@ -144,7 +144,7 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
       expect(opCalls).toEqual([
-        { op: 'add', scope: 'global', name: 'p3', provider: { baseUrl: 'https://api.p3/v1', enabled: true, models: [] } },
+        { op: 'add', scope: 'global', name: 'p3', provider: { baseUrl: 'https://api.p3/v1', models: [] } },
         { op: 'setKey', scope: 'global', name: 'p3', apiKey: 'sk-3' },
       ]),
     );
@@ -162,7 +162,7 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
       expect(opCalls).toEqual([
-        { op: 'update', scope: 'global', name: 'p1', provider: { baseUrl: 'https://api.p1/v1', enabled: true } },
+        { op: 'update', scope: 'global', name: 'p1', provider: { baseUrl: 'https://api.p1/v1' } },
         { op: 'setKey', scope: 'global', name: 'p1', apiKey: 'sk-new' },
       ]),
     );

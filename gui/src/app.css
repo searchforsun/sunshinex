@@ -237,6 +237,10 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 .sx-settings-complex > *:not(.sx-editor-modal-backdrop) { width: 100%; max-width: var(--chat-max, 900px); margin: 0 auto; }.sx-settings-complex .sx-settings-form { flex: none; overflow: visible; }
 
 /* 模型与提供方:providers 只读卡 */.sx-providers { padding: 0 28px 12px; max-width: 640px; display: flex; flex-direction: column; gap: 8px; } /* 2026-11-17 用户实测「宽度不一致」:内距 12→28 与 .sx-settings-form 对齐 */.sx-providers h3 { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.sx-provider-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.sx-provider-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; }.sx-provider-head { display: flex; align-items: center; gap: 8px; }/* 提供方卡内模型列表(2026-11-17 二次改版):列表头(标题+添加模型)+行(名+chips+测试/编辑/开关) */
+/* 卡头图标钮(2026-11-17 用户裁定「编辑和删除放到开关左侧图标」):与开关同排、右缘对齐 */
+.sx-rc-head .sx-provider-headbtn { margin-left: auto; }
+.sx-rc-head .sx-provider-headbtn + button { margin-left: 0; }
+.sx-rc-head .sx-provider-headbtn ~ .sx-switch { margin-left: 4px; }
 .sx-provider-models-head { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .sx-provider-models-title { flex: 1; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-provider-models-head .sx-add-button { padding: 1px 8px; font-size: calc(14px * var(--fz)); }
@@ -244,7 +248,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 .sx-provider-modelitem { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--border); }
 .sx-provider-modelitem.off { opacity: 0.55; }
 .sx-provider-modelitem .sx-provider-modelname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg); }
-.sx-provider-modelitem .sx-provider-chips { flex: none; }
+.sx-provider-modelitem .sx-provider-chips { flex: none; margin-right: 8px; } /* 2026-11-17 用户实测「大小位置挡住删除图标」:chips 与操作图标留距 */
 .sx-provider-modelitem .sx-iconbtn { width: 24px; height: 24px; }
 .sx-provider-modelitem .sx-switch { flex: none; }
 .sx-provider-hint { margin: 2px 0 4px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
