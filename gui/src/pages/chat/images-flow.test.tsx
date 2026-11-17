@@ -247,6 +247,25 @@ describe('正文 md 图片(2026-10-26 正文支持显示图片)', () => {
     expect(await waitFor(() => document.querySelector('.sx-lightbox'))).not.toBeNull();
   });
 
+  it('切回驻留会话正文图片不重拉:会话座缓存跨重挂命中(2026-11-18 切回卡顿实测轮)', async () => {
+    const calls: string[] = [];
+    const base = connOf({ assistantMd: '![截图](shot.png)' });
+    const conn = {
+      ...base,
+      readFile: (sid: string, p: string) => {
+        calls.push(p);
+        return base.readFile(sid, p);
+      },
+    } as unknown as Connection;
+    const view = render(<Chat conn={conn} sessionId="img-seat" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await waitFor(() => expect(document.querySelector('.entry-assistant .md-image')).not.toBeNull(), { timeout: 5000 });
+    expect(calls.length).toBe(1);
+    view.unmount(); // 切走
+    render(<Chat conn={conn} sessionId="img-seat" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    await waitFor(() => expect(document.querySelector('.entry-assistant .md-image')).not.toBeNull(), { timeout: 5000 });
+    expect(calls.length).toBe(1); // 切回:会话座桶命中已落定 dataURL,零 readFile 零闪烁
+  });
+
   it('web 形态直通不解析;解析失败回落文件 chip', async () => {
     const r = render(<Chat conn={connOf({ assistantMd: '![w](https://example.com/x.png)' })} sessionId="md2" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const web = (await waitFor(() => {

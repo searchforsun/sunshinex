@@ -42,7 +42,7 @@ import { expandFileRefs, expandRefContents, renderMentionSpans, slashTokenAt } f
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
-import { DirResolverContext, MdImageContext } from './chat/md-render';
+import { DirResolverContext, MdImageContext, MdImageKeyContext } from './chat/md-render';
 export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
@@ -589,6 +589,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
 
   return (
     <DirResolverContext.Provider value={isDirRef}>
+      <MdImageKeyContext.Provider value={archiveKey}>
       <MdImageContext.Provider value={mdImageLoader}>
       <LiveChangesContext.Provider value={liveChanges}>
       <TurnLatestContext.Provider value={turnLatestByPath}>
@@ -789,6 +790,7 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       </TurnLatestContext.Provider>
       </LiveChangesContext.Provider>
     </MdImageContext.Provider>
+    </MdImageKeyContext.Provider>
     </DirResolverContext.Provider>
   );
 }

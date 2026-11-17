@@ -209,29 +209,60 @@ const mdImageCache = new WeakMap<object, Map<string, Promise<string | null>>>();
 /** 已落定结果同步镜像:流式尾块晋升头块会重挂 MdImage,首帧即取落定 dataURL——不闪占位 */
 const mdImageResolved = new WeakMap<object, Map<string, string | null>>();
 
+/** 会话座维图片缓存(2026-11-18 切回卡顿实测轮):mdImageLoader 由 Chat 每次挂载新建(useCallback),
+ *  WeakMap 按 loader 身份分桶 ⇒ 切走再切回=新 loader=桶换新,正文图片全部重拉+重解码(重挂后的
+ *  异步 setDurl 再触发一轮重渲)。座键(archiveKey)跨重挂恒定:切回直接命中已落定 dataURL,
+ *  首帧即成图零请求零闪烁。容量按会话数封顶(整体清,与 md 缓存族同口径) */
+export const MdImageKeyContext = createContext<string>('');
+const MD_IMAGE_SEAT_MAX = 6;
+const mdImageSeatCache = new Map<string, Map<string, Promise<string | null>>>();
+const mdImageSeatResolved = new Map<string, Map<string, string | null>>();
+function imageBuckets(seat: string): { cache: Map<string, Promise<string | null>>; resolved: Map<string, string | null> } {
+  let cache = mdImageSeatCache.get(seat);
+  if (cache === undefined) {
+    if (mdImageSeatCache.size >= MD_IMAGE_SEAT_MAX) {
+      mdImageSeatCache.clear();
+      mdImageSeatResolved.clear();
+    }
+    cache = new Map();
+    mdImageSeatCache.set(seat, cache);
+  }
+  let resolved = mdImageSeatResolved.get(seat);
+  if (resolved === undefined) {
+    resolved = new Map();
+    mdImageSeatResolved.set(seat, resolved);
+  }
+  return { cache, resolved };
+}
+
 /** 正文 md 图片件:合理尺寸上限(md-image)+点击开灯箱预览;解析失败回落文件 chip 形态 */
 export function MdImage({ src, alt, onOpenFile }: { src: string; alt: string; onOpenFile?: (p: string) => void }): JSX.Element {
   const loader = useContext(MdImageContext);
+  const seat = useContext(MdImageKeyContext);
   const pending = src === PENDING_IMAGE_SRC;
   const isDirect = /^(https?:|\/\/|data:)/i.test(src);
   // 工作区路径与 Files 页同一归一口径(ui-util.normRel 单点):/docs/a.png·./docs/a.png 不再 404 落 chip;
   // 百分号编码同段还原(中文图片名 md 图链同样被 CommonMark 编码)
   const path = normRel(safeDecodeHref(src.replace(/^file:\/\//i, '')));
-  const settled = loader !== null ? mdImageResolved.get(loader)?.get(path) : undefined;
+  const settled = seat !== ''
+    ? mdImageSeatResolved.get(seat)?.get(path)
+    : loader !== null ? mdImageResolved.get(loader)?.get(path) : undefined;
   const [durl, setDurl] = useState<string | null>(settled ?? null);
   const [failed, setFailed] = useState(settled === null);
   const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (pending || isDirect || loader === null) return;
-    let cache = mdImageCache.get(loader);
+    // 座键在场走会话座桶(跨重挂命中);缺省(面板/测试无宿主)回落 loader 身份桶(old 口径)
+    const buckets = seat !== '' ? imageBuckets(seat) : null;
+    let cache = buckets !== null ? buckets.cache : mdImageCache.get(loader);
     if (cache === undefined) {
       cache = new Map();
       mdImageCache.set(loader, cache);
     }
     let hit = cache.get(path);
     if (hit === undefined) {
-      const resolved = mdImageResolved.get(loader) ?? new Map<string, string | null>();
-      mdImageResolved.set(loader, resolved);
+      const resolved = buckets !== null ? buckets.resolved : (mdImageResolved.get(loader) ?? new Map<string, string | null>());
+      if (buckets === null) mdImageResolved.set(loader, resolved);
       hit = loader(path)
         .then(
           (f) => (f.type === 'image' && f.mime !== undefined && f.data !== undefined ? `data:${f.mime};base64,${f.data}` : null),
