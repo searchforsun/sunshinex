@@ -234,11 +234,12 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 
 /* ---- G8c T9 复杂面板(特批白名单沿 T8 段:并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */
 /* 复杂面板容器(表单+附加节纵向堆叠,共用面板滚动面)。2026-11-17 用户裁定:内容列同 --chat-max 阶梯动态限宽居中(卡片列表不再随窗无限拉宽) */.sx-settings-complex { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }/* 2026-11-17 用户实测「模型编辑多个遮罩」:模态遮罩是 complex 直接子元素,被这条列宽规则压成 max-width 居中窄层——排除遮罩(及固定层),遮罩恒满视口 */
-.sx-settings-complex > *:not(.sx-editor-modal-backdrop) { width: 100%; max-width: var(--chat-max, 900px); margin: 0 auto; }.sx-settings-complex .sx-settings-form { flex: none; overflow: visible; }
+.sx-settings-complex > *:not(.sx-editor-modal-backdrop):not(.sx-toast) { width: 100%; max-width: var(--chat-max, 900px); margin: 0 auto; } /* toast 不吃列宽(2026-11-17 用户实测「弹出没有居中」:被拉成列宽后内容左贴) */.sx-settings-complex .sx-settings-form { flex: none; overflow: visible; }
 
 /* 模型与提供方:providers 只读卡 */.sx-providers { padding: 0 28px 12px; max-width: 640px; display: flex; flex-direction: column; gap: 8px; } /* 2026-11-17 用户实测「宽度不一致」:内距 12→28 与 .sx-settings-form 对齐 */.sx-providers h3 { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.sx-provider-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.sx-provider-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; }.sx-provider-head { display: flex; align-items: center; gap: 8px; }/* 提供方卡内模型列表(2026-11-17 二次改版):列表头(标题+添加模型)+行(名+chips+测试/编辑/开关) */
 /* 卡头图标钮(2026-11-17 用户裁定「编辑和删除放到开关左侧图标」):与开关同排、右缘对齐 */
-.sx-rc-head .sx-provider-headbtn { margin-left: auto; }
+.sx-rc-head .sx-provider-headbtn { margin-left: 2px; }
+.sx-rc-head-acts { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .sx-rc-head .sx-provider-headbtn + button { margin-left: 0; }
 .sx-rc-head .sx-provider-headbtn ~ .sx-switch { margin-left: 4px; }
 .sx-provider-models-head { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
@@ -987,6 +988,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none;
   border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent);
+  width: max-content;
+  max-width: min(80vw, 640px);
+  overflow-wrap: anywhere;
 }.dirpicker-list { border: none; border-radius: var(--radius-md); /* G14.184 modal 内容列表=md */ }.modal-body { border: none; border-radius: var(--radius-lg); /* G14.103 */ box-shadow: var(--elev-prominent); }.token-gate { border: none; border-radius: var(--radius-lg); box-shadow: var(--elev-prominent); }
 /* 动效统一:过渡走 token 曲线(spec §2.9 enter 曲线) */.sx-chevron, .sx-tree-chevron { transition: transform var(--dur-basic) var(--ease-enter); }.sx-session-row .attach { transition: opacity var(--dur-basic) var(--ease-enter); }.sx-tab, .sx-iconbtn, .sx-settings-nav-item { transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter); }
 /* reduced-motion:全局降级(Codex data-reduced-motion 同语义的媒体查询形态) */
@@ -3303,7 +3307,7 @@ input.sx-setting-input { width: 100%; }
    ①编辑抽屉→居中模态(sx-editor-modal-*:遮罩+居中,Cancel/×/Esc/遮罩点击=关,Save=提交);
    ②资源页工具栏三件套入页(sx-res-toolbar:作用域下拉|搜索弹性|添加钮一行) */
 .sx-editor-modal-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.sx-editor-modal { width: min(92vw, 880px); max-height: 86vh; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; } /* 2026-11-17 用户裁定「弹窗尽量大一些,信息不要挤在一起」:640→880/80vh→86vh */
+.sx-editor-modal { width: clamp(560px, 62vw, 1080px); max-height: min(88vh, 920px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; } /* 2026-11-17 用户裁定「弹窗尽量大一些,信息不要挤在一起」:640→880/80vh→86vh */
 .sx-editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
 .sx-editor-modal-head h3 { margin: 0; font-size: calc(14px * var(--fz)); }
 .sx-editor-modal-close { border: none; background: transparent; color: var(--fg-icon); font-size: calc(16px * var(--fz)); line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
@@ -3352,7 +3356,7 @@ input.sx-setting-input { width: 100%; }
    不改,覆写前置同名规则靠源序同特异性后者胜) ===== */
 /* ① Modal 尺寸——2026-11-17 用户裁定「弹窗尽量大一些」:680→880/84vh→86vh 收口(基段 3259 行同步改,
    此处后写规则为最终施力点,两处一并改防「改了没生效」) */
-.sx-editor-modal { width: min(92vw, 880px); max-height: 86vh; }
+.sx-editor-modal { width: clamp(560px, 62vw, 1080px); max-height: min(88vh, 920px); }
 /* ② 弹窗内共享 Select 弹层层序(z 审计结论:.sx-editor-modal-backdrop z120 自成 stacking
    context,弹层(.sx-dd-pop z40)系其 DOM 后代恒被圈在该上下文内——全局抬 z 无解,上下文内
    弹层本就以「定位+正 z」浮于弹窗静置内容之上;此处弹窗作用域显式抬层,压过弹窗内一切现有/
@@ -3737,6 +3741,12 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-rc .sx-card-actions .sx-team-body > summary { margin-left: auto; }
 .sx-rc .sx-card-actions .sx-team-detail { flex: 1 1 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .sx-rc .sx-card-actions .sx-team-detail pre { margin: 0; padding: 10px 12px; font-size: var(--f-code, 12px); }
+/* 2026-11-17 用户实测「这个内容怎么没有支持纵向滚动,过长怎么显示内容」:章程/详情块加 CSS 限高兜底
+   (JS ClampBlock 动效之外再加一道,任何挂载路径都不越界)——限高同编辑器 320px,纵向滚动,
+   过长内容滚动查看,块下 V 可展开全文 */
+.sx-team-detail { min-height: 0; }
+.sx-team-detail pre { max-height: 320px; overflow-y: auto; overscroll-behavior: contain; }
+.sx-clamp-wrap { min-height: 0; }
 
 /* 2026-11-07 用户裁定「详情入操作行最右;点击展开描述+章程」:details display:contents 入行
    (closed 投影仅 summary=胶囊;open 后展开面整行折下),summary 推行最右 */
@@ -3869,7 +3879,7 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-skill-card .sx-skill-desc { -webkit-line-clamp: 1; line-clamp: 1; }
 .sx-skill-desc-btn { all: unset; cursor: pointer; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; font-size: calc(14px * var(--fz)); line-height: 1.5; color: var(--fg-tertiary); }
 .sx-skill-desc-btn:hover { color: var(--fg-secondary); text-decoration: underline; text-underline-offset: 3px; }
-.sx-editor-modal.sx-skill-preview { width: min(92vw, 880px); height: min(86vh, 820px); max-height: 86vh; display: flex; flex-direction: column; } /* 2026-11-17 用户裁定「技能弹窗和其他弹窗一致」:1080→880(同 .sx-editor-modal 基准) */ /* 2026-11-17 用户实测「技能弹窗没跟随变大」:760/720→1080/900 */
+.sx-editor-modal.sx-skill-preview { width: clamp(560px, 62vw, 1080px); height: min(88vh, 900px); max-height: min(88vh, 920px); display: flex; flex-direction: column; } /* 2026-11-17 用户裁定「技能弹窗和其他弹窗一致」:1080→880(同 .sx-editor-modal 基准) */ /* 2026-11-17 用户实测「技能弹窗没跟随变大」:760/720→1080/900 */
 .sx-skill-preview-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 20px 20px; }
 /* 设置工具栏宽度(2026-11-09 用户裁定):项目下拉加宽一档(全部设置页共用 sx-dd-fixed);来源筛选收窄
    到最长项四字+✓(「全部来源」「学习沉淀」),搜索框吃余量 */
