@@ -18,8 +18,10 @@ import { DEFAULT_IMAGE_HISTORY_LIMIT } from '../../config/image-history';
  * id 合成口径：端点只要求 role:'tool' 消息内 tool_call_id 与前序 assistant.tool_calls[].id 自洽，
  * 不要求复现端点原 id；按全链序 running 计数（call_1, call_2, …）保证「链尾追一行 → 既有 id 零位移」（前缀稳定）。
  *
- * 图片渲染期剪枝（spec §3.2）：带图链行按链序仅最近 imageHistoryLimit（缺省 3）行保图，更早行剥图并在文本加
- * `\n[image elided]` 标记——journal 全量留档不受影响（本函数是纯派生视图，剪枝只发生在消息投影上）。
+ * 图片渲染期剪枝（spec §3.2）：带图链行按**任务轮边界**切两段——轮前历史仅最近 imageHistoryLimit（缺省 3）
+ * 行保图、当前任务轮内全保（工作集，超半径×4 安全上限才剪）；被剪行剥图并在文本加 `\n[image elided]` 标记。
+ * 水位只在轮边界前移，轮内尾追带图行不翻转既有行——自动前缀缓存的中段改写面收敛到轮边界
+ * （journal 全量留档不受影响，本函数是纯派生视图，剪枝只发生在消息投影上）。
  * tool-result 行图片以**批收口后**的合成 user 帧（content '(tool image)'）透出，不插在批内 role:tool 之间
  * （OpenAI 严格端点 assistant(tool_calls)↔role:tool pairing 风险）。
  */
@@ -28,6 +30,27 @@ import { DEFAULT_IMAGE_HISTORY_LIMIT } from '../../config/image-history';
 export const PHASE_ACTION = 'phase';
 export const TOOL_CALL_ACTION = 'tool-call';
 export const TOOL_RESULT_ACTION = 'tool-result';
+
+/** 轮内图片工作集安全上限（半径倍数）：轮内图片是模型当下的工作集，不随新图到达翻转既有行；
+ *  超出上限才在轮内剪（此时接受一次翻转——上下文预算优先于缓存命中）。策略常量单点，不设独立 settings 键 */
+const TURN_IMAGE_BUDGET_FACTOR = 4;
+
+/**
+ * 当前任务轮起点（链序下标）：末条 reply 行之后的首条 task 行；无 reply（首轮在跑 / fork 种子 / 上一轮被
+ * 护栏截断未收束）→ 0。轮中穿插（steer）与目标重申（recitation）同为 task 动作，但落在本轮 reply 之前——
+ * 不构成新轮起点。由此 reasoning 剥离与图片水位都只在**轮边界**翻转：轮内尾追任意链行，既有消息逐字节
+ * 不变（前缀稳定）。无 reply 收束的轮会把上一轮思考多保留一段——端点接受历史思考，仅 token 成本。
+ */
+function currentTurnStart(chain: HistoryStep[]): number {
+  let lastReply = -1;
+  for (let i = 0; i < chain.length; i++) {
+    if (chain[i].action === 'reply') lastReply = i;
+  }
+  for (let i = lastReply + 1; i < chain.length; i++) {
+    if (chain[i].action === 'task') return i;
+  }
+  return 0;
+}
 
 /** 工具调用行的单行格式：`[tool] <name> <args-json>`（args 须为紧凑 JSON——JSON.stringify 无字面换行） */
 export function formatToolCallLine(name: string, argsJson: string): string {
@@ -68,39 +91,52 @@ export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = DEF
     msgs.push({ role: 'user', content: c.content });
   }
 
-  // 渲染期图片历史剪枝（spec §3.2）——journal 全量留档不受影响：带图行按链序仅最近 N 行保图，被剪行
-  // 剥图（imgsOf → undefined）并在文本加 `\n[image elided]` 标记（elided）。keepImages 按链行对象引用
-  // 判定（链行对象唯一，引用即身份）；剪枝输入仅本链内容，同一输入恒同输出（确定性不引入时变）。
-  const imgRows = input.chain.filter((r) => r.images !== undefined && r.images.length > 0);
-  const keepImages = new Set(imgRows.slice(Math.max(0, imgRows.length - imageHistoryLimit)));
-  const imgsOf = (row: HistoryStep): string[] | undefined => {
+  // 渲染期图片剪枝（spec §3.2）——journal 全量留档不受影响。水位按任务轮边界切两段：
+  // 轮前历史仅最近 N 行保图（跨轮回看半径），当前轮内全保（模型工作集，超 N×4 安全上限才剪）。
+  // 于是轮内尾追带图行只尾部增长、不翻转既有行；翻转点恒落在轮边界（新 task 行已改写该点前缀）。
+  // 剪枝输入仅本链内容，同一输入恒同输出（确定性不引入时变）。
+  const turnStart = currentTurnStart(input.chain);
+  const imgIdx: number[] = [];
+  for (let i = 0; i < input.chain.length; i++) {
+    const r = input.chain[i];
+    if (r.images !== undefined && r.images.length > 0) imgIdx.push(i);
+  }
+  const preTurn = imgIdx.filter((i) => i < turnStart);
+  const inTurn = imgIdx.filter((i) => i >= turnStart);
+  const turnBudget = imageHistoryLimit * TURN_IMAGE_BUDGET_FACTOR;
+  const keepImages = new Set<number>([
+    ...preTurn.slice(Math.max(0, preTurn.length - imageHistoryLimit)),
+    ...inTurn.slice(Math.max(0, inTurn.length - turnBudget)),
+  ]);
+  const imgsOf = (idx: number): string[] | undefined => {
+    const row = input.chain[idx];
     if (row.images === undefined || row.images.length === 0) return undefined;
-    return keepImages.has(row) ? row.images : undefined;
+    return keepImages.has(idx) ? row.images : undefined;
   };
-  const elided = (row: HistoryStep): string =>
-    row.images !== undefined && row.images.length > 0 && !keepImages.has(row) ? `${row.observation}\n[image elided]` : row.observation;
+  const elided = (idx: number): string => {
+    const row = input.chain[idx];
+    return row.images !== undefined && row.images.length > 0 && !keepImages.has(idx) ? `${row.observation}\n[image elided]` : row.observation;
+  };
   // 带图 user 行统一透出（task/plan/元信息行与无批可挂的降级观察行同形态）：images 取剪枝后形态，
   // 文本用带标记版；空文兜底占位 `(image)` 的判定用在剥图**前**的原 observation 上
-  const pushUserRow = (row: HistoryStep): void => {
-    const imgs = imgsOf(row);
+  const pushUserRow = (idx: number): void => {
+    const row = input.chain[idx];
+    const imgs = imgsOf(idx);
     if (imgs === undefined && (row.images === undefined || row.images.length === 0)) {
       msgs.push({ role: 'user', content: row.observation });
       return;
     }
-    const text = row.observation.trim() !== '' ? elided(row) : '(image)';
+    const text = row.observation.trim() !== '' ? elided(idx) : '(image)';
     msgs.push(imgs !== undefined ? { role: 'user', content: text, images: imgs } : { role: 'user', content: text });
   };
 
-  // reasoning_content 回传半径 = 当前任务轮（末 task 指令行之后的行）：交错思考端点（DeepSeek/Qwen 系）
+  // reasoning_content 回传半径 = 当前任务轮（当前轮起点之后的行）：交错思考端点（DeepSeek/Qwen 系）
   // 的工具续轮硬约束是**字段在场**（实测 2026-10-03：空串 200、缺字段 400 "must be passed back"——
   // 思考模式默认开但模型偶尔整轮零思考，如实省略字段即炸）；故当轮批 assistant 消息恒带 reasoning
   // （轮思考原文，零思考轮兜底空串）。旧任务轮的思考是已完成回合的中间产物——字段省略（实测端点
-  // 接受历史省略），链行恒存储（append-only 事实源）。无 task 行（fork 种子等）视为全当轮
-  let lastTaskIdx = -1;
-  for (let i = 0; i < input.chain.length; i++) {
-    if (input.chain[i].action === 'task') lastTaskIdx = i;
-  }
-  const inCurrentTurn = (idx: number): boolean => idx > lastTaskIdx;
+  // 接受历史省略），链行恒存储（append-only 事实源）。轮中穿插/goal 重申不改轮起点——
+  // 其前已装配的帧不因尾追一行而剥思考，前缀命中点在轮内不被击穿。无 task 行（fork 种子等）视为全当轮
+  const inCurrentTurn = (idx: number): boolean => idx >= turnStart;
 
   let callSeq = 0;
   let pendingPhase: string | null = null;
@@ -161,8 +197,8 @@ export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = DEF
         batch.consumed += 1;
         // 观察行文本恒在（剥图行加 [image elided] 标记）；图片缓冲为伴随帧，批收口后统一 flush——
         // user 帧不得插在批内 role:tool 之间（OpenAI 严格端点 pairing）
-        msgs.push({ role: 'tool', content: elided(row), toolCallId: id });
-        const imgs = imgsOf(row);
+        msgs.push({ role: 'tool', content: elided(idx), toolCallId: id });
+        const imgs = imgsOf(idx);
         if (imgs !== undefined) pendingFrames.push({ images: imgs });
         // 批内所有结果收齐：flushBatch 统一透出伴随帧（此时 rest 恒空——assistant 已在首个结果前整批发出）
         if (batch.consumed >= batch.calls.length) flushBatch();
@@ -170,7 +206,7 @@ export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = DEF
       }
       flushBatch();
       // 无批可挂降级 user：与元信息行同形态（images 取剪枝后形态，文本用带标记版）
-      pushUserRow(row);
+      pushUserRow(idx);
       continue;
     }
     if (action === PHASE_ACTION) {
@@ -187,7 +223,7 @@ export function buildMessages(input: BuildMessagesInput, imageHistoryLimit = DEF
       // 'plan' 与 'task' 并列本分支（spec §4.4）：计划书全文行按指令行同形态（user）透出；
       // 行载 images（用户随行附件）即带 image_url 内容块的多模态 user 消息（文本恒在——空文行兜底占位；
       // 剪枝后形态与 [image elided] 标记统一在 pushUserRow 收口）
-      pushUserRow(row);
+      pushUserRow(idx);
     }
   }
   flushBatch();

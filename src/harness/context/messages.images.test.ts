@@ -52,14 +52,55 @@ test('tool-result 行载 images：tool 消息（纯文本）+ 批收口后合成
   assert.deepEqual(msgs[3], { role: 'user', content: '(tool image)', images: [IMG] });
 });
 
-test('历史图片剪枝：仅最近 N=3 个带图行保图，更早行剥图加 [image elided] 标记', () => {
-  const mk = (n: number): HistoryStep => ({ step: n, action: 'tool-call', observation: `[tool] t${n} {}` });
-  const chain: HistoryStep[] = [1, 2, 3, 4, 5].flatMap((n) => [mk(n), { step: n, action: 'tool-result' as const, observation: `r${n}`, images: [IMG] }]);
+test('历史图片剪枝·轮前半径：轮边界之后，轮前历史仅最近 N=3 个带图行保图，更早行剥图加 [image elided] 标记', () => {
+  const img = (n: number): HistoryStep => ({ step: n, action: 'task' as const, observation: `shot ${n}`, images: [IMG] });
+  const chain: HistoryStep[] = [
+    { step: 1, action: 'task', observation: 'turn one' },
+    img(2),
+    img(3),
+    img(4),
+    img(5),
+    img(6),
+    { step: 7, action: 'reply', observation: 'turn one done' },
+    { step: 8, action: 'task', observation: 'turn two' }, // 轮边界：水位在此前移
+  ];
   const msgs = buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain });
   const withImg = msgs.filter((m) => m.role === 'user' && m.images !== undefined);
-  assert.equal(withImg.length, 3);
-  const toolMsgs = msgs.filter((m) => m.role === 'tool') as Array<{ content: string }>;
-  assert.equal(toolMsgs.filter((m) => m.content.includes('[image elided]')).length, 2);
+  assert.equal(withImg.length, 3, '轮前历史保图 = 最近 3 行');
+  assert.ok(msgs.some((m) => m.content === 'shot 2\n[image elided]'), '更早行剥图加标记');
+  assert.ok(msgs.some((m) => m.content === 'shot 3\n[image elided]'));
+  assert.equal(msgs.filter((m) => typeof m.content === 'string' && m.content.includes('[image elided]')).length, 2, '恰好 2 行被剪');
+});
+
+test('历史图片剪枝·轮内全保：当前轮带图行即使超过半径也全保（工作集不随新图到达翻转既有行）', () => {
+  const chain: HistoryStep[] = [{ step: 1, action: 'task', observation: 'turn' }];
+  for (let n = 2; n <= 6; n++) chain.push({ step: n, action: 'task', observation: `shot ${n}`, images: [IMG] });
+  const msgs = buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain });
+  const withImg = msgs.filter((m) => m.role === 'user' && m.images !== undefined);
+  assert.equal(withImg.length, 5, '轮内 5 图（>半径 3）全保');
+  assert.equal(msgs.filter((m) => typeof m.content === 'string' && m.content.includes('[image elided]')).length, 0, '轮内零剥图');
+});
+
+test('历史图片剪枝·轮内安全上限（半径×4）：轮内带图行超上限才剪，剪掉最早行', () => {
+  const chain: HistoryStep[] = [{ step: 1, action: 'task', observation: 'turn' }];
+  for (let n = 2; n <= 14; n++) chain.push({ step: n, action: 'task', observation: `shot ${n}`, images: [IMG] });
+  const msgs = buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain });
+  const withImg = msgs.filter((m) => m.role === 'user' && m.images !== undefined);
+  assert.equal(withImg.length, 12, '安全上限 = 半径 3 × 4');
+  assert.ok(msgs.some((m) => m.content === 'shot 2\n[image elided]'), '最早行让位（上下文预算优先的显式取舍）');
+  assert.ok(!msgs.some((m) => m.content === 'shot 14\n[image elided]'), '最新行恒保');
+});
+
+test('历史图片剪枝·轮内尾追带图行：既有消息逐字节不变（纯尾部增长，自动前缀缓存中段零改写）', () => {
+  const base: HistoryStep[] = [
+    { step: 1, action: 'task', observation: 'turn' },
+    { step: 2, action: 'task', observation: 'img a', images: [IMG] },
+    { step: 3, action: 'task', observation: 'img b', images: [IMG] },
+    { step: 4, action: 'task', observation: 'img c', images: [IMG] },
+  ];
+  const m1 = buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: base });
+  const m2 = buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: [...base, { step: 5, action: 'task', observation: 'img d', images: [IMG] }] });
+  assert.deepEqual(m2.slice(0, m1.length), m1, '尾部追图不改写既有消息（旧滑动窗口此处会把 img a 剥图）');
 });
 
 test('imageHistoryLimit 覆盖与 0 值', () => {

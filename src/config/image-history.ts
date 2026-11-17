@@ -10,7 +10,8 @@
  */
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
 
-/** 渲染半径缺省值：链序上仅最近 3 个带图行保图（buildMessages 同缺省，spec §3.2） */
+/** 图片历史半径缺省值（buildMessages 同缺省，spec §3.2）：跨轮历史最近 3 个带图行保图；
+ *  当前轮图片全保（工作集，2026-11-17 前缀缓存轮：水位只在轮边界前移） */
 export const DEFAULT_IMAGE_HISTORY_LIMIT = 3;
 
 export interface ImageHistoryResolution {

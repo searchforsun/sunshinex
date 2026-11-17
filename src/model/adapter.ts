@@ -3,6 +3,7 @@
  *  脚本 DSL；effort 档位原语/usage 三提取器/wire 序列化/三档路由已下沉 effort.ts/usage.ts/wire.ts/router.ts，
  *  此处按原路径再导出（对齐 session/runtime.ts RunOutcome 注释先例），既有 './adapter' 导入点零改动 */
 import { ReasoningEffort, ChatRequest, ChatResult, ToolCallSpec} from '../types';
+import { createHash } from 'node:crypto';
 import { t } from '../i18n';
 import { contextWindowEnv } from '../config/termination-config';
 import { parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
@@ -10,6 +11,12 @@ import { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
 import { toWireMessages, toWireTools, parseChatResult } from './wire';
 import { resolveImageRefs } from './image-ref';
 import type { RequestParams } from './request-params';
+
+/** 端点不支持 prompt_cache_key 的识别：400/422 且错误消息点名该参数（与 effort 探测同判据口径——
+ *  网络/鉴权/限流/服务端错误不降级、照常抛出） */
+function isUnsupportedCacheKeyError(status: number, detail: string): boolean {
+  return (status === 400 || status === 422) && /prompt[_ ]cache[_ ]key/i.test(detail);
+}
 
 // 四件原路径再导出（防既有导入点漂移）：值符号与类型符号各自走 export / export type
 export { EFFORT_ORDER, parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
@@ -113,6 +120,8 @@ export class OpenAIAdapter implements ModelAdapter {
   private effortResolved?: { requested: ReasoningEffort; resolved: ReasoningEffort };
   /** 已判不支持 reasoning_effort 的档位（逐档记忆，跨请求档共享，防重复打无效请求） */
   private effortUnsupported = new Set<ReasoningEffort>();
+  /** 端点拒收自动缓存路由键（prompt_cache_key）后的记忆位：置真即后续请求省略该键（形态回旧版） */
+  private cacheKeyRejected = false;
 
   constructor(cfg: LLMConfig) {
     this.baseURL = cfg.baseURL ?? process.env.SUNSHINEX_BASE_URL ?? 'https://api.openai.com/v1';
@@ -189,14 +198,14 @@ export class OpenAIAdapter implements ModelAdapter {
   }
 
   /** effort 感知发送：显式档位按降级序列逐档试探（仅参数不支持类错误降级），探测结果缓存后直发生效档；
-   *  全序列不支持则省略参数用模型默认。无 effort 配置时请求体形态与旧版逐字节一致 */
+   *  全序列不支持则省略参数用模型默认。无 effort 配置时不带 reasoning_effort（缓存键连同自动路由见 doFetchWithCacheKey） */
   private async sendWithEffort(base: Record<string, unknown>, effort: ReasoningEffort | undefined, signal?: AbortSignal): Promise<Response> {
-    if (!effort) return this.doFetch(base, signal);
+    if (!effort) return this.doFetchWithCacheKey(base, signal);
     const cached = this.effortResolved?.requested === effort ? this.effortResolved.resolved : undefined;
-    if (cached) return this.doFetch({ ...base, reasoning_effort: cached }, signal);
+    if (cached) return this.doFetchWithCacheKey({ ...base, reasoning_effort: cached }, signal);
     const seq = buildFallbackSequence(effort).filter((e) => !this.effortUnsupported.has(e));
     for (const e of seq) {
-      const resp = await this.doFetch({ ...base, reasoning_effort: e }, signal);
+      const resp = await this.doFetchWithCacheKey({ ...base, reasoning_effort: e }, signal);
       if (resp.ok) {
         this.effortResolved = { requested: effort, resolved: e };
         return resp;
@@ -205,7 +214,31 @@ export class OpenAIAdapter implements ModelAdapter {
       if (!isUnsupportedEffortError(err)) throw err;
       this.effortUnsupported.add(e);
     }
-    return this.doFetch(base, signal); // 全序列不支持：省略参数，用模型默认
+    return this.doFetchWithCacheKey(base, signal); // 全序列不支持：省略参数，用模型默认
+  }
+
+  /** 自动缓存路由键（OpenAI 标准 prompt_cache_key）：按请求静态前缀（首条 system 消息）摘要派生——
+   *  稳定段相同的会话归同一键，端点自动前缀缓存按 key 分组路由提命中率。摘要非明文，前缀原文不出本机 */
+  private promptCacheKeyOf(body: Record<string, unknown>): string {
+    const msgs = Array.isArray(body['messages']) ? (body['messages'] as Array<{ role?: unknown; content?: unknown }>) : [];
+    const first = msgs[0];
+    const prefix = first !== undefined && first.role === 'system' && typeof first.content === 'string' ? first.content : '';
+    return `${this.model}:${createHash('sha256').update(prefix).digest('hex').slice(0, 32)}`;
+  }
+
+  /** 发送单点：附加自动缓存路由键。用户经 models[].params 显式声明 prompt_cache_key 时不覆盖；
+   *  端点 400/422 点名该参数 → 置不支持并去掉键重发一次（之后形态回旧版）——与 effort 探测同口径 */
+  private async doFetchWithCacheKey(body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+    if (this.cacheKeyRejected || (this.params !== undefined && this.params['prompt_cache_key'] !== undefined)) {
+      return this.doFetch(body, signal);
+    }
+    const resp = await this.doFetch({ ...body, prompt_cache_key: this.promptCacheKeyOf(body) }, signal);
+    if (resp.ok) return resp;
+    // 克隆探测错误面：非 key 类失败原响应体零消费，照常交调用方报错
+    const detail = (await resp.clone().text().catch(() => '')).slice(0, 300);
+    if (!isUnsupportedCacheKeyError(resp.status, detail)) return resp;
+    this.cacheKeyRejected = true;
+    return this.doFetch(body, signal);
   }
 
   /** 用量三钩子回传（cache → prompt → usage） */

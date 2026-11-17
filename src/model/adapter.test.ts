@@ -118,6 +118,7 @@ test('OpenAIAdapter：外部 signal 中止 → 抛「Task interrupted」（区�
 async function captureAdapter(cfg: { params?: RequestParams }): Promise<{
   body: () => Record<string, unknown>;
   chat: () => Promise<void>;
+  chatWith: (req: ChatRequest) => Promise<void>;
   chatStream: () => Promise<void>;
   close: () => void;
 }> {
@@ -146,6 +147,9 @@ async function captureAdapter(cfg: { params?: RequestParams }): Promise<{
     chat: async () => {
       await a.chat(req());
     },
+    chatWith: async (r: ChatRequest) => {
+      await a.chat(r);
+    },
     chatStream: async () => {
       await a.chatStream(req(), () => {});
     },
@@ -170,12 +174,73 @@ test('OpenAIAdapter 自定义请求参数：chat/chatStream 请求体并入顶�
   }
 });
 
-test('OpenAIAdapter 无自定义参数：请求体不含额外键（形态与旧版逐字节一致）', async () => {
+test('OpenAIAdapter 协议字段面：请求体只带协议键+自动缓存路由键（无自定义参数时零多余键）', async () => {
   const cap = await captureAdapter({});
   try {
     await cap.chat();
-    assert.deepEqual(Object.keys(cap.body()).sort(), ['messages', 'model', 'tool_choice'], '零穿参时只带协议字段');
+    assert.deepEqual(Object.keys(cap.body()).sort(), ['messages', 'model', 'prompt_cache_key', 'tool_choice'], '协议键 + 自动缓存键，其余零穿参');
   } finally {
     cap.close();
+  }
+});
+
+test('自动缓存路由键：同稳定前缀恒同键、前缀不同即换键（会话配置相同 → 同缓存分组）', async () => {
+  const cap = await captureAdapter({});
+  try {
+    const mk = (system: string): ChatRequest => ({ messages: [{ role: 'system', content: system }, { role: 'user', content: 'hi' }] });
+    await cap.chatWith(mk('SYS-A'));
+    const keyA = String(cap.body()['prompt_cache_key']);
+    await cap.chatWith(mk('SYS-A'));
+    assert.equal(String(cap.body()['prompt_cache_key']), keyA, '同前缀恒同键');
+    await cap.chatWith(mk('SYS-B'));
+    assert.notEqual(String(cap.body()['prompt_cache_key']), keyA, '前缀不同即换键');
+    assert.match(keyA, /^gpt-4o-mini:[0-9a-f]{32}$/, '键=模型+前缀摘要（非明文）');
+  } finally {
+    cap.close();
+  }
+});
+
+test('用户显式 params.prompt_cache_key 优先：自动派生让位，请求体用声明值', async () => {
+  const cap = await captureAdapter({ params: { prompt_cache_key: 'user-key-1' } });
+  try {
+    await cap.chat();
+    assert.equal(cap.body()['prompt_cache_key'], 'user-key-1', '自定义参数值原样，不被自动键覆盖');
+  } finally {
+    cap.close();
+  }
+});
+
+test('端点拒收 prompt_cache_key：400 点名该参数 → 自动降级省略键重发成功，后续请求不再携带', async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const srv = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => (raw += String(c)));
+    req.on('end', () => {
+      const body = JSON.parse(raw) as Record<string, unknown>;
+      bodies.push(body);
+      if (body['prompt_cache_key'] !== undefined) {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'Unrecognized request argument supplied: prompt_cache_key' } }));
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: { total_tokens: 1 } }));
+    });
+  });
+  await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  const addr = srv.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k' });
+  try {
+    const r1 = await a.chat({ messages: [{ role: 'system', content: 'S' }, { role: 'user', content: 'hi' }] });
+    assert.equal(r1.finish, 'stop', '降级重发成功（用户无感）');
+    assert.equal(bodies.length, 2, '首发带键被拒 + 去键重发');
+    assert.equal(bodies[0]!['prompt_cache_key'] !== undefined, true);
+    assert.equal(bodies[1]!['prompt_cache_key'], undefined);
+    await a.chat({ messages: [{ role: 'system', content: 'S' }, { role: 'user', content: 'again' }] });
+    assert.equal(bodies.length, 3);
+    assert.equal(bodies[2]!['prompt_cache_key'], undefined, '不支持记忆位生效：后续请求恒省略');
+  } finally {
+    srv.close();
   }
 });

@@ -269,3 +269,56 @@ test('思考回传·零思考轮兜底空串：当轮批无思考行时 assistan
   const asst = msgs.find((m): m is Extract<ChatMessage, { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
   assert.equal(asst?.reasoning, '', '当轮零思考批：reasoning 空串在场（缺字段即端点 400）');
 });
+
+test('思考回传·轮中穿插不剥离：steer/goal 重申行（轮中 task 动作）不改轮起点，其前帧思考保留', () => {
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'task', observation: 'turn one' },
+      { step: 2, action: PHASE_ACTION, observation: 'narration', reasoning: 'CoT round 1' },
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}') },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+      // 轮中穿插：用户补一句指令（同 task 动作、本轮 reply 之前）——不是新一轮起点
+      { step: 3, action: 'task', observation: 'also check b' },
+      { step: 4, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"b"}'), reasoning: 'CoT round 2' },
+      { step: 4, action: TOOL_RESULT_ACTION, observation: 'content-b' },
+    ],
+  });
+  const assistants = msgs.filter((m): m is Extract<ChatMessage, { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(assistants.length, 2);
+  assert.equal(assistants[0].reasoning, 'CoT round 1', '穿插行之前的帧不剥思考（旧实现此处字段消失→前缀中段改写）');
+  assert.equal(assistants[1].reasoning, 'CoT round 2');
+});
+
+test('思考回传·轮内尾追穿插行前缀稳定：serialize 严格前缀（轮中 steer 零改写既有帧）', () => {
+  const base: HistoryStep[] = [
+    { step: 1, action: 'task', observation: 'turn one' },
+    { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}'), reasoning: 'CoT' },
+    { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+  ];
+  const m1 = serialize(buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: base }));
+  const m2 = serialize(buildMessages({ stableSegment: STABLE, snapshot: [], compacted: [], chain: [...base, { step: 3, action: 'task', observation: 'also check b' }] }));
+  assert.ok(m2.startsWith(m1 + '\n'), '穿插行尾追只增长尾部（旧实现在此改写上一批 assistant 的 reasoning 字段）');
+});
+
+test('思考回传·新用户轮边界仍剥离：轮起点=末条 reply 之后的首条 task（与穿插行可区分）', () => {
+  const msgs = buildMessages({
+    stableSegment: STABLE,
+    snapshot: [],
+    compacted: [],
+    chain: [
+      { step: 1, action: 'task', observation: 'turn one' },
+      { step: 2, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"a"}'), reasoning: 'turn one CoT' },
+      { step: 2, action: TOOL_RESULT_ACTION, observation: 'content-a' },
+      { step: 3, action: 'reply', observation: 'turn one done' }, // 轮收束
+      { step: 4, action: 'task', observation: 'turn two' },
+      { step: 5, action: TOOL_CALL_ACTION, observation: formatToolCallLine('read', '{"path":"b"}'), reasoning: 'turn two CoT' },
+      { step: 5, action: TOOL_RESULT_ACTION, observation: 'content-b' },
+    ],
+  });
+  const assistants = msgs.filter((m): m is Extract<ChatMessage, { role: 'assistant' }> => m.role === 'assistant' && (m.toolCalls?.length ?? 0) > 0);
+  assert.equal(assistants[0].reasoning, undefined, '已收束轮思考剥离（新轮边界前移一次，属可接受节奏）');
+  assert.equal(assistants[1].reasoning, 'turn two CoT');
+});

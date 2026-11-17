@@ -136,7 +136,7 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
   "tier": "medium",                                  // 缺省档位 small|medium|large（/model-tier 按上面 tier 标注选中对应模型，无标注回默认）
   "contextWindow": 200000,                           // 全局窗口 tokens（未按模型配置时的回退；1M 模型填 1000000）
   "reasoningEffort": "high",                         // 缺省思考强度 none|minimal|low|medium|high|xhigh|max；留空 = 不下发（用端点默认）；端点不支持时按阶梯自动降级
-  "imageHistoryLimit": 3,                            // 工具结果图片渲染半径：链上仅最近 N 个带图行保图入模型上下文（0-50 整数，0 = 全部剥图留文本标记）
+  "imageHistoryLimit": 3,                            // 图片历史半径（0-50 整数，0=全部剥图留文本标记）：跨轮历史仅最近 N 个带图行保图；当前轮内图片全保（工作集，超 N×4 才剪）——水位只在轮边界前移
 
   // ── 长任务 ────────────────────────────────────────────
   "maxSteps": 400,                                  // Reactor 单 run 步数上限
@@ -213,6 +213,7 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
 - 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）（档位标注是 tier 路由的唯一数据源。）
 - 自定义请求参数：models 条目可选 `"params": { "<键>": <JSON 值> }`，键值原样并入每次模型的请求体顶层（值可为 string/number/boolean/null/数组/对象，嵌套上限 8 层）。厂商私有扩展（缓存路由键、思考模板开关、采样扩展等）由此声明，适配器不含任何厂商分支。协议字段 `model` / `messages` / `tools` / `tool_choice` / `stream` / `stream_options` 由适配器装配，`params` 不得占用（写面拒收，手改文件则装载告警忽略该键）；非法值同口径告警忽略、好键保留。
+- 缓存路由键自动派生：请求体默认带 `prompt_cache_key`（模型名 + 稳定段摘要，非明文；同配置会话归同一自动缓存分组）。端点 400/422 点名该参数即自动省略并记忆（后续请求形态回旧版，用户无感）。`params` 里显式声明 `prompt_cache_key` 时以其为准，自动派生让位。
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 
