@@ -9,6 +9,7 @@ import { applyUiMode } from './ui-mode';
 import { applyDarkBubbles, applyDarkCode } from './dark-surfaces';
 import { applyUsageStats } from './usage-stats';
 import { applyConciseMode } from './concise-mode';
+import { applyDeveloperMode } from './developer-mode';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
 
@@ -57,6 +58,7 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       darkCode: (v) => applyDarkCode(v === '1'),
       usageStats: (v) => applyUsageStats(v === '1'),
       conciseMode: (v) => applyConciseMode(v === '1'),
+      developerMode: (v) => applyDeveloperMode(v === '1'),
     });
   }, [connInstance]);
 }
