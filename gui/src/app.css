@@ -2977,11 +2977,11 @@ input.sx-setting-input { width: 100%; }
 /* ===== 统一开关(2026-11-17 用户裁定「设置页所有开关换胶囊按钮,黑白灰配色,不要绿色,稍大,不要被其他 css 影响成椭圆」) =====
    corner-shape:initial 拔出全局超椭园级联(G14.206c)——胶囊端部=正圆弧,不再被拉成椭圆;
    黑白灰配色:on=var(--fg) 黑白反色(亮色黑底白钮/暗色白底黑钮,原 --ok 绿退役),off=fg 20% 灰;
-   40×22 较原 26×15 大一档,knob 18px 正圆 */
-.sx-switch{width:40px;height:22px;border-radius:999px;border:none;padding:0;cursor:pointer;flex:none;position:relative;background:color-mix(in srgb,var(--fg) 20%,transparent);transition:background var(--dur-basic) var(--ease-enter);margin-left:auto;corner-shape:initial;box-sizing:border-box}
-.sx-switch .knob{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--surface);transition:left var(--dur-basic) var(--ease-enter);corner-shape:initial}
+   尺寸单点(2026-11-17 用户裁定「调小一点,保持一致」):34×18,knob 14px 正圆——全站开关同一令牌 */
+.sx-switch{width:34px;height:18px;border-radius:999px;border:none;padding:0;cursor:pointer;flex:none;position:relative;background:color-mix(in srgb,var(--fg) 20%,transparent);transition:background var(--dur-basic) var(--ease-enter);margin-left:auto;corner-shape:initial;box-sizing:border-box}
+.sx-switch .knob{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--surface);transition:left var(--dur-basic) var(--ease-enter);corner-shape:initial}
 .sx-switch.on{background:var(--fg)}
-.sx-switch.on .knob{left:20px}
+.sx-switch.on .knob{left:18px}
 .sx-switch:disabled{cursor:default;opacity:0.55}
 /* 语境位:mcp 工具行左贴(原口径);设置行控件列=flex 右对齐(2026-11-17 用户裁定「开关是右侧对齐」
    ——开关右缘与 300px 下拉框右缘同位,:has 限定含开关的列,免纯块布局 auto 边距失效) */
