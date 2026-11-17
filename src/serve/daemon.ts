@@ -1711,7 +1711,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       this.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
       return;
     }
-    this.send(res, 200, { ok: true, sessionId: r.value.sessionId, root: r.value.root });
+    // sunx 域重开恒 sunx(2026-11-17 同拍:GUI 首帧即知形态)
+    this.send(res, 200, { ok: true, sessionId: r.value.sessionId, root: r.value.root, kind: 'sunx' });
   }
 
   private handleFile(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {

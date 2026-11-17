@@ -51,7 +51,7 @@ export interface ProjectMenuConn {
   /** GET /sunx/sessions(sunx P3 Task 3 数据源改向):sunx 域容器全域枚举——SUNX 过滤组数据源单点 */
   sunxSessions(): Promise<SessionRow[]>;
   /** POST /sunx/attach(sunx P3 Task 3):journalId 直寻址重开 sunx 实例——SUNX 组条目点击链 */
-  attachSunx(journalId: string): Promise<{ sessionId: string; root: string }>;
+  attachSunx(journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
   /** 建会话单点(attach 装壳/组内新建;sunx P1 Task 6 增第 5 参 opts——kind/name/charter 透传,
    *  缺席时 body 与旧形态逐字节相同):App 实传整只 Connection(运行时满足) */
@@ -68,7 +68,7 @@ export interface ProjectMenuConn {
   /** 2026-10-24 用户裁定:会话行 hover tooltip 分支信息(source=gitBranches.current) */
   gitBranches(root: string): Promise<{ current: string; branches: string[] }>;
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId */
-  attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string }>;
+  attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;
   /** GET /session/:id/charter(sunx P2 Task 7 读面):当前品性全文+rev——CharterDialog 预填数据源 */
   sessionCharter(id: string): Promise<{ text: string | null; charterRev: number }>;
   /** POST /session/:id/charter {text}(sunx P2 Task 7 封装):品性全文替换——成功回新 rev */
@@ -106,7 +106,7 @@ export interface ProjectMenuProps {
   readonly persistPins?: (next: PinEntry[]) => void;
   /** G14.52 活动会话运行态(App 本地权威,model-start 置位/done·error 复位):圆点亮熄以此为准 */
   readonly runningIds?: ReadonlySet<string>;
-  readonly onOpenSession: (sessionId: string, root: string, journalId?: string) => void;
+  readonly onOpenSession: (sessionId: string, root: string, journalId?: string, kind?: string) => void;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
@@ -390,13 +390,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     setActionError('');
     conn
       .newSession(root)
-      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => ({ sid: r.sessionId, root: r.root || root }))) // G14.2xx daemon 可能收编在座会话,以返回 id 为准;root 同取真根(树会话重挂),缺省回退行根(旧 daemon/应答缺 root 不落 undefined=渲染崩)
+      .then(({ sessionId }) => conn.attach(sessionId, journalId).then((r) => ({ sid: r.sessionId, root: r.root || root, kind: r.kind }))) // G14.2xx daemon 可能收编在座会话,以返回 id 为准;root 同取真根(树会话重挂),缺省回退行根(旧 daemon/应答缺 root 不落 undefined=渲染崩)
       .then(
-        ({ sid: sessionId, root: realRoot }) => {
+        ({ sid: sessionId, root: realRoot, kind }) => {
           setBusy(false);
           markSeen(journalId, journalUpdatedAt ?? Date.now());
           markJournal(sessionId, journalId);
-          onOpenSession(sessionId, realRoot, journalId); // G14.213 journalId 随行下发(滚动位存档稳定键);root=attach 归位真根(树会话)
+          onOpenSession(sessionId, realRoot, journalId, kind); // journalId=滚动位存档稳定键;root=attach 归位真根;kind=应答形态(2026-11-17 首帧欢迎面)
           loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
         },
         (err: unknown) => {
@@ -418,7 +418,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         setBusy(false);
         markSeen(journalId, journalUpdatedAt ?? Date.now());
         markJournal(r.sessionId, journalId);
-        onOpenSession(r.sessionId, r.root, journalId); // journalId 随行下发(滚动位存档稳定键);root=域旁车真根
+        onOpenSession(r.sessionId, r.root, journalId, r.kind ?? 'sunx'); // journalId=滚动位存档键;root=域旁车真根;域重开恒 sunx
         loadWorkspaces(); // 点会话即刷新(G10-C13:计数/最近区即时更新)
       }, (err: unknown) => {
         setBusy(false);
@@ -538,7 +538,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const openCreatedSunx = (sessionId: string, root: string): void => {
     loadWorkspaces();
     setSunxReload((v) => v + 1); // 新实例即时入组(2026-11-16 用户实测;不等 30s tick/手动切换)
-    onOpenSession(sessionId, root);
+    onOpenSession(sessionId, root, undefined, 'sunx'); // 新建链恒 sunx(2026-11-17 首帧定欢迎面)
   };
   /** 分区回调簇(2026-11-16 流畅轮:useCallback 恒稳——五 memo 分区的判等面,内联箭头每渲染
    *  换新即全分区每帧重渲) */

@@ -14,6 +14,8 @@ export function resetTitleCacheForTests(): void {
 /** 会话标题子系统(D32 第六批批F-6 自 Chat.tsx 平移,行为零变化):daemon 旁车 meta 单源
  *  (挂载 GET 回读/模型总结一次/rename 乐观落盘)。编辑态与草稿返还宿主(顶栏消费)。 */
 export function useChatTitle(deps: {
+  /** 打开期已知的会话形态(sunx 直链 hint,2026-11-17):首帧即定格,免等 title GET 竞态 */
+  readonly kindHint?: string;
   readonly conn: Connection;
   readonly sessionId: string;
   readonly fixedTitle: string | undefined;
@@ -32,14 +34,16 @@ export function useChatTitle(deps: {
    *  顶栏乐观上屏+标题缓存+侧栏联动——不再重发 rename(双发=daemon 双尾追同步行) */
   adoptTitle: (v: string) => void;
 } {
-  const { conn, sessionId, fixedTitle, entries, onRenamed } = deps;
+  const { conn, sessionId, fixedTitle, entries, onRenamed, kindHint } = deps;
 /** 会话标题(G14.16/G14.17 统一流):单源=daemon 旁车 meta——rename 落盘、挂载 GET 回读,
  *  顶栏/侧栏/TUI 一名三处;零历史兼容(旧 localStorage 键不读不迁,旧会话删档重测)。
  *  缺省回落首条用户消息摘要,再落「新会话」——不回落会话 id(2026-11-07 用户裁定:顶栏不显 id 过渡态)。
  *  回读落定前显空(不先闪摘要再换名);见过的名按会话缓存,切回即直显。点击标题即改 */
 const [title, setTitle] = useState<string | null>(() => titleCache.get(sessionId) ?? null);
-/** 会话形态(title GET 随响应透出;sunx 菜单/欢迎语分支消费) */
-const [kind, setKind] = useState<string | undefined>();
+/** 会话形态(title GET 随响应透出;sunx 菜单/欢迎语分支消费;2026-11-17 增 kindHint+模块缓存:
+ *  attach 应答/打开链 hint 即首帧定格,GET 到货再校准——避免「Sunx 会话先显示普通欢迎页」竞态) */
+const kindCache = new Map<string, string>();
+const [kind, setKind] = useState<string | undefined>(() => kindCache.get(sessionId) ?? kindHint);
 const [titleLoaded, setTitleLoaded] = useState(() => titleCache.has(sessionId));
 useEffect(() => {
   if (title !== null) titleCache.set(sessionId, title);
@@ -86,7 +90,10 @@ useEffect(() => {
     ({ title: srv, kind: srvKind }) => {
       if (!alive) return;
       if (srv !== undefined && srv.trim() !== '') setTitle(srv);
-      if (srvKind !== undefined) setKind(srvKind);
+      if (srvKind !== undefined) {
+        setKind(srvKind);
+        kindCache.set(sessionId, srvKind);
+      }
       setTitleLoaded(true);
     },
     () => {

@@ -8,7 +8,7 @@ interface AppLinksConn {
   newSession(root: string): Promise<{ sessionId: string }>;
   workspaces(): Promise<Array<{ root?: string }>>;
   openInEditor(path: string, id: string, root?: string): Promise<void>;
-  attachSunx(journalId: string): Promise<{ sessionId: string; root: string }>;
+  attachSunx(journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;
 }
 
 /**
@@ -26,7 +26,7 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
   connRef: { current: AppLinksConn | null };
   openRoot: string;
   openSessionId: string;
-  openSession: (sessionId: string, root: string, journalId?: string) => void;
+  openSession: (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft?: boolean, kindHint?: string) => void;
   openTabInSession: (type: TabTypeId, params?: TabParams) => void;
   openBoardTab: () => void;
   setTaskFocus: (v: { ref: string; nonce: number; kind?: 'task' | 'team' } | null) => void;
@@ -166,7 +166,7 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
    *  openSession(newSession 即 canonical,NewSunxDialog 成功链同侧栏 openCreatedSunx 形态)。 */
   const openSunxInstance = useCallback((t: { journalId?: string; sessionId?: string; root: string }): void => {
     if (t.sessionId !== undefined && t.sessionId !== '') {
-      openSession(t.sessionId, t.root);
+      openSession(t.sessionId, t.root, undefined, false, 'sunx'); // 总览页新建实例恒 sunx
       return;
     }
     const jid = t.journalId;
@@ -175,7 +175,7 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
     if (conn === null) return;
     void conn
       .attachSunx(jid)
-      .then((r) => openSession(r.sessionId, r.root || t.root, jid))
+      .then((r) => openSession(r.sessionId, r.root || t.root, jid, false, r.kind ?? 'sunx'))
       .catch(showOpError);
   }, [openSession, connRef, showOpError]);
   /** 后台任务页签+行定位(task_wait 链路;与板面 openTaskFocus 分立——账本≠板) */

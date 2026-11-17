@@ -140,6 +140,8 @@ function AppShell(): JSX.Element {
   const [composePreset, setComposePreset] = useState<{ root: string | null; seq: number }>({ root: null, seq: 0 });
   const presetCompose = useCallback((root: string | null): void => setComposePreset((p) => ({ root, seq: p.seq + 1 })), []);
   const [openSessionId, setOpenSessionId] = useState<string>('');
+  /** 打开期会话形态 hint(2026-11-17):sunx 打开链同步下发,首屏即 Sunx 欢迎面 */
+  const [openKind, setOpenKind] = useState<string | undefined>(undefined);
   /** G14.213 会话 journal 档案 id(滚动位存档等跨重挂持久面的稳定键):sessionId 是活动会话
    *  别名(每次重开 newSession+attach 重新发号),journal id 跨重挂/daemon 重启不变;缺省=sessionId */
   const [openJournalId, setOpenJournalId] = useState<string>('');
@@ -417,7 +419,8 @@ function AppShell(): JSX.Element {
     connInstance, connRef, page, openSessionId, openRoot, tabStates, setTabStates, sideSinksRef, sideParentRef, probe: PROBE,
   });
 
-  const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false): void => {
+  /** kindHint(2026-11-17):打开链已知会话形态(sunx attach 应答/新建链)——首帧即定格欢迎面,免 title GET 竞态 */
+  const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false, kindHint?: string): void => {
     // 临时会话思想(2026-10-29 用户设计定版):欢迎页=临时会话,发出去(欢迎页输入建席)时临时座
     // 变真座——草稿整座继承到新会话,欢迎页重获新空临时座;开既有会话不继承(全隔离——8d83fa5
     // 前的泄漏=迁移对开既有会话同样生效,本门即边界:仅 inheritWelcomeDraft 路径放行)
@@ -438,6 +441,7 @@ function AppShell(): JSX.Element {
     setOpenSessionId(sessionId);
     setOpenJournalId(jid);
     setOpenRoot(root);
+    setOpenKind(kindHint);
     // 同档旧座位并入当前座(运行时 id 换号后的孤儿座:页签/常驻 webview 不随重开累积)
     const staleSeats: string[] = [];
     if (jid !== sessionId) {
@@ -1041,6 +1045,7 @@ function AppShell(): JSX.Element {
                 onToggleMenu={toggleMenuStable}
                 conn={connInstance}
                 sessionId={openSessionId}
+                kindHint={openKind}
                 journalId={openJournalId}
                 ptyIdFor={ptyIdFor}
                 onPtyAllocated={handlePtyAllocated}

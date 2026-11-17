@@ -184,11 +184,11 @@ export interface Connection {
   newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId(可能异于入参) */
-  attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string }>;
+  attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;
   /** POST /sunx/attach {journalId}（2026-11-15 sunx P3 Task 2 端点封装）：按 journalId 直开 sunx
    *  域会话——daemon 侧自铸壳（kind='sunx'/dataDir=域）+attachSessionIn 全链（reCast/播种/重布防/
    *  恢复轮）。SUNX 组/总览页数据源切换消费本封装=Task 3 */
-  attachSunx(journalId: string): Promise<{ sessionId: string; root: string }>;
+  attachSunx(journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;
   /** POST /session/:id/submit {goal}：会话提交（202 受理；409 拒二次提交）。
    *  images=随行图片附件(dataURL,≤8 张);空列不落字段——旧 daemon 按纯文本受理(兼容) */
   sessionSubmit(id: string, goal: string, images?: string[]): Promise<void>;

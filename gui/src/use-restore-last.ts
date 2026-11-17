@@ -10,7 +10,7 @@ import type { Connection, ConnectionState } from './connection';
 export function useRestoreLast(deps: {
   readonly connInstance: Connection | null;
   readonly connState: ConnectionState;
-  readonly openSession: (sessionId: string, root: string, journalId?: string) => void;
+  readonly openSession: (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft?: boolean, kindHint?: string) => void;
 }): void {
   const { connInstance, connState, openSession } = deps;
   const restoredRef = useRef(false);
@@ -26,8 +26,8 @@ export function useRestoreLast(deps: {
         const lastJournalId: string = o.lastJournalId;
         return connInstance
           .newSession(lastRoot)
-          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then((r) => ({ sessionId: r.sessionId, root: r.root || lastRoot, journalId: lastJournalId }))) // 收编以返回 id 为准;root=attach 归位真根(树会话重启回工作树)
-          .then(({ sessionId, root, journalId }) => openSession(sessionId, root, journalId));
+          .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then((r) => ({ sessionId: r.sessionId, root: r.root || lastRoot, journalId: lastJournalId, kind: r.kind }))) // 收编以返回 id 为准;root=attach 归位真根(树会话重启回工作树)
+          .then(({ sessionId, root, journalId, kind }) => openSession(sessionId, root, journalId, false, kind));
       })
       .catch(() => undefined);
     // eslint 不入依赖(openSession 恒稳:仅 setter/refs;恢复链仅启动一次)

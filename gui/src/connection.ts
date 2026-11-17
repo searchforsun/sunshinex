@@ -438,11 +438,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
       }
       return (await res.json()) as { sessionId: string; worktree?: { name: string; path: string; branch: string } };
     },
-    async attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string }> {
-      return postJson<{ sessionId: string; root: string }>(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });
+    async attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string; kind?: string }> {
+      return postJson<{ sessionId: string; root: string; kind?: string }>(`/session/${encodeURIComponent(sessionId)}/attach`, { journalId });
     },
-    async attachSunx(journalId: string): Promise<{ sessionId: string; root: string }> {
-      return postJson<{ sessionId: string; root: string }>(`/sunx/attach`, { journalId });
+    async attachSunx(journalId: string): Promise<{ sessionId: string; root: string; kind?: string }> {
+      return postJson<{ sessionId: string; root: string; kind?: string }>(`/sunx/attach`, { journalId });
     },
     sunxSessions() {
       return getJson<SessionRow[]>('/sunx/sessions');

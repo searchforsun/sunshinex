@@ -592,7 +592,10 @@ export async function handleAttach(io: SessionHandlerIo, req: http.IncomingMessa
     io.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
     return;
   }
-  io.send(res, 200, { ok: true, sessionId: r.value.sessionId, root: r.value.root });
+  // kind 随 attach 应答透出(2026-11-17 用户实测「Sunx 会话打开先显示普通欢迎页」根因:
+  //   GUI 只能靠后续 title GET 拿 kind,首帧/失败即落普通欢迎——attach 就地带回消除竞态)
+  const attached = io.sessions.get(r.value.sessionId);
+  io.send(res, 200, { ok: true, sessionId: r.value.sessionId, root: r.value.root, ...(attached?.sessionKind !== undefined ? { kind: attached.sessionKind } : {}) });
 }
 
 export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {

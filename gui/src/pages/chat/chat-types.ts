@@ -147,6 +147,8 @@ export interface ChatProps {
   freshView?: boolean;
   /** G14.32 顶栏定名(辅助对话):压过会话名回落链,不露注册 id */
   fixedTitle?: string;
+  /** 打开期已知会话形态(2026-11-17 attach 应答/打开链 hint):sunx 首帧即定格,免 title GET 竞态 */
+  kindHint?: string;
   /** G14.2xx 辅助对话形态:空态文案/composer 占位用 side 变体(sidechat 页签注入) */
   sideChat?: boolean;
   /** G14.213 滚动位存档键:journal 档案 id(稳定跨重挂/重启)。sessionId 是活动会话别名
