@@ -551,7 +551,7 @@ export async function handleBoardStop(io: SessionHandlerIo, req: http.IncomingMe
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
   const raw = taskId.trim();
-  const stopped = stopBoardTask(session.runtime.harness.taskboard, session.runtime.harness.tasks, raw);
+  const stopped = stopBoardTask(session.runtime.harness.taskboard, session.runtime.harness.tasks, raw, 'manual'); // 人为取消(GUI 板停止钮,2026-11-16 用户裁定)
   if (stopped === undefined) {
     io.send(res, 400, { error: `unknown task: ${raw}` });
     return;

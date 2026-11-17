@@ -20,6 +20,9 @@ export interface BoardTask {
   assignee?: string;
   /** 实际执行者:派发即落(status-changed by)、回写刷新;与 assignee(应派谁)正交 */
   executedBy?: string;
+  /** 取消类型(2026-11-16 用户裁定「只是后台标记,用户无感知」):仅 cancelled 态可能携带——
+   *  interrupt=重启自愈/agent=agent_team_task_stop/manual=GUI 板停止钮/cascade=rewind 连带 */
+  cancelReason?: string;
   /** 执行体路由提示(P2):internal=子智能体 fork(缺省)/external-cli=外部 CLI 执行体 */
   executorHint?: 'internal' | 'external-cli';
   createdAt: number;
@@ -37,7 +40,7 @@ export type BoardEvent =
   | { t: 'task-created'; taskId: string; title: string; spec: string; dependsOn: string[]; teamId: string; retryOf?: string; executorHint?: 'internal' | 'external-cli'; ts: number }
   | { t: 'dependency-added'; taskId: string; dependsOn: string; ts: number }
   | { t: 'assigned'; taskId: string; assignee: string; ts: number }
-  | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number; by?: string };
+  | { t: 'status-changed'; taskId: string; from: TaskStatus; to: TaskStatus; ts: number; note?: string; conclusion?: string; tokens?: number; durationMs?: number; by?: string; reason?: string };
 
 const LEGAL: Record<TaskStatus, TaskStatus[]> = {
   pending: ['running', 'cancelled'],
@@ -98,7 +101,7 @@ export function applyBoardEvent(state: TaskBoardState, ev: BoardEvent): TaskBoar
       const artifact = ev.conclusion !== undefined || ev.tokens !== undefined || ev.durationMs !== undefined
         ? { ...task.artifact, ...(ev.conclusion !== undefined ? { conclusion: ev.conclusion } : {}), ...(ev.tokens !== undefined ? { tokens: ev.tokens } : {}), ...(ev.durationMs !== undefined ? { durationMs: ev.durationMs } : {}) }
         : task.artifact;
-      return patch(state, ev.taskId, { status: ev.to, updatedAt: ev.ts, ...(artifact !== task.artifact ? { artifact } : {}), ...(ev.by !== undefined ? { executedBy: ev.by } : {}) });
+      return patch(state, ev.taskId, { status: ev.to, updatedAt: ev.ts, ...(artifact !== task.artifact ? { artifact } : {}), ...(ev.by !== undefined ? { executedBy: ev.by } : {}), ...(ev.reason !== undefined ? { cancelReason: ev.reason } : {}) });
     }
     default:
       return state;
@@ -176,6 +179,7 @@ export function recoverOnLoad(state: TaskBoardState): { state: TaskBoardState; r
       note: from === 'running'
         ? 'interrupted by restart (execution lost — recreate the task if needed)'
         : 'no live executors after restart — recreate the task if needed',
+      reason: 'interrupt',
     });
   }
   return { state: next, recovered };

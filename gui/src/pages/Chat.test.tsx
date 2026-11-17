@@ -39,7 +39,7 @@ vi.mock('../highlight', async (importOriginal) => {
     __reset: (): void => { calls = 0; },
   };
 });
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { setLanguage } from '../../src/i18n';
 import * as highlightMock from '../highlight';
 import { Chat, expandFileRefs, rankFileHits, renderMentionSpans, tokenDeleteRange } from './Chat';
@@ -900,20 +900,67 @@ describe('G14.18 上下文圆环', () => {
 
 describe('会话流尾部窗口(D48)', () => {
   it('长会话:窗口外条目折叠为「显示更早」头(计数正确),点击步进回放且全部回放后头消失', async () => {
-    const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
-    mountChat(many as unknown as Seed[]);
-    await flushed();
-    // 2026-11-13 用户裁定「切会话先进视口,更早内容空闲补齐」:入口窗口 80 条(原 600 整表同步渲染),
-    // 余量由空闲分批回放;测试环境无 requestIdleCallback 走 64ms setTimeout 兜底,此处显式点按钮走手动步进
-    const initial = document.querySelectorAll('.entry-user').length;
-    expect(initial).toBeGreaterThan(0);
-    expect(initial).toBeLessThanOrEqual(100); // 入口窗口=80(裁定量),防窗口悄然放宽回全量
-    const earlier = document.querySelector('.chat-earlier')!;
-    expect(earlier.textContent).toContain(String(620 - initial)); // 窗口外=N-初始窗
-    fireEvent.click(earlier); // 手动步进 +300(显式动作取大批)
-    await flushed();
-    expect(document.querySelectorAll('.entry-user').length).toBe(initial + 300); // 步进=300 钉死
-    expect(document.querySelector('.chat-earlier')).not.toBeNull(); // 620>80+300,头仍在
+    vi.useFakeTimers(); // 回放兜底 32ms(2026-11-17 提频)快于真实时钟:钉假钟防泵拍中途插入污染步进断言
+    try {
+      const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
+      mountChat(many as unknown as Seed[]);
+      await flushed();
+      // 2026-11-13 用户裁定「切会话先进视口,更早内容空闲补齐」:入口窗口 80 条(原 600 整表同步渲染),
+      // 余量由空闲分批回放;测试环境无 requestIdleCallback 走 32ms setTimeout 兜底,此处显式点按钮走手动步进
+      const initial = document.querySelectorAll('.entry-user').length;
+      expect(initial).toBeGreaterThan(0);
+      expect(initial).toBeLessThanOrEqual(100); // 入口窗口=80(裁定量),防窗口悄然放宽回全量
+      const earlier = document.querySelector('.chat-earlier')!;
+      expect(earlier.textContent).toContain(String(620 - initial)); // 窗口外=N-初始窗
+      fireEvent.click(earlier); // 手动步进 +300(显式动作取大批)
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(initial + 300); // 步进=300 钉死
+      expect(document.querySelector('.chat-earlier')).not.toBeNull(); // 620>80+300,头仍在
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('空闲回放节奏(2026-11-17 用户实测「速度快一些,跨度小一些」):兜底 32ms 一拍 +24 条平滑爬,不再 64ms/60 大块跳', async () => {
+    vi.useFakeTimers();
+    try {
+      const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
+      mountChat(many as unknown as Seed[]);
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(80); // 入口窗
+      await act(async () => { vi.advanceTimersByTime(32); });
+      expect(document.querySelectorAll('.entry-user').length).toBe(104); // 一拍 +24(跨度缩)
+      await act(async () => { vi.advanceTimersByTime(32); });
+      expect(document.querySelectorAll('.entry-user').length).toBe(128); // 逐拍续爬(节奏提频)
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('切回驻留会话窗口原样恢复(2026-11-17 用户裁定「已在内存切回不要重分段」):chatMem 随写 renderWindow,重挂免从 80 重爬', async () => {
+    vi.useFakeTimers(); // 同上:钉泵拍,恢复断言只认手动步进
+    try {
+      const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
+      const mem = new Map();
+      type ChatMem = NonNullable<Parameters<typeof Chat>[0]['chatMem']>;
+      const chatMem: ChatMem = { get: (k) => mem.get(k), put: (k, v) => void mem.set(k, v) };
+      const mount = (): void => {
+        render(<Chat conn={connOf(many as unknown as Seed[])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} chatMem={chatMem} />);
+      };
+      mount();
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(80); // 首挂:入口窗
+      fireEvent.click(document.querySelector('.chat-earlier')!); // 手动步进 +300 → 380
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(380);
+      cleanup(); // 卸载写回缓存(renderWindow=380 随 chatMem.put 落座)
+      mount();
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(380); // 重挂即恢复,免重爬
+      expect(document.querySelector('.chat-earlier')!.textContent).toContain('240'); // 窗口外=620-380
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

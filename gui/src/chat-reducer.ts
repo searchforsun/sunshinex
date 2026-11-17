@@ -107,6 +107,10 @@ export interface ChatState {
    *  reseed sig-skip 须同座才免整替(同 journal 键+同快照+异座=异常形态,保守换新防跨座串显,
    *  App.test key 隔离锚)。live 归约随 spread 透传,seed 不写(换新即待本座写回) */
   memSeat?: string;
+  /** 渲染窗口宽(2026-11-17 用户裁定「已在内存切回不要重分段」,勿消费——纯视图域):Chat 卸载
+   *  随 chatMem 写回 MessageList 的 visibleCount 终值,重挂注入 initialRenderWindow——切回驻留
+   *  会话窗口原样恢复,免从入口窗重爬。reducer 零读写(live 归约随 spread 透传,seed 不写) */
+  renderWindow?: number;
 }
 
 export function initialChatState(): ChatState {

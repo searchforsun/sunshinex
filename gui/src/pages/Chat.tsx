@@ -53,6 +53,7 @@ import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { ChatComposerDock } from './chat/chat-composer-dock';
 import { ChatTranscript } from './chat/chat-transcript';
+import { RENDER_WINDOW_DEFAULT } from './chat/MessageList';
 import { usePopOutsideClose } from '../use-pop-outside-close';
 import { useChatNotify } from './chat/use-chat-notify';
 import { LiveChangesContext, TurnLatestContext, useLiveGitChanges } from './chat/use-live-changes';
@@ -92,11 +93,18 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
   const [chat, setChat] = useState<ChatState>(() => chatMem?.get(archiveKey) ?? initialChatState());
   const chatRef = useRef<ChatState>(chat);
   chatRef.current = chat;
+  // 渲染窗口镜像(2026-11-17 用户裁定「已在内存切回不要重分段」):挂载读缓存上次展开宽度,
+  // MessageList 每拍回放/步进上抛即更 ref,卸载随 chatMem 写回——切回驻留会话窗口原样恢复,
+  // 不再从入口窗 80 重爬。ref 而非 state:回放每批免整树重渲(窗口不入渲染输出)
+  const renderWindowRef = useRef<number>(chatMem?.get(archiveKey)?.renderWindow ?? RENDER_WINDOW_DEFAULT);
+  const onRenderWindowChange = useCallback((n: number): void => {
+    renderWindowRef.current = n;
+  }, []);
   useEffect(() => {
     return () => {
       // memSeat 随写(2026-11-16 流畅轮):journal 键在 daemon 侧恒同一会话,但 attach 未收编时
       // 换座壳 id 会换——reseed sig-skip 须同座才免整替(防跨座串显),写回即落当前座别
-      if (chatMem !== undefined) chatMem.put(archiveKey, { ...chatRef.current, memSeat: sessionId });
+      if (chatMem !== undefined) chatMem.put(archiveKey, { ...chatRef.current, memSeat: sessionId, renderWindow: renderWindowRef.current });
     };
   }, [archiveKey, chatMem, sessionId]);
 
@@ -618,6 +626,8 @@ export function Chat({ conn, sessionId, connState, sinkRef, onSeeded, onOpenFile
       <ChatTranscript
         history={chat.history}
         setChat={setChat}
+        initialRenderWindow={renderWindowRef.current}
+        onRenderWindowChange={onRenderWindowChange}
         onOpenMemory={onOpenMemory}
         onOpenLearned={onOpenLearned}
         onOpenTab={onOpenTab}

@@ -4278,5 +4278,3 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    同件同尺寸,布局小件本卡私有(点+词+计数的行内排布) */
 .sx-sunxboard-chip { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; white-space: nowrap; }
 .sx-sunxboard-chip .tb-status-dot { position: static; transform: none; }
-/* 后台任务行取消类型徽标(2026-11-16 用户裁定):14px 暗淡档,行头名后内联;仅 stopped 行有 */
-.bg-stop-reason { flex: none; margin-left: 6px; padding: 0 6px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 5%, transparent); white-space: nowrap; }

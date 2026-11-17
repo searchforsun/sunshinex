@@ -121,8 +121,8 @@ export class TaskBoard {
       const from = prior.get(id);
       if (from !== 'pending' && from !== 'running') continue;
       const note = from === 'running' ? RESTART_RUNNING_NOTE : RESTART_PENDING_NOTE;
-      this.deps.store.append({ t: 'status-changed', taskId: id, from, to: 'cancelled', ts: this.now(), note });
-      this.emit('task-status-changed', { taskId: id, from, status: 'cancelled', note });
+      this.deps.store.append({ t: 'status-changed', taskId: id, from, to: 'cancelled', ts: this.now(), note, reason: 'interrupt' });
+      this.emit('task-status-changed', { taskId: id, from, status: 'cancelled', note, reason: 'interrupt' });
     }
     // 空板(无 tasks 且 seq=0)且无恢复时不落快照——未用过任务板的会话零物化 teams/ 目录
     if (Object.keys(this.state.tasks).length === 0 && this.state.seq === 0 && recovered.length === 0) return;
@@ -302,8 +302,9 @@ export class TaskBoard {
     return `queue note: teammate "${assignee}" is busy (${bits.join('; ')}) — this task waits its turn (teammates run one task at a time)`;
   }
 
-  /** pending|running → cancelled。终态幂等成功,不重复 abort。 */
-  stopTask(taskId: string): Result<void> {
+  /** pending|running → cancelled。终态幂等成功,不重复 abort。reason=取消类型(2026-11-16 用户
+   *  裁定「只是后台标记,用户无感知」:tool=agent/GUI 板停止钮=manual;落事件+任务字段) */
+  stopTask(taskId: string, reason: 'agent' | 'manual' = 'agent'): Result<void> {
     const task = this.state.tasks[taskId];
     if (task === undefined) return fail('INVALID_ARG', `unknown task: ${taskId}`);
     if (BOARD_TERMINAL.has(task.status)) return ok(undefined);
@@ -311,8 +312,8 @@ export class TaskBoard {
       return fail('INVALID_STATE', statusTransitionError(taskId, task.status, 'cancelled'));
     }
     const from = task.status;
-    this.applyAndPersist({ t: 'status-changed', taskId, from, to: 'cancelled', ts: this.now(), note: 'stopped' });
-    this.emit('task-status-changed', { taskId, from, status: 'cancelled', note: 'stopped' });
+    this.applyAndPersist({ t: 'status-changed', taskId, from, to: 'cancelled', ts: this.now(), note: 'stopped', reason });
+    this.emit('task-status-changed', { taskId, from, status: 'cancelled', note: 'stopped', reason });
     this.emitBlockedDownstream(taskId);
     if (from === 'running' && task.executedBy === 'external-cli') {
       this.deps.externalExecutor?.stop?.(taskId);

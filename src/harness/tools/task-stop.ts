@@ -48,7 +48,7 @@ export interface BoardStopReceipt {
 }
 
 /** 板任务停：pending|running → cancelled；running 再 abort 台账。非板 id 返回 undefined，调用方走成员面或拒识。 */
-export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: string): Result<BoardStopReceipt> | undefined {
+export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: string, reason: 'agent' | 'manual' = 'agent'): Result<BoardStopReceipt> | undefined {
   const boardKey = boardKeyOf(board, tasks, rawId);
   if (boardKey === undefined) return undefined;
   const before = board.snapshot().tasks[boardKey]!;
@@ -56,7 +56,7 @@ export function stopBoardTask(board: TaskBoard, tasks: TaskRegistry, rawId: stri
     return ok({ taskId: boardKey, status: before.status, title: before.title, alreadyFinished: true });
   }
   const ledger = before.status === 'running' ? ledgerForBoard(tasks, boardKey, rawId) : undefined;
-  const stopped = board.stopTask(boardKey);
+  const stopped = board.stopTask(boardKey, reason);
   if (!stopped.ok) return fail(stopped.error.code, stopped.error.message);
   if (before.status === 'running') abortLedger(tasks, ledger);
   return ok({ taskId: boardKey, status: 'cancelled', title: before.title, alreadyFinished: false });

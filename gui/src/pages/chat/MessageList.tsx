@@ -16,10 +16,14 @@ function fmtTokens(n: number): string {
 /** D48 尾部窗口:会话流只全量渲染尾部窗口条目,更早条目折叠为头部「显示更早」行渐进回放
  *  (对齐主仓 TUI tail-rewrite 上限口径;立项与切点回退设计见 docs/superpowers/plans/
  *  2026-10-23-messagelist-tail-window.md) */
-const RENDER_WINDOW_DEFAULT = 80; // 2026-11-13 用户裁定「切会话不要卡,先进视口再平滑补齐」:入口窗口缩到视口级
+export const RENDER_WINDOW_DEFAULT = 80; // 2026-11-13 用户裁定「切会话不要卡,先进视口再平滑补齐」:入口窗口缩到视口级
 // (原 600 条整表同步渲染=重会话进入即长帧),余量由下方空闲分批回放逐批补齐,上限不变
 const RENDER_WINDOW_STEP = 300; // 手动回放步进(「显示更早」钮/滚顶回放,用户显式动作取大批)
-const RENDER_WINDOW_IDLE_STEP = 60; // 空闲回放步进(2026-11-13:批小让主线程,交互可抢占;上限仍 600)
+// 空闲回放步进(2026-11-13:批小让主线程,交互可抢占;上限仍 600)。2026-11-17 用户实测
+// 「回放速度快一些,跨度小一些」:60→24 缩跨度(单批挂载量≈1/2.5),调度 timeout 500→150、
+// setTimeout 兜底 64→32 提频——总填速反升(24 行/150ms≈160 行/s > 60 行/500ms),视觉由
+// 大块跳变变平滑渐进
+const RENDER_WINDOW_IDLE_STEP = 24;
 const RENDER_WINDOW_MAX = 600; // 空闲回放天花板(沿旧入口窗口预算);超出部分仍走手动/滚顶回放
 import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
@@ -83,6 +87,13 @@ export interface MessageListProps {
   readonly sideChat?: boolean;
   /** sunx 会话显示名(sunx P2 2026-11-15):在场=空态欢迎语走 Sunx 分支(编排者口径,无技术细节) */
   readonly sunxName?: string;
+  /** 渲染窗口初值(2026-11-17 用户裁定「已在内存切回不要重分段」):Chat 自 chatMem 缓存注入
+   *  上次展开宽度——切回已驻留会话窗口原样恢复,不再从 80 重爬;缺省=入口窗(冷会话)。
+   *  仅挂载 useState 初始化读一次,后续变更不经此 prop(memo 比较器不列) */
+  readonly initialRenderWindow?: number;
+  /** 窗口变更上抛(Chat 收 ref 镜像,卸载随 chatMem 写回缓存):回放/手动步进每拍上报。
+   *  Chat 侧 useCallback 恒稳,memo 比较器不列 */
+  readonly onRenderWindowChange?: (n: number) => void;
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
@@ -360,8 +371,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
   const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, sunxName, onOpenImage, onOpenWeb } = props;
-  /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方 */
-  const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
+  /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方。
+   *  初值=Chat 注入的缓存窗口(2026-11-17 用户裁定「已在内存切回不要重分段」——上次展开宽度
+   *  原样恢复,免从入口窗重爬),无缓存=入口窗 */
+  const [visibleCount, setVisibleCount] = useState(() => Math.max(props.initialRenderWindow ?? 0, RENDER_WINDOW_DEFAULT));
   /** 最近一次用户滚动时刻(空闲回放让路判据:滚动进行中不挂载更早条目) */
   const lastScrollAtRef = useRef(0);
   /** 渐进回放视口锚定:展开前记 (scrollHeight, scrollTop),新内容渲染后按高度增量回钉——用户视口不动 */
@@ -446,12 +459,17 @@ export function MessageList(props: MessageListProps): JSX.Element {
       setVisibleCount((v) => Math.min(v + RENDER_WINDOW_IDLE_STEP, ceiling));
     };
     const schedule = (): void => {
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { if (alive) pump(); }, { timeout: 500 });
-      else window.setTimeout(() => { if (alive) pump(); }, 64);
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(() => { if (alive) pump(); }, { timeout: 150 });
+      else window.setTimeout(() => { if (alive) pump(); }, 32);
     };
     schedule();
     return () => { alive = false; };
   }, [entries.length, visibleCount, chatScrollRef]);
+  /** 窗口变更上抛(2026-11-17 窗口缓存链尾):回放/手动步进每拍上报,Chat 收 ref 镜像卸载随
+   *  chatMem 写回——经 propsRef 取最新回调;挂载首拍也报(同值写回幂等) */
+  useEffect(() => {
+    propsRef.current.onRenderWindowChange?.(visibleCount);
+  }, [visibleCount]);
   /** P1 派生冻结:日分组骨架 memo(区间切分随骨架缓存),成员数组 dayGroups 逐渲染按区间
    *  slice 重绑最新条目引用(流式尾行实时)——语义与逐帧全量分组等价,省去逐帧 Intl 构造 */
   const daySkeleton = useMemo(() => {
