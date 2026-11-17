@@ -334,7 +334,7 @@ export function SideChatComposer(props: {
       refLedger={refContentsRef}
       value={text}
       rows={Math.min(6, Math.max(1, (text.match(/\n/g) ?? []).length + 1))}
-      placeholder={t('Ask something — the main task keeps running…', '问点什么,不会打断主任务…')}
+      placeholder={t('Ask away, the main task keeps running', '问吧,不影响主任务')}
       disabled={busy}
       onChange={onChange}
       onKeyDown={onKeyDown}

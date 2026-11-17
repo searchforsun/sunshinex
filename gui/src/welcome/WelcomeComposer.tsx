@@ -496,8 +496,8 @@ export function WelcomeComposer({
           rows={Math.min(6, Math.max(1, (goal.match(/\n/g) ?? []).length + 1))}
           placeholder={
             officeMode
-              ? t('Describe the goal — everything else is taken care of…', '描述你的目标,剩下的交给它…')
-              : t('State the goal — @ for context, / for commands or skills', '说出你的目标——@ 添加上下文, / 选命令或技能')
+              ? t('Say what you want done, the rest is handled', '想做点什么,说一声就行')
+              : t('Say what you want done, @ adds context, / picks commands', '想做点什么直接说,@ 添上下文、/ 选命令')
           }
           onChange={(v) => {
             setGoal(v);
