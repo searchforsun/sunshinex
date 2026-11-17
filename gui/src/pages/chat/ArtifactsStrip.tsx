@@ -37,8 +37,11 @@ export function ArtifactCardView({ a, conn, root, actions, variant = 'strip' }: 
   const { status, copy } = useCopyFeedback();
   const name = artifactTitleOf(a);
   const label = a.desc !== undefined && a.desc !== '' ? a.desc : artifactKindLabel(a);
+  /** 侧栏卡 hover 提示(2026-11-16 用户裁定「侧栏产物的 hover 应该使用应用内统一的 hover 样式」):
+   *  data-tip 应用内统一提示件(CLAUDE.md §13.1 禁原生 title);卡级=完整 desc(悬停卡任意处可读),
+   *  名称级=完整路径/网址/命令(嵌套时 innermost 生效) */
+  const cardTip = variant === 'library' && a.desc !== undefined && a.desc !== '' ? a.desc : undefined;
   const nameTip = variant === 'library' ? (a.kind === 'file' ? a.path : a.kind === 'url' ? a.url : a.command) : undefined;
-  const descTip = variant === 'library' && a.desc !== undefined && a.desc !== '' ? a.desc : undefined;
   const openExternal = (p: string, id: string): void => {
     void conn.openInEditor(p, id, root).catch((err: unknown) => actions.onOpError?.(err));
   };
@@ -110,13 +113,13 @@ export function ArtifactCardView({ a, conn, root, actions, variant = 'strip' }: 
   }
 
   return (
-    <div className="sx-artifacts-card">
+    <div className="sx-artifacts-card" data-tip={cardTip}>
       {tile}
       <span className="sx-artifacts-main">
-        <span className="sx-artifacts-name" title={nameTip}>
+        <span className="sx-artifacts-name" data-tip={nameTip}>
           {name}
         </span>
-        <span className="sx-artifacts-kind" title={descTip}>{label}</span>
+        <span className="sx-artifacts-kind">{label}</span>
       </span>
       {actionRow}
     </div>

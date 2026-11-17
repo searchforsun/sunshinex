@@ -4283,6 +4283,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-link { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); margin-left: auto; } /* 灰字降存在感,hover 升主文字色(2026-11-14 用户裁定,去箭头/去 hover 底) */
 .sx-artifacts-link:hover { color: var(--fg); }
 .sx-artifacts-page .sx-artifacts-name { cursor: pointer; } /* 产物库名称可点开预览(卡面=正文同款,2026-11-14 用户裁定「和正文一模一样」) */
+/* 侧栏产物卡 hover 反馈(2026-11-16 用户裁定「侧栏产物的 hover 应该使用应用内统一的 hover 样式」):
+   与列表行 .mem-row/.sx-plus-row 同语言 5% 前景混色;仅产物页签面生效(正文卡区不挂 hover,免误示可点) */
+.sx-artifacts-page .sx-artifacts-card { transition: background var(--dur-basic) var(--ease-enter); }
+.sx-artifacts-page .sx-artifacts-card:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+[data-theme='dark'] .sx-artifacts-page .sx-artifacts-card:hover { background: color-mix(in srgb, var(--fg) 5%, var(--bubble-user)); }
 
 /* ===== 新建 Sunx 创建弹窗 + 侧栏 kind 徽标(sunx P1 Task 6,2026-11-15 用户裁定:与「新对话」
    同级、独立弹窗;欢迎页 composer 零改动;P2 Task 6 增模板下拉——select 与 input/textarea 同款面) ===== */
