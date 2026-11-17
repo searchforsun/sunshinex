@@ -2267,6 +2267,8 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     render(<Chat conn={conn} sessionId="s-ref-10" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
     const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
     fireEvent.click(screen.getByLabelText('add attachment')); // + pill → 附加面板
+    // 2026-11-17 普通态四分区收起:先经「浏览命令与技能」展开(本测断言的是分区自身语义)
+    fireEvent.click(screen.getByText('浏览命令与技能'));
     await screen.findByText('devx'); // 智能体/团队区数据异步落位
     const secs = (): Array<string | null> => [...document.querySelectorAll('.sx-plus-sec')].map((el) => el.textContent);
     expect(secs()).toContain('子智能体'); // 实体分组在座(技能后)

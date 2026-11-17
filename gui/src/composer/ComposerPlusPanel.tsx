@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ImagePlus } from 'lucide-react';
+import { ChevronDown, ChevronRight, ImagePlus } from 'lucide-react';
 import { t } from '../i18n';
+import { useDeveloperMode } from '../developer-mode';
 import { cmdDescOf } from '../CommandPalette';
 import { IMAGE_ACCEPT } from '../images';
 import { FileIcon } from '../file-icon';
@@ -65,6 +66,9 @@ export function ComposerPlusPanel({
   const [entries, setEntries] = useState<Array<{ name: string; kind: 'dir' | 'file' }> | null>(null);
   const [truncated, setTruncated] = useState(false);
   const filePickRef = useRef<HTMLInputElement | null>(null);
+  /** 普通态(开发者模式关)命令/技能/子智能体/团队四区收起,面板内记忆展开态(2026-11-17 裁定) */
+  const dev = useDeveloperMode();
+  const [showTools, setShowTools] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -240,7 +244,16 @@ export function ComposerPlusPanel({
           />
         </>
       )}
+      {/* 2026-11-17 裁定:命令/技能/子智能体/团队四分区普通态收起(逃生面:/ $ # 键盘直达不变) */}
+      {!dev && (
+        <button type="button" role="menuitem" className="sx-plus-row" aria-expanded={showTools} onClick={() => setShowTools((v) => !v)}>
+          {showTools ? <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />}
+          <span className="sx-plus-name">{showTools ? t('Hide commands & skills', '收起命令与技能') : t('Browse commands & skills', '浏览命令与技能')}</span>
+        </button>
+      )}
       {/* 引用区已退役(2026-11-05 用户裁定:改为技能区后的 智能体/智能体团队 实体分组——见下) */}
+      {(dev || showTools) && (
+        <>
       <div className="sx-plus-sec">{t('Commands', '命令')}</div>
       {cmds === null && <div className="sx-plus-empty">{t('Loading…', '加载中…')}</div>}
       {cmds !== null && cmds.length === 0 && <div className="sx-plus-empty">{t('No commands', '暂无命令')}</div>}
@@ -285,6 +298,8 @@ export function ComposerPlusPanel({
               <span className="sx-plus-desc">{tm.name}</span>
             </button>
           ))}
+        </>
+      )}
         </>
       )}
       {/* G14.128 文件区:root 索引在场即渲染(欢迎页也可用);否则会话内回落 tree 浏览 */}
