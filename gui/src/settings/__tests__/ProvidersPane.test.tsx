@@ -229,6 +229,15 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     });
   });
 
+  it('删除模型:行内垃圾箱两段确认 → op modelRemove', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete model m2' }));
+    expect(opCalls).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete model m2' }));
+    await waitFor(() => expect(opCalls).toEqual([{ op: 'modelRemove', scope: 'global', name: 'p1', model: 'm2' }]));
+  });
+
   it('测试连接:调用 probeProvider,结果走底部悬浮提示层(2026-11-17 用户裁定)', async () => {
     const { conn } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);

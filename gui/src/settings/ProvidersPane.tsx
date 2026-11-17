@@ -427,19 +427,21 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   <span className={`sx-api-dot ${e.apiKeyPresent ? 'present' : 'missing'}`} data-tip={e.apiKeyEnv} aria-hidden="true" />
                   <span className="sx-rc-title">{e.name}</span>
                   <span className="sx-rc-subtitle">{e.baseUrl}</span>
-                  {/* 操作簇(2026-11-17 用户裁定「删除垃圾箱图标放第一个位置」):删除→编辑→启用开关 */}
-                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
-                  <button
-                    type="button"
-                    className="sx-iconbtn sx-provider-headbtn"
-                    aria-label={`${t('Edit', '编辑')} ${e.name}`}
-                    data-tip={t('Edit', '编辑')}
-                    disabled={saving}
-                    onClick={() => openProviderModal(e)}
-                  >
-                    <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
-                  </button>
-                  <Switch on={e.enabled !== false} onToggle={() => toggleProvider(e)} ariaLabel={`${t('Enable', '启用')} ${e.name}`} />
+                  {/* 操作簇(2026-11-17 用户裁定「删除放第一个位置,贴右侧编辑/开关」):删除→编辑→启用开关 */}
+                  <span className="sx-rc-head-acts">
+                    <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
+                    <button
+                      type="button"
+                      className="sx-iconbtn"
+                      aria-label={`${t('Edit', '编辑')} ${e.name}`}
+                      data-tip={t('Edit', '编辑')}
+                      disabled={saving}
+                      onClick={() => openProviderModal(e)}
+                    >
+                      <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+                    </button>
+                    <Switch on={e.enabled !== false} onToggle={() => toggleProvider(e)} ariaLabel={`${t('Enable', '启用')} ${e.name}`} />
+                  </span>
                 </div>
                 {/* 模型列表(2026-11-17 用户裁定「卡片里面添加模型」):名称+特点 chips+测试/编辑/开关 */}
                 <div className="sx-provider-models-head">
@@ -482,6 +484,12 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                           {m.supportsImages === true && <span className="sx-provider-chip">{t('Vision', '视觉')}</span>}
                           {m.supportsVideo === true && <span className="sx-provider-chip">{t('Video', '视频')}</span>}
                         </span>
+                        <ConfirmDeleteButton
+                          icon
+                          ariaLabel={`${t('Delete model', '删除模型')} ${m.model}`}
+                          disabled={saving}
+                          onConfirm={() => runOp({ op: 'modelRemove', name: e.name, model: m.model })}
+                        />
                         <button
                           type="button"
                           className="sx-iconbtn"
