@@ -123,17 +123,9 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<TeamFormState | null>(null);
   const [formError, setFormError] = useState('');
-
-  /** 自定义成员 chips(2026-11-17 用户裁定「支持自定义 agent id,卡片式添加」):extraMembers 空格串
-   *  存储形态不变(提交合并单点不触),chip 列表只是它的可视形态;回车/添加钮入列,chip 摘除回写 */
+  /** 额外成员 chips(不在上方卡片中的既有 id):extraMembers 空格串存储形态不变(提交合并单点
+   *  不触),chip 列表只是可视形态,摘除回写;自定义 id 添加入口按裁定移除(先到智能体页创建) */
   const customMembers = form?.extraMembers.split(/\s+/).filter((x) => x !== '') ?? [];
-  const [customDraft, setCustomDraft] = useState('');
-  const addCustomMember = (): void => {
-    const id = customDraft.trim();
-    if (id === '' || form === null || customMembers.includes(id)) { setCustomDraft(''); return; }
-    setForm({ ...form, extraMembers: [...customMembers, id].join(' ') });
-    setCustomDraft('');
-  };
   /** 卡面章程详情全文缓存(2026-11-05 用户裁定:详情展开=320px 固定高纵滚,编辑器同高)——
    *  key=`${source}:${id}`;展开首拍拉 teamBody 全文,失败回退 bodyPreview(防重拉循环) */
   const [bodyMap, setBodyMap] = useState<Record<string, string>>({});
@@ -444,7 +436,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
           {/* R3 成员组合形态(2026-11-17 用户裁定「卡片式选择智能体+支持自定义 agent id」):
               已知 agent=网格卡片(名+id+描述,点击整卡切换);自定义成员=chips 行内输入(回车/添加钮
               入列,chip 摘除)——extraMembers 空格串存储形态不变,提交合并去重保首现(submitDrawer 单点) */}
-          <ModalField label={t('Members (known agents)', '成员(已知智能体)')}>
+          <ModalField label={t('Members (known agents)', '成员(已知智能体)')} hint={t('Pick from created agents — create new ones on the Agents page', '从已创建的智能体中选择——新智能体请先在「智能体」页创建')}>
             <div className="sx-agent-pick">
               {knownAgents.map((k) => {
                 const on = form.members.includes(k.id);
@@ -467,45 +459,31 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                   </button>
                 );
               })}
-              {knownAgents.length === 0 && <span className="sx-agent-desc">{t('No known agents; add custom members below.', '无已知智能体;请在下方添加自定义成员。')}</span>}
+              {knownAgents.length === 0 && <span className="sx-agent-desc">{t('No known agents — create them on the Agents page first.', '无已知智能体——请先在「智能体」页创建。')}</span>}
             </div>
           </ModalField>
-          <ModalField label={t('Custom members', '自定义成员')} hint={t('Type an agent id and press Enter — no need to pre-create it on the agents page', '输入 agent id 回车即加,无需先到智能体页创建')}>
-            <div className="sx-custom-members">
-              {customMembers.map((m) => (
-                <span key={m} className="sx-chip">
-                  {m}
-                  <button
-                    type="button"
-                    className="sx-custom-chip-x"
-                    aria-label={`${t('Remove', '移除')} ${m}`}
-                    onClick={() => setForm({ ...form, extraMembers: customMembers.filter((x) => x !== m).join(' ') })}
-                  >
-                    <X size={12} strokeWidth={2} aria-hidden="true" />
-                  </button>
-                </span>
-              ))}
-              <span className="sx-custom-add">
-                <input
-                  className="sx-setting-input"
-                  aria-label="team custom member"
-                  placeholder={t('agent id, Enter to add', 'agent id,回车添加')}
-                  value={customDraft}
-                  onChange={(e) => setCustomDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                      e.preventDefault();
-                      addCustomMember();
-                    }
-                  }}
-                  spellCheck={false}
-                />
-                <button type="button" disabled={customDraft.trim() === ''} onClick={addCustomMember}>
-                  {t('Add', '添加')}
-                </button>
-              </span>
-            </div>
-          </ModalField>
+          {/* 额外成员(不在上方卡片中的既有 id,历史配置/已删智能体遗留):只读 chip 展示可摘除。
+              自定义 agent id 入口是当初有意去掉的(2026-11-17 用户澄清「否则对用户不友好,只能
+              通过智能体页先创建」)——新智能体请到「智能体」页创建,此处只做选择 */}
+          {customMembers.length > 0 && (
+            <ModalField label={t('Legacy members (not listed above)', '额外成员(不在上方卡片中)')} hint={t('Existing ids kept from the original roster — remove if stale; create agents on the Agents page', '原成员名单保留的既有 id——已过期可摘除;新智能体请在「智能体」页创建')}>
+              <div className="sx-custom-members">
+                {customMembers.map((m) => (
+                  <span key={m} className="sx-chip">
+                    {m}
+                    <button
+                      type="button"
+                      className="sx-custom-chip-x"
+                      aria-label={`${t('Remove', '移除')} ${m}`}
+                      onClick={() => setForm({ ...form, extraMembers: customMembers.filter((x) => x !== m).join(' ') })}
+                    >
+                      <X size={12} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </ModalField>
+          )}
           <ModalField label={t('Team leader', '团队领导者')}>
             <Select
               ariaLabel="team lead"

@@ -222,7 +222,7 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     );
   });
 
-  it('新增:坏 id(非 kebab)行内拦零 op;合规提交 = upsert(members=勾选+extra 空白分隔合并、去重保首现;空缺省键不落)', async () => {
+  it('新增:坏 id(非 kebab)行内拦零 op;合规提交 = upsert(members=卡片选择合并、去重保首现;空缺省键不落)', async () => {
     const { conn, opCalls } = connOf([], {
       builtins: [{ role: 'builder', name: 'Builder', framing: 'implements plan steps' }],
       agents: [agentRow()],
@@ -235,8 +235,6 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     fireEvent.change(screen.getByLabelText('team name'), { target: { value: 'Core Team' } });
     fireEvent.click(screen.getByLabelText('team member builder'));
     fireEvent.click(screen.getByLabelText('team member dev'));
-    fireEvent.change(screen.getByLabelText('team custom member'), { target: { value: 'writer   builder ' } });
-    fireEvent.keyDown(screen.getByLabelText('team custom member'), { key: 'Enter' }); // chips 形态:回车入列(空白分隔合并去重保首现)
     fireEvent.click(screen.getByText('Save'));
     expect(await screen.findByRole('alert')).toBeDefined(); // kebab 词法行内拦(daemon 400 同文案)
     expect(opCalls).toEqual([]);
@@ -249,7 +247,7 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
           scope: 'project',
           root: '/w/proj',
           id: 'core-team',
-          frontmatter: { name: 'Core Team', members: ['builder', 'dev', 'writer'], enabled: true },
+          frontmatter: { name: 'Core Team', members: ['builder', 'dev'], enabled: true },
           body: '',
         },
       ]),
