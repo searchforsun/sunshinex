@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Settings } from 'lucide-react';
 import { t } from '../i18n';
+import { chatMaxFor } from '../thread-width';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
@@ -130,6 +131,21 @@ export interface SettingsShellProps {
 }
 
 export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShellProps): JSX.Element {
+  /** 设置内容列动态宽度(2026-11-17 用户裁定「设置内容宽度像正文输入框一样动态调整最大宽」):
+   *  设置覆盖层是 .sx-main 的兄弟节点(App 三栏恒挂)拿不到其 --chat-max——壳内容区自挂同一
+   *  chatMaxFor 阶梯 RO,内容列(.sx-settings-form/.sx-providers 等)经 var(--chat-max) 消费 */
+  const settingsMainRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = settingsMainRef.current;
+    if (el === null) return;
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        el.style.setProperty('--chat-max', `${Math.round(chatMaxFor(entry.contentRect.width))}px`);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [activePane, setActivePane] = useState(requestedPane?.id ?? SETTINGS_NAV[0]!.id); // 默认「通用」
   useEffect(() => {
     if (requestedPane !== undefined) setActivePane(requestedPane.id);
@@ -283,7 +299,7 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
           </button>
         </footer>
       </nav>
-      <main className="sx-main sx-settings-main">
+      <main className="sx-main sx-settings-main" ref={settingsMainRef}>
         {/* 顶部遮盖条(2026-10-29 用户裁定「右侧设置正文顶部一行作为遮盖区,和主对话一样」):
             正文在视口内滚动,物理上进不了条区;空带兼窗拖拽 */}
         <div className="sx-settings-topbar" data-drag-band aria-hidden="true" />

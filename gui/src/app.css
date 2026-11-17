@@ -233,7 +233,7 @@ select { font: inherit; color: inherit; }button:disabled { opacity: 0.5; pointer
 /* toast(保存成功提示:底部居中,3s 自隐由组件计时) */.sx-toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 8px 16px; color: var(--fg); z-index: 60; }
 
 /* ---- G8c T9 复杂面板(特批白名单沿 T8 段:并入 app.css 追加段——单一 CSS 文件约束 U-D10) ---- */
-/* 复杂面板容器(表单+附加节纵向堆叠,共用面板滚动面) */.sx-settings-complex { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }.sx-settings-complex .sx-settings-form { flex: none; overflow: visible; }
+/* 复杂面板容器(表单+附加节纵向堆叠,共用面板滚动面)。2026-11-17 用户裁定:内容列同 --chat-max 阶梯动态限宽居中(卡片列表不再随窗无限拉宽) */.sx-settings-complex { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }.sx-settings-complex > * { width: 100%; max-width: var(--chat-max, 900px); margin: 0 auto; }.sx-settings-complex .sx-settings-form { flex: none; overflow: visible; }
 
 /* 模型与提供方:providers 只读卡 */.sx-providers { padding: 0 12px 12px; max-width: 640px; display: flex; flex-direction: column; gap: 8px; }.sx-providers h3 { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.sx-provider-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.sx-provider-card { background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px 10px; }.sx-provider-head { display: flex; align-items: center; gap: 8px; }.sx-provider-name { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); color: var(--fg); }.sx-provider-vendor { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); margin-right: auto; }.sx-provider-model { color: var(--fg-secondary); font-family: var(--font-mono); font-size: calc(14px * var(--fz)); margin-top: 2px; overflow-wrap: anywhere; }.sx-provider-warn { margin: 0; color: var(--warn); font-size: calc(14px * var(--fz)); }
 /* api key 圆点:绿=env 槽在场/灰=缺(title=槽名;几何圆构造,6px 统一) */.sx-api-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }.sx-api-dot.present { background: var(--ok); }.sx-api-dot.missing { background: var(--fg-secondary); opacity: 0.4; }
@@ -1609,7 +1609,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G13 分批优化批次3:设置页对标打磨(正文列统一/主题行与导航同栅) ===== */
 /* 全部面板同一正文列(此前仅 SettingsForm 居中 720,复杂面板 640 左贴——/providers 卡列表
-   640 左贴,列缝错位):统一居中 720 */.sx-settings-form { max-width: 720px; margin: 0 auto; width: 100%; }.sx-providers { max-width: 720px; margin: 0 auto; width: 100%; }
+   640 左贴,列缝错位):统一居中 720 */.sx-settings-form { max-width: var(--chat-max, 720px); margin: 0 auto; width: 100%; }.sx-providers { max-width: var(--chat-max, 720px); margin: 0 auto; width: 100%; }
 /* 面板标题升 Codex 档(页面级标题,非行内小标) */.sx-settings-form h2 { font-size: calc(18px * var(--fz)); font-weight: 600; margin: 6px 0 14px; }
 /* 左栏:项目选择器/外观行与导航同栅(28px 控件高/同内缩),不再各写一套 padding */.sx-settings-project { padding: 4px 12px 10px; }.sx-settings-project select { height: 28px; padding: 0 6px; }.sx-theme-row { padding: 2px 12px 12px; }.sx-theme-row select { height: 28px; padding: 0 6px; }
 
@@ -2402,7 +2402,7 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
    .sx-theme-row 规则随标记移除自然失效,不删(历史轮注释链保留) ===== */
 
 /* ---- 主区骨架:居中窄列,卡间距呼吸感 ---- */
-.sx-settings-form { max-width: 760px; padding: 24px 28px 56px; gap: 14px; }
+.sx-settings-form { max-width: var(--chat-max, 760px); padding: 24px 28px 56px; gap: 14px; }
 .sx-settings-form h2 { font-size: calc(20px * var(--fz)); font-weight: 600; margin: 2px 0 6px; letter-spacing: 0.2px; }
 
 /* ---- 分组卡(一卡一语义盒):elevated 面+subtle 边,组头(标题+可选描述)+行区 ---- */
@@ -3304,8 +3304,9 @@ input.sx-setting-input { width: 100%; }
 
 /* ===== 2026-10-30 用户裁定追加段(编辑弹窗对齐主设置面风格;纯加法——app.css 并行热区只加
    不改,覆写前置同名规则靠源序同特异性后者胜) ===== */
-/* ① Modal 尺寸(min(92vw,680px)/max-height 84vh 内滚动——覆写 2026-10-29 段 90vw/640px/80vh) */
-.sx-editor-modal { width: min(92vw, 680px); max-height: 84vh; }
+/* ① Modal 尺寸——2026-11-17 用户裁定「弹窗尽量大一些」:680→880/84vh→86vh 收口(基段 3259 行同步改,
+   此处后写规则为最终施力点,两处一并改防「改了没生效」) */
+.sx-editor-modal { width: min(92vw, 880px); max-height: 86vh; }
 /* ② 弹窗内共享 Select 弹层层序(z 审计结论:.sx-editor-modal-backdrop z120 自成 stacking
    context,弹层(.sx-dd-pop z40)系其 DOM 后代恒被圈在该上下文内——全局抬 z 无解,上下文内
    弹层本就以「定位+正 z」浮于弹窗静置内容之上;此处弹窗作用域显式抬层,压过弹窗内一切现有/
@@ -3356,7 +3357,7 @@ input.sx-setting-input { width: 100%; }
   .sx-res-toolbar > .sx-search-bar { flex: 1 1 100%; min-width: 0; order: 3; }
   /* 编辑弹窗贴边(92vw 于极窄窗会越过遮罩 padding——100% 于遮罩内缩后即 ≈92vw,不越视口) */
   .sx-editor-modal-backdrop { padding: 12px; }
-  .sx-editor-modal { width: min(100%, 680px); }
+  .sx-editor-modal { width: min(100%, 720px); }
   /* 弹窗模型参数行窄窗纵排(窗口/强度/档位各占一行) */
   .sx-provider-model-params { flex-wrap: wrap; }
   .sx-provider-model-params > .sx-setting-input,
