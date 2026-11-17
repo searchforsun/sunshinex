@@ -204,6 +204,9 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         conn={p.conn}
         sessionId={p.sessionId}
         initialPath={p.params.path}
+        initialLine={p.params.line}
+        initialLineEnd={p.params.lineEnd}
+        lineNonce={p.params.lineNonce}
         root={p.root}
         onOpenFile={fileTabOf(p)}
         onSideAsk={(text: string) => p.startSideChat?.(text)}

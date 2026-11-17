@@ -1683,6 +1683,12 @@ describe('G8c 场景②:MCP 探测失败态 + 智能体增删改——bad 卡测
       fireEvent.click(screen.getByRole('button', { name: 'open settings' }));
 
       // —— MCP 面(导航项):bad 卡在场(两级清单读 <root>/.sunshinex/mcp.json;命令行示出)——
+      // 2026-11-14 并行线「设置导航分层」后 MCP 归高级组、普通态不渲染导航——用例先开开发者模式
+      // 开发者模式行=开关(aria-label 'developer mode',SettingsForm.developer.test 同款交互);
+      // 设置表单行待加载完成才渲染(rows 就绪前只有导航壳)
+      const devSwitch = await screen.findByLabelText('developer mode', {}, { timeout: 5_000 });
+      fireEvent.click(devSwitch);
+      await waitFor(() => expect(screen.getByRole('button', { name: 'MCP' })).toBeDefined(), { timeout: 5_000 });
       fireEvent.click(screen.getByRole('button', { name: 'MCP' }));
       await screen.findByLabelText('settings pane MCP', {}, { timeout: 5_000 });
       // MCP 面 2026-10-28 T21 骨架重构:ResourceCard(.sx-rc,title=服务端名);命令行落 details 内 meta

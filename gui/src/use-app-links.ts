@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { cleanPathInput, isAbsPath, joinWsPath, OPEN_DEFAULT_KEY, workspaceOfAbs } from './ui-util';
+import { cleanPathInput, isAbsPath, joinWsPath, OPEN_DEFAULT_KEY, workspaceOfAbs , splitLineAnchor } from './ui-util';
 import type { TabParams, TabTypeId } from './tabs/tab-state';
 
 /** 连接面(结构满足即收;App 实传整只 Connection) */
@@ -107,12 +107,25 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
   }, [connInstance, openRoot, openProjectDirectory, showOpError]);
   /** 文件开签;尾斜杠=目录 → 走 openDirectoryPath(正文目录芯片/畸形 ./D:\\… 同口径) */
   const openFileTab = useCallback((p: string): void => {
-    const cleaned = cleanPathInput(p);
-    if (/[\\/]$/.test(cleaned) || /[\\/]$/.test(p.trim())) {
-      openDirectoryPath(cleaned === '' ? p : cleaned);
+    // 行段锚(2026-11-14 用户裁定「文件预览支持 #L40-L57 查询同款」):#L123/#L123-L235 拆出随
+    // params 下发,preview 定位起始行;lineNonce 每次点击换号→同段重复点击也重新定位
+    // (判重命中时 openTab 合并 params,不重开新签)
+    const anchored = splitLineAnchor(p.trim());
+    const cleaned = cleanPathInput(anchored.path);
+    if (/[\\/]$/.test(cleaned) || /[\\/]$/.test(anchored.path.trim())) {
+      openDirectoryPath(cleaned === '' ? anchored.path : cleaned);
       return;
     }
-    openTabInSession('file', { path: cleaned === '' ? p : cleaned });
+    if (anchored.line === undefined) {
+      openTabInSession('file', { path: cleaned === '' ? anchored.path : cleaned });
+      return;
+    }
+    openTabInSession('file', {
+      path: cleaned === '' ? anchored.path : cleaned,
+      line: anchored.line,
+      ...(anchored.lineEnd !== undefined ? { lineEnd: anchored.lineEnd } : {}),
+      lineNonce: Date.now(),
+    });
   }, [openTabInSession, openDirectoryPath]);
   /** 树内点文件排队旗:目标会话成为打开会话后补开文件标签(欢迎页/无会话态先建席再进) */
   const pendingFileTabRef = useRef<string | null>(null);

@@ -72,6 +72,12 @@ export interface TabParams {
   /** G14.2xx 终端 pty 定址(分配即落参数,随 gui-state 落盘)——刷新后凭此直连旧 pty
    *  (replay 环缓冲重建屏幕);pty 已死(daemon 重启/超时)由 TerminalTab 一次性回退新开 */
   readonly ptyId?: string;
+  /** 文件行段锚(2026-11-14 用户裁定「文件预览支持 #L40-L57」):md 链接 #L123/#L123-L235 开签时
+   *  携带——Files 预览定位到起始行(行段高亮);lineNonce 每次点击递增=同段重复点击也重新定位 */
+  readonly line?: number;
+  readonly lineEnd?: number;
+  readonly lineNonce?: number;
+
   /** 欢迎页草稿终端(2026-11-14 用户裁定「欢迎页可开终端」):pty 经 /app/pty 分配(owner='@app'),
    *  转移入会话后 ws 寻址段仍走 '@welcome' 别名对(归属校验只认 @welcome↔@app)——本旗=持久标记,
    *  关闭链按 killPtyAt 直杀 */

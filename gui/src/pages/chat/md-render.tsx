@@ -321,6 +321,9 @@ function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: 
     );
   }
   const decoded = safeDecodeHref(href);
+  // 行段锚(#L40-L57)不参与图标扩展名识别(2026-11-14):label/tooltip 保留带锚全串,点击整串交给
+  // openFileTab 拆分(path+line/lineEnd)
+  const iconPath = decoded.replace(/#L\d+(?:-L?\d+)?$/i, '');
   return (
     <span
       role="button"
@@ -338,7 +341,7 @@ function MdLinkA(props: { href?: string; children?: ReactNode; onOpenFile?: (p: 
         }
       }}
     >
-      <FileIcon path={decoded} folder={props.isDir?.(decoded)} />
+      <FileIcon path={iconPath} folder={props.isDir?.(decoded)} />
       <span className="file-link-name">{tokenDisplayName(decoded)}</span>
     </span>
   );

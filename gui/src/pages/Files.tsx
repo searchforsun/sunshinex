@@ -33,6 +33,11 @@ export interface FilesProps {
   sessionId: string;
   /** 到场自动加载的路径（跳转注入；undefined = 空态待选） */
   initialPath?: string;
+  /** 行段锚(2026-11-14 用户裁定「文件预览支持 #L40-L57 查询同款」):开签即定位到起始行,
+   *  lineEnd(可选)=高亮整段;lineNonce 每点一次换号→同段重复点击也重新定位 */
+  initialLine?: number;
+  initialLineEnd?: number;
+  lineNonce?: number;
   /** 工作区根（G14.119 面包屑锚点）：区内文件锚到工作区目录名显相对路径，区外才显绝对路径 */
   root?: string;
   /** md 预览内链点击（G14.125）：href 已解析为绝对路径，App 注入开 file 标签 */
@@ -78,7 +83,7 @@ function resolveHref(mdPath: string, href: string): string {
   return out.join('/');
 }
 
-export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAsk }: FilesProps): JSX.Element {
+export function Files({ conn, sessionId, initialPath, initialLine, initialLineEnd, lineNonce, root, onOpenFile, onSideAsk }: FilesProps): JSX.Element {
   const [load, setLoad] = useState<LoadState>(EMPTY_LOAD);
   /** G7 请求序守卫：发号单调节点——发请求 ++,应答落定时号不匹配即过期丢弃 */
   const requestIdRef = useRef(0);
@@ -213,10 +218,33 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
     return () => window.clearInterval(timer);
   }, [diskWatchPath, readFileOf]);
 
-  // G14.121 换文件即回源码形态(预览态不跨文件延续)
+  // G14.121 换文件即回源码形态(预览态不跨文件延续);行段锚在场同样回源码(预览态是渲染后
+  // 文档,源码行号无从定位——2026-11-14 用户裁定「#L40-L57 预览支持」)
   useEffect(() => {
     setPreview(false);
-  }, [load.file?.path]);
+  }, [load.file?.path, lineNonce, initialLine]);
+
+  /** 行段锚定位(2026-11-14 用户裁定「#L123/#L123-L235 可以定位到开头一行」):内容就绪后滚到
+   *  起始行并整段高亮(lineEnd 缺省=单行);lineNonce 换号=同段重复点击也重新定位 */
+  const lineDecoRef = useRef<string[]>([]);
+  const [editorTick, setEditorTick] = useState(0);
+  useEffect(() => {
+    if (initialLine === undefined || initialLine <= 0) return;
+    const ed = editorRef.current;
+    const model = ed?.getModel();
+    if (ed === null || ed === undefined || model === null || model === undefined) return;
+    if (load.file === null || load.file.type === 'directory') return;
+    const count = model.getLineCount();
+    const start = Math.min(Math.max(1, initialLine), count);
+    const end = Math.min(Math.max(start, initialLineEnd ?? start), count);
+    ed.revealLineInCenter(start);
+    ed.setSelection({ startLineNumber: start, startColumn: 1, endLineNumber: end, endColumn: model.getLineMaxColumn(end) });
+    lineDecoRef.current = ed.deltaDecorations(
+      lineDecoRef.current,
+      [{ range: { startLineNumber: start, startColumn: 1, endLineNumber: end, endColumn: 1 }, options: { isWholeLine: true, className: 'files-line-focus' } }],
+    );
+    // editorTick=Monaco onMount 后自增(首开时 editorRef 尚未就绪,等挂载再定位)
+  }, [initialLine, initialLineEnd, lineNonce, load.file?.path, editorTick]);
 
   const segments = load.file !== null ? breadcrumbSegments(load.file.path, root) : [];
   const isMd = load.file !== null && /\.md$/i.test(load.file.path);
@@ -431,6 +459,7 @@ export function Files({ conn, sessionId, initialPath, root, onOpenFile, onSideAs
                     // 位置=monaco getScrolledVisiblePosition(任意行可用)+编辑器/容器 rect 差换算;
                     // mousedown preventDefault 保选区;双动作:添加到当前任务/在辅助对话中提问
                     editorRef.current = ed;
+                    setEditorTick((v) => v + 1); // 行段锚定位 effect 依赖(挂载后首次可定位)
                     // 右缘缩放布局同步(2026-10-29 用户实测果冻三轮根修):
                     // ①e19e1de 的 RO+120ms 尾沿防抖:连续拖动中定时器每帧重置=拖动全程零重排,恒按
                     //   旧宽绘制(变宽右侧留白带/旧折行溢出多出纵横条/停手一次性 snap)——已出局;

@@ -85,6 +85,23 @@ export function isAbsPath(p: string): boolean {
 }
 
 /** 剥 md/拖放畸形前缀(./ 叠层、file://)后判绝对;相对保留。目录点击/开签入参归一。 */
+/** 文件行段锚解析(#L123 / #L123-L235,2026-11-14 用户裁定「文件预览支持 #L40-L57 查询同款」):
+ *  md 链接/引用里的行段锚拆出为 {path,line,lineEnd}——打开预览后定位到起始行(行段则高亮整段);
+ *  无锚原样返回。大小写不敏感(#l40 同认),行号须为正整数 */
+export function splitLineAnchor(p: string): { path: string; line?: number; lineEnd?: number } {
+  const m = /#L(\d+)(?:-L?(\d+))?$/i.exec(p);
+  if (m === null) return { path: p };
+  const line = Number(m[1]);
+  const end = m[2] !== undefined ? Number(m[2]) : undefined;
+  if (!(line > 0)) return { path: p }; // 非法行号(#L0)不拆,整串按原路径(不当锚误吞)
+  const path = p.slice(0, m.index);
+  return {
+    path,
+    line,
+    ...(end !== undefined && end > line ? { lineEnd: end } : {}),
+  };
+}
+
 export function cleanPathInput(p: string): string {
   let t = p.trim().replace(/^file:\/\//i, '');
   while (t.startsWith('./')) t = t.slice(2);
