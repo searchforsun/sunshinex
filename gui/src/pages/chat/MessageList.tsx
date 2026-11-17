@@ -26,7 +26,7 @@ const RENDER_WINDOW_STEP = 300; // 手动回放步进(「显示更早」钮/滚�
 // setTimeout 兜底 64→32 提频——总填速反升(24 行/150ms≈160 行/s > 60 行/500ms),视觉由
 // 大块跳变变平滑渐进
 const RENDER_WINDOW_IDLE_STEP = 24;
-const RENDER_WINDOW_MAX = 600; // 空闲回放天花板(沿旧入口窗口预算);超出部分仍走手动/滚顶回放
+export const RENDER_WINDOW_MAX = 600; // 空闲回放天花板(沿旧入口窗口预算);超出部分仍走手动/滚顶回放
 import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
@@ -89,9 +89,9 @@ export interface MessageListProps {
   readonly sideChat?: boolean;
   /** sunx 会话显示名(sunx P2 2026-11-15):在场=空态欢迎语走 Sunx 分支(编排者口径,无技术细节) */
   readonly sunxName?: string;
-  /** 渲染窗口初值(2026-11-17 用户裁定「已在内存切回不要重分段」):Chat 自 chatMem 缓存注入
-   *  上次展开宽度——切回已驻留会话窗口原样恢复,不再从 80 重爬;缺省=入口窗(冷会话)。
-   *  仅挂载 useState 初始化读一次,后续变更不经此 prop(memo 比较器不列) */
+  /** 后台补齐目标(2026-11-17 实测卡顿根修):Chat 自 chatMem 注入上次展开宽度——**不是首帧窗口**
+   *  (首帧恒入口窗 80,免同步重建整段历史的长帧),而是空闲 pump 的爬升上限;缺省=600 预暖
+   *  (冷会话平滑补齐口径不变)。仅挂载读一次(Memo 比较器不列) */
   readonly initialRenderWindow?: number;
   /** 窗口变更上抛(Chat 收 ref 镜像,卸载随 chatMem 写回缓存):回放/手动步进每拍上报。
    *  Chat 侧 useCallback 恒稳,memo 比较器不列 */
@@ -377,9 +377,15 @@ export function MessageList(props: MessageListProps): JSX.Element {
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
   const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, sunxName, onOpenImage, onOpenWeb } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方。
-   *  初值=Chat 注入的缓存窗口(2026-11-17 用户裁定「已在内存切回不要重分段」——上次展开宽度
-   *  原样恢复,免从入口窗重爬),无缓存=入口窗 */
-  const [visibleCount, setVisibleCount] = useState(() => Math.max(props.initialRenderWindow ?? 0, RENDER_WINDOW_DEFAULT));
+   *  初值恒为入口窗(视口级)——2026-11-17 用户实测「切回会话仍卡顿」量化:同步挂载 80 条
+   *  富文本≈214ms、500 条≈1075ms(jsdom;插桩证实元素树缓存 100% 命中也不省,成本在 DOM
+   *  挂载本身)——缓存窗口曾整段同步重建=切回长帧根因。「切回不要重分段」改由目标窗+后台补齐
+   *  兑现:缓存窗仅作 pump 目标(targetRef),首帧只挂入口窗,空闲分批爬到目标(24/32ms,
+   *  底部阅读态下上方增长不可见),视觉上无重新分段、首帧恒定轻 */
+  const cachedWindow = Math.min(Math.max(props.initialRenderWindow ?? RENDER_WINDOW_MAX, RENDER_WINDOW_DEFAULT), RENDER_WINDOW_MAX);
+  const [visibleCount, setVisibleCount] = useState(RENDER_WINDOW_DEFAULT);
+  /** 窗口目标(pump 上限):挂载取缓存窗(无缓存=600 预暖,冷会话行为不变);手动/滚顶回放抬升 */
+  const windowTargetRef = useRef(cachedWindow);
   /** 最近一次用户滚动时刻(空闲回放让路判据:滚动进行中不挂载更早条目) */
   const lastScrollAtRef = useRef(0);
   /** 渐进回放视口锚定(2026-11-17 元素锚重写):展开前记「视口顶缘压住的第一个内容块」,挂载后
@@ -473,7 +479,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const hiddenCount = entries.length - visible.length;
   const showEarlier = (): void => {
     captureAnchor();
-    setVisibleCount((v) => v + RENDER_WINDOW_STEP);
+    windowTargetRef.current = Math.min(RENDER_WINDOW_MAX, Math.max(windowTargetRef.current, visibleCount + RENDER_WINDOW_STEP));
+    setVisibleCount((v) => Math.min(v + RENDER_WINDOW_STEP, RENDER_WINDOW_MAX));
   };
   /** 批2 滚动到顶自动回放:硬顶(scrollTop≤0)即触发步进回放——锚定回钉使展开后 scrollTop=Δ>0,
    *  不再贴顶即天然防循环;继续上滚到顶加载下一批。chat-earlier 按钮保留作显式入口 */
@@ -488,7 +495,9 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  天花板 RENDER_WINDOW_MAX(超出仍走手动/滚顶)。文档不可见(后台页签)暂停;追平即自然停 */
   useEffect(() => {
     if (entries.length <= visibleCount) return;
-    const ceiling = Math.min(RENDER_WINDOW_MAX, entries.length);
+    // 上限=min(600, 条数, 窗口目标):目标=挂载缓存窗或用户手动/滚顶回放抬升后的值——
+    // 2026-11-17:缓存窗改成「后台补齐目标」后,重挂不再同步渲染整段历史
+    const ceiling = Math.min(RENDER_WINDOW_MAX, entries.length, Math.max(windowTargetRef.current, visibleCount));
     if (visibleCount >= ceiling) return;
     let alive = true;
     const pump = (): void => {

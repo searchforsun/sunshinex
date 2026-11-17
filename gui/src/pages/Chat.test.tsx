@@ -962,7 +962,8 @@ describe('会话流尾部窗口(D48)', () => {
     }
   });
 
-  it('切回驻留会话窗口原样恢复(2026-11-17 用户裁定「已在内存切回不要重分段」):chatMem 随写 renderWindow,重挂免从 80 重爬', async () => {    vi.useFakeTimers(); // 同上:钉泵拍,恢复断言只认手动步进
+  it('切回驻留会话窗口不重爬:首帧只挂入口窗(免长帧),后台分批补齐到上次展开宽度(2026-11-17 实测卡顿根修)', async () => {
+    vi.useFakeTimers(); // 同上:钉泵拍,补齐节奏可控
     try {
       const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user', md: `m${i + 1}` }));
       const mem = new Map();
@@ -980,7 +981,11 @@ describe('会话流尾部窗口(D48)', () => {
       cleanup(); // 卸载写回缓存(renderWindow=380 随 chatMem.put 落座)
       mount();
       await flushed();
-      expect(document.querySelectorAll('.entry-user').length).toBe(380); // 重挂即恢复,免重爬
+      // 2026-11-17 实测「切回仍卡」:同步重建整段缓存窗=长帧根因(500 条≈1075ms)——重挂首帧只挂入口窗
+      expect(document.querySelectorAll('.entry-user').length).toBe(80);
+      // 后台空闲补齐到上次窗口 380(24/32ms 一拍,不整段同步重建)
+      for (let i = 0; i < 13; i += 1) await act(async () => { vi.advanceTimersByTime(32); });
+      expect(document.querySelectorAll('.entry-user').length).toBe(380); // 追平缓存窗
       expect(document.querySelector('.chat-earlier')!.textContent).toContain('240'); // 窗口外=620-380
     } finally {
       vi.useRealTimers();

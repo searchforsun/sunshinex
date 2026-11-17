@@ -129,6 +129,11 @@ export function renderMdCached(md: string, components: Components): ReactNode {
   return toJsxRuntime(hastOf(md) as Parameters<typeof toJsxRuntime>[0], toJsxOpts(components));
 }
 
+/** 2026-11-17 实测记录(勿重蹈):曾试「md→JSX 元素树缓存」省切会话重挂的 toJsxRuntime——
+ *  插桩证实命中率 100%(1185/0)但耗时仅 1261→1097ms:实测成本不在元素转换,而在 React
+ *  挂载 DOM 本身,缓存元素树无收益且引入闭包时效风险,已撤。切会话卡顿的正解=首帧只挂
+ *  视口级窗口(后台分批补齐),见 MessageList 窗口初值。 */
+
 /** toJsxRuntime 装配单点:components 形.react-markdown post() 同款豁免——其 Components(ExtraProps)
  *  形与 h2xr Options 形不完全一致,react-markdown 本体亦以 @ts-expect-error 渡过 */
 function toJsxOpts(components: Components): Parameters<typeof toJsxRuntime>[1] {

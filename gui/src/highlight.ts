@@ -61,23 +61,42 @@ function escapeHtml(s: string): string {
   });
 }
 
+/** 高亮产出缓存(2026-11-17 切会话卡顿根修配套):三函数皆纯(同入同出),结果按
+ *  种类+语言+原文缓存——切会话重挂时工具行 exec 命令/代码块围栏不再逐条重跑扫描器/hljs。
+ *  上限整体清(与 md 缓存族同口径);异常回落串同样入缓存(确定性) */
+const HL_CACHE_MAX = 400;
+const hlCache = new Map<string, string>();
+function hlCached(key: string, run: () => string): string {
+  const hit = hlCache.get(key);
+  if (hit !== undefined) return hit;
+  const out = run();
+  if (hlCache.size >= HL_CACHE_MAX) hlCache.clear();
+  hlCache.set(key, out);
+  return out;
+}
+
 /** 代码 → 高亮 HTML：异常防御性回落转义原文（高亮失败不挡预览,亦不开注入面） */
 export function highlightCode(code: string, filename?: string): string {
-  try {
-    return hljs.highlight(code, { language: languageOf(filename) }).value;
-  } catch {
-    return escapeHtml(code);
-  }
+  const lang = languageOf(filename);
+  return hlCached(`c\u0000${lang}\u0000${code}`, () => {
+    try {
+      return hljs.highlight(code, { language: lang }).value;
+    } catch {
+      return escapeHtml(code);
+    }
+  });
 }
 
 /** 代码 → 高亮 HTML：异常防御性回落转义原文——与 highlightCode 同注入面纪律 */
 export function highlightByLang(code: string, lang?: string): string {
-  try {
-    const name = lang !== undefined && hljs.getLanguage(lang) !== undefined ? lang : 'plaintext';
-    return hljs.highlight(code, { language: name }).value;
-  } catch {
-    return escapeHtml(code);
-  }
+  const name = lang !== undefined && hljs.getLanguage(lang) !== undefined ? lang : 'plaintext';
+  return hlCached(`l\u0000${name}\u0000${code}`, () => {
+    try {
+      return hljs.highlight(code, { language: name }).value;
+    } catch {
+      return escapeHtml(code);
+    }
+  });
 }
 
 /* ---------- shell 命令行专用着色(2026-10-25 用户裁定「命令行高亮优化」) ----------
@@ -94,6 +113,11 @@ function span(cls: string, text: string): string {
 /** 命令词后的子词也保持可读:命令位=行首/&& || | ; & ( 之后。
  *  slashFlags(2026-10-25):cmd/powershell 变体——`/b` 形旗标同 `-b` 着色(DOS 路径用 \,无误伤面) */
 export function highlightCommand(code: string, slashFlags = false): string {
+  return hlCached(`m\u0000${slashFlags ? '1' : '0'}\u0000${code}`, () => commandScan(code, slashFlags));
+}
+
+/** 命令扫描器本体(2026-11-17 缓存剥离:highlightCommand 外包 hlCached,扫描逻辑逐字不动) */
+function commandScan(code: string, slashFlags: boolean): string {
   let out = '';
   let i = 0;
   let cmdPos = true; // 下一词是否处于命令位
