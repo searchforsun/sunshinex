@@ -298,27 +298,31 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           role="menu"
           aria-label="new tab types"
         >
-          {/* 2026-11-17 用户裁定「顺序不要动」:按既有 content→session→tools 序拍平渲染(不分节),
-              常驻四项保持原菜单相对序;「显示更多」恒居末行、变暗 */}
-          {GROUP_ORDER.flatMap((g) => TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && menuEntryVisible(e.id, { dev, showMore, welcomeOnly }))).map((e) => {
-            const MenuIcon = TAB_ICONS[e.id] ?? FileText;
-            return (
-              <button
-                key={e.id}
-                type="button"
-                role="menuitem"
-                className="sx-menuitem"
-                disabled={disabled}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onOpenType(e.id);
-                }}
-              >
-                <MenuIcon size={16} strokeWidth={1.75} />
-                {e.title({})}
-              </button>
-            );
-          })}
+          {/* 2026-11-17 用户裁定「前四个是固定的,显示更多也上面四个固定,不要回到之前的」:
+              常驻四项恒居顶部(保持既有相对序),展开后其余项补在其后(仍按原菜单序),末行「显示更多/收起」 */}
+          {(() => {
+            const visible = GROUP_ORDER.flatMap((g) => TAB_REGISTRY.filter((e) => e.group === g && !MENU_HIDDEN.has(e.id) && !(hiddenMenuIds?.has(e.id) ?? false) && menuEntryVisible(e.id, { dev, showMore, welcomeOnly })));
+            const ordered = [...visible.filter((e) => RESIDENT_MENU.has(e.id)), ...visible.filter((e) => !RESIDENT_MENU.has(e.id))];
+            return ordered.map((e) => {
+              const MenuIcon = TAB_ICONS[e.id] ?? FileText;
+              return (
+                <button
+                  key={e.id}
+                  type="button"
+                  role="menuitem"
+                  className="sx-menuitem"
+                  disabled={disabled}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenType(e.id);
+                  }}
+                >
+                  <MenuIcon size={16} strokeWidth={1.75} />
+                  {e.title({})}
+                </button>
+              );
+            });
+          })()}
           {!dev && !welcomeOnly && (
             <button type="button" role="menuitem" className="sx-menuitem sx-menuitem-more" aria-expanded={showMore} onClick={() => setShowMore((v) => !v)}>
               {showMore ? t('Show less', '收起') : t('Show more', '显示更多')}
