@@ -575,6 +575,10 @@ const pressEnter = (): void => {
 
 beforeEach(() => {
   localStorage.clear();
+  // 2026-11-17 开发者模式减法:「+」菜单普通态只露四常驻/终端的会话入口经「更多」——本文件
+  // 覆盖全功能路径,统一按开发者模式(全平铺)装配;普通态减法由 tabstrip-menu/tab-empty-cards
+  // /ChatTopbar.developer-gate 专测钉住
+  localStorage.setItem('sunshinex.developer-mode', '1');
   h.created.length = 0;
   resetTitleCacheForTests(); // 标题按会话缓存是模块级(2026-11-07 缓存面)——跨例复位防前例题名压住本例断言
 });
@@ -1948,12 +1952,15 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a']));
     // 行渲染:select 触发钮显当值标签(en→English);text 行值 = 行 value ?? 缺省空(default 行空串)
     expect(screen.getByLabelText('language').textContent).toContain('English');
-    expect((screen.getByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
     // 来源徽标类名:仅 env/project 有 chip;global/default 无徽标不占位(SettingsForm 渲染条件)
-    expect(document.querySelector('.sx-src-env')).not.toBeNull();
+    // Task 3 起通用页只剩 project 来源(language);env(shell)/其余路径行已抽到「Paths & shell」
     expect(document.querySelector('.sx-src-project')).not.toBeNull();
     expect(document.querySelector('.sx-src-global')).toBeNull();
     expect(document.querySelector('.sx-src-default')).toBeNull();
+    // 路径/执行环境(2026-11-17 Task 3 抽出独立 pane;本文件统一按开发者模式装配=高级组在场)
+    fireEvent.click(screen.getByRole('button', { name: 'Paths & shell' }));
+    expect((await screen.findByLabelText('userSkillsDir') as HTMLInputElement).value).toBe('');
+    expect(document.querySelector('.sx-src-env')).not.toBeNull();
     // envOverride 行禁编 + title 说明
     expect((screen.getByLabelText('shell') as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByLabelText('shell').getAttribute('data-tip')).toBe('Overridden by env — read-only');
@@ -1965,9 +1972,11 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     await waitFor(() => expect(conn.putSettingsCalls).toEqual([['global', '', { projectsDir: '/home/u/other' }]]));
     // toast 出现(sx-toast,3s 自隐——测试窗内恒在场)
     expect(screen.getByText(/Applied — takes effect|已生效：新建会话起/)).toBeDefined();
-    // 保存成功后重拉 settings
-    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a', '/w/root-a']));
-    // select 换项自动保存(project 桶:language source=project)
+    // 保存成功后重拉 settings(切 pane 各 +1:Paths 挂载/保存重拉 = 8)
+    await waitFor(() => expect(conn.settingsCalls).toEqual(['', '', '', '/w/root-a', '/w/root-a', '/w/root-a', '/w/root-a', '/w/root-a']));
+    // select 换项自动保存(project 桶:language source=project;回通用页)
+    fireEvent.click(screen.getByRole('button', { name: 'General' }));
+    await screen.findByLabelText('language');
     fireEvent.click(screen.getByLabelText('language'));
     fireEvent.click(screen.getByRole('option', { name: '简体中文' }));
     await waitFor(() =>
@@ -1994,6 +2003,8 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
     conn.settingsView = settingsViewOf(generalRows);
     conn.putSettingsReject = new Error('/settings -> 400 unknown key');
     openSettings();
+    // Task 3 起路径行独立 pane(高级组):先切「Paths & shell」再改 projectsDir
+    fireEvent.click(screen.getByRole('button', { name: 'Paths & shell' }));
     await screen.findByLabelText('projectsDir');
     fireEvent.change(screen.getByLabelText('projectsDir'), { target: { value: 'x' } }); // 自由文本键(global 桶);shell 行 env 覆盖禁编
     fireEvent.blur(screen.getByLabelText('projectsDir'));

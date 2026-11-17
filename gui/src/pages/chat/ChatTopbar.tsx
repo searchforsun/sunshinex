@@ -12,6 +12,7 @@ import { SessionRowMenu } from '../../sidebar/session-row-menu';
 import { loadSeenMap, persistSeenMap, stampSeen, suppressAutoSeen } from '../../sidebar/project-menu-util';
 import type { PinEntry } from '../../sidebar/pin-store';
 import { COPY_RESET_MS } from '../../use-copy-feedback';
+import { useDeveloperMode } from '../../developer-mode';
 
 /** 会话顶栏(D32 第六批批F-3 自 Chat.tsx 平移,行为零变化):标题(空/改/显三态,点击重命名)
  *  + 动态计数钮(待办/任务板)+ 侧栏展开钮。标题编辑态与草稿留宿主。
@@ -138,6 +139,7 @@ export interface ChatTopbarProps {
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  const dev = useDeveloperMode();
   /** 「编辑 Sunx」双模式弹窗编辑态(2026-11-15 用户裁定「复用创建弹窗,禁用工作区」;portal 自挂,
    *  挂载点随 header 尾。原 CharterDialog 退役——功能并入 NewSunxDialog 编辑模式) */
   const [charterOpen, setCharterOpen] = useState(false);
@@ -458,7 +460,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             <MoreHorizontal size={16} strokeWidth={1.75} />
           </button>
         )}
-        <ChatDynButtons blocks={blocks ?? []} onOpenTab={onOpenTab} />
+        {dev && <ChatDynButtons blocks={blocks ?? []} onOpenTab={onOpenTab} />}
         {/* 2026-10-27 用户裁定:电脑控制期间会话名行右亮「正在控制」边框徽标(控制类 computer-use
             工具在跑,use-chat-derived 派生,轮收束即隐) */}
         {computerUseActive === true && (
