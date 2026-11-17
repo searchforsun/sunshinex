@@ -43,6 +43,7 @@ export function choiceAdapterConfig(
     ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),
     ...(choice.reasoningEffort !== undefined ? { reasoningEffort: choice.reasoningEffort } : defs.reasoningEffort !== undefined ? { reasoningEffort: defs.reasoningEffort } : {}),
     ...(choice.supportsImages !== undefined ? { supportsImages: choice.supportsImages } : {}),
+    ...(choice.params !== undefined ? { params: choice.params } : {}),
   };
 }
 

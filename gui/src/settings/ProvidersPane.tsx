@@ -5,6 +5,7 @@ import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard } from './components';
 import { Select } from './controls';
+import { sanitizeRequestParams } from '../../../src/model/request-params';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
 
 /**
@@ -25,7 +26,8 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  * 语义仍在存储层但 GUI 不再触达);读恒省参(仅全局清单),新增/编辑/删除恒写全局(op scope=
  * 'global' 省参 root)。添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑
  * 抽屉;名称/Base URL/API key password 输入——写走 setKey op、密钥零回显(编辑播种恒空串,
- * 留空=不动键)/models 行编辑(模型名/contextWindow/reasoningEffort/tier select/上移下移钮
+ * 留空=不动键)/models 行编辑(模型名/contextWindow/reasoningEffort/tier select/自定义请求参数
+ * 键值对/上移下移钮
  * ——上移下移=文件级手术即时提交 modelMove op,成功后重拉+行重播种:以文件真值为基底按模型
  * 名键合保留本地未保存行字段编辑——模型名是键,改名/新增未落盘的行无法键合随 fresh 丢弃(弹窗
  * 提示行言明);行字段=本地态,Save 经 update op 整组替换 models)。
@@ -89,6 +91,12 @@ const PROVIDERS_PANE: SettingsPaneDef = {
   ],
 };
 
+/** models 行自定义参数编辑态(键值文本对;值文本保存时按 JSON 化型) */
+interface ParamRow {
+  k: string;
+  v: string;
+}
+
 /** models 行表单态(受控;contextWindow 暂存字符串保存时化型;''=未设置。supportsImages=
  *  条目显式值透传保全位——行编辑不建模该键,update 整组替换时原样带回防丢) */
 interface ModelRow {
@@ -97,6 +105,8 @@ interface ModelRow {
   reasoningEffort: string;
   tier: string;
   supportsImages?: boolean;
+  /** 自定义请求参数行(空键行保存时滤除) */
+  params: ParamRow[];
 }
 
 /** 抽屉表单态(受控单对象;apiKey 仅写不读——恒空串起步,提交非空才发 setKey) */
@@ -111,8 +121,20 @@ interface DrawerForm {
  *  用户裁定)——写作用域恒 global,无 source 维度 */
 type DrawerState = { mode: 'add' } | { mode: 'edit'; original: string };
 
-const EMPTY_ROW: ModelRow = { model: '', contextWindow: '', reasoningEffort: '', tier: '' };
-const EMPTY_FORM: DrawerForm = { name: '', baseUrl: '', apiKey: '', rows: [{ ...EMPTY_ROW }] };
+const EMPTY_ROW: ModelRow = { model: '', contextWindow: '', reasoningEffort: '', tier: '', params: [] };
+const EMPTY_FORM: DrawerForm = { name: '', baseUrl: '', apiKey: '', rows: [{ ...EMPTY_ROW, params: [] }] };
+
+/** 参数值回显：字符串原样(免引号噪声),其余 JSON 序列化(数字/布尔/null/数组/对象) */
+const paramTextOf = (v: unknown): string => (typeof v === 'string' ? v : (JSON.stringify(v) ?? ''));
+
+/** 参数值化型：可解析 JSON 即取其值,否则原样字符串——与写面存的 JSON 值形态往返一致 */
+const paramValueOf = (text: string): unknown => {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+};
 
 /** entries 源级分组 → 抽屉 models 行播种(文件显式值——T9 拆分:编辑回显不走 choices) */
 const rowsOfEntry = (e: ProviderEntry): ModelRow[] =>
@@ -122,6 +144,7 @@ const rowsOfEntry = (e: ProviderEntry): ModelRow[] =>
     reasoningEffort: m.reasoningEffort ?? '',
     tier: m.tier ?? '',
     ...(m.supportsImages !== undefined ? { supportsImages: m.supportsImages } : {}),
+    params: Object.entries(m.params ?? {}).map(([k, v]) => ({ k, v: paramTextOf(v) })),
   }));
 
 /** 行重播种键合(modelMove 后行序回落文件真值,但**不静默丢弃本地未保存行编辑**):
@@ -136,7 +159,7 @@ const mergeReseedRows = (fresh: ProviderEntry, local: ModelRow[]): ModelRow[] =>
   }
   return rowsOfEntry(fresh).map((fr) => {
     const l = byModel.get(fr.model);
-    return l === undefined ? fr : { ...fr, contextWindow: l.contextWindow, reasoningEffort: l.reasoningEffort, tier: l.tier };
+    return l === undefined ? fr : { ...fr, contextWindow: l.contextWindow, reasoningEffort: l.reasoningEffort, tier: l.tier, params: l.params };
   });
 };
 
@@ -218,7 +241,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
   const openDrawer = (e: ProviderEntry | null): void => {
     setFormError('');
     if (e === null) {
-      setForm({ ...EMPTY_FORM, rows: [{ ...EMPTY_ROW }] });
+      setForm({ ...EMPTY_FORM, rows: [{ ...EMPTY_ROW, params: [] }] });
       setDrawer({ mode: 'add' });
       return;
     }
@@ -242,12 +265,30 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
         }
         contextWindow = n;
       }
+      const rawParams: Record<string, unknown> = {};
+      for (const p of r.params) {
+        const k = p.k.trim();
+        if (k === '') continue; // 空键行滤除(新增行未填)
+        if (Object.prototype.hasOwnProperty.call(rawParams, k)) {
+          setFormError(t(`Duplicate parameter key "${k}" for ${model}`, `${model} 的参数键 "${k}" 重复`));
+          return null;
+        }
+        rawParams[k] = paramValueOf(p.v);
+      }
+      // 与服务端同源校验(保留键/非法值):写面还会再拒一次,此处前置报错免一次往返
+      const sanitized = sanitizeRequestParams(rawParams);
+      if (sanitized.problems.length > 0) {
+        setFormError(`${model}: ${sanitized.problems.join('; ')}`);
+        return null;
+      }
+      const params = sanitized.params;
       models.push({
         model,
         ...(contextWindow !== undefined ? { contextWindow } : {}),
         ...(r.reasoningEffort !== '' ? { reasoningEffort: r.reasoningEffort } : {}),
         ...(r.tier !== '' ? { tier: r.tier } : {}),
         ...(r.supportsImages !== undefined ? { supportsImages: r.supportsImages } : {}),
+        ...(Object.keys(params).length > 0 ? { params } : {}),
       });
     }
     if (models.length === 0) {
@@ -435,7 +476,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
               参数行+(上移/下移/删除)右对齐行,块间分隔线;强度/档位原生 select 换共享 Select
               ('' 显式项=未设置,与原空值 option 同形,buildModels 空串省键提交形状零变化);
               全部 aria-label 沿用 */}
-          <ModalField label={t('Models (name / context window / effort / tier)', '模型(名称/上下文窗口/强度/档位)')}>
+          <ModalField label={t('Models (name / context window / effort / tier / params)', '模型(名称/上下文窗口/强度/档位/参数)')}>
             {form.rows.map((r, i) => (
               <div key={i} className="sx-provider-modelrow">
                 <input
@@ -470,6 +511,40 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                     onChange={(v) => setRow(i, { tier: v })}
                   />
                 </div>
+                {/* 自定义请求参数(键值对并入请求体):值文本保存时按 JSON 化型——true/1/{"a":1}
+                    取字面值,否则原样字符串;协议字段由服务端与前置校验双重拒收 */}
+                <div className="sx-provider-paramrows">
+                  {r.params.map((p, pi) => (
+                    <div key={pi} className="sx-provider-paramrow">
+                      <input
+                        className="sx-setting-input"
+                        aria-label={`${t('Parameter key', '参数名')} ${i + 1}-${pi + 1}`}
+                        placeholder={t('Parameter key', '参数名')}
+                        value={p.k}
+                        onChange={(e) => setRow(i, { params: r.params.map((q, qi) => (qi === pi ? { ...q, k: e.target.value } : q)) })}
+                        spellCheck={false}
+                      />
+                      <input
+                        className="sx-setting-input"
+                        aria-label={`${t('Parameter value', '参数值')} ${i + 1}-${pi + 1}`}
+                        placeholder={t('Parameter value', '参数值')}
+                        value={p.v}
+                        onChange={(e) => setRow(i, { params: r.params.map((q, qi) => (qi === pi ? { ...q, v: e.target.value } : q)) })}
+                        spellCheck={false}
+                      />
+                      <button
+                        type="button"
+                        aria-label={`${t('Remove parameter', '移除参数')} ${i + 1}-${pi + 1}`}
+                        onClick={() => setRow(i, { params: r.params.filter((_, qi) => qi !== pi) })}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setRow(i, { params: [...r.params, { k: '', v: '' }] })}>
+                    {t('+ Add parameter', '+ 添加参数')}
+                  </button>
+                </div>
                 <div className="sx-provider-model-actions">
                   {drawer.mode === 'edit' && (
                     <>
@@ -501,7 +576,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                 </div>
               </div>
             ))}
-            <button type="button" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { ...EMPTY_ROW }] }))}>
+            <button type="button" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { ...EMPTY_ROW, params: [] }] }))}>
               {t('+ Add model', '+ 添加模型')}
             </button>
           </ModalField>

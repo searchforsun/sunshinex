@@ -12,6 +12,8 @@ import { loadProvidersFull, providerApiKeyEnv, resolveProviderApiKey } from '../
 import { t } from '../i18n';
 import type { ModelChoice, ParsedProviderEntry } from '../config/providers';
 import { parseEffort, EFFORT_ORDER } from '../model/effort';
+import { sanitizeRequestParams } from '../model/request-params';
+import type { RequestParams } from '../model/request-params';
 import type { ReasoningEffort, ModelTier } from '../types';
 import type { Scope } from './types';
 import { CatalogWriteError, finishCatalogWrite, readWritableDoc, requireProjectRoot, settingsPathOf } from './io';
@@ -65,6 +67,8 @@ export interface ProviderModelInput {
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
+  /** 自定义请求参数（并入请求体；协议保留键与非法值写面拒收——解析面是同口径的宽容版） */
+  params?: RequestParams;
 }
 
 /** upsert 输入面：可选字段按需（未提字段不动）；models 仅对象形态条目，在场即整组替换 */
@@ -165,12 +169,22 @@ function normalizeModelEntry(label: string, input: ProviderModelInput): ParsedPr
     throw new CatalogWriteError('INVALID', `providers.${sub} supportsImages 须为布尔，收到 ${JSON.stringify(input.supportsImages)}`);
   }
   if (input.tier !== undefined) assertTier(sub, input.tier);
+  let params: RequestParams | undefined;
+  if (input.params !== undefined) {
+    // 写面严格口径：任一问题即整条拒收（解析面宽容版同源校验——坏参数被告警忽略的形态不进写面）
+    const sanitized = sanitizeRequestParams(input.params);
+    if (sanitized.problems.length > 0) {
+      throw new CatalogWriteError('INVALID', `providers.${sub} ${sanitized.problems.join('; ')}`);
+    }
+    if (Object.keys(sanitized.params).length > 0) params = sanitized.params;
+  }
   return {
     model,
     ...(input.contextWindow !== undefined ? { contextWindow: input.contextWindow } : {}),
     ...(input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {}),
     ...(input.supportsImages !== undefined ? { supportsImages: input.supportsImages } : {}),
     ...(input.tier !== undefined ? { tier: input.tier } : {}),
+    ...(params !== undefined ? { params } : {}),
   };
 }
 

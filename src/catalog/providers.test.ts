@@ -358,3 +358,40 @@ test('setEnabledProvider:翻转写停/删键归默认;停用源 choices 剔除�
     );
   });
 });
+
+test('models[].params 写面：upsertProvider add/update 持久化键值（JSON 值形态往返），listProviders 双面可见', () => {
+  withHome((_fakeHome, proj) => {
+    upsertProvider(proj, 'project', 'bigmodel', {
+      baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      models: [{ model: 'glm-5.3-flash', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } }],
+    });
+    const r1 = listProviders(proj);
+    assert.deepEqual(r1.providers[0]!.models[0]!.params, { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false }, 'entries 面镜像');
+    assert.deepEqual(r1.choices[0]!.params, { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false }, 'choices 面生效值');
+
+    upsertProvider(proj, 'project', 'bigmodel', { models: [{ model: 'glm-5.3-flash', params: { stop: ['\n\n'] } }] });
+    const r2 = listProviders(proj);
+    assert.deepEqual(r2.providers[0]!.models[0]!.params, { stop: ['\n\n'] }, 'models 整组替换随之换参');
+  });
+});
+
+test('models[].params 写面校验：保留键/非 JSON 值/顶层非对象 → INVALID 且目标文件零触碰', () => {
+  withHome((_fakeHome, proj) => {
+    const file = path.join(proj, '.sunshinex', 'settings.json');
+    const before = JSON.stringify({ version: 1 });
+    writeJson(file, { version: 1 });
+    const bads: unknown[] = [
+      { model: 'm', params: { model: 'hijack' } },
+      { model: 'm', params: { stream: false } },
+      { model: 'm', params: { bad: undefined } },
+      { model: 'm', params: 'kv' },
+    ];
+    for (const bad of bads) {
+      assert.throws(
+        () => upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1', models: [bad as never] }),
+        (e: unknown) => e instanceof CatalogWriteError && e.code === 'INVALID',
+      );
+    }
+    assert.equal(JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8'))), before, '拒收路径盘上零变化');
+  });
+});

@@ -9,6 +9,7 @@ import { parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './
 import { extractUsage, extractPromptTokens, extractCacheTokens } from './usage';
 import { toWireMessages, toWireTools, parseChatResult } from './wire';
 import { resolveImageRefs } from './image-ref';
+import type { RequestParams } from './request-params';
 
 // 四件原路径再导出（防既有导入点漂移）：值符号与类型符号各自走 export / export type
 export { EFFORT_ORDER, parseEffort, buildFallbackSequence, isUnsupportedEffortError } from './effort';
@@ -84,6 +85,9 @@ export interface LLMConfig {
   supportsImages?: boolean;
   /** O2 重试退避基值（毫秒,缺省 1000,指数 ×2 序列 1s/2s/4s）：测试/低延迟环境旋钮,生产恒缺省 */
   retryDelayMs?: number;
+  /** 自定义请求参数（providers models[].params 声明）：装配请求体时原样并入顶层——
+   *  协议字段在参数之后装配，同名者以协议为准（写面已拒保留键，此处是结构兜底） */
+  params?: RequestParams;
 }
 
 /** OpenAI 兼容适配器：Node 内置 fetch 直连 REST API，带超时控制 */
@@ -103,6 +107,8 @@ export class OpenAIAdapter implements ModelAdapter {
   private effort: ReasoningEffort | undefined;
   /** 图片输入能力位（providers supportsImages；undefined=未声明按支持放行） */
   private readonly supportsImages: boolean | undefined;
+  /** 自定义请求参数（providers models[].params；undefined=零穿参，请求体形态与旧版逐字节一致） */
+  private readonly params: RequestParams | undefined;
   /** effort 探测缓存（进程内会话级）：请求档 → 端点实际生效档；换请求档自动失效按新序列重探 */
   private effortResolved?: { requested: ReasoningEffort; resolved: ReasoningEffort };
   /** 已判不支持 reasoning_effort 的档位（逐档记忆，跨请求档共享，防重复打无效请求） */
@@ -118,6 +124,7 @@ export class OpenAIAdapter implements ModelAdapter {
     this.retryDelayMs = cfg.retryDelayMs ?? 1000;
     this.effort = cfg.reasoningEffort ?? parseEffort(process.env.SUNSHINEX_REASONING_EFFORT);
     this.supportsImages = cfg.supportsImages;
+    this.params = cfg.params;
   }
 
   /** 当前生效的缺省思考强度（undefined=未配置，请求零穿参） */
@@ -222,6 +229,8 @@ export class OpenAIAdapter implements ModelAdapter {
     this.guardImages(req);
     try {
       const body: Record<string, unknown> = {
+        // 自定义请求参数先铺：协议字段在其后列装配，同名者以协议为准
+        ...(this.params ?? {}),
         model: this.model,
         messages: toWireMessages(resolveImageRefs(req.messages)), // images-cache 地址回水 dataURL(wire 边界,2026-10-31)
         tool_choice: 'auto',
@@ -246,6 +255,8 @@ export class OpenAIAdapter implements ModelAdapter {
     this.guardImages(req);
     try {
       const body: Record<string, unknown> = {
+        // 自定义请求参数先铺：协议字段在其后列装配，同名者以协议为准
+        ...(this.params ?? {}),
         model: this.model,
         messages: toWireMessages(resolveImageRefs(req.messages)), // images-cache 地址回水 dataURL(wire 边界,2026-10-31)
         stream: true,

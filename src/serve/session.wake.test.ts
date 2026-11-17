@@ -259,7 +259,7 @@ test('sunx 唤醒闭环：双 dispatch_task 回执 taskId+WAKE_HINT → 两任�
         await waitFor(() => ctl.status() === 'idle', 15_000); // 第一轮收束（子代挂闸在跑）
         // 分派回执面：两条回执各含 taskId 与 WAKE_HINT（收轮等唤醒——「可选出路非指令」）
         const receipts = entries().filter(
-          (e) => e.kind === 'tool' && e.result !== undefined && (e.result.full ?? e.result.text).startsWith('task '),
+          (e) => e.kind === 'tool' && e.result !== undefined && /^\S+ started in background — /.test(e.result.full ?? e.result.text),
         );
         assert.equal(receipts.length, 2, '两条分派回执在转录面');
         const ledger = ctl.runtime.harness.tasks;
@@ -268,7 +268,7 @@ test('sunx 唤醒闭环：双 dispatch_task 回执 taskId+WAKE_HINT → 两任�
         assert.ok(ledger.list().every((t) => t.ownerRun === 'main'), '分派恒主链归属（唤醒闸②）');
         for (const r of receipts) {
           const text = r.result!.full ?? r.result!.text;
-          assert.match(text, /^task \S+ started \(output: /, '回执与 spawn 后台分支同形');
+          assert.match(text, /^\S+ started in background — /, '回执与 spawn 后台分支同形（2026-11-17 裸 id 起头+携任务名）');
           assert.ok(text.includes(WAKE_HINT), '回执尾追 WAKE_HINT（宿主闸①×②合成）');
           assert.ok(ids.some((id) => text.includes(id)), '回执含台账 taskId');
         }

@@ -127,7 +127,10 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
     {
       "name": "bigmodel",
       "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-      "models": [{ "model": "glm-4.7" }]
+      "models": [
+        { "model": "glm-4.7" },
+        { "model": "glm-5.3", "params": { "prompt_cache_key": "sess-a", "enable_thinking": false, "temperature": 0.6 } }  // 自定义请求参数：键值原样并入请求体顶层（厂商私有扩展由此声明；协议字段 model/messages/tools/tool_choice/stream/stream_options 不可占用）
+      ]
     }
   ],
   "tier": "medium",                                  // 缺省档位 small|medium|large（/model-tier 按上面 tier 标注选中对应模型，无标注回默认）
@@ -209,6 +212,7 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
 - `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`；`sunshinex providers key <源>` 交互写入）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
 - 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）（档位标注是 tier 路由的唯一数据源。）
+- 自定义请求参数：models 条目可选 `"params": { "<键>": <JSON 值> }`，键值原样并入每次模型的请求体顶层（值可为 string/number/boolean/null/数组/对象，嵌套上限 8 层）。厂商私有扩展（缓存路由键、思考模板开关、采样扩展等）由此声明，适配器不含任何厂商分支。协议字段 `model` / `messages` / `tools` / `tool_choice` / `stream` / `stream_options` 由适配器装配，`params` 不得占用（写面拒收，手改文件则装载告警忽略该键）；非法值同口径告警忽略、好键保留。
 - 空串等价未配置；密钥类一律只放 `env` 块。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 

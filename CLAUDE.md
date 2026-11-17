@@ -100,7 +100,7 @@ src/
     context/          # loader/messages（buildMessages 单点）/breakdown/window/summarizer/drift-detector/chain-ledger/compaction/index.ts 门面
   loop/               # engine.ts 闭环引擎、nodes.ts 四类节点+/goal 判据、templates.ts
   graph/              # engine.ts DAG 拓扑、nodes.ts、agents.ts、templates.ts
-  model/              # adapter.ts 适配器单点（OpenAIAdapter+Stub/Scripted，原路径再导出）；effort.ts；usage.ts；wire.ts；router.ts；catalog.ts ModelSwitcher（/model 多源数据面；providers 变更经 reload() 原地换芯热生效）；chat-stub.ts
+  model/              # adapter.ts 适配器单点（OpenAIAdapter+Stub/Scripted，原路径再导出）；effort.ts；usage.ts；wire.ts；router.ts；request-params.ts 自定义请求参数校验叶模块（providers models[].params 三面共用）；catalog.ts ModelSwitcher（/model 多源数据面；providers 变更经 reload() 原地换芯热生效）；chat-stub.ts
   eval/               # 长任务基准集（eval-run.mjs 数据面）
   taskboard/          # 智能体团队域模型与协调器（model/board/store/translate/teammate/team-registry/inbox/executors）
   delegation/         # 委派投影（spawn/后台/graph 节点统一生命周期，TUI/GUI 同源）

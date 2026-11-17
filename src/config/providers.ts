@@ -10,6 +10,8 @@
  */
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
 import { EFFORT_ORDER, parseEffort } from '../model/effort';
+import { sanitizeRequestParams } from '../model/request-params';
+import type { RequestParams } from '../model/request-params';
 import type { ModelTier, ReasoningEffort } from '../types';
 
 /** 单个可选模型（源 × 模型展开条目）：id = `<name>/<model>`，是 /model 选择卡与 journal modelId 的稳定标识 */
@@ -32,6 +34,9 @@ export interface ModelChoice {
   /** 该模型档位标注（models 条目对象形态声明，无源级缺省；
    *  undefined = 未标注，档位路由按缺省处理——§15 档位路由消费面） */
   tier?: ModelTier;
+  /** 自定义请求参数（models 条目对象形态声明，无源级缺省）：适配器装配请求体时原样并入，
+   *  厂商私有扩展（缓存路由键/思考模板开关等）由此声明。协议保留键与非法值解析面告警忽略 */
+  params?: RequestParams;
 }
 
 /** 源名 → 专用密钥槽名：非字母数字段折叠为单下划线（"my-provider" → SUNSHINEX_API_KEY_MY_PROVIDER） */
@@ -67,7 +72,7 @@ export interface ParsedProviderEntry {
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
-  models: Array<{ model: string; contextWindow?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; tier?: ModelTier }>;
+  models: Array<{ model: string; contextWindow?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; tier?: ModelTier; params?: RequestParams }>;
   /** 来源级归因（Task 27.5 富化，控制器 T26 评审裁定——全键遮蔽陷阱的观察面）：loadProvidersFull
    *  两级整键遮蔽裁决——项目 providers 键在场（含空数组）即整键遮蔽 → 该面全部条目 origin='project'
    *  （全局条目不可能混列）；否则（含 root:null 仅全局面）origin='global'。单级解析面（parseProvidersAll）
@@ -185,13 +190,14 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       let itemEffort: ReasoningEffort | undefined;
       let itemImages: boolean | undefined;
       let itemTier: ModelTier | undefined;
+      let itemParams: RequestParams | undefined;
       // 字符串简写退役（2026-10-29 去兼容清理）：models 条目须为对象形态，遇字符串告警跳过
       if (typeof item === 'string') {
         warnings.push(`settings.json providers.${name} models 条目须为对象形态（${origin}），已跳过`);
         continue;
       }
       if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-        const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; tier?: unknown };
+        const o = item as { model?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; tier?: unknown; params?: unknown };
         model = typeof o.model === 'string' ? o.model.trim() : undefined;
         if (o.contextWindow !== undefined) {
           if (typeof o.contextWindow === 'number' && Number.isFinite(o.contextWindow) && o.contextWindow > 0) {
@@ -222,6 +228,14 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
             warnings.push(`settings.json providers.${name} models 条目 tier 须为 small|medium|large（${origin}），该档位已忽略`);
           }
         }
+        if (o.params !== undefined) {
+          // 自定义参数逐键宽容：坏键/保留键告警忽略，好键保留（contextWindow 同纪律：标注值坏不连坐模型本体）
+          const sanitized = sanitizeRequestParams(o.params);
+          for (const p of sanitized.problems) {
+            warnings.push(`settings.json providers.${name} models 条目 ${p}（${origin}），已忽略`);
+          }
+          if (Object.keys(sanitized.params).length > 0) itemParams = sanitized.params;
+        }
       }
       if (model === undefined || model === '') {
         warnings.push(`settings.json providers.${name} models 条目须为 { model, contextWindow?, reasoningEffort? } 对象（${origin}），已跳过`);
@@ -236,6 +250,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : {}),
         ...(itemImages !== undefined ? { supportsImages: itemImages } : {}),
         ...(itemTier !== undefined ? { tier: itemTier } : {}),
+        ...(itemParams !== undefined ? { params: itemParams } : {}),
       });
       if (providerEnabled === false) continue; // 停用源:models 列表保真(设置页渲染),choices 不进(/model 不可见)
       choices.push({
@@ -248,6 +263,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
         ...(itemImages !== undefined ? { supportsImages: itemImages } : providerImages !== undefined ? { supportsImages: providerImages } : {}),
         ...(itemTier !== undefined ? { tier: itemTier } : {}),
+        ...(itemParams !== undefined ? { params: itemParams } : {}),
       });
     }
   }

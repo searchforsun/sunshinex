@@ -348,3 +348,59 @@ describe('ProvidersPane(卡片化+op 写面)', () => {
     expect(document.querySelector('.sx-error-banner')!.textContent).not.toContain('-> 409'); // 连接层裸格式不再透出
   });
 });
+
+describe('自定义请求参数(models[].params 键值对)', () => {
+  const paramsEntry = (): ProviderEntry =>
+    entryOf({
+      models: [
+        { model: 'm1', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } },
+        { model: 'm2' },
+      ],
+    });
+
+  it('编辑播种回显 entries.params(字符串原样/其余 JSON 文本)+ 新增参数行 Save → patch models[].params 值按 JSON 化型', async () => {
+    const { conn, opCalls } = connOf(viewOf({ entries: [paramsEntry()] }));
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
+    await screen.findByRole('dialog', { name: 'Edit p1' });
+    // m1 三参回显:字符串免引号,数字/布尔走 JSON 文本
+    const keys = screen.getAllByLabelText(/^Parameter key 1-/).map((el) => (el as HTMLInputElement).value);
+    const vals = screen.getAllByLabelText(/^Parameter value 1-/).map((el) => (el as HTMLInputElement).value);
+    expect(keys).toEqual(['prompt_cache_key', 'temperature', 'enable_thinking']);
+    expect(vals).toEqual(['sess-a', '0.6', 'false']);
+    // m2 行加一条参数(top_p=0.9 → 数字)
+    fireEvent.click(screen.getAllByText('+ Add parameter')[1]!);
+    fireEvent.change(screen.getByLabelText('Parameter key 2-1'), { target: { value: 'top_p' } });
+    fireEvent.change(screen.getByLabelText('Parameter value 2-1'), { target: { value: '0.9' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() =>
+      expect(opCalls).toEqual([
+        {
+          op: 'update',
+          scope: 'global',
+          name: 'p1',
+          provider: {
+            baseUrl: 'https://api.p1/v1',
+            models: [
+              { model: 'm1', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } },
+              { model: 'm2', params: { top_p: 0.9 } },
+            ],
+          },
+        },
+      ]),
+    );
+  });
+
+  it('协议保留键前置拒收:参数名填 model → 保存报错且零 op(与服务端同源校验)', async () => {
+    const { conn, opCalls } = connOf(viewOf({ entries: [entryOf({ models: [{ model: 'm1' }] })] }));
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
+    await screen.findByRole('dialog', { name: 'Edit p1' });
+    fireEvent.click(screen.getByText('+ Add parameter'));
+    fireEvent.change(screen.getByLabelText('Parameter key 1-1'), { target: { value: 'model' } });
+    fireEvent.change(screen.getByLabelText('Parameter value 1-1'), { target: { value: 'hijack' } });
+    fireEvent.click(screen.getByText('Save'));
+    expect(screen.getByText(/model.*协议字段|params\.model/)).toBeDefined();
+    expect(opCalls).toEqual([]);
+  });
+});

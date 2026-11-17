@@ -193,7 +193,7 @@ test('fork 通道锚：无板缝 target=team → NOT_SUPPORTED；fork+depends_on
   // 工厂级（无板缝装配）：target='team' 确定性 NOT_SUPPORTED（生产仅 sunx 装配注入板缝——standard 无 dispatch_task）
   const stub = {
     validateSpawnInput: (): void => {},
-    spawnBackground: () => ({ taskId: 'task-x-ts01-ab12', outputFilePath: path.join('tmp', 'x.log') }),
+    spawnBackground: () => ({ taskId: 'task-x-ts01-ab12', name: 'x', outputFilePath: path.join('tmp', 'x.log') }),
   } as unknown as SubagentRunner;
   const tool = makeDispatchTool(stub);
   await assert.rejects(
@@ -213,7 +213,7 @@ test('fork 通道锚：无板缝 target=team → NOT_SUPPORTED；fork+depends_on
   );
   // fork 缺省 + depends_on:null → spawnBackground 同缝回执逐字节原样（裁定 3）
   const r = await tool.executor({ spec: 'x', depends_on: null });
-  assert.match(r.stdout, /^task task-x-ts01-ab12 started \(output: /, 'fork 缺省回执与今日逐字节同形');
+  assert.match(r.stdout, /^task-x-ts01-ab12 started in background — x \(output: /, 'fork 缺省回执裸 id 起头+携任务名（2026-11-17 根治）');
 });
 
 test('sunx face 含板监视面：get_agent_team_board 随板通道进面（白名单单点成员）', () => {

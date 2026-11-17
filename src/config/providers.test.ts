@@ -177,3 +177,24 @@ test('每模型缺省思考强度：条目 reasoningEffort > 源级缺省 > 未�
   assert.equal(byId.get('deepseek/deepseek-bad')!.reasoningEffort, 'high', '条目级非法回退源级（模型保留）');
   assert.equal(byId.get('bigmodel/glm-5.3')!.reasoningEffort, undefined, '源级非法忽略 = 未配置（回全局链）');
 });
+
+test('每模型自定义请求参数：models[].params 原样进 choices 与 entries；协议保留键/坏值告警忽略、好键保留', () => {
+  const r = parseProvidersSpec([
+    {
+      name: 'bigmodel',
+      baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+      models: [
+        { model: 'glm-5.3-flash', params: { prompt_cache_key: 'sess-a', enable_thinking: false, temperature: 0.6 } },
+        { model: 'glm-5.3', params: { model: 'hijack', good: 1, bad: () => 1 } }, // 保留键+坏值逐条剔出
+        { model: 'glm-noparams' },
+      ],
+    },
+  ], 'test.json');
+  const byId = new Map(r.choices.map((c) => [c.id, c]));
+  assert.deepEqual(byId.get('bigmodel/glm-5.3-flash')!.params, { prompt_cache_key: 'sess-a', enable_thinking: false, temperature: 0.6 });
+  assert.deepEqual(byId.get('bigmodel/glm-5.3')!.params, { good: 1 }, '保留键与坏值剔出、好键保留');
+  assert.equal(byId.get('bigmodel/glm-noparams')!.params, undefined, '未声明=零穿参');
+  assert.equal(r.warnings.length, 2, '保留键与坏值各一条告警');
+  assert.ok(r.warnings[0]!.includes('params.model 是协议字段'));
+  assert.ok(r.warnings[1]!.includes('params.bad'));
+});

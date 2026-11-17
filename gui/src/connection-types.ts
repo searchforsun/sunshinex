@@ -321,6 +321,8 @@ export interface ProviderEntryModel {
   reasoningEffort?: string;
   supportsImages?: boolean;
   tier?: string;
+  /** 自定义请求参数（main 仓 providers models[].params 直传；协议保留键已由服务端校验剔除） */
+  params?: Record<string, unknown>;
 }
 
 /** GET /settings providers.entries 行（Task 16 增量消费 listProviders 源级分组——文件结构镜像，

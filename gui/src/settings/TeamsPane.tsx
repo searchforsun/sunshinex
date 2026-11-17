@@ -477,7 +477,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                       aria-label={`${t('Remove', '移除')} ${m}`}
                       onClick={() => setForm({ ...form, extraMembers: customMembers.filter((x) => x !== m).join(' ') })}
                     >
-                      <X size={12} strokeWidth={2} aria-hidden="true" />
+                      <X size={14} strokeWidth={2} aria-hidden="true" />
                     </button>
                   </span>
                 ))}

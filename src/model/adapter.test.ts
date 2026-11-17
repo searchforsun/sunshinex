@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as http from 'http';
 import { ModelRouter, ScriptedAdapter, StubAdapter, OpenAIAdapter, extractUsage, extractPromptTokens, extractCacheTokens } from './adapter';
 import { ChatRequest, ModelTier } from '../types';
+import type { RequestParams } from './request-params';
 
 test('ScriptedAdapter 依次回放脚本', async () => {
   const a = new ScriptedAdapter(['{"tool":"read","done":false}', '{"done":true}']);
@@ -111,4 +112,70 @@ test('OpenAIAdapter：外部 signal 中止 → 抛「Task interrupted」（区�
   setTimeout(() => ctrl.abort(), 80);
   await assert.rejects(() => pending, /Task interrupted/);
   srv.close();
+});
+
+/** 请求体捕获桩：最小合法 chat/SSE 响应；body() 取最近一次请求体供断言（真 http 面,不走 fetch 替身） */
+async function captureAdapter(cfg: { params?: RequestParams }): Promise<{
+  body: () => Record<string, unknown>;
+  chat: () => Promise<void>;
+  chatStream: () => Promise<void>;
+  close: () => void;
+}> {
+  const state: { body: Record<string, unknown> } = { body: {} };
+  const srv = http.createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => (raw += String(c)));
+    req.on('end', () => {
+      state.body = JSON.parse(raw) as Record<string, unknown>;
+      if (state.body['stream'] === true) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: {"choices":[],"usage":{"total_tokens":1}}\n\ndata: [DONE]\n\n');
+      } else {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }], usage: { total_tokens: 1 } }));
+      }
+    });
+  });
+  await new Promise<void>((resolve) => srv.listen(0, '127.0.0.1', resolve));
+  const addr = srv.address();
+  const port = typeof addr === 'object' && addr ? addr.port : 0;
+  const a = new OpenAIAdapter({ provider: 'openai', baseURL: `http://127.0.0.1:${port}/v1`, apiKey: 'k', ...cfg });
+  const req = (): ChatRequest => ({ messages: [{ role: 'user', content: 'hi' }] });
+  return {
+    body: () => state.body,
+    chat: async () => {
+      await a.chat(req());
+    },
+    chatStream: async () => {
+      await a.chatStream(req(), () => {});
+    },
+    close: () => srv.close(),
+  };
+}
+
+test('OpenAIAdapter 自定义请求参数：chat/chatStream 请求体并入顶层键值，协议字段不被覆盖', async () => {
+  for (const stream of [false, true]) {
+    const cap = await captureAdapter({ params: { prompt_cache_key: 'sess-a', enable_thinking: false, model: 'hijack', stream: false } });
+    try {
+      if (stream) await cap.chatStream();
+      else await cap.chat();
+      const body = cap.body();
+      assert.equal(body['prompt_cache_key'], 'sess-a', '自定义键原样并入');
+      assert.equal(body['enable_thinking'], false, '布尔值原样（非字符串化）');
+      assert.equal(body['model'], 'gpt-4o-mini', 'params 同名的协议字段以协议为准（结构兜底）');
+      assert.equal(body['stream'], stream, 'stream 由协议面决定（params 的 stream:false 不生效）');
+    } finally {
+      cap.close();
+    }
+  }
+});
+
+test('OpenAIAdapter 无自定义参数：请求体不含额外键（形态与旧版逐字节一致）', async () => {
+  const cap = await captureAdapter({});
+  try {
+    await cap.chat();
+    assert.deepEqual(Object.keys(cap.body()).sort(), ['messages', 'model', 'tool_choice'], '零穿参时只带协议字段');
+  } finally {
+    cap.close();
+  }
 });

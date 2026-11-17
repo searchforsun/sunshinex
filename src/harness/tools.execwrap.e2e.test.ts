@@ -50,7 +50,7 @@ test('后台 exec：链侧 execWrap 经 gateView 透传进后台分支（fake lo
 
     const r = await tools.execute('exec', { purpose: 'wrapped echo', command: 'echo wrapped', background: true }, safety);
     assert.ok(r.ok, `exec 提交成功：${r.ok ? '' : r.error.message}`);
-    assert.match(r.ok ? r.value.stdout : '', /task \S+ started/, '后台任务登记回执（动态任务 id，业务-时间-随机方言）');
+    assert.match(r.ok ? r.value.stdout : '', /^\S+ started in background — /, '后台任务登记回执（动态任务 id 裸起头+携任务名，业务-时间-随机方言）');
 
     assert.equal(seen.length, 1, '后台分支恰好收到一次提交');
     const wrap = seen[0]!.wrap;

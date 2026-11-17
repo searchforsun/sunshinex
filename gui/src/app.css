@@ -3338,6 +3338,12 @@ input.sx-setting-input { width: 100%; }
 .sx-provider-model-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .sx-provider-model-actions button { flex: none; padding: 2px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
 .sx-provider-model-actions button:hover:not(:disabled) { border-color: var(--border-strong); color: var(--fg); }
+/* 自定义请求参数行(键值对):键/值输入弹性等分+移除钮;添加钮贴左(与"+ 添加模型"同形) */
+.sx-provider-paramrows { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sx-provider-paramrow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sx-provider-paramrow > .sx-setting-input { flex: 1 1 110px; width: auto; min-width: 0; }
+.sx-provider-paramrow button { flex: none; padding: 2px 10px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
+.sx-provider-paramrow button:hover:not(:disabled) { border-color: var(--border-strong); color: var(--fg); }
 
 /* ===== 设置页全局响应式(2026-10-30 用户裁定:窗口缩窄布局改纵向——本仓首个宽度断点,
    窗口宽=视口;断点以上现形态零变化。全部收进本 media 块) ===== */
@@ -3362,6 +3368,9 @@ input.sx-setting-input { width: 100%; }
   .sx-provider-model-params { flex-wrap: wrap; }
   .sx-provider-model-params > .sx-setting-input,
   .sx-provider-model-params > .sx-dd { flex: 1 1 100%; }
+  /* 自定义参数行窄窗纵排(键/值各占一行,移除钮同行右端) */
+  .sx-provider-paramrow { flex-wrap: wrap; }
+  .sx-provider-paramrow > .sx-setting-input { flex: 1 1 100%; }
 }
 
 /* ===== 2026-10-30 用户裁定二次追加段(纯加法,源序同特异性覆写前置段) ===== */
