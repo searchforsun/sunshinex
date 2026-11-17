@@ -4351,3 +4351,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    为 fg-secondary(70%)+500 字重,行 hover 浮现时读数比 Sunx 数量值重两档 */
 .ws-count.sx-count { color: color-mix(in srgb, var(--fg) 38%, transparent); font-weight: 400; }
 .ws-count.sx-count:hover { color: color-mix(in srgb, var(--fg) 38%, transparent); }
+/* Sunx 看板卡亮色底色对齐后台任务卡(2026-11-17 用户实测「亮色下背景色不对,应该参考后台任务颜色」):
+   .tb-card 亮色面为 fg 4% 混白(≈#f5f5f5,见 4143 行「对齐记忆页卡面」裁定),看板卡此前 generic
+   surface-elevated=#fff 在近白页面上几乎无面,补同款亮色覆写;暗色保持 elevated(#212121)不变 */
+[data-theme='light'] .sx-sunxboard-card { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+[data-theme='light'] .sx-sunxboard-card:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
