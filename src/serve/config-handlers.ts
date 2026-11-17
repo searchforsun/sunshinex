@@ -677,6 +677,47 @@ export async function handleProvidersOp(io: ConfigHandlerIo, req: http.IncomingM
  *  INVALID；hint 按 code 分流见 sendCatalogWriteError 注）。成功 200 {ok:true}，不触发 settings reload——permissions
  *  键不入 env/settings 链（harness 装配期经 loadPermissions 读文件，新会话生效——mcp/approvals 装配期
  *  语义先例）；GUI 刷新由写内 notify 的 config-changed 帧承担 */
+
+/** POST /settings/providers/probe（2026-11-17 用户裁定「模型列表加测试链接图标」）：
+ *  连通性探测=对源 baseUrl 发 GET /models（OpenAI 兼容端点标准面，零 token 消耗）；密钥取
+ *  env 槽（专用槽 > 主槽，同运行面口径），明文只在本进程内出站、零回显。200=ok（附 count），
+ *  其余状态回 ok:false + status；网络错误回 ok:false + error（6s 超时）。 */
+export async function handleProvidersProbe(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { name?: unknown } | null;
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  if (name === '') {
+    io.send(res, 400, { error: 'name required' });
+    return;
+  }
+  const entry = listProviders(null).providers.find((p) => p.name === name);
+  if (entry === undefined) {
+    io.send(res, 404, { error: `provider not found: ${name}` });
+    return;
+  }
+  const key = resolveProviderApiKey(name);
+  const url = `${entry.baseUrl.replace(/\/+$/, '')}/models`;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const r = await fetch(url, { headers: key !== undefined ? { authorization: `Bearer ${key}` } : {}, signal: ctrl.signal });
+    if (!r.ok) {
+      io.send(res, 200, { ok: false, status: r.status });
+      return;
+    }
+    const data = (await r.json().catch(() => null)) as { data?: unknown[] } | null;
+    io.send(res, 200, { ok: true, ...(Array.isArray(data?.data) ? { count: data!.data!.length } : {}) });
+  } catch (e) {
+    io.send(res, 200, { ok: false, error: e instanceof Error ? e.message : String(e) });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function handlePermissionsOp(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {

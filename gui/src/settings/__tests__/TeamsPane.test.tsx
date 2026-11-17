@@ -110,7 +110,9 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     expect(screen.getByText('Core Team')).toBeDefined(); // 副题=name
     expect(screen.getByText('Project')).toBeDefined(); // SourceBadge en 钉
     expect(screen.getAllByText('Global').length).toBeGreaterThan(0);
-    expect(screen.getByText('does core work')).toBeDefined(); // 描述行
+    // 详情面板改显式展开态(2026-11-17 对齐修复,单卡互斥展开):点首卡详情后描述/章程才渲染
+    fireEvent.click(screen.getAllByRole('button', { name: /Details/ })[0]!);
+    expect(await screen.findByText('does core work')).toBeDefined(); // 描述行
     expect(screen.getByText('dev')).toBeDefined(); // 成员 chips
     expect(screen.getByText('writer')).toBeDefined();
     const ghost = screen.getByText('ghost');

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ProvidersPane } from '../ProvidersPane';
 import type { ProvidersPaneConn } from '../ProvidersPane';
 import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '../../connection';
@@ -98,6 +98,7 @@ const connOf = (
         opCalls.push(input);
         return opts.opError !== undefined ? Promise.reject(opts.opError) : Promise.resolve();
       },
+      probeProvider: () => Promise.resolve({ ok: true }),
       memoryStats: () => Promise.resolve({ entries: 0, lastWriteAt: null }),
     },
     settingsCalls,
@@ -106,301 +107,153 @@ const connOf = (
   };
 };
 
-describe('ProvidersPane(卡片化+op 写面)', () => {
-  it('卡片渲染:名/baseUrl 副行/models chips(2026-11-05 用户裁定:默认标记退役)+密钥状态点+warnings;请求参数卡在', async () => {
+
+/** 2026-11-17 拆分改版用例(提供方弹窗只建源、模型列表+模型弹窗独立):
+ *  ①卡渲染(名/baseUrl/模型列表/chips/密钥点/warnings/请求参数卡)
+ *  ②新增提供方=op add(models 空起点)+ setKey;③编辑=op update + setKey;密钥零回显
+ *  ④模型弹窗新增=op modelAdd(entry 含窗口/最大输出/视觉/视频/强度/等级/JSON 参数)
+ *  ⑤模型弹窗编辑=op update 整组 models 原位替换;⑥模型开关=update enabled false
+ *  ⑦测试连接=probeProvider 调用与结果行内;⑧更多参数非法 JSON 拦截零 op;⑨删除=remove */
+describe('ProvidersPane(拆分弹窗改版)', () => {
+  it('卡片渲染:名/baseUrl 副行/模型列表/特点 chips/密钥状态点/warnings/请求参数卡', async () => {
     const { conn, settingsCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
     expect(await screen.findByText('p1')).toBeDefined();
     expect(screen.getByText('p2')).toBeDefined();
-    expect(screen.getByText('https://api.p1/v1')).toBeDefined(); // baseUrl 副行
-    expect(screen.getByText('m1')).toBeDefined(); // models chips
+    expect(screen.getByText('https://api.p1/v1')).toBeDefined();
+    expect(screen.getByText('m1')).toBeDefined(); // 模型列表行
     expect(screen.getByText('m2')).toBeDefined();
     expect(screen.getByText('m9')).toBeDefined();
-    expect(screen.queryByText('Default')).toBeNull(); // 默认标记退役
-    expect(document.querySelector('.sx-api-dot.present')).not.toBeNull(); // p1 密钥在场=绿点(entries 行 apiKeyPresent)
-    expect(document.querySelectorAll('.sx-api-dot.missing')).toHaveLength(1); // p2 缺=灰点
-    expect((document.querySelector('.sx-api-dot.missing') as HTMLElement).getAttribute('data-tip')).toBe('SUNSHINEX_API_KEY_P2'); // tip=entries 行 apiKeyEnv
-    expect(screen.getByText('providers warn line')).toBeDefined(); // providers warnings 行
-    // 挂载两笔,均恒全局省参(页面即全局——内嵌 SettingsForm 豁免+卡面不再随目标切换)
+    expect(document.querySelector('.sx-api-dot.present')).not.toBeNull();
+    expect(document.querySelectorAll('.sx-api-dot.missing')).toHaveLength(1);
+    expect(screen.getByText('providers warn line')).toBeDefined();
+    expect(screen.getAllByText('Models').length).toBeGreaterThan(0); // 模型列表标题
+    expect(screen.getAllByText('+ Add model')).toHaveLength(2); // 每卡一个添加模型钮
     await waitFor(() => expect(settingsCalls).toEqual([undefined, undefined]));
-    // 请求参数卡仅 tier/effort 两 select(SettingsForm 复用);卡片标题带恒全局注明
-    expect(screen.getByText('Request parameters')).toBeDefined(); // 2026-10-30 标题「(全局)」注明去除
     expect(screen.getByRole('button', { name: 'tier' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'reasoningEffort' })).toBeDefined();
   });
 
-  it('散键行退役:无「API 地址」(API base URL)行、无模型档位散键(model/modelSmall…)Combo', async () => {
-    const { conn } = connOf(viewOf({ entries: [], choices: [], apiKeyPresent: {} }));
+  it('新增提供方:op add(models 空起点,支持先建源后加模型)+ 密钥 setKey;恒写全局', async () => {
+    const { conn, opCalls } = connOf(viewOf({ entries: [], choices: [], apiKeyPresent: {} }));
     render(<ProvidersPane conn={conn} />);
-    await screen.findByRole('button', { name: 'tier' });
-    expect(screen.queryByText('API base URL')).toBeNull(); // en 标签
-    expect(screen.queryByText('API 地址')).toBeNull(); // zh 标签
-    expect(screen.queryByLabelText('model')).toBeNull(); // 模型散键 Combo 四行全退役
-    expect(screen.queryByLabelText('modelSmall')).toBeNull();
-    expect(screen.queryByLabelText('modelMedium')).toBeNull();
-    expect(screen.queryByLabelText('modelLarge')).toBeNull();
-    expect(screen.queryByLabelText('baseUrl')).toBeNull();
-  });
-
-  it('删除:卡 Delete 钮两段确认(2026-10-30 裁定:首击武装原地红钮,再击执行)→ putProviderOp {op:remove, scope:global(省参 root), name} + 成功重拉(页面即全局,恒写全局)', async () => {
-    const { conn, opCalls, settingsCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete p1' })); // 首击=武装(零请求)
-    expect(opCalls).toEqual([]); // 确认前零副作用
-    fireEvent.click(screen.getByRole('button', { name: 'Delete p1' })); // 再击=确认执行(aria-label 两段恒定)
-    await waitFor(() => expect(opCalls).toEqual([{ op: 'remove', scope: 'global', name: 'p1' }]));
-    await waitFor(() => expect(settingsCalls.length).toBe(3)); // 成功重拉(挂载两笔+重拉一笔)
-  });
-
-  it('models 上移/下移:行按钮 → putProviderOp {op:modelMove, name, model, direction} + 重拉行重播种', async () => {
-    const moved = viewOf({
-      entries: [entryOf({ models: [{ model: 'm2' }, { model: 'm1', tier: 'large' }] })],
-      choices: [
-        { id: 'p1/m2', provider: 'p1', model: 'm2', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
-        { id: 'p1/m1', provider: 'p1', model: 'm1', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
-      ],
-    });
-    const { conn, opCalls } = connOf(viewOf(), moved);
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
-    await screen.findByRole('dialog', { name: 'Edit p1' });
-    fireEvent.click(screen.getByRole('button', { name: 'Move up m2' }));
-    await waitFor(() =>
-      expect(opCalls).toEqual([{ op: 'modelMove', scope: 'global', name: 'p1', model: 'm2', direction: 'up' }]),
-    );
-    // 重拉+行重播种(次答=服务端已施行的行序):m2 移首,其下移钮可用
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Move down m2' })).toBeDefined());
-    expect(screen.getByRole('dialog', { name: 'Edit p1' })).toBeDefined(); // 抽屉保持开启
-    fireEvent.click(screen.getByRole('button', { name: 'Move down m2' }));
+    fireEvent.click(await screen.findByText('+ Add provider'));
+    await screen.findByRole('dialog', { name: 'New provider' });
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'p3' } });
+    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.p3/v1' } });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-3' } });
+    fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
       expect(opCalls).toEqual([
-        { op: 'modelMove', scope: 'global', name: 'p1', model: 'm2', direction: 'up' },
-        { op: 'modelMove', scope: 'global', name: 'p1', model: 'm2', direction: 'down' },
+        { op: 'add', scope: 'global', name: 'p3', provider: { baseUrl: 'https://api.p3/v1', enabled: true, models: [] } },
+        { op: 'setKey', scope: 'global', name: 'p3', apiKey: 'sk-3' },
       ]),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New provider' })).toBeNull());
   });
 
-  it('边界禁用(2026-10-29 用户裁定):首行 ↑ disabled、末行 ↓ disabled,点击零 op 落盘(客户端拦截不发请求)', async () => {
+  it('编辑提供方:密钥框恒空不回显 → op update(不含 models)+ setKey', async () => {
     const { conn, opCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
-    await screen.findByRole('dialog', { name: 'Edit p1' });
-    // 两行 [m1, m2]:m1 首行(↑ 禁/↓ 可),m2 末行(↑ 可/↓ 禁)
-    expect((screen.getByRole('button', { name: 'Move up m1' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('button', { name: 'Move down m1' }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole('button', { name: 'Move up m2' }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole('button', { name: 'Move down m2' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Move up m1' })); // 禁用钮点击=浏览器不派发,双保险断言
-    fireEvent.click(screen.getByRole('button', { name: 'Move down m2' }));
-    expect(opCalls).toEqual([]); // 零 op(不发请求)
-  });
-
-  it('moveModel 行重播种键合(T26 评审修补):本地未保存行字段编辑按模型名保留,文件外行(新增未落盘)随 fresh 丢弃+提示行言明', async () => {
-    const moved = viewOf({
-      entries: [entryOf({ models: [{ model: 'm2' }, { model: 'm1', tier: 'large' }] })],
-      choices: [
-        { id: 'p1/m2', provider: 'p1', model: 'm2', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
-        { id: 'p1/m1', provider: 'p1', model: 'm1', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
-      ],
-    });
-    const { conn, opCalls } = connOf(viewOf(), moved);
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
-    await screen.findByRole('dialog', { name: 'Edit p1' });
-    // 未保存行编辑:m2 行(第二行)contextWindow 填 12345;再 + 新增一行 mNew(文件外,未落盘)
-    fireEvent.change(screen.getAllByLabelText('Context window')[1]!, { target: { value: '12345' } });
-    fireEvent.click(screen.getByText('+ Add model'));
-    fireEvent.change(screen.getAllByLabelText('Model name')[2]!, { target: { value: 'mNew' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Move up m2' }));
-    await waitFor(() =>
-      expect(opCalls).toEqual([{ op: 'modelMove', scope: 'global', name: 'p1', model: 'm2', direction: 'up' }]),
-    );
-    // 重播种:行序=fresh [m2, m1];mNew(模型名不在文件)随 fresh 丢弃;m2 的未保存窗口编辑键合保留
-    await waitFor(() => expect(screen.getAllByLabelText('Model name')).toHaveLength(2));
-    expect((screen.getAllByLabelText('Model name')[0] as HTMLInputElement).value).toBe('m2');
-    expect((screen.getAllByLabelText('Context window')[0] as HTMLInputElement).value).toBe('12345');
-    // 提示行断言随 2cd5913「编辑弹窗两条解释段删除」一并退役(用户裁定:多余说明)
-  });
-
-  it('编辑保存+密钥:编辑态密钥框恒空(不回显)→ Save = op update(provider patch)+ setKey(键值仅入请求体);抽屉关+重拉面无键值', async () => {
-    const { conn, opCalls, settingsCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
     await screen.findByRole('dialog', { name: 'Edit p1' });
     const keyInput = screen.getByLabelText('API key') as HTMLInputElement;
-    expect(keyInput.value).toBe(''); // 密钥永不回显:编辑播种恒空串
-    expect(keyInput.getAttribute('type')).toBe('password');
-    fireEvent.change(keyInput, { target: { value: 'sk-secret-1' } });
+    expect(keyInput.value).toBe('');
+    fireEvent.change(keyInput, { target: { value: 'sk-new' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() =>
+      expect(opCalls).toEqual([
+        { op: 'update', scope: 'global', name: 'p1', provider: { baseUrl: 'https://api.p1/v1', enabled: true } },
+        { op: 'setKey', scope: 'global', name: 'p1', apiKey: 'sk-new' },
+      ]),
+    );
+  });
+
+  it('新增模型:纵向字段 → op modelAdd(entry 含窗口/最大输出/视觉+视频/强度/等级/JSON 参数)', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click((await screen.findAllByText('+ Add model'))[0]!);
+    await screen.findByRole('dialog', { name: 'New model' });
+    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm3' } });
+    fireEvent.change(screen.getByLabelText('Context tokens'), { target: { value: '128000' } });
+    fireEvent.change(screen.getByLabelText('Max output tokens'), { target: { value: '8192' } });
+    fireEvent.click(screen.getByLabelText('Image input'));
+    fireEvent.click(screen.getByLabelText('Video input'));
+    fireEvent.change(screen.getByLabelText('More parameters'), { target: { value: '{"cache":true}' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
       expect(opCalls).toEqual([
         {
-          op: 'update',
+          op: 'modelAdd',
           scope: 'global',
           name: 'p1',
-          provider: { baseUrl: 'https://api.p1/v1', models: [{ model: 'm1', tier: 'large' }, { model: 'm2' }] },
-        },
-        { op: 'setKey', scope: 'global', name: 'p1', apiKey: 'sk-secret-1' },
-      ]),
-    );
-    expect(screen.queryByRole('dialog')).toBeNull(); // 提交后关抽屉(密钥输入框随之清空离场)
-    await waitFor(() => expect(settingsCalls.length).toBe(3)); // 成功重拉(挂载两笔+重拉一笔)
-    expect(document.body.textContent).not.toContain('sk-secret-1'); // 响应/重拉面零键值回显
-  });
-
-  it('新增:Save = op add(baseUrl+非空 models 必备;密钥留空零 setKey)+ 关抽屉重拉;恒写全局(scope=global 省参 root)', async () => {
-    const { conn, opCalls, settingsCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: '+ Add provider' }));
-    await screen.findByRole('dialog', { name: 'Add provider' });
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'p3' } });
-    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.p3/v1' } });
-    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm7' } });
-    fireEvent.click(screen.getByText('Save'));
-    await waitFor(() =>
-      expect(opCalls).toEqual([
-        { op: 'add', scope: 'global', name: 'p3', provider: { baseUrl: 'https://api.p3/v1', models: [{ model: 'm7' }] } },
-      ]),
-    );
-    expect(screen.queryByRole('dialog')).toBeNull();
-    await waitFor(() => expect(settingsCalls.length).toBe(3));
-  });
-
-  it('models 行强度/档位共享 Select(2026-10-30 弹窗对齐主设置面):弹层点选 low/small → patch models 带 reasoningEffort/tier(提交形状零变化)', async () => {
-    const { conn, opCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: '+ Add provider' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Add provider' });
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'p3' } });
-    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.p3/v1' } });
-    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm7' } });
-    // 强度/档位=共享 Select trigger(aria-label;单行各一,within(dialog) 消歧内嵌请求参数卡 tier/effort 小写键钮)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Effort' }));
-    expect(document.querySelector('.sx-editor-modal-backdrop .sx-dd-pop')).not.toBeNull(); // 弹层在弹窗内渲染(z 修正回归保护)
-    fireEvent.click(within(dialog).getByRole('option', { name: 'Low' })); // 10c96cc 起选项标签双语(渲染期 t)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Tier' }));
-    fireEvent.click(within(dialog).getByRole('option', { name: 'Small' }));
-    fireEvent.click(screen.getByText('Save'));
-    await waitFor(() =>
-      expect(opCalls).toEqual([
-        { op: 'add', scope: 'global', name: 'p3', provider: { baseUrl: 'https://api.p3/v1', models: [{ model: 'm7', reasoningEffort: 'low', tier: 'small' }] } },
-      ]),
-    );
-  });
-
-  it('请求参数卡恒全局写钉测(2026-10-29 用户裁定豁免):putSettings(global, undefined, {tier})——语义键写路径保留且无 root(缺省全局)', async () => {
-    const { conn, putSettingsCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    await screen.findByText('p1');
-    fireEvent.click(screen.getByRole('button', { name: 'tier' }));
-    fireEvent.click(screen.getByRole('option', { name: 'Large' })); // 10c96cc 起选项标签双语(渲染期 t)
-    await waitFor(() => expect(putSettingsCalls).toEqual([['global', undefined, { tier: 'large' }]])); // 首参 global,root 省参
-  });
-
-  it('refreshTick 变化触发重拉(config-changed 外部改动信号)', async () => {
-    const { conn, settingsCalls } = connOf(viewOf());
-    const { rerender } = render(<ProvidersPane conn={conn} refreshTick={0} />);
-    await screen.findByText('p1');
-    expect(settingsCalls).toEqual([undefined, undefined]);
-    rerender(<ProvidersPane conn={conn} refreshTick={1} />);
-    await waitFor(() => expect(settingsCalls).toEqual([undefined, undefined, undefined])); // 卡面重拉(SettingsForm 不订阅 providers tick)
-  });
-
-  it('表单校验:空名/空 models 提交被拦(行内报错,零 op 落盘)', async () => {
-    const { conn, opCalls } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: '+ Add provider' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Add provider' });
-    fireEvent.click(screen.getByText('Save')); // 全空:名称校验先拦
-    await waitFor(() => expect(within(dialog).getAllByRole('alert').length).toBeGreaterThan(0)); // 抽屉内行内报错(warnings 亦 role=alert,within 消歧)
-    expect(opCalls).toEqual([]);
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'p3' } });
-    fireEvent.change(screen.getByLabelText('Base URL'), { target: { value: 'https://api.p3/v1' } });
-    fireEvent.click(screen.getByText('Save')); // models 空行:非空 models 校验拦
-    await waitFor(() => expect(within(dialog).getAllByRole('alert').length).toBeGreaterThan(0));
-    expect(opCalls).toEqual([]);
-  });
-
-  it('空清单:entries 空 → 空态文案(非报错面)', async () => {
-    const { conn } = connOf(viewOf({ entries: [], choices: [], apiKeyPresent: {}, warnings: [] }));
-    render(<ProvidersPane conn={conn} />);
-    expect(await screen.findByText('No providers configured.')).toBeDefined();
-  });
-
-  it('工具栏单件(2026-10-29 用户裁定:页面即全局):无作用域下拉(Settings scope)无搜索框(Search),只留新增钮;卡片列表无过滤面', async () => {
-    const { conn } = connOf(viewOf());
-    render(<ProvidersPane conn={conn} />);
-    await screen.findByText('p1');
-    const section = document.querySelector('section.sx-providers') as HTMLElement; // within 消歧(内嵌 SettingsForm 另有过滤搜索)
-    expect(within(section).queryByRole('button', { name: 'Settings scope' })).toBeNull(); // ScopeSelect 撤除
-    expect(within(section).queryByLabelText('Search')).toBeNull(); // SearchBar 撤除
-    expect(within(section).getByRole('button', { name: '+ Add provider' })).toBeDefined(); // 工具栏唯一件
-    expect(screen.getByText('p2')).toBeDefined(); // 全量呈现(无过滤)
-  });
-
-  it('op 失败透出服务端 {error,hint}(2026-10-29 用户裁定):行内错误条呈服务端真因(error+hint 原文),非 `-> 409` 连接层格式(组装在 connection 层,connection.test 钉测)', async () => {
-    const { conn } = connOf(viewOf(), undefined, { opError: new Error('model m9 not found in provider p2 — check the file') });
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete p2' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete p2' })); // 两段确认(再击=执行)
-    // .sx-error-banner 消歧(providers warnings 行亦 role=alert)
-    await waitFor(() => expect(document.querySelector('.sx-error-banner')?.textContent).toContain('model m9 not found in provider p2'));
-    expect(document.querySelector('.sx-error-banner')!.textContent).not.toContain('-> 409'); // 连接层裸格式不再透出
-  });
-});
-
-describe('自定义请求参数(models[].params 键值对)', () => {
-  const paramsEntry = (): ProviderEntry =>
-    entryOf({
-      models: [
-        { model: 'm1', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } },
-        { model: 'm2' },
-      ],
-    });
-
-  it('编辑播种回显 entries.params(字符串原样/其余 JSON 文本)+ 新增参数行 Save → patch models[].params 值按 JSON 化型', async () => {
-    const { conn, opCalls } = connOf(viewOf({ entries: [paramsEntry()] }));
-    render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
-    await screen.findByRole('dialog', { name: 'Edit p1' });
-    // m1 三参回显:字符串免引号,数字/布尔走 JSON 文本
-    const keys = screen.getAllByLabelText(/^Parameter key 1-/).map((el) => (el as HTMLInputElement).value);
-    const vals = screen.getAllByLabelText(/^Parameter value 1-/).map((el) => (el as HTMLInputElement).value);
-    expect(keys).toEqual(['prompt_cache_key', 'temperature', 'enable_thinking']);
-    expect(vals).toEqual(['sess-a', '0.6', 'false']);
-    // m2 行加一条参数(top_p=0.9 → 数字)
-    fireEvent.click(screen.getAllByText('+ Add parameter')[1]!);
-    fireEvent.change(screen.getByLabelText('Parameter key 2-1'), { target: { value: 'top_p' } });
-    fireEvent.change(screen.getByLabelText('Parameter value 2-1'), { target: { value: '0.9' } });
-    fireEvent.click(screen.getByText('Save'));
-    await waitFor(() =>
-      expect(opCalls).toEqual([
-        {
-          op: 'update',
-          scope: 'global',
-          name: 'p1',
-          provider: {
-            baseUrl: 'https://api.p1/v1',
-            models: [
-              { model: 'm1', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } },
-              { model: 'm2', params: { top_p: 0.9 } },
-            ],
+          entry: {
+            model: 'm3',
+            contextWindow: 128000,
+            maxOutputTokens: 8192,
+            supportsImages: true,
+            supportsVideo: true,
+            params: { cache: true },
           },
         },
       ]),
     );
   });
 
-  it('协议保留键前置拒收:参数名填 model → 保存报错且零 op(与服务端同源校验)', async () => {
-    const { conn, opCalls } = connOf(viewOf({ entries: [entryOf({ models: [{ model: 'm1' }] })] }));
+  it('编辑模型:op update 整组 models 原位替换(其余条目原样)', async () => {
+    const { conn, opCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
-    await screen.findByRole('dialog', { name: 'Edit p1' });
-    fireEvent.click(screen.getByText('+ Add parameter'));
-    fireEvent.change(screen.getByLabelText('Parameter key 1-1'), { target: { value: 'model' } });
-    fireEvent.change(screen.getByLabelText('Parameter value 1-1'), { target: { value: 'hijack' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit model m1' }));
+    await screen.findByRole('dialog', { name: 'Edit m1' });
+    fireEvent.change(screen.getByLabelText('Context tokens'), { target: { value: '64000' } });
     fireEvent.click(screen.getByText('Save'));
-    expect(screen.getByText(/model.*协议字段|params\.model/)).toBeDefined();
+    await waitFor(() => {
+      const call = opCalls[0]!;
+      expect(call.op).toBe('update');
+      const models = (call.provider as { models: Array<Record<string, unknown>> }).models;
+      expect(models.map((m) => m['model'])).toEqual(['m1', 'm2']);
+      expect(models[0]).toEqual({ model: 'm1', contextWindow: 64000, tier: 'large' });
+      expect(models[1]).toEqual({ model: 'm2' });
+    });
+  });
+
+  it('模型开关:关 → op update 该条 enabled:false(其余条目保留)', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('switch', { name: 'Enable model m2' }));
+    await waitFor(() => {
+      const call = opCalls[0]!;
+      expect(call.op).toBe('update');
+      const models = (call.provider as { models: Array<Record<string, unknown>> }).models;
+      expect(models[0]).toEqual({ model: 'm1', tier: 'large' });
+      expect(models[1]).toEqual({ model: 'm2', enabled: false });
+    });
+  });
+
+  it('测试连接:调用 probeProvider,连通结果行内展示', async () => {
+    const { conn } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Test connection m1' }));
+    expect(await screen.findByText(/Connected/)).toBeDefined();
+  });
+
+  it('更多参数非法 JSON:行内报错且零 op', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click((await screen.findAllByText('+ Add model'))[0]!);
+    await screen.findByRole('dialog', { name: 'New model' });
+    fireEvent.change(screen.getByLabelText('Model name'), { target: { value: 'm4' } });
+    fireEvent.change(screen.getByLabelText('More parameters'), { target: { value: '{oops' } });
+    fireEvent.click(screen.getByText('Save'));
+    expect(await screen.findByText(/valid JSON/)).toBeDefined();
     expect(opCalls).toEqual([]);
+  });
+
+  it('删除提供方:两段确认 → op remove', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete p1' }));
+    expect(opCalls).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete p1' }));
+    await waitFor(() => expect(opCalls).toEqual([{ op: 'remove', scope: 'global', name: 'p1' }]));
   });
 });

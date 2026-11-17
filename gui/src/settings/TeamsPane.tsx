@@ -129,6 +129,9 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
   /** 卡面章程详情全文缓存(2026-11-05 用户裁定:详情展开=320px 固定高纵滚,编辑器同高)——
    *  key=`${source}:${id}`;展开首拍拉 teamBody 全文,失败回退 bodyPreview(防重拉循环) */
   const [bodyMap, setBodyMap] = useState<Record<string, string>>({});
+  /** 详情展开键(2026-11-17 用户实测「左右还是没对齐」:details display:contents 的匿名内容盒使
+   *  展开面宽度算错=右侧留白——改显式展开态,详情面板作为卡片内整宽块渲染) */
+  const [openKey, setOpenKey] = useState<string>('');
 
   /** 作用域裁定：壳下发优先，缺省按 root 推断（壳缺省同款——无 root 强制 global） */
   const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
@@ -376,14 +379,15 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                         dataTip={writable ? undefined : globalTip}
                         onConfirm={() => runOp(opFor(e, 'delete'))}
                       />
-                      {/* 2026-11-07 用户裁定「详情按钮放删除同行最右侧;点击展开描述+章程」:
-                          details 经 display:contents 入操作行,summary 推到行最右,展开面整行折下;
-                          章程懒加载同前(320px 纵滚,失败回退预览) */}
-                      <details
-                        className="sx-team-body"
-                        onToggle={(ev) => {
-                          if (!(ev.target as HTMLDetailsElement).open) return;
+                      {/* 详情钮(2026-11-07 裁定「详情放删除同行最右侧」+2026-11-17 对齐修复):
+                          展开面板改为卡片内整宽块(见下方 body),按钮只切态;章程懒加载同前 */}
+                      <button
+                        type="button"
+                        className="sx-team-details-btn"
+                        aria-expanded={openKey === `${e.source}:${e.id}`}
+                        onClick={() => {
                           const key = `${e.source}:${e.id}`;
+                          setOpenKey((cur) => (cur === key ? '' : key));
                           if (bodyMap[key] !== undefined) return;
                           conn.teamBody(e.source, e.id, root === '' ? undefined : root).then(
                             (r) => setBodyMap((m) => ({ ...m, [key]: r.body })),
@@ -391,16 +395,18 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
                           );
                         }}
                       >
-                        <summary>
-                          {t('Details', '详情')}
-                          <ChevronDown size={16} strokeWidth={2} className="sx-disc-chev" aria-hidden="true" />
-                        </summary>
-                        <div className="sx-team-detail">
-                          {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
-                          <ClampBlock as="pre">{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</ClampBlock>
-                        </div>
-                      </details>
+                        {t('Details', '详情')}
+                        <ChevronDown size={16} strokeWidth={2} className={`sx-disc-chev${openKey === `${e.source}:${e.id}` ? ' open' : ''}`} aria-hidden="true" />
+                      </button>
                     </>
+                  }
+                  body={
+                    openKey === `${e.source}:${e.id}` ? (
+                      <div className="sx-team-detail">
+                        {e.description !== undefined && <p className="sx-agent-desc">{e.description}</p>}
+                        <ClampBlock as="pre">{bodyMap[`${e.source}:${e.id}`] ?? e.bodyPreview}</ClampBlock>
+                      </div>
+                    ) : undefined
                   }
                 />
               );

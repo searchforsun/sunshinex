@@ -587,6 +587,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       // input 原文即请求体（putMcpOp/putPermissionOp 同款——scope=global 省参不留 root 空串伪参）
       return putOp('/settings/providers/op', input);
     },
+    /** 提供方连通探测（2026-11-17 模型列表测试钮）：daemon 侧 GET {baseUrl}/models，零 token */
+    probeProvider(name: string): Promise<{ ok: boolean; status?: number; count?: number; error?: string }> {
+      return postJson('/settings/providers/probe', { name });
+    },
     mcpServers(root?: string): Promise<{ servers: McpRow[] }> {
       return getJson<{ servers: McpRow[] }>(root === undefined ? '/settings/mcp' : `/settings/mcp?root=${encodeURIComponent(root)}`);
     },

@@ -278,6 +278,8 @@ export interface Connection {
    *  INVALID 无 hint——2026-10-28 终审修复波按 code 分流）以 HTTP 失败抛错；成功 200 {ok:true}
    *  （setKey 密钥零回显——响应恒 {ok:true} 不携键值） */
   putProviderOp(input: ProviderOpInput): Promise<void>;
+  /** 提供方连通探测(2026-11-17 模型列表测试钮):daemon 侧 GET {baseUrl}/models,零 token */
+  probeProvider(name: string): Promise<{ ok: boolean; status?: number; count?: number; error?: string }>;
   /** GET /settings/mcp?root=（T4）：两级遮蔽清单（项目全量 source='project' + 全局逐名 shadowed 标记） */
   mcpServers(root?: string): Promise<{ servers: McpRow[] }>;
   /** POST /settings/mcp/probe {root?, name}（T4）：单台真探测联合应答（失败即结果非错误码，见

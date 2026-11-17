@@ -66,6 +66,10 @@ export interface ProviderModelInput {
   /** 模型级启停(2026-11-17 用户裁定「模型支持单独禁用」):缺省启用,false=停用(保留条目,
    *  /model 选择卡不可见)——写面直落 settings.json models[].enabled */
   enabled?: boolean;
+  /** 最大输出 tokens(模型弹窗字段,2026-11-17):正数;适配器按需消费 */
+  maxOutputTokens?: number;
+  /** 视频输入能力(模型弹窗「支持输入类型」):true=支持视频 */
+  supportsVideo?: boolean;
   tier?: ModelTier;
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
@@ -175,6 +179,9 @@ function normalizeModelEntry(label: string, input: ProviderModelInput): ParsedPr
   let params: RequestParams | undefined;
   if (input.params !== undefined) {
     // 写面严格口径：任一问题即整条拒收（解析面宽容版同源校验——坏参数被告警忽略的形态不进写面）
+    if (input.maxOutputTokens !== undefined && (!Number.isFinite(input.maxOutputTokens) || input.maxOutputTokens <= 0)) {
+      throw new CatalogWriteError('INVALID', `providers.${sub} maxOutputTokens 须为正数`);
+    }
     const sanitized = sanitizeRequestParams(input.params);
     if (sanitized.problems.length > 0) {
       throw new CatalogWriteError('INVALID', `providers.${sub} ${sanitized.problems.join('; ')}`);
@@ -185,6 +192,8 @@ function normalizeModelEntry(label: string, input: ProviderModelInput): ParsedPr
     model,
     ...(input.enabled === false ? { enabled: false } : {}),
     ...(input.contextWindow !== undefined ? { contextWindow: input.contextWindow } : {}),
+    ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
+    ...(input.supportsVideo === true ? { supportsVideo: true } : {}),
     ...(input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {}),
     ...(input.supportsImages !== undefined ? { supportsImages: input.supportsImages } : {}),
     ...(input.tier !== undefined ? { tier: input.tier } : {}),
@@ -240,8 +249,9 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
   if (idx === -1) {
     // add 路径：baseUrl 与非空 models 必备（models 空的源是解析面拒载形态）
     if (baseUrl === undefined) throw new CatalogWriteError('INVALID', `providers.${label} 新建须携带 baseUrl`);
-    if (!Array.isArray(patch.models) || patch.models.length === 0) {
-      throw new CatalogWriteError('INVALID', `providers.${label} 新建须携带非空 models 数组（models 空的源是非法形态）`);
+    // 2026-11-17 用户裁定「先创建 provider,再在卡片里添加模型」:空 models 数组合法(解析面保留空源)
+    if (patch.models !== undefined && !Array.isArray(patch.models)) {
+      throw new CatalogWriteError('INVALID', `providers.${label} models 须为数组（收到 ${typeof patch.models}）`);
     }
     if (patchName !== undefined && patchName !== label) {
       throw new CatalogWriteError('INVALID', `providers 新建的 name 身份来自 name 参数，patch.name=${JSON.stringify(patchName)} 与之不符`);
@@ -256,7 +266,7 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
       ...(patch.contextWindow !== undefined ? { contextWindow: patch.contextWindow } : {}),
       ...(patch.reasoningEffort !== undefined ? { reasoningEffort: patch.reasoningEffort } : {}),
       ...(patch.supportsImages !== undefined ? { supportsImages: patch.supportsImages } : {}),
-      models: buildModelList(label, patch.models),
+      models: patch.models !== undefined ? buildModelList(label, patch.models) : [],
     });
     finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
     return;
@@ -282,8 +292,8 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
   if (patch.reasoningEffort !== undefined) next['reasoningEffort'] = patch.reasoningEffort;
   if (patch.supportsImages !== undefined) next['supportsImages'] = patch.supportsImages;
   if (patch.models !== undefined) {
-    if (!Array.isArray(patch.models) || patch.models.length === 0) {
-      throw new CatalogWriteError('INVALID', t(`providers.${label} models replacement must be a non-empty array (a source with empty models is invalid)`, `providers.${label} models 替换须为非空数组（models 空的源是非法形态）`));
+    if (!Array.isArray(patch.models)) {
+      throw new CatalogWriteError('INVALID', `providers.${label} models 替换须为数组`);
     }
     next['models'] = buildModelList(label, patch.models);
   }

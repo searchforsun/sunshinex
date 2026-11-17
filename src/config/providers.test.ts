@@ -38,7 +38,8 @@ test('parseProvidersSpec：非数组/条目非对象/缺 name/缺 baseUrl/models
     { name: 'ok', baseUrl: 'https://ok/v1', models: [{ model: 'm' }] }, // 合法源保留
   ], 'test.json');
   assert.deepEqual(r.choices.map((c) => c.id), ['ok/m'], '坏条目只跳自己（含字符串简写），同源好条目保留');
-  assert.equal(r.warnings.length, 8, '八条非法形态各一条 warning（含 d 源字符串简写/非对象/缺 model 三条坏条目）');
+  // 2026-11-17 「空 models 允许保留(先建源后加模型)」:该形态不再告警 → 八条降七条
+  assert.equal(r.warnings.length, 7, '非法形态各一条 warning（含 d 源字符串简写/非对象/缺 model 三条坏条目）');
   assert.ok(r.warnings.some((w) => w.includes('models 条目须为对象形态')), '字符串简写有专属指引文案（对象形态）');
   const nonArray = parseProvidersSpec({ name: 'x' }, 'test.json');
   assert.deepEqual(nonArray.choices, []);

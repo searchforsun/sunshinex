@@ -1,12 +1,13 @@
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Pencil, PlugZap } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, Switch } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch } from './components';
 import { Select } from './controls';
 import { sanitizeRequestParams } from '../../../src/model/request-params';
-import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
+import type { ProviderEntry, ProviderEntryModel, ProviderOpInput, SettingsView } from '../connection';
 
 /**
  * Task 26 ProvidersPane 重构(2026-10-28 spec §15 GUI 面,T22-25 同款骨架):模型与提供方面板
@@ -54,6 +55,8 @@ import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection
  *  Task 16 op 端点写面。结构满足即收,App 传整只 Connection) */
 export interface ProvidersPaneConn extends SettingsFormConn {
   putProviderOp(input: ProviderOpInput): Promise<void>;
+  /** 提供方连通探测(2026-11-17 模型列表测试钮):GET {baseUrl}/models,零 token */
+  probeProvider(name: string): Promise<{ ok: boolean; status?: number; count?: number; error?: string }>;
 }
 
 /** models 行 effort/tier 闭集(单源:请求参数卡选项与模型行 Select 共用;daemon 语义键同域) */
@@ -91,80 +94,47 @@ const PROVIDERS_PANE: SettingsPaneDef = {
   ],
 };
 
-/** models 行自定义参数编辑态(键值文本对;值文本保存时按 JSON 化型) */
-interface ParamRow {
-  k: string;
-  v: string;
-}
+/** 上下文窗口展示(1M/128K 档;整数原样) */
+const fmtWindow = (n: number): string => (n >= 1_000_000 ? `${Math.round(n / 100_000) / 10}M` : n >= 1000 ? `${Math.round(n / 100) / 10}K` : String(n));
 
-/** models 行表单态(受控;contextWindow 暂存字符串保存时化型;''=未设置。supportsImages=
- *  条目显式值透传保全位——行编辑不建模该键,update 整组替换时原样带回防丢) */
-interface ModelRow {
-  model: string;
-  /** 模型级启停(2026-11-17 用户裁定「模型支持单独禁用」):缺省启用;false=停用(/model 不可见) */
-  enabled: boolean;
-  contextWindow: string;
-  reasoningEffort: string;
-  tier: string;
-  supportsImages?: boolean;
-  /** 自定义请求参数行(空键行保存时滤除) */
-  params: ParamRow[];
-}
-
-/** 抽屉表单态(受控单对象;apiKey 仅写不读——恒空串起步,提交非空才发 setKey) */
-interface DrawerForm {
+/** 提供方弹窗表单(2026-11-17 用户裁定「新建 provide 和新建模型分开显示」):源级只留身份与密钥 */
+interface ProviderForm {
   name: string;
   baseUrl: string;
   apiKey: string;
-  rows: ModelRow[];
+  enabled: boolean;
 }
 
-/** 抽屉会话态:add=新增;edit=编辑某卡(original=改名换键的旧名)。页面即全局(2026-10-29
- *  用户裁定)——写作用域恒 global,无 source 维度 */
-type DrawerState = { mode: 'add' } | { mode: 'edit'; original: string };
+/** 模型弹窗表单(纵向字段):名称/上下文/最大输出/输入类型/思考强度/推理等级/更多参数(JSON) */
+interface ModelForm {
+  model: string;
+  enabled: boolean;
+  contextWindow: string;
+  maxOutputTokens: string;
+  supportsImages: boolean;
+  supportsVideo: boolean;
+  reasoningEffort: string;
+  tier: string;
+  /** 更多参数:JSON 对象文本(不同模型不同形态,原样并入请求体) */
+  paramsText: string;
+}
 
-const EMPTY_ROW: ModelRow = { model: '', enabled: true, contextWindow: '', reasoningEffort: '', tier: '', params: [] };
-const EMPTY_FORM: DrawerForm = { name: '', baseUrl: '', apiKey: '', rows: [{ ...EMPTY_ROW, params: [] }] };
+const EMPTY_PROVIDER: ProviderForm = { name: '', baseUrl: '', apiKey: '', enabled: true };
+const EMPTY_MODEL: ModelForm = { model: '', enabled: true, contextWindow: '', maxOutputTokens: '', supportsImages: false, supportsVideo: false, reasoningEffort: '', tier: '', paramsText: '' };
 
-/** 参数值回显：字符串原样(免引号噪声),其余 JSON 序列化(数字/布尔/null/数组/对象) */
-const paramTextOf = (v: unknown): string => (typeof v === 'string' ? v : (JSON.stringify(v) ?? ''));
+/** 模型条目 → 弹窗表单(编辑播种;params 对象 → 格式化 JSON 文本) */
+const modelFormOf = (m: ProviderEntryModel): ModelForm => ({
+  model: m.model,
+  enabled: m.enabled !== false,
+  contextWindow: m.contextWindow !== undefined ? String(m.contextWindow) : '',
+  maxOutputTokens: m.maxOutputTokens !== undefined ? String(m.maxOutputTokens) : '',
+  supportsImages: m.supportsImages === true,
+  supportsVideo: m.supportsVideo === true,
+  reasoningEffort: m.reasoningEffort ?? '',
+  tier: m.tier ?? '',
+  paramsText: m.params !== undefined && Object.keys(m.params).length > 0 ? JSON.stringify(m.params, null, 2) : '',
+});
 
-/** 参数值化型：可解析 JSON 即取其值,否则原样字符串——与写面存的 JSON 值形态往返一致 */
-const paramValueOf = (text: string): unknown => {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return text;
-  }
-};
-
-/** entries 源级分组 → 抽屉 models 行播种(文件显式值——T9 拆分:编辑回显不走 choices) */
-const rowsOfEntry = (e: ProviderEntry): ModelRow[] =>
-  e.models.map((m) => ({
-    model: m.model,
-    enabled: m.enabled !== false,
-    contextWindow: m.contextWindow !== undefined ? String(m.contextWindow) : '',
-    reasoningEffort: m.reasoningEffort ?? '',
-    tier: m.tier ?? '',
-    ...(m.supportsImages !== undefined ? { supportsImages: m.supportsImages } : {}),
-    params: Object.entries(m.params ?? {}).map(([k, v]) => ({ k, v: paramTextOf(v) })),
-  }));
-
-/** 行重播种键合(modelMove 后行序回落文件真值,但**不静默丢弃本地未保存行编辑**):
- *  fresh(文件真值)为基底,本地行按模型名键合覆写 contextWindow/reasoningEffort/tier 三字段
- *  (model 名即键、supportsImages 是文件透传位随 fresh);未触碰字段本地值=播种值=fresh 值,
- *  覆写幂等。模型名改过/新增未落盘的行无法键合——随 fresh 丢弃(抽屉提示行言明该规则) */
-const mergeReseedRows = (fresh: ProviderEntry, local: ModelRow[]): ModelRow[] => {
-  const byModel = new Map<string, ModelRow>();
-  for (const r of local) {
-    const k = r.model.trim();
-    if (k !== '') byModel.set(k, r);
-  }
-  return rowsOfEntry(fresh).map((fr) => {
-    const l = byModel.get(fr.model);
-    return l === undefined ? fr : { ...fr, enabled: l.enabled, contextWindow: l.contextWindow, reasoningEffort: l.reasoningEffort, tier: l.tier, supportsImages: l.supportsImages, params: l.params };
-  });
-};
 
 export interface ProvidersPaneProps {
   readonly conn: ProvidersPaneConn;
@@ -173,18 +143,20 @@ export interface ProvidersPaneProps {
 }
 
 export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.Element {
-  /** GET /settings 全视图(null = 加载中;providers 面消费 entries/choices/apiKeyPresent/warnings,
-   *  keys 面归内嵌 SettingsForm 自管——同一应答两消费方,单端点单请求) */
   const [view, setView] = useState<SettingsView | null>(null);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [drawer, setDrawer] = useState<DrawerState | null>(null);
-  const [form, setForm] = useState<DrawerForm>(EMPTY_FORM);
+  /** 提供方弹窗(2026-11-17 拆分):add=新增源;edit=编辑源(original=改名换键旧名) */
+  const [providerModal, setProviderModal] = useState<{ mode: 'add' | 'edit'; original?: string } | null>(null);
+  const [providerForm, setProviderForm] = useState<ProviderForm>(EMPTY_PROVIDER);
+  const [modelModal, setModelModal] = useState<{ provider: string; mode: 'add' | 'edit'; original?: string } | null>(null);
+  const [modelForm, setModelForm] = useState<ModelForm>(EMPTY_MODEL);
   const [formError, setFormError] = useState('');
+  /** 连通探测结果(按 provider 名;空串=未测):ok/失败行内展示 */
+  const [testMsg, setTestMsg] = useState<Record<string, string>>({});
+  const [testing, setTesting] = useState('');
 
-  /** 页面即全局(2026-10-29 用户裁定):读恒省参(仅全局清单),项目级 providers 整键遮蔽
-   *  语义仍在存储层但页面不再提供项目切换 */
   const load = useCallback((): void => {
     conn.settings(undefined).then(
       (v) => {
@@ -197,21 +169,21 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
 
   useEffect(() => {
     load();
-  }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉(config-changed 订阅消费面)
+  }, [load, refreshTick]);
 
-  /** op 写作用域取参单点:恒 global 省参 root(不留空串伪参;页面即全局裁定) */
+  /** op 写作用域取参单点:恒 global 省参 root(页面即全局裁定) */
   const opInput = (base: Omit<ProviderOpInput, 'scope' | 'root'>): ProviderOpInput => ({
     ...base,
     scope: 'global',
   });
 
-  /** 卡写回收口单点(删除):saving 门 → op remove → 成功重拉(失败 saving 复位+行内错误条) */
-  const runRemove = (name: string): void => {
+  /** 写面收口:统一 saving 门 + 错误行内 + 成功重拉 */
+  const runOp = (input: Omit<ProviderOpInput, 'scope' | 'root'>): void => {
     if (saving) return;
     setSaving(true);
     setActionError('');
     conn
-      .putProviderOp(opInput({ op: 'remove', name }))
+      .putProviderOp(opInput(input))
       .then(() => {
         setSaving(false);
         load();
@@ -222,118 +194,88 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       });
   };
 
-  /** 源启停翻转(2026-11-17 用户裁定「provider 右侧加开关,默认开」):saving 门 → op setEnabled →
-   *  成功重拉(config-changed 双保险);choices 即刻生效=停用源模型退出 /model 选择卡 */
-  const runSetEnabled = (name: string, enabled: boolean): void => {
-    if (saving) return;
-    setSaving(true);
-    setActionError('');
+  const entries = view?.providers.entries ?? [];
+
+  /** 源启停(provider 卡右上开关) */
+  const toggleProvider = (e: ProviderEntry): void => runOp({ op: 'setEnabled', name: e.name, enabled: e.enabled === false });
+
+  /** 模型启停(2026-11-17 用户裁定「模型单独禁用,开关放外面」):整组 models 回写,只翻目标条目 */
+  const toggleModel = (e: ProviderEntry, model: ProviderEntryModel): void => {
+    const models = e.models.map((m) => {
+      if (m.model !== model.model) return { ...m } as Record<string, unknown>;
+      const next = { ...m } as Record<string, unknown>;
+      if (m.enabled === false) delete next['enabled'];
+      else next['enabled'] = false;
+      return next;
+    });
+    runOp({ op: 'update', name: e.name, provider: { models } });
+  };
+
+  /** 连通探测(测试链接图标):daemon 侧 GET {baseUrl}/models,零 token */
+  const probe = (name: string): void => {
+    if (testing !== '') return;
+    setTesting(name);
+    setTestMsg((m) => ({ ...m, [name]: '' }));
     conn
-      .putProviderOp(opInput({ op: 'setEnabled', name, enabled }))
-      .then(() => {
-        setSaving(false);
-        load();
+      .probeProvider(name)
+      .then((r) => {
+        setTesting('');
+        setTestMsg((m) => ({
+          ...m,
+          [name]: r.ok
+            ? t(`Connected${r.count !== undefined ? ` · ${r.count} models` : ''}`, `连通${r.count !== undefined ? ` · ${r.count} 个模型` : ''}`)
+            : t(`Failed${r.status !== undefined ? ` (${r.status})` : ''}${r.error !== undefined ? `: ${r.error}` : ''}`, `失败${r.status !== undefined ? ` (${r.status})` : ''}${r.error !== undefined ? `: ${r.error}` : ''}`),
+        }));
       })
       .catch((err: unknown) => {
-        setSaving(false);
-        setActionError(errText(err));
+        setTesting('');
+        setTestMsg((m) => ({ ...m, [name]: errText(err) }));
       });
   };
 
-  /** 抽屉打开(添加=空表单单空行;编辑=entries 播种——baseUrl/models 回显,apiKey 恒空串不回显) */
-  const openDrawer = (e: ProviderEntry | null): void => {
+  /** 打开提供方弹窗 */
+  const openProviderModal = (e: ProviderEntry | null): void => {
     setFormError('');
     if (e === null) {
-      setForm({ ...EMPTY_FORM, rows: [{ ...EMPTY_ROW, params: [] }] });
-      setDrawer({ mode: 'add' });
+      setProviderForm(EMPTY_PROVIDER);
+      setProviderModal({ mode: 'add' });
       return;
     }
-    setForm({ name: e.name, baseUrl: e.baseUrl, apiKey: '', rows: rowsOfEntry(e) });
-    setDrawer({ mode: 'edit', original: e.name });
+    setProviderForm({ name: e.name, baseUrl: e.baseUrl, apiKey: '', enabled: e.enabled !== false });
+    setProviderModal({ mode: 'edit', original: e.name });
   };
 
-  /** models 行字段 → 写面条目(model trim 空行滤除;contextWindow 化型正数校验;''=未设置省键;
-   *  supportsImages 透传保全)。返回 null=校验失败(错误已置 formError) */
-  const buildModels = (): Array<Record<string, unknown>> | null => {
-    const models: Array<Record<string, unknown>> = [];
-    for (const r of form.rows) {
-      const model = r.model.trim();
-      if (model === '') continue;
-      let contextWindow: number | undefined;
-      if (r.contextWindow.trim() !== '') {
-        const n = Number(r.contextWindow);
-        if (!Number.isFinite(n) || n <= 0) {
-          setFormError(t(`Context window for ${model} must be a positive number`, `${model} 的上下文窗口须为正数`));
-          return null;
-        }
-        contextWindow = n;
-      }
-      const rawParams: Record<string, unknown> = {};
-      for (const p of r.params) {
-        const k = p.k.trim();
-        if (k === '') continue; // 空键行滤除(新增行未填)
-        if (Object.prototype.hasOwnProperty.call(rawParams, k)) {
-          setFormError(t(`Duplicate parameter key "${k}" for ${model}`, `${model} 的参数键 "${k}" 重复`));
-          return null;
-        }
-        rawParams[k] = paramValueOf(p.v);
-      }
-      // 与服务端同源校验(保留键/非法值):写面还会再拒一次,此处前置报错免一次往返
-      const sanitized = sanitizeRequestParams(rawParams);
-      if (sanitized.problems.length > 0) {
-        setFormError(`${model}: ${sanitized.problems.join('; ')}`);
-        return null;
-      }
-      const params = sanitized.params;
-      models.push({
-        model,
-        ...(r.enabled === false ? { enabled: false } : {}),
-        ...(contextWindow !== undefined ? { contextWindow } : {}),
-        ...(r.reasoningEffort !== '' ? { reasoningEffort: r.reasoningEffort } : {}),
-        ...(r.tier !== '' ? { tier: r.tier } : {}),
-        ...(r.supportsImages !== undefined ? { supportsImages: r.supportsImages } : {}),
-        ...(Object.keys(params).length > 0 ? { params } : {}),
-      });
-    }
-    if (models.length === 0) {
-      setFormError(t('At least one model row is required', '至少需要一行非空模型名'));
-      return null;
-    }
-    return models;
-  };
-
-  /** 抽屉保存:add=op add(baseUrl+非空 models 必备——写面同口径);edit=op update(models 整组
-   *  替换,改名=patch.name 换键);apiKey 非空追加 setKey(键值仅入请求体,响应零回显)。成功
-   *  关抽屉+表单复位(密钥输入框随之清空离场)+重拉 */
-  const submitDrawer = (): void => {
-    if (drawer === null || saving) return;
-    const name = form.name.trim();
+  /** 保存提供方:add=op add(models 空起点);edit=op update(改名带 patch.name);apiKey 非空追加 setKey */
+  const submitProvider = (): void => {
+    if (providerModal === null || saving) return;
+    const name = providerForm.name.trim();
     if (name === '') {
       setFormError(t('Provider name must be non-empty', '提供方名不能为空'));
       return;
     }
-    const baseUrl = form.baseUrl.trim();
+    const baseUrl = providerForm.baseUrl.trim();
     if (baseUrl === '') {
       setFormError(t('Base URL must be non-empty', 'Base URL 不能为空'));
       return;
     }
-    const models = buildModels();
-    if (models === null) return;
-    const target = drawer.mode === 'edit' ? drawer.original : name;
-    const patch: Record<string, unknown> = { baseUrl, models };
-    if (drawer.mode === 'edit' && name !== drawer.original) patch.name = name; // 改名(update 语义;add 身份只来自 name 参数)
+    const target = providerModal.mode === 'edit' ? providerModal.original ?? name : name;
+    const patch: Record<string, unknown> = { baseUrl, enabled: providerForm.enabled };
+    if (providerModal.mode === 'edit' && name !== target) patch.name = name;
     setSaving(true);
     setFormError('');
-    conn
-      .putProviderOp(opInput({ op: drawer.mode === 'add' ? 'add' : 'update', name: target, provider: patch }))
+    const first =
+      providerModal.mode === 'add'
+        ? conn.putProviderOp(opInput({ op: 'add', name, provider: { ...patch, models: [] } }))
+        : conn.putProviderOp(opInput({ op: 'update', name: target, provider: patch }));
+    first
       .then(() => {
-        const key = form.apiKey.trim();
-        return key === '' ? undefined : conn.putProviderOp(opInput({ op: 'setKey', name, apiKey: key })); // setKey 定位终名(改名后同)
+        const key = providerForm.apiKey.trim();
+        return key === '' ? undefined : conn.putProviderOp(opInput({ op: 'setKey', name, apiKey: key }));
       })
       .then(() => {
         setSaving(false);
-        setForm(EMPTY_FORM); // 密钥输入框清空(关抽屉离场+失败重开不残键值)
-        setDrawer(null);
+        setProviderModal(null);
+        setProviderForm(EMPTY_PROVIDER);
         load();
       })
       .catch((err: unknown) => {
@@ -342,108 +284,189 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       });
   };
 
-  /** models 行上移/下移:文件级手术即时提交 modelMove op(非本地排序——Save 不接管行序);
-   *  成功重拉 + 行重播种=mergeReseedRows 键合(文件真值基底 + 本地未保存行字段编辑保留,
-   *  文件外行丢弃——见 helper 注;name/baseUrl/apiKey 本地编辑天然保留) */
-  const moveModel = (index: number, direction: 'up' | 'down'): void => {
-    if (drawer === null || drawer.mode !== 'edit' || saving) return;
-    const model = form.rows[index]?.model.trim() ?? '';
+  /** 模型行序调整(2026-11-17 拆分弹窗后移入模型弹窗):行序=默认模型选序(choices[0]) */
+  const moveModel = (provider: string, model: string, direction: 'up' | 'down'): void => {
+    if (saving || model === '') return;
+    setFormError('');
+    runOp({ op: 'modelMove', name: provider, model, direction });
+  };
+
+  /** 打开模型弹窗(添加/编辑) */
+  const openModelModal = (provider: string, m: ProviderEntryModel | null): void => {
+    setFormError('');
+    if (m === null) {
+      setModelForm(EMPTY_MODEL);
+      setModelModal({ provider, mode: 'add' });
+      return;
+    }
+    setModelForm(modelFormOf(m));
+    setModelModal({ provider, mode: 'edit', original: m.model });
+  };
+
+  /** 模型表单 → 写面条目(数字化型/JSON 参数校验;''=未设置省键) */
+  const buildModelEntry = (): Record<string, unknown> | null => {
+    const model = modelForm.model.trim();
     if (model === '') {
-      setFormError(t('Fill the model name before reordering', '请先填写模型名再排序'));
+      setFormError(t('Model name must be non-empty', '模型名不能为空'));
+      return null;
+    }
+    const num = (raw: string, label: string): number | undefined | null => {
+      const text = raw.trim();
+      if (text === '') return undefined;
+      const n = Number(text);
+      if (!Number.isFinite(n) || n <= 0) {
+        setFormError(t(`${label} must be a positive number`, `${label} 须为正数`));
+        return null;
+      }
+      return n;
+    };
+    const contextWindow = num(modelForm.contextWindow, t('Context window', '上下文窗口'));
+    if (contextWindow === null) return null;
+    const maxOutputTokens = num(modelForm.maxOutputTokens, t('Max output tokens', '最大输出 tokens'));
+    if (maxOutputTokens === null) return null;
+    let params: Record<string, unknown> | undefined;
+    if (modelForm.paramsText.trim() !== '') {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(modelForm.paramsText);
+      } catch {
+        setFormError(t('Additional parameters must be valid JSON', '更多参数须为合法 JSON'));
+        return null;
+      }
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        setFormError(t('Additional parameters must be a JSON object', '更多参数须为 JSON 对象'));
+        return null;
+      }
+      const sanitized = sanitizeRequestParams(parsed as Record<string, unknown>);
+      if (sanitized.problems.length > 0) {
+        setFormError(sanitized.problems.join('; '));
+        return null;
+      }
+      if (Object.keys(sanitized.params).length > 0) params = sanitized.params;
+    }
+    return {
+      model,
+      ...(modelForm.enabled ? {} : { enabled: false }),
+      ...(contextWindow !== undefined ? { contextWindow } : {}),
+      ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+      ...(modelForm.supportsImages ? { supportsImages: true } : {}),
+      ...(modelForm.supportsVideo ? { supportsVideo: true } : {}),
+      ...(modelForm.reasoningEffort !== '' ? { reasoningEffort: modelForm.reasoningEffort } : {}),
+      ...(modelForm.tier !== '' ? { tier: modelForm.tier } : {}),
+      ...(params !== undefined ? { params } : {}),
+    };
+  };
+
+  /** 保存模型:add=modelAdd(entry);edit=update 整组 models 回写(原位替换) */
+  const submitModel = (): void => {
+    if (modelModal === null || saving) return;
+    const entry = buildModelEntry();
+    if (entry === null) return;
+    const host = entries.find((e) => e.name === modelModal.provider);
+    if (host === undefined) {
+      setFormError(t('Provider not found', '提供方不存在'));
       return;
     }
     setSaving(true);
     setFormError('');
-    conn
-      .putProviderOp(opInput({ op: 'modelMove', name: drawer.original, model, direction }))
-      .then(() => {
-        setSaving(false);
-        return conn.settings(undefined).then((v) => {
-          setView(v);
-          setLoadError('');
-          const fresh = (v.providers.entries ?? []).find((e) => e.name === drawer.original);
-          if (fresh !== undefined) setForm((f) => (f === null ? f : { ...f, rows: mergeReseedRows(fresh, f.rows) }));
-        });
-      })
-      .catch((err: unknown) => {
+    const done = (): void => {
+      setSaving(false);
+      setModelModal(null);
+      setModelForm(EMPTY_MODEL);
+      load();
+    };
+    if (modelModal.mode === 'add') {
+      conn.putProviderOp(opInput({ op: 'modelAdd', name: host.name, entry })).then(done, (err: unknown) => {
         setSaving(false);
         setFormError(errText(err));
       });
+      return;
+    }
+    const models = host.models.map((m) => (m.model === modelModal.original ? entry : ({ ...m } as Record<string, unknown>)));
+    conn.putProviderOp(opInput({ op: 'update', name: host.name, provider: { models } })).then(done, (err: unknown) => {
+      setSaving(false);
+      setFormError(errText(err));
+    });
   };
 
-  const setRow = (index: number, patch: Partial<ModelRow>): void => {
-    setForm((f) => ({ ...f, rows: f.rows.map((r, i) => (i === index ? { ...r, ...patch } : r)) }));
-  };
-
-  const allEntries = view?.providers.entries ?? [];
-  /** 页面即全局(2026-10-29 用户裁定):工具栏只留新增钮——无下拉无搜索,卡列表全量呈现 */
-  const entries = allEntries;
   const loading = view === null && loadError === '';
   return (
     <div className="sx-settings-complex">
-      {/* 请求参数卡恒全局(2026-10-29 用户裁定豁免):root 恒 ''——读仅全局、写恒 global 桶,
-          不随工具栏目标选择器(卡片标题已注明,见 PROVIDERS_PANE) */}
       <SettingsForm conn={conn} root="" pane={PROVIDERS_PANE} />
       <section className="sx-providers" aria-label="providers">
         <h3>{t('Providers', '提供方')}</h3>
-        {/* 工具栏单件(2026-10-29 用户裁定:页面即全局——ScopeSelect/SearchBar 撤除,只留新增钮) */}
         <div className="sx-res-toolbar">
-          <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
+          <button type="button" className="sx-add-button" onClick={() => openProviderModal(null)}>
             {t('+ Add provider', '+ 新增提供方')}
           </button>
         </div>
         {loadError !== '' && <ErrorBanner text={loadError} />}
         {actionError !== '' && <ErrorBanner text={actionError} />}
         {loading && <EmptyState text={t('Loading providers…', '加载提供方…')} />}
-        {!loading && allEntries.length === 0 && <EmptyState text={t('No providers configured.', '尚未配置提供方。')} />}
-        {!loading && allEntries.length > 0 && entries.length === 0 && <EmptyState text={t('No matches.', '无匹配结果。')} />}
+        {!loading && entries.length === 0 && <EmptyState text={t('No providers configured.', '尚未配置提供方。')} />}
         {entries.length > 0 && (
           <ul className="sx-rc-list">
-            {entries.map((e) => {
-              const present = e.apiKeyPresent;
-              return (
-                <ResourceCard
-                  key={e.name}
-                  icon={
-                    <span
-                      className={`sx-api-dot ${present ? 'present' : 'missing'}`}
-                      data-tip={e.apiKeyEnv}
-                      aria-hidden="true"
-                    />
-                  }
-                  title={e.name}
-                  subtitle={e.baseUrl}
-                  enabled={e.enabled !== false}
-                  onToggle={() => runSetEnabled(e.name, e.enabled === false)}
-                  chips={
-                    <>
-                      {e.models.map((m) => (
-                        <Fragment key={m.model}>
-                          <span className="sx-chip">{m.model}</span>
-                        </Fragment>
-                      ))}
-                    </>
-                  }
-                  actions={
-                    <>
-                      <button
-                        type="button"
-                        aria-label={`${t('Edit', '编辑')} ${e.name}`}
-                        disabled={saving}
-                        onClick={() => openDrawer(e)}
-                      >
-                        {t('Edit', '编辑')}
-                      </button>
-                      <ConfirmDeleteButton
-                        ariaLabel={`${t('Delete', '删除')} ${e.name}`}
-                        disabled={saving}
-                        onConfirm={() => runRemove(e.name)}
-                      />
-                    </>
-                  }
-                />
-              );
-            })}
+            {entries.map((e) => (
+              <li key={e.name} className="sx-rc">
+                <div className="sx-rc-head">
+                  <span className={`sx-api-dot ${e.apiKeyPresent ? 'present' : 'missing'}`} data-tip={e.apiKeyEnv} aria-hidden="true" />
+                  <span className="sx-rc-title">{e.name}</span>
+                  <span className="sx-rc-subtitle">{e.baseUrl}</span>
+                  <Switch on={e.enabled !== false} onToggle={() => toggleProvider(e)} ariaLabel={`${t('Enable', '启用')} ${e.name}`} />
+                </div>
+                {testMsg[e.name] !== undefined && testMsg[e.name] !== '' && <p className="sx-provider-hint">{testMsg[e.name]}</p>}
+                {/* 模型列表(2026-11-17 用户裁定「卡片里面添加模型」):名称+特点 chips+测试/编辑/开关 */}
+                <div className="sx-provider-models-head">
+                  <span className="sx-provider-models-title">{t('Models', '模型列表')}</span>
+                  <button type="button" className="sx-add-button" onClick={() => openModelModal(e.name, null)}>
+                    {t('+ Add model', '+ 添加模型')}
+                  </button>
+                </div>
+                {e.models.length === 0 ? (
+                  <p className="sx-provider-hint">{t('No models yet.', '暂无模型。')}</p>
+                ) : (
+                  <ul className="sx-provider-modellist">
+                    {e.models.map((m) => (
+                      <li key={m.model} className={`sx-provider-modelitem${m.enabled === false ? ' off' : ''}`}>
+                        <span className="sx-provider-modelname">{m.model}</span>
+                        <span className="sx-provider-chips">
+                          {m.contextWindow !== undefined && <span className="sx-provider-chip">{fmtWindow(m.contextWindow)}</span>}
+                          {m.supportsImages === true && <span className="sx-provider-chip">{t('Vision', '视觉')}</span>}
+                          {m.supportsVideo === true && <span className="sx-provider-chip">{t('Video', '视频')}</span>}
+                          {m.tier !== undefined && <span className="sx-provider-chip">{t(TIER_PAIRS[m.tier]?.en ?? m.tier, TIER_PAIRS[m.tier]?.zh ?? m.tier)}</span>}
+                        </span>
+                        <button
+                          type="button"
+                          className="sx-iconbtn"
+                          aria-label={`${t('Test connection', '测试连接')} ${m.model}`}
+                          data-tip={t('Test connection', '测试连接')}
+                          disabled={testing !== ''}
+                          onClick={() => probe(e.name)}
+                        >
+                          <PlugZap size={14} strokeWidth={1.75} aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          className="sx-iconbtn"
+                          aria-label={`${t('Edit model', '编辑模型')} ${m.model}`}
+                          data-tip={t('Edit model', '编辑模型')}
+                          onClick={() => openModelModal(e.name, m)}
+                        >
+                          <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+                        </button>
+                        <Switch on={m.enabled !== false} onToggle={() => toggleModel(e, m)} ariaLabel={`${t('Enable model', '启用模型')} ${m.model}`} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="sx-card-actions">
+                  <button type="button" aria-label={`${t('Edit', '编辑')} ${e.name}`} disabled={saving} onClick={() => openProviderModal(e)}>
+                    {t('Edit', '编辑')}
+                  </button>
+                  <ConfirmDeleteButton ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
+                </div>
+              </li>
+            ))}
           </ul>
         )}
         {(view?.providers.warnings ?? []).map((w) => (
@@ -452,162 +475,111 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
           </p>
         ))}
       </section>
-      {drawer !== null && (
+      {/* 提供方弹窗:只建源(2026-11-17 用户裁定「新建 provide 和新建模型分开显示」) */}
+      {providerModal !== null && (
         <EditorModal
           open
-          title={drawer.mode === 'add' ? t('Add provider', '新增提供方') : t(`Edit ${drawer.original}`, `编辑 ${drawer.original}`)}
-          onClose={() => setDrawer(null)}
-          onSubmit={submitDrawer}
+          title={providerModal.mode === 'add' ? t('New provider', '新增提供方') : t(`Edit ${providerModal.original ?? ''}`, `编辑 ${providerModal.original ?? ''}`)}
+          onClose={() => setProviderModal(null)}
+          onSubmit={submitProvider}
         >
           <ModalField label={t('Name', '名称')}>
-            <input className="sx-setting-input" aria-label={t('Name', '名称')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
+            <input className="sx-setting-input" aria-label={t('Name', '名称')} value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} spellCheck={false} />
           </ModalField>
           <ModalField label={t('Base URL', 'Base URL')}>
-            <input className="sx-setting-input" aria-label={t('Base URL', 'Base URL')} value={form.baseUrl} onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} spellCheck={false} />
+            <input className="sx-setting-input" aria-label={t('Base URL', 'Base URL')} value={providerForm.baseUrl} onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })} spellCheck={false} />
           </ModalField>
           <ModalField label={t('API key', 'API 密钥')}>
             <input
               type="password"
               className="sx-setting-input"
               aria-label={t('API key', 'API 密钥')}
-              value={form.apiKey}
+              value={providerForm.apiKey}
               autoComplete="new-password"
-              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+              onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
               spellCheck={false}
             />
           </ModalField>
-          {/* 2026-10-30 用户裁定(模型行重排):一行一个模型块——模型名独占行+(窗口/强度/档位)
-              参数行+(上移/下移/删除)右对齐行,块间分隔线;强度/档位原生 select 换共享 Select
-              ('' 显式项=未设置,与原空值 option 同形,buildModels 空串省键提交形状零变化);
-              全部 aria-label 沿用 */}
-          <ModalField label={t('Models (name / context window / effort / tier / params)', '模型(名称/上下文窗口/强度/档位/参数)')}>
-            {form.rows.map((r, i) => (
-              <div key={i} className={`sx-provider-modelrow${r.enabled ? '' : ' off'}`}>
-                {/* 列表行头(2026-11-17 用户裁定「模型支持单独禁用,列表形式,标识特点」):启停开关
-                    + 模型名 + 特点 chips(视觉/档位/窗口);停用行整行调暗、模型名行内说明 */}
-                <div className="sx-provider-modelhead">
-                  <Switch
-                    on={r.enabled}
-                    onToggle={() => setRow(i, { enabled: !r.enabled })}
-                    ariaLabel={`${t('Enable model', '启用模型')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
-                  />
-                  <input
-                    className="sx-setting-input sx-provider-modelname"
-                    aria-label={t('Model name', '模型名')}
-                    placeholder={t('Model name', '模型名')}
-                    value={r.model}
-                    onChange={(e) => setRow(i, { model: e.target.value })}
-                    spellCheck={false}
-                  />
-                  <span className="sx-provider-chips">
-                    {r.supportsImages === true && <span className="sx-provider-chip">{t('Vision', '视觉')}</span>}
-                    {r.tier !== '' && <span className="sx-provider-chip">{t(TIER_PAIRS[r.tier as keyof typeof TIER_PAIRS]?.en ?? r.tier, TIER_PAIRS[r.tier as keyof typeof TIER_PAIRS]?.zh ?? r.tier)}</span>}
-                    {r.contextWindow.trim() !== '' && <span className="sx-provider-chip">{r.contextWindow.trim()}</span>}
-                    {r.enabled === false && <span className="sx-provider-chip warn">{t('Disabled', '已停用')}</span>}
-                  </span>
-                </div>
-                <div className="sx-provider-model-params">
-                  <input
-                    className="sx-setting-input"
-                    aria-label={t('Context window', '上下文窗口')}
-                    placeholder={t('Context window', '上下文窗口')}
-                    value={r.contextWindow}
-                    onChange={(e) => setRow(i, { contextWindow: e.target.value })}
-                    spellCheck={false}
-                  />
-                  <Select
-                    ariaLabel={t('Effort', '强度')}
-                    value={r.reasoningEffort}
-                    placeholder={t('Effort', '强度')}
-                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_EFFORTS.map((v) => ({ v, l: t(EFFORT_PAIRS[v].en, EFFORT_PAIRS[v].zh) }))]}
-                    onChange={(v) => setRow(i, { reasoningEffort: v })}
-                  />
-                  <Select
-                    ariaLabel={t('Tier', '档位')}
-                    value={r.tier}
-                    placeholder={t('Tier', '档位')}
-                    options={[{ v: '', l: t('Default', '默认') }, ...MODEL_TIERS.map((v) => ({ v, l: t(TIER_PAIRS[v].en, TIER_PAIRS[v].zh) }))]}
-                    onChange={(v) => setRow(i, { tier: v })}
-                  />
-                  {/* 视觉能力标记(2026-11-17 用户裁定「标识是否视觉等」):显式声明 supportsImages */}
-                  <label className="sx-provider-vision">
-                    <input
-                      type="checkbox"
-                      aria-label={`${t('Supports images', '支持图片')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
-                      checked={r.supportsImages === true}
-                      onChange={(e) => setRow(i, { supportsImages: e.target.checked ? true : undefined })}
-                    />
-                    <span>{t('Vision', '视觉')}</span>
-                  </label>
-                </div>
-                {/* 自定义请求参数(键值对并入请求体):值文本保存时按 JSON 化型——true/1/{"a":1}
-                    取字面值,否则原样字符串;协议字段由服务端与前置校验双重拒收 */}
-                <div className="sx-provider-paramrows">
-                  {r.params.map((p, pi) => (
-                    <div key={pi} className="sx-provider-paramrow">
-                      <input
-                        className="sx-setting-input"
-                        aria-label={`${t('Parameter key', '参数名')} ${i + 1}-${pi + 1}`}
-                        placeholder={t('Parameter key', '参数名')}
-                        value={p.k}
-                        onChange={(e) => setRow(i, { params: r.params.map((q, qi) => (qi === pi ? { ...q, k: e.target.value } : q)) })}
-                        spellCheck={false}
-                      />
-                      <input
-                        className="sx-setting-input"
-                        aria-label={`${t('Parameter value', '参数值')} ${i + 1}-${pi + 1}`}
-                        placeholder={t('Parameter value', '参数值')}
-                        value={p.v}
-                        onChange={(e) => setRow(i, { params: r.params.map((q, qi) => (qi === pi ? { ...q, v: e.target.value } : q)) })}
-                        spellCheck={false}
-                      />
-                      <button
-                        type="button"
-                        aria-label={`${t('Remove parameter', '移除参数')} ${i + 1}-${pi + 1}`}
-                        onClick={() => setRow(i, { params: r.params.filter((_, qi) => qi !== pi) })}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={() => setRow(i, { params: [...r.params, { k: '', v: '' }] })}>
-                    {t('+ Add parameter', '+ 添加参数')}
-                  </button>
-                </div>
-                <div className="sx-provider-model-actions">
-                  {drawer.mode === 'edit' && (
-                    <>
-                      <button
-                        type="button"
-                        aria-label={`${t('Move up', '上移')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
-                        disabled={saving || i === 0}
-                        onClick={() => moveModel(i, 'up')}
-                      >
-                        ↑
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`${t('Move down', '下移')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
-                        disabled={saving || i === form.rows.length - 1}
-                        onClick={() => moveModel(i, 'down')}
-                      >
-                        ↓
-                      </button>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    aria-label={`${t('Remove model row', '移除模型行')} ${i + 1}`}
-                    onClick={() => setForm((f) => ({ ...f, rows: f.rows.filter((_, j) => j !== i) }))}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            ))}
-            <button type="button" onClick={() => setForm((f) => ({ ...f, rows: [...f.rows, { ...EMPTY_ROW, params: [] }] }))}>
-              {t('+ Add model', '+ 添加模型')}
-            </button>
+          <div className="sx-switch-row sx-switch-row-lead">
+            <Switch on={providerForm.enabled} onToggle={() => setProviderForm({ ...providerForm, enabled: !providerForm.enabled })} ariaLabel="provider enabled" />
+            <span className="sx-switch-row-label">{t('Enabled', '启用')}</span>
+          </div>
+          {formError !== '' && <ErrorBanner text={formError} />}
+        </EditorModal>
+      )}
+      {/* 模型弹窗:纵向字段(名称/上下文/最大输出/输入类型/思考强度/推理等级/更多参数 JSON) */}
+      {modelModal !== null && (
+        <EditorModal
+          open
+          title={modelModal.mode === 'add' ? t('New model', '新建模型') : t(`Edit ${modelModal.original ?? ''}`, `编辑 ${modelModal.original ?? ''}`)}
+          onClose={() => setModelModal(null)}
+          onSubmit={submitModel}
+        >
+          <ModalField label={t('Model name', '模型名称')}>
+            <input className="sx-setting-input" aria-label={t('Model name', '模型名称')} value={modelForm.model} onChange={(e) => setModelForm({ ...modelForm, model: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('Context tokens', '上下文 tokens')}>
+            <input className="sx-setting-input" aria-label={t('Context tokens', '上下文 tokens')} value={modelForm.contextWindow} onChange={(e) => setModelForm({ ...modelForm, contextWindow: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('Max output tokens', '最大输出 tokens')}>
+            <input className="sx-setting-input" aria-label={t('Max output tokens', '最大输出 tokens')} value={modelForm.maxOutputTokens} onChange={(e) => setModelForm({ ...modelForm, maxOutputTokens: e.target.value })} spellCheck={false} />
+          </ModalField>
+          <ModalField label={t('Input types', '支持输入类型')}>
+            <div className="sx-model-inputtypes">
+              <label>
+                <input type="checkbox" checked readOnly /> {t('Text', '文本')}
+              </label>
+              <label>
+                <input type="checkbox" aria-label={t('Image input', '图片输入')} checked={modelForm.supportsImages} onChange={(e) => setModelForm({ ...modelForm, supportsImages: e.target.checked })} /> {t('Image', '图片')}
+              </label>
+              <label>
+                <input type="checkbox" aria-label={t('Video input', '视频输入')} checked={modelForm.supportsVideo} onChange={(e) => setModelForm({ ...modelForm, supportsVideo: e.target.checked })} /> {t('Video', '视频')}
+              </label>
+            </div>
+          </ModalField>
+          <ModalField label={t('Default reasoning effort', '默认思考强度')}>
+            <Select
+              ariaLabel={t('Default reasoning effort', '默认思考强度')}
+              value={modelForm.reasoningEffort}
+              options={[{ v: '', l: t('Default', '默认') }, ...MODEL_EFFORTS.map((v) => ({ v, l: t(EFFORT_PAIRS[v].en, EFFORT_PAIRS[v].zh) }))]}
+              onChange={(v) => setModelForm({ ...modelForm, reasoningEffort: v })}
+            />
+          </ModalField>
+          <ModalField label={t('Default reasoning level', '默认推理等级')}>
+            <Select
+              ariaLabel={t('Default reasoning level', '默认推理等级')}
+              value={modelForm.tier}
+              options={[{ v: '', l: t('Default', '默认') }, ...MODEL_TIERS.map((v) => ({ v, l: t(TIER_PAIRS[v].en, TIER_PAIRS[v].zh) }))]}
+              onChange={(v) => setModelForm({ ...modelForm, tier: v })}
+            />
+          </ModalField>
+          {modelModal.mode === 'edit' && (
+            <div className="sx-model-order">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => moveModel(modelModal.provider, modelModal.original ?? '', 'up')}
+              >
+                {t('Move up', '上移')}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => moveModel(modelModal.provider, modelModal.original ?? '', 'down')}
+              >
+                {t('Move down', '下移')}
+              </button>
+            </div>
+          )}
+          <ModalField label={t('More parameters (JSON)', '更多参数（JSON）')}>
+            <textarea
+              aria-label={t('More parameters', '更多参数')}
+              className="sx-model-params-json"
+              rows={6}
+              value={modelForm.paramsText}
+              onChange={(e) => setModelForm({ ...modelForm, paramsText: e.target.value })}
+              spellCheck={false}
+            />
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>

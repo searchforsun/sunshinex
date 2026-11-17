@@ -248,8 +248,9 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
         )}
       </div>
       {chips !== undefined && <div className="sx-rc-chips">{chips}</div>}
-      {body !== undefined && <div className="sx-rc-body">{body}</div>}
       {actions !== undefined && <div className="sx-card-actions">{actions}</div>}
+      {/* 展开面板(2026-11-17 对齐修复):操作行之后整宽块——团队章程等长内容左右与卡片内缘对称 */}
+      {body !== undefined && <div className="sx-rc-body">{body}</div>}
       {children !== undefined && (
         <details className="sx-rc-details">
           {/* 2026-11-07 用户裁定:原生三角退役→胶囊开关(chevron 随开合旋转,面底语言同 ghost 钮) */}

@@ -72,7 +72,7 @@ export interface ParsedProviderEntry {
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
   supportsImages?: boolean;
-  models: Array<{ model: string; enabled?: boolean; contextWindow?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; tier?: ModelTier; params?: RequestParams }>;
+  models: Array<{ model: string; enabled?: boolean; contextWindow?: number; maxOutputTokens?: number; reasoningEffort?: ReasoningEffort; supportsImages?: boolean; supportsVideo?: boolean; tier?: ModelTier; params?: RequestParams }>;
   /** 来源级归因（Task 27.5 富化，控制器 T26 评审裁定——全键遮蔽陷阱的观察面）：loadProvidersFull
    *  两级整键遮蔽裁决——项目 providers 键在场（含空数组）即整键遮蔽 → 该面全部条目 origin='project'
    *  （全局条目不可能混列）；否则（含 root:null 仅全局面）origin='global'。单级解析面（parseProvidersAll）
@@ -134,10 +134,12 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       warnings.push(`settings.json providers.${name} 缺 baseUrl（${origin}），该源已跳过`);
       continue;
     }
-    if (!Array.isArray(e.models) || e.models.length === 0) {
-      warnings.push(`settings.json providers.${name} models 须为非空数组（${origin}），该源已跳过`);
+    if (!Array.isArray(e.models)) {
+      warnings.push(`settings.json providers.${name} models 须为数组（${origin}），该源已跳过`);
       continue;
     }
+    // 空 models 允许保留(2026-11-17 用户裁定「先创建 provider,再在卡片里添加模型」):条目在设置页
+    // 可见可补模型,不产 choices(/model 不可见)——此前「空 models 即非法跳过」使加模型前的源不可编辑
     // 源启停（默认开）：非布尔告警忽略按启用处理（标注值坏不连坐源本体，supportsImages 同纪律）
     let providerEnabled: boolean | undefined;
     if (e.enabled !== undefined) {
@@ -190,6 +192,10 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       // 条目保留在 models 列表(设置页可见可拨回),choices 不进(/model 选择卡不可见)
       let itemEnabled: boolean | undefined;
       let itemWindow: number | undefined;
+      /** 最大输出 tokens(2026-11-17 模型弹窗字段):设置页可见/可写,运行时由适配器按需消费 */
+      let itemMaxOut: number | undefined;
+      /** 视频输入能力(模型弹窗「支持输入类型 文本|图片|视频」):false=不支持,缺省未知按文本+图片 */
+      let itemVideo: boolean | undefined;
       let itemEffort: ReasoningEffort | undefined;
       let itemImages: boolean | undefined;
       let itemTier: ModelTier | undefined;
@@ -200,7 +206,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         continue;
       }
       if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-        const o = item as { model?: unknown; enabled?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; tier?: unknown; params?: unknown };
+        const o = item as { model?: unknown; enabled?: unknown; contextWindow?: unknown; maxOutputTokens?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; supportsVideo?: unknown; tier?: unknown; params?: unknown };
         model = typeof o.model === 'string' ? o.model.trim() : undefined;
         if (o.enabled !== undefined) {
           if (typeof o.enabled === 'boolean') {
@@ -214,6 +220,20 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
             itemWindow = o.contextWindow;
           } else {
             warnings.push(`settings.json providers.${name} models 条目 contextWindow 须为正数（${origin}），该窗口已忽略`);
+          }
+        }
+        if (o.maxOutputTokens !== undefined) {
+          if (typeof o.maxOutputTokens === 'number' && Number.isFinite(o.maxOutputTokens) && o.maxOutputTokens > 0) {
+            itemMaxOut = o.maxOutputTokens;
+          } else {
+            warnings.push(`settings.json providers.${name} models 条目 maxOutputTokens 须为正数（${origin}），该值已忽略`);
+          }
+        }
+        if (o.supportsVideo !== undefined) {
+          if (typeof o.supportsVideo === 'boolean') {
+            itemVideo = o.supportsVideo;
+          } else {
+            warnings.push(`settings.json providers.${name} models 条目 supportsVideo 须为布尔（${origin}），已忽略`);
           }
         }
         if (o.reasoningEffort !== undefined) {
@@ -262,6 +282,8 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         ...(itemTier !== undefined ? { tier: itemTier } : {}),
         ...(itemParams !== undefined ? { params: itemParams } : {}),
         ...(itemEnabled === false ? { enabled: false } : {}),
+        ...(itemMaxOut !== undefined ? { maxOutputTokens: itemMaxOut } : {}),
+        ...(itemVideo === true ? { supportsVideo: true } : {}),
       });
       if (providerEnabled === false || itemEnabled === false) continue; // 停用源/停用模型:列表保真(设置页渲染),choices 不进(/model 不可见)
       choices.push({

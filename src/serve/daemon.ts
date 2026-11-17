@@ -861,6 +861,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // CatalogWriteError→409+hint 沿 mcp/op 同映射；providers 写后链重载——env/模型清单随 settings 链
     // 生效；permissions 装配期语义不 reload；config-changed 帧由写内 notify 直发）
     { method: 'PUT', path: '/settings/providers/op', auth: true, run: (req, res) => this.handleProvidersOp(req, res) },
+    // 提供方连通探测(2026-11-17 用户裁定「模型列表加测试链接图标」):GET {baseUrl}/models,零 token
+    { method: 'POST', path: '/settings/providers/probe', auth: true, run: async (req, res) => configHandlers.handleProvidersProbe(this.configIo, req, res) },
     { method: 'PUT', path: '/settings/permissions/op', auth: true, run: (req, res) => this.handlePermissionsOp(req, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },

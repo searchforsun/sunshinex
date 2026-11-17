@@ -187,8 +187,13 @@ test('upsertProvider add 校验：缺 baseUrl、缺或空 models、models 条目
     const projFile = loadProjectSettings(proj);
     const invalid = (e: unknown): boolean => e instanceof CatalogWriteError && e.code === 'INVALID';
     assert.throws(() => upsertProvider(proj, 'project', 'p', { models: [{ model: 'm' }] }), invalid, '缺 baseUrl 拒收');
-    assert.throws(() => upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1' }), invalid, '缺 models 拒收');
-    assert.throws(() => upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1', models: [] }), invalid, '空 models 拒收');
+    // 2026-11-17 用户裁定「先创建 provider,再在卡片里添加模型」:缺/空 models 均合法(空源保留,无 choices)
+    upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1' });
+    let emptyDoc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { providers: Array<Record<string, unknown>> };
+    assert.deepEqual(emptyDoc.providers[0]!.models, [], '缺 models=空数组落盘(可后补模型)');
+    assert.deepEqual(listProviders(proj).choices, [], '空源不产 choices');
+    fs.rmSync(projFile);
+    assert.throws(() => upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1', models: 'nope' as never }), invalid, 'models 非数组拒收');
     assert.throws(() => upsertProvider(proj, 'project', 'p', { baseUrl: 'https://p/v1', models: [{ model: '  ' }] }), invalid, '模型名空白拒收');
     assert.equal(fs.existsSync(projFile), false, '拒写零盘上副作用（目标文件不因拒写而创建）');
   });
