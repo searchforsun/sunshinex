@@ -1100,7 +1100,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 }.cmd-item.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }.cmd-item.disabled { color: var(--fg-tertiary); cursor: default; }.cmd-item.disabled .cmd-name { text-decoration: line-through; }.cmd-name { font-family: var(--font-mono); font-size: calc(14px * var(--fz)); flex: none; }.cmd-desc { font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* (G12:composer 的 position:relative 收进 .sx-composer 单源) */
 
-/* ===== G10-C5 设置页 Codex 同构(居中窄列/行式=标题+描述+右控件/分组 nav) ===== */.sx-settings-body { max-width: 720px; margin: 0 auto; width: 100%; }.sx-settings-group { padding: 10px 12px 2px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-settings-group-items { list-style: none; margin: 0; padding: 0; }.sx-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; }.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border-subtle); }.sx-setting-main { min-width: 0; }.sx-setting-title { display: flex; align-items: center; gap: 6px; }.sx-setting-desc { margin: 2px 0 0; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-setting-input { width: 240px; flex: none; }select.sx-setting-select { width: 240px; }
+/* ===== G10-C5 设置页 Codex 同构(居中窄列/行式=标题+描述+右控件/分组 nav) ===== */.sx-settings-body { max-width: var(--chat-max, 720px); margin: 0 auto; width: 100%; } /* 2026-11-17 用户裁定「设置内容宽度像正文输入框一样动态调最大宽」:复用 .sx-main 的 --chat-max 阶梯限宽(同源同变量,随窗口/拖宽即时跟) */.sx-settings-group { padding: 10px 12px 2px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-settings-group-items { list-style: none; margin: 0; padding: 0; }.sx-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; }.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border-subtle); }.sx-setting-main { min-width: 0; }.sx-setting-title { display: flex; align-items: center; gap: 6px; }.sx-setting-desc { margin: 2px 0 0; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-setting-input { width: 240px; flex: none; }select.sx-setting-select { width: 240px; }
 
 /* ===== G10-C6 右栏三面板(上下文/后台任务/记忆) ===== */.insight-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 4px; overflow: auto; } /* 2026-11-10 用户裁定:左右 12→4 增大使用面积,左对齐页签条图标、右对称(终端/浏览器/文件/辅助对话不入此容器) */ /* 2026-10-31 用户裁定「边距拓展」:水平 10→12px 与 todo-cards 原边距同宽 */.insight-tab > .todo-cards { padding: 0 4px; height: auto; flex: 1 1 auto; min-height: 0; gap: 8px; } /* 2026-11-11 用户裁定:有边框卡片两侧各收 4px,刷新条不收 */ /* 消双层边距(insight-tab 内卡片流让 insight-tab 统一供 12px,滚动也归 tab) */.insight-tab > .taskboard-cards { padding: 0 4px; height: auto; flex: 1 1 auto; min-height: 0; } /* 任务板刷新钮轮(2026-10-31):同 todo-cards 消双层边距 */.tb-board-bar { margin-bottom: -2px; }.insight-bar { display: flex; gap: 6px; flex: none; } /* 刷新点击反馈(2026-10-31 用户裁定「点击后转一下圈」):拉取在途图标自转,落定即停 */.sx-changes-act .sx-fetching { animation: sx-spin 0.9s linear infinite; }.insight-summary { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.ctx-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.ctx-part { display: flex; align-items: center; gap: 8px; font-size: calc(14px * var(--fz)); }.ctx-part-id { width: 90px; flex: none; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ctx-part-bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); overflow: hidden; }.ctx-part-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }.ctx-part-num { width: 64px; flex: none; text-align: right; color: var(--fg-tertiary); font-family: var(--font-mono); font-size: calc(14px * var(--fz)); }.bgtask-list, .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.bgtask-row, .mem-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.bgtask-row:hover, .mem-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.bgtask-label, .mem-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.bgtask-status { flex: none; }.bgtask-running .bgtask-status { color: var(--fg); }.bgtask-done .bgtask-status { color: var(--ok); }.bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }.mem-date { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; } /* 2026-11-04 时标图标按 todo-card-time 配方(gap4 垂直居中) */
 
@@ -3257,12 +3257,12 @@ input.sx-setting-input { width: 100%; }
    ①编辑抽屉→居中模态(sx-editor-modal-*:遮罩+居中,Cancel/×/Esc/遮罩点击=关,Save=提交);
    ②资源页工具栏三件套入页(sx-res-toolbar:作用域下拉|搜索弹性|添加钮一行) */
 .sx-editor-modal-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.sx-editor-modal { width: min(90vw, 640px); max-height: 80vh; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; }
-.sx-editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.sx-editor-modal { width: min(92vw, 880px); max-height: 86vh; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; } /* 2026-11-17 用户裁定「弹窗尽量大一些,信息不要挤在一起」:640→880/80vh→86vh */
+.sx-editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
 .sx-editor-modal-head h3 { margin: 0; font-size: calc(14px * var(--fz)); }
 .sx-editor-modal-close { border: none; background: transparent; color: var(--fg-icon); font-size: calc(16px * var(--fz)); line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
 .sx-editor-modal-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.sx-editor-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
+.sx-editor-modal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 18px 20px; overflow-y: auto; }
 .sx-editor-modal-fields { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 .sx-editor-modal-actions { margin-top: auto; }
 .sx-res-toolbar { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
@@ -4278,3 +4278,38 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    同件同尺寸,布局小件本卡私有(点+词+计数的行内排布) */
 .sx-sunxboard-chip { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; white-space: nowrap; }
 .sx-sunxboard-chip .tb-status-dot { position: static; transform: none; }
+
+
+/* ===== 2026-11-17 设置面现代化(用户裁定「卡片式选择,不要小选择元素;能选择不手输;信息不挤」) ===== */
+/* 弹窗内 agent 选择卡片组(团队成员/创建智能体):网格卡片=名+id+描述,点击整卡切换选中 */
+.sx-agent-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.sx-agent-card {
+  position: relative; display: flex; flex-direction: column; gap: 6px; text-align: left;
+  padding: 12px 14px; background: var(--surface-soft); border: 1px solid var(--border);
+  border-radius: var(--radius-md); cursor: pointer; color: var(--fg); font: inherit;
+  transition: border-color var(--dur-basic) var(--ease-enter), background var(--dur-basic) var(--ease-enter);
+}
+.sx-agent-card:hover:not(:disabled) { border-color: var(--border-strong); }
+.sx-agent-card.on { border-color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, var(--surface-soft)); }
+.sx-agent-card-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sx-agent-card-name { font-size: calc(14px * var(--fz)); font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-agent-card-id { font: calc(14px * var(--fz)) var(--font-mono); font-size: calc(12px * var(--fz)); color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-agent-card-desc { font-size: calc(14px * var(--fz)); line-height: 1.5; color: var(--fg-tertiary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sx-agent-card-check { position: absolute; top: 10px; right: 10px; color: var(--fg); }
+/* 自定义成员 chips 行(内联输入+回车/添加钮入列,chip 可摘除) */
+.sx-custom-members { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sx-custom-members .sx-chip { display: inline-flex; align-items: center; gap: 6px; }
+.sx-custom-chip-x { display: inline-flex; border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; padding: 0; }
+.sx-custom-chip-x:hover { color: var(--err); }
+.sx-custom-add { display: flex; gap: 6px; min-width: 220px; flex: 1 1 220px; }
+.sx-custom-add input { flex: 1; min-width: 0; }
+.sx-custom-add button { flex: none; padding: 5px 14px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
+.sx-custom-add button:hover:not(:disabled) { border-color: var(--border-strong); }
+/* 多选选项 chip 组(插件配置 multi 项):checkbox 退役→可切换 chip */
+.sx-chip-toggle { display: inline-flex; align-items: center; padding: 5px 14px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 999px; color: var(--fg-secondary); cursor: pointer; font: calc(14px * var(--fz)) var(--font-ui); transition: all var(--dur-basic) var(--ease-enter); }
+.sx-chip-toggle:hover { border-color: var(--border-strong); color: var(--fg); }
+.sx-chip-toggle.on { background: var(--fg); border-color: var(--fg); color: var(--fg-on-solid); }
+/* 开关行(弹窗内布尔项:checkbox 退役→Switch+文案行) */
+.sx-switch-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+.sx-switch-row .sx-switch-row-label { font-size: calc(14px * var(--fz)); color: var(--fg); }
+.sx-switch-row .sx-mcp-hint { color: var(--fg-tertiary); }

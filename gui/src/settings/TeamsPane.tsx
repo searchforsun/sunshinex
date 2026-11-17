@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentsView, BuiltinRole, TeamEntryView, TeamFrontmatterInput, TeamsOpInput, TeamsView } from '../connection';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
 import { ClampBlock } from '../clamp-block';
@@ -123,6 +123,17 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<TeamFormState | null>(null);
   const [formError, setFormError] = useState('');
+
+  /** 自定义成员 chips(2026-11-17 用户裁定「支持自定义 agent id,卡片式添加」):extraMembers 空格串
+   *  存储形态不变(提交合并单点不触),chip 列表只是它的可视形态;回车/添加钮入列,chip 摘除回写 */
+  const customMembers = form?.extraMembers.split(/\s+/).filter((x) => x !== '') ?? [];
+  const [customDraft, setCustomDraft] = useState('');
+  const addCustomMember = (): void => {
+    const id = customDraft.trim();
+    if (id === '' || form === null || customMembers.includes(id)) { setCustomDraft(''); return; }
+    setForm({ ...form, extraMembers: [...customMembers, id].join(' ') });
+    setCustomDraft('');
+  };
   /** 卡面章程详情全文缓存(2026-11-05 用户裁定:详情展开=320px 固定高纵滚,编辑器同高)——
    *  key=`${source}:${id}`;展开首拍拉 teamBody 全文,失败回退 bodyPreview(防重拉循环) */
   const [bodyMap, setBodyMap] = useState<Record<string, string>>({});
@@ -149,19 +160,20 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
     load();
   }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉（config-changed teams 键消费面）
 
-  /** 已知 agent id 面（成员复选数据源，R3）：builtins 四角色先+注册清单后，按 id 去重保首现 */
+  /** 已知 agent 面（成员卡片数据源，R3；2026-11-17 用户裁定「卡片展示信息,不要 checkbox」）：
+   *  builtins 四角色先+注册清单后，按 id 去重保首现；desc=卡片描述行(builtins framing/注册 description) */
   const seenKnown = new Set<string>();
-  const knownAgents: Array<{ id: string; name: string }> = [];
+  const knownAgents: Array<{ id: string; name: string; desc?: string }> = [];
   for (const b of known.builtins) {
     if (!seenKnown.has(b.role)) {
       seenKnown.add(b.role);
-      knownAgents.push({ id: b.role, name: b.name });
+      knownAgents.push({ id: b.role, name: b.name, desc: b.framing });
     }
   }
   for (const e of known.view.entries) {
     if (!seenKnown.has(e.id)) {
       seenKnown.add(e.id);
-      knownAgents.push({ id: e.id, name: e.name });
+      knownAgents.push({ id: e.id, name: e.name, desc: e.description });
     }
   }
 
@@ -429,26 +441,70 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
           <ModalField label={t('version (optional)', 'version(可选)')}>
             <input className="sx-setting-input" aria-label="team version" value={form.version} placeholder="0.1.0" onChange={(e) => setForm({ ...form, version: e.target.value })} spellCheck={false} />
           </ModalField>
-          {/* R3 成员组合形态：已知 agent id 复选列表（builtins 四角色+注册清单，`id — name`）
-              + 额外 id 手输（空格分隔）——提交合并去重保首现（submitDrawer 单点） */}
+          {/* R3 成员组合形态(2026-11-17 用户裁定「卡片式选择智能体+支持自定义 agent id」):
+              已知 agent=网格卡片(名+id+描述,点击整卡切换);自定义成员=chips 行内输入(回车/添加钮
+              入列,chip 摘除)——extraMembers 空格串存储形态不变,提交合并去重保首现(submitDrawer 单点) */}
           <ModalField label={t('Members (known agents)', '成员(已知智能体)')}>
-            <div className="sx-team-members">
-              {knownAgents.map((k) => (
-                <label key={k.id} className="sx-drawer-field sx-check-row">
-                  <input
-                    type="checkbox"
+            <div className="sx-agent-pick">
+              {knownAgents.map((k) => {
+                const on = form.members.includes(k.id);
+                return (
+                  <button
+                    type="button"
+                    key={k.id}
+                    role="checkbox"
+                    aria-checked={on}
                     aria-label={`team member ${k.id}`}
-                    checked={form.members.includes(k.id)}
-                    onChange={(e) => setForm({ ...form, members: e.target.checked ? [...form.members, k.id] : form.members.filter((m) => m !== k.id) })}
-                  />
-                  {`${k.id} — ${k.name}`}
-                </label>
-              ))}
-              {knownAgents.length === 0 && <span className="sx-agent-desc">{t('No known agents; type ids below.', '无已知智能体;请在下方手输 id。')}</span>}
+                    className={`sx-agent-card${on ? ' on' : ''}`}
+                    onClick={() => setForm({ ...form, members: on ? form.members.filter((m) => m !== k.id) : [...form.members, k.id] })}
+                  >
+                    <span className="sx-agent-card-head">
+                      <span className="sx-agent-card-name">{k.name}</span>
+                      <span className="sx-agent-card-id">{k.id}</span>
+                    </span>
+                    {k.desc !== undefined && <span className="sx-agent-card-desc">{k.desc}</span>}
+                    {on && <Check size={16} strokeWidth={2} className="sx-agent-card-check" aria-hidden="true" />}
+                  </button>
+                );
+              })}
+              {knownAgents.length === 0 && <span className="sx-agent-desc">{t('No known agents; add custom members below.', '无已知智能体;请在下方添加自定义成员。')}</span>}
             </div>
           </ModalField>
-          <ModalField label={t('Extra members (space-separated)', '额外成员(空格分隔)')} hint={t('Agent ids not listed above', '上方未列出的 agent id')}>
-            <input className="sx-setting-input" aria-label="team extra members" value={form.extraMembers} onChange={(e) => setForm({ ...form, extraMembers: e.target.value })} spellCheck={false} />
+          <ModalField label={t('Custom members', '自定义成员')} hint={t('Type an agent id and press Enter — no need to pre-create it on the agents page', '输入 agent id 回车即加,无需先到智能体页创建')}>
+            <div className="sx-custom-members">
+              {customMembers.map((m) => (
+                <span key={m} className="sx-chip">
+                  {m}
+                  <button
+                    type="button"
+                    className="sx-custom-chip-x"
+                    aria-label={`${t('Remove', '移除')} ${m}`}
+                    onClick={() => setForm({ ...form, extraMembers: customMembers.filter((x) => x !== m).join(' ') })}
+                  >
+                    <X size={12} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </span>
+              ))}
+              <span className="sx-custom-add">
+                <input
+                  className="sx-setting-input"
+                  aria-label="team custom member"
+                  placeholder={t('agent id, Enter to add', 'agent id,回车添加')}
+                  value={customDraft}
+                  onChange={(e) => setCustomDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      addCustomMember();
+                    }
+                  }}
+                  spellCheck={false}
+                />
+                <button type="button" disabled={customDraft.trim() === ''} onClick={addCustomMember}>
+                  {t('Add', '添加')}
+                </button>
+              </span>
+            </div>
           </ModalField>
           <ModalField label={t('Team leader', '团队领导者')}>
             <Select
@@ -458,10 +514,10 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
               onChange={(v) => setForm({ ...form, lead: v })}
             />
           </ModalField>
-          <label className="sx-drawer-field sx-check-row">
-            <input type="checkbox" aria-label="team enabled" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-            {t('enabled (takes effect in new sessions)', 'enabled(新会话装配生效)')}
-          </label>
+          <div className="sx-switch-row">
+            <Switch on={form.enabled} onToggle={() => setForm({ ...form, enabled: !form.enabled })} ariaLabel="team enabled" />
+            <span className="sx-switch-row-label">{t('enabled (takes effect in new sessions)', 'enabled(新会话装配生效)')}</span>
+          </div>
           <ModalField label={t('Body (team.md charter)', '章程(team.md body)')}>
             <textarea aria-label="team body" className="sx-team-body-editor" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} spellCheck={false} />
           </ModalField>

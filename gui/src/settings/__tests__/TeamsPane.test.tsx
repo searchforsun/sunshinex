@@ -176,10 +176,12 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     await waitFor(() => expect(bodyCalls).toEqual([['project', 'core', '/w/proj']]));
     const bodyArea = screen.getByLabelText('team body') as HTMLTextAreaElement;
     await waitFor(() => expect(bodyArea.value).toBe('full charter text'));
-    // 成员复选数据源=builtins∪entries,行显 `id — name`
-    expect(screen.getByText('builder — Builder')).toBeDefined();
-    expect(screen.getByText('dev — Developer')).toBeDefined();
-    expect(screen.getByText('writer — Scribe')).toBeDefined();
+    // 成员卡片数据源=builtins∪entries(2026-11-17 卡片化:名+id+描述分列,不再 `id — name` 单行)
+    const devCard = screen.getByLabelText('team member dev');
+    expect(devCard.textContent).toContain('Developer');
+    expect(devCard.getAttribute('aria-checked')).toBe('true'); // dev=原 lead 在成员集,卡显选中
+    expect(screen.getByLabelText('team member dev').textContent).toContain('Developer');
+    expect(screen.getByText('Scribe')).toBeDefined();
     fireEvent.change(screen.getByLabelText('team name'), { target: { value: 'Core renamed' } });
     fireEvent.change(screen.getByLabelText('team description'), { target: { value: '  docs  ' } });
     fireEvent.change(screen.getByLabelText('team version'), { target: { value: '0.2.0' } });
@@ -233,7 +235,8 @@ describe('TeamsPane(卡片化+成员多选+启停)', () => {
     fireEvent.change(screen.getByLabelText('team name'), { target: { value: 'Core Team' } });
     fireEvent.click(screen.getByLabelText('team member builder'));
     fireEvent.click(screen.getByLabelText('team member dev'));
-    fireEvent.change(screen.getByLabelText('team extra members'), { target: { value: 'writer   builder ' } }); // 与勾选重复 → 去重保首现
+    fireEvent.change(screen.getByLabelText('team custom member'), { target: { value: 'writer   builder ' } });
+    fireEvent.keyDown(screen.getByLabelText('team custom member'), { key: 'Enter' }); // chips 形态:回车入列(空白分隔合并去重保首现)
     fireEvent.click(screen.getByText('Save'));
     expect(await screen.findByRole('alert')).toBeDefined(); // kebab 词法行内拦(daemon 400 同文案)
     expect(opCalls).toEqual([]);

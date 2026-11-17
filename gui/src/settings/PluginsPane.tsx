@@ -411,16 +411,11 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
             const value = form.values[k] ?? '';
             const checked = value !== '' ? value === 'true' : effDefault === true;
             return s.type === 'boolean' ? (
-              <label key={k} className="sx-drawer-field sx-check-row">
-                <input
-                  type="checkbox"
-                  aria-label={k}
-                  checked={checked}
-                  onChange={(e) => setForm({ ...form, values: { ...form.values, [k]: e.target.checked ? 'true' : 'false' } })}
-                />
-                {k}
-                {s.description !== undefined && <span className="sx-mcp-hint">{s.description}</span>}
-              </label>
+              <ModalField key={k} label={k} hint={s.description}>
+                <div className="sx-switch-row">
+                  <Switch on={checked} onToggle={() => setForm({ ...form, values: { ...form.values, [k]: checked ? 'false' : 'true' } })} ariaLabel={k} />
+                </div>
+              </ModalField>
             ) : s.options !== undefined && s.options.length > 0 && s.multi === true ? (
               <ModalField key={k} label={k} hint={s.description}>
                 <div className="sx-plugin-opt-row" role="group" aria-label={k}>
@@ -428,18 +423,20 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
                     const picked = value.split(',').map((x) => x.trim()).filter((x) => x !== '');
                     const on = picked.includes(o);
                     return (
-                      <label key={o} className="sx-drawer-field sx-check-row">
-                        <input
-                          type="checkbox"
-                          aria-label={`${k}:${o}`}
-                          checked={on}
-                          onChange={(e) => {
-                            const next = e.target.checked ? [...picked, o] : picked.filter((x) => x !== o);
-                            setForm({ ...form, values: { ...form.values, [k]: next.join(',') } });
-                          }}
-                        />
+                      <button
+                        key={o}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={on}
+                        aria-label={`${k}:${o}`}
+                        className={`sx-chip-toggle${on ? ' on' : ''}`}
+                        onClick={() => {
+                          const next = on ? picked.filter((x) => x !== o) : [...picked, o];
+                          setForm({ ...form, values: { ...form.values, [k]: next.join(',') } });
+                        }}
+                      >
                         {optLabelOf(k, o)}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>

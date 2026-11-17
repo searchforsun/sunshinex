@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsOpInput, AgentsView, BuiltinRole } from '../connection';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
 
@@ -367,10 +367,10 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
           <ModalField label="description">
             <input className="sx-setting-input" aria-label="agent description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} spellCheck={false} />
           </ModalField>
-          <label className="sx-drawer-field sx-check-row">
-            <input type="checkbox" aria-label="agent memory" checked={form.memory} onChange={(e) => setForm({ ...form, memory: e.target.checked })} />
-            {t('memory (own memory)', 'memory(自有记忆)')}
-          </label>
+          <div className="sx-switch-row">
+            <Switch on={form.memory} onToggle={() => setForm({ ...form, memory: !form.memory })} ariaLabel="agent memory" />
+            <span className="sx-switch-row-label">{t('memory (own memory)', 'memory(自有记忆)')}</span>
+          </div>
           <ModalField label="isolation">
             <Select
               ariaLabel="agent isolation"
