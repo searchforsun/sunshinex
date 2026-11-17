@@ -23,12 +23,12 @@ export function useChatTerminalDock({ conn, sessionId, root, sideChat }: {
   useEffect(() => { setDockOpen(loadDockSession(sessionId).open); }, [sessionId]);
   /** 2026-11-17 用户裁定「非开发者模式下终端是关的」:普通态恒关(设置行同时隐藏),开发者模式才读 settings·terminalDock */
   const dev = useDeveloperMode();
-  const [dockEnabled, setDockEnabled] = useState(true);
+  const [dockEnabled, setDockEnabled] = useState(false); // 2026-11-17 用户裁定「终端缺省关」:缺省不启用
   const dockCfgTicks = useConfigChanged(conn);
   useEffect(() => {
     if (typeof conn.settings !== 'function') return; // 测试桩/旁路面:无设置面即保缺省开
     conn.settings(root).then(
-      (view) => setDockEnabled(view.keys.find((k) => k.key === 'terminalDock')?.value !== 'off'),
+      (view) => setDockEnabled(view.keys.find((k) => k.key === 'terminalDock')?.value === 'on'), // 显式 on 才启用(缺省关)
       () => undefined,
     );
   }, [conn, root, dockCfgTicks.settings]);

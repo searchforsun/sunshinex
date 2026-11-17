@@ -36,12 +36,12 @@ export function readUsageStats(): boolean {
 }
 
 function apply(on: boolean): void {
-  applyAttr();
   try {
     localStorage.setItem(LS_KEY, on ? '1' : '0');
   } catch {
     /* 隐私模式等持久化失败:仅内存态生效,不阻断 */
   }
+  applyAttr(); // 落根属性须在写档之后(先 applyAttr 会读到上一值,开关与行为错位)
   notifyUiPref(PREF_KEY, on ? '1' : '0');
   for (const fn of listeners) fn();
 }

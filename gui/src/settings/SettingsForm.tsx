@@ -175,7 +175,7 @@ const SELECT_DEFAULT_VALUES: Record<string, string> = {
   autoMemory: 'on',
   learnedSkills: 'on',
   agentTeams: 'on',
-  terminalDock: 'on',
+  terminalDock: 'off',
   websearchProvider: 'bing-html',
 };
 const modelCombo = (key: string): SettingsFieldDef => ({ key, control: 'combo' });
