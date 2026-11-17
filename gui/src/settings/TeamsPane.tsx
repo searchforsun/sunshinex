@@ -421,13 +421,13 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
           }}
           onSubmit={submitDrawer}
         >
-          <ModalField label="id">
+          <ModalField label={t('Id', '标识')}>
             <input className="sx-setting-input" aria-label="team id" value={form.id} readOnly={form.editing} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="core-team" spellCheck={false} />
           </ModalField>
-          <ModalField label="name">
+          <ModalField label={t('Name', '名称')}>
             <input className="sx-setting-input" aria-label="team name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
           </ModalField>
-          <ModalField label="description">
+          <ModalField label={t('Description', '描述')}>
             <input className="sx-setting-input" aria-label="team description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} spellCheck={false} />
           </ModalField>
           <ModalField label={t('Version', '版本')}>

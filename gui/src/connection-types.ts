@@ -317,6 +317,8 @@ export interface ProviderChoice {
  *  ParsedProviderEntry.models——文件显式值；tier/reasoningEffort 宽化为 string 同 choices 口径） */
 export interface ProviderEntryModel {
   model: string;
+  /** 模型级启停(2026-11-17 用户裁定「模型支持单独禁用」):false=停用(/model 不可见,条目保留) */
+  enabled?: boolean;
   contextWindow?: number;
   reasoningEffort?: string;
   supportsImages?: boolean;

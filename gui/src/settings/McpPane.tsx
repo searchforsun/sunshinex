@@ -607,18 +607,8 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
           onSubmit={submitDrawer}
         >
           {drawer.mode === 'edit' && drawer.seedNote !== '' && <p className="sx-mcp-hint">{drawer.seedNote}</p>}
-          <p className="sx-mcp-hint">
-            {t(
-              'Env/header values are masked — saving rewrites the whole entry; the Source tab shows the full JSON.',
-              '环境变量/请求头值已打码——保存将整条改写;「源码」Tab 可见完整 JSON。',
-            )}
-          </p>
-          <p className="sx-mcp-hint">
-            {t(
-              'A non-empty Source tab overrides the form on save — clear it to edit via the form; switching tabs keeps its content.',
-              '「源码」非空时保存整条以 JSON 为准——清空后方可用表单编辑;切 Tab 不清内容。',
-            )}
-          </p>
+          {/* 顶部说明撤除(2026-11-17 用户裁定「mcp 去掉顶部多余描述」):打码/源码优先等实现口径
+              不占用户视线,字段标签与 Tab 自身已表意 */}
           <ModalTabs
             tabs={[
               { id: 'config', label: t('Config', '配置') },

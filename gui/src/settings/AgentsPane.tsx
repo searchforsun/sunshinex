@@ -358,20 +358,21 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
               isolation/executor 原生自由输入换共享 Select(闭集=daemon 写面枚举守卫同域:
               isolation 仅 worktree、executor 仅 internal-team|external-cli——catalog/agents.ts
               写面即拒越型值;''=Unset 显式项保「清空即键不落」提交形状零变化) */}
-          <ModalField label="id">
+          <ModalField label={t('Id', '标识')}>
             <input className="sx-setting-input" aria-label="agent id" value={form.id} readOnly={form.editing} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="writer" spellCheck={false} />
           </ModalField>
-          <ModalField label="name">
+          <ModalField label={t('Name', '名称')}>
             <input className="sx-setting-input" aria-label="agent name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} spellCheck={false} />
           </ModalField>
-          <ModalField label="description">
+          <ModalField label={t('Description', '描述')}>
             <input className="sx-setting-input" aria-label="agent description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} spellCheck={false} />
           </ModalField>
-          <div className="sx-switch-row">
+          {/* 与团队弹窗同形(2026-11-17 用户裁定「智能体也要一致,中文 i18n,开关」):开关左置+中文标签 */}
+          <div className="sx-switch-row sx-switch-row-lead">
             <Switch on={form.memory} onToggle={() => setForm({ ...form, memory: !form.memory })} ariaLabel="agent memory" />
-            <span className="sx-switch-row-label">{t('memory (own memory)', 'memory(自有记忆)')}</span>
+            <span className="sx-switch-row-label">{t('Own memory', '自有记忆')}</span>
           </div>
-          <ModalField label="isolation">
+          <ModalField label={t('Isolation', '隔离')}>
             <Select
               ariaLabel="agent isolation"
               value={form.isolation}
@@ -382,7 +383,7 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
               onChange={(v) => setForm({ ...form, isolation: v })}
             />
           </ModalField>
-          <ModalField label="executor">
+          <ModalField label={t('Executor', '执行器')}>
             <Select
               ariaLabel="agent executor"
               value={form.executor}
@@ -394,8 +395,8 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
               onChange={(v) => setForm({ ...form, executor: v })}
             />
           </ModalField>
-          <ModalField label={t('Body (agent.md body)', '正文(agent.md body)')}>
-            <textarea aria-label="agent body" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={4} spellCheck={false} />
+          <ModalField label={t('Instructions', '指令正文')}>
+            <textarea aria-label="agent body" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} rows={6} spellCheck={false} />
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>

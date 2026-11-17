@@ -63,6 +63,9 @@ export function listProviders(root: string | null): { providers: ProviderEntry[]
 /** models 条目输入面（写面只收对象形态——字符串速记是文件装载的宽容形态，不入写面） */
 export interface ProviderModelInput {
   model: string;
+  /** 模型级启停(2026-11-17 用户裁定「模型支持单独禁用」):缺省启用,false=停用(保留条目,
+   *  /model 选择卡不可见)——写面直落 settings.json models[].enabled */
+  enabled?: boolean;
   tier?: ModelTier;
   contextWindow?: number;
   reasoningEffort?: ReasoningEffort;
@@ -180,6 +183,7 @@ function normalizeModelEntry(label: string, input: ProviderModelInput): ParsedPr
   }
   return {
     model,
+    ...(input.enabled === false ? { enabled: false } : {}),
     ...(input.contextWindow !== undefined ? { contextWindow: input.contextWindow } : {}),
     ...(input.reasoningEffort !== undefined ? { reasoningEffort: input.reasoningEffort } : {}),
     ...(input.supportsImages !== undefined ? { supportsImages: input.supportsImages } : {}),

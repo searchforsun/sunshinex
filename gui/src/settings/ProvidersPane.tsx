@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, Switch } from './components';
 import { Select } from './controls';
 import { sanitizeRequestParams } from '../../../src/model/request-params';
 import type { ProviderEntry, ProviderOpInput, SettingsView } from '../connection';
@@ -101,6 +101,8 @@ interface ParamRow {
  *  条目显式值透传保全位——行编辑不建模该键,update 整组替换时原样带回防丢) */
 interface ModelRow {
   model: string;
+  /** 模型级启停(2026-11-17 用户裁定「模型支持单独禁用」):缺省启用;false=停用(/model 不可见) */
+  enabled: boolean;
   contextWindow: string;
   reasoningEffort: string;
   tier: string;
@@ -121,7 +123,7 @@ interface DrawerForm {
  *  用户裁定)——写作用域恒 global,无 source 维度 */
 type DrawerState = { mode: 'add' } | { mode: 'edit'; original: string };
 
-const EMPTY_ROW: ModelRow = { model: '', contextWindow: '', reasoningEffort: '', tier: '', params: [] };
+const EMPTY_ROW: ModelRow = { model: '', enabled: true, contextWindow: '', reasoningEffort: '', tier: '', params: [] };
 const EMPTY_FORM: DrawerForm = { name: '', baseUrl: '', apiKey: '', rows: [{ ...EMPTY_ROW, params: [] }] };
 
 /** 参数值回显：字符串原样(免引号噪声),其余 JSON 序列化(数字/布尔/null/数组/对象) */
@@ -140,6 +142,7 @@ const paramValueOf = (text: string): unknown => {
 const rowsOfEntry = (e: ProviderEntry): ModelRow[] =>
   e.models.map((m) => ({
     model: m.model,
+    enabled: m.enabled !== false,
     contextWindow: m.contextWindow !== undefined ? String(m.contextWindow) : '',
     reasoningEffort: m.reasoningEffort ?? '',
     tier: m.tier ?? '',
@@ -159,7 +162,7 @@ const mergeReseedRows = (fresh: ProviderEntry, local: ModelRow[]): ModelRow[] =>
   }
   return rowsOfEntry(fresh).map((fr) => {
     const l = byModel.get(fr.model);
-    return l === undefined ? fr : { ...fr, contextWindow: l.contextWindow, reasoningEffort: l.reasoningEffort, tier: l.tier, params: l.params };
+    return l === undefined ? fr : { ...fr, enabled: l.enabled, contextWindow: l.contextWindow, reasoningEffort: l.reasoningEffort, tier: l.tier, supportsImages: l.supportsImages, params: l.params };
   });
 };
 
@@ -284,6 +287,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       const params = sanitized.params;
       models.push({
         model,
+        ...(r.enabled === false ? { enabled: false } : {}),
         ...(contextWindow !== undefined ? { contextWindow } : {}),
         ...(r.reasoningEffort !== '' ? { reasoningEffort: r.reasoningEffort } : {}),
         ...(r.tier !== '' ? { tier: r.tier } : {}),
@@ -478,15 +482,30 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
               全部 aria-label 沿用 */}
           <ModalField label={t('Models (name / context window / effort / tier / params)', '模型(名称/上下文窗口/强度/档位/参数)')}>
             {form.rows.map((r, i) => (
-              <div key={i} className="sx-provider-modelrow">
-                <input
-                  className="sx-setting-input"
-                  aria-label={t('Model name', '模型名')}
-                  placeholder={t('Model name', '模型名')}
-                  value={r.model}
-                  onChange={(e) => setRow(i, { model: e.target.value })}
-                  spellCheck={false}
-                />
+              <div key={i} className={`sx-provider-modelrow${r.enabled ? '' : ' off'}`}>
+                {/* 列表行头(2026-11-17 用户裁定「模型支持单独禁用,列表形式,标识特点」):启停开关
+                    + 模型名 + 特点 chips(视觉/档位/窗口);停用行整行调暗、模型名行内说明 */}
+                <div className="sx-provider-modelhead">
+                  <Switch
+                    on={r.enabled}
+                    onToggle={() => setRow(i, { enabled: !r.enabled })}
+                    ariaLabel={`${t('Enable model', '启用模型')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
+                  />
+                  <input
+                    className="sx-setting-input sx-provider-modelname"
+                    aria-label={t('Model name', '模型名')}
+                    placeholder={t('Model name', '模型名')}
+                    value={r.model}
+                    onChange={(e) => setRow(i, { model: e.target.value })}
+                    spellCheck={false}
+                  />
+                  <span className="sx-provider-chips">
+                    {r.supportsImages === true && <span className="sx-provider-chip">{t('Vision', '视觉')}</span>}
+                    {r.tier !== '' && <span className="sx-provider-chip">{t(TIER_PAIRS[r.tier as keyof typeof TIER_PAIRS]?.en ?? r.tier, TIER_PAIRS[r.tier as keyof typeof TIER_PAIRS]?.zh ?? r.tier)}</span>}
+                    {r.contextWindow.trim() !== '' && <span className="sx-provider-chip">{r.contextWindow.trim()}</span>}
+                    {r.enabled === false && <span className="sx-provider-chip warn">{t('Disabled', '已停用')}</span>}
+                  </span>
+                </div>
                 <div className="sx-provider-model-params">
                   <input
                     className="sx-setting-input"
@@ -510,6 +529,16 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                     options={[{ v: '', l: t('Default', '默认') }, ...MODEL_TIERS.map((v) => ({ v, l: t(TIER_PAIRS[v].en, TIER_PAIRS[v].zh) }))]}
                     onChange={(v) => setRow(i, { tier: v })}
                   />
+                  {/* 视觉能力标记(2026-11-17 用户裁定「标识是否视觉等」):显式声明 supportsImages */}
+                  <label className="sx-provider-vision">
+                    <input
+                      type="checkbox"
+                      aria-label={`${t('Supports images', '支持图片')} ${r.model.trim() !== '' ? r.model.trim() : i + 1}`}
+                      checked={r.supportsImages === true}
+                      onChange={(e) => setRow(i, { supportsImages: e.target.checked ? true : undefined })}
+                    />
+                    <span>{t('Vision', '视觉')}</span>
+                  </label>
                 </div>
                 {/* 自定义请求参数(键值对并入请求体):值文本保存时按 JSON 化型——true/1/{"a":1}
                     取字面值,否则原样字符串;协议字段由服务端与前置校验双重拒收 */}
