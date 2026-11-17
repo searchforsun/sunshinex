@@ -9,6 +9,7 @@ import { groupEntriesByDay } from '../../chat-groups';
 import type { ChatEntry } from '../../chat-reducer';
 import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 import { SunxMark } from '../../sunx-icon';
+import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { useUsageStats } from '../../usage-stats';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
@@ -546,14 +547,21 @@ export function MessageList(props: MessageListProps): JSX.Element {
     >
         {/* 2026-10-26 对话刻度导航条:左侧 sticky 悬浮(不参与内容流),余量自适应显隐 */}
         <ChatRail entries={visible} chatScrollRef={chatScrollRef} sideChat={sideChat} />
-        {entries.length === 0 && (
-          <div className={`chat-empty${sunxName !== undefined ? ' chat-empty-sunx' : ''}`} aria-label="chat empty">
-            {/* Sunx 欢迎面名片标(2026-11-17 用户裁定「欢迎页要加上这个图标,和普通会话的产品图标
-                分开」):Sunx 空态=产品标志 hero(与标准会话的轨道标 WelcomeLogo 各归各面),
-                辅助对话/标准会话空态零标 */}
-            {sideChat !== true && sunxName !== undefined && <SunxMark size={72} className="chat-empty-mark" />}
-            <div className="chat-empty-title">{sideChat === true ? t('Side chat', '辅助对话') : sunxName !== undefined ? t(`Give ${sunxName} a goal`, `给 ${sunxName} 一个目标`) : t('Give Sunshinex a task', '给 Sunshinex 一个任务')}</div>
-            <div className="chat-empty-hint">{sideChat === true ? t('Questions here do not affect the main task', '提问不影响主任务') : sunxName !== undefined ? t('Describe the goal, it handles the rest', '说明目标即可交由它完成') : t('Risky actions are confirmed before running', '危险操作执行前会先确认')}</div>
+        {/* 空会话=对应欢迎页 hero(2026-11-17 用户裁定「去掉过时空态,空会话直接显示对应欢迎页」:
+            标准会话=WelcomeLogo+欢迎标语(与欢迎页同件同尺),Sunx 会话=SunxMark 名片标+目标标语;
+            原居中「给 Sunshinex 一个任务」旧空态(误读为加载态)退役;辅助对话面保留极简标示） */}
+        {entries.length === 0 && sideChat !== true && (
+          <div className={`chat-empty chat-empty-welcome${sunxName !== undefined ? ' chat-empty-sunx' : ''}`} aria-label="chat empty">
+            {sunxName !== undefined ? <SunxMark size={72} className="chat-empty-mark" /> : <WelcomeLogo />}
+            <h1 className="welcome-tagline">
+              {sunxName !== undefined ? t(`Give ${sunxName} a goal`, `给 ${sunxName} 一个目标`) : t('What should we do today?', '今天要做些什么？')}
+            </h1>
+          </div>
+        )}
+        {entries.length === 0 && sideChat === true && (
+          <div className="chat-empty" aria-label="chat empty">
+            <div className="chat-empty-title">{t('Side chat', '辅助对话')}</div>
+            <div className="chat-empty-hint">{t('Questions here do not affect the main task', '提问不影响主任务')}</div>
           </div>
         )}
         {hiddenCount > 0 && (
