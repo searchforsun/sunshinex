@@ -48,8 +48,11 @@ export function useChatScroll(deps: {
   /** 最近一次滚动事件的距底值(2026-11-18 落点固化):display:none 后元素几何全零,切走当拍
    *  读不到真实位置——用滚动期持续更新的镜像代替隐藏态读取 */
   readonly lastDistRef?: MutableRefObject<number>;
+  /** 最近一次滚动的内容锚(非贴底时更新;切回时非空=锚式落点接管,本 hook 不写距底位——
+   *  距底反推对总高变化敏感(实测顶部切回偏 1520px),锚式由 MessageList 按块坐标落) */
+  readonly lastAnchorRef?: MutableRefObject<{ key: string; off: number } | undefined>;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
-  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false, stickSuppressRef, lastDistRef } = deps;
+  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false, stickSuppressRef, lastDistRef, lastAnchorRef } = deps;
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
@@ -209,7 +212,8 @@ useEffect(() => {
         if (chatStickRef.current) {
           el.scrollTop = el.scrollHeight;
           markProgBottom(el);
-        } else if (saved !== null) {
+        } else if (saved !== null && lastAnchorRef?.current === undefined) {
+          // 有锚:MessageList 按块坐标落点(距底反推受总高变化影响,顶部位实测偏 1.5k)
           el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - saved.dist);
         }
       });

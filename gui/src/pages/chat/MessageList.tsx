@@ -13,6 +13,7 @@ import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { useUsageStats } from '../../usage-stats';
 import { dayUnitSpans, firstUnitAt, prefixOffsets, sliceRange, unitEstimate } from './transcript-units';
 import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
+import { peekScrollAnchor } from './scroll-mem';
 import type { UnitSpan } from './transcript-units';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
@@ -739,6 +740,24 @@ export function MessageList(props: MessageListProps): JSX.Element {
     pendingRevealRef.current = null;
     landOnUnit(pending.key, pending.off);
   }, [unitIndexOfEntry, chatScrollRef]);
+
+  /** 切回驻留座的锚式落点(2026-11-18 落点固化):active false→true 且存档有锚时,按块坐标
+   *  落点——距底反推受总高实测变化影响(顶部位实测偏 1.5k),锚式与挂载/高度无关 */
+  const prevActiveRef = useRef(props.active !== false);
+  useLayoutEffect(() => {
+    const on = props.active !== false;
+    const was = prevActiveRef.current;
+    prevActiveRef.current = on;
+    if (!on || was) return;
+    if (!virtualRef.current) return;
+    const scope = props.heightScope ?? '';
+    if (scope === '') return;
+    const a = peekScrollAnchor(scope);
+    if (a === null) return; // 贴底/无锚:距底或贴底路径接管
+    if (unitIndexByKeyRef.current.get(a.key) === undefined) return;
+    if (props.chatStickRef !== undefined) props.chatStickRef.current = false;
+    landOnUnit(a.key, a.off);
+  }, [props.active, props.heightScope, props.chatStickRef]);
 
   /** 锚式恢复(2026-11-18 虚拟窗口):按存档块坐标落点——目标在窗口外先扩窗(虚拟挂载下扩窗
    *  不挂 DOM,代价=建块对象),块就位后 landOnUnit 落点并实测收敛。只应用一次 */

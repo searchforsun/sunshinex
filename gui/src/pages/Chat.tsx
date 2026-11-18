@@ -168,6 +168,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const stickSuppressRef = useRef(false);
   /** 滚动距底镜像(隐藏态几何全零时切走当拍读取的替代;见 useChatScroll deps 注) */
   const chatLastDistRef = useRef(0);
+  /** 滚动内容锚镜像(非贴底每拍更新;切回锚式落点数据源,同 scroll-mem 存档) */
+  const chatAnchorRef = useRef<{ key: string; off: number } | undefined>(undefined);
   useChatLocate({ todoFocus, leaderFocus, chatScrollRef, chatStickRef });
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
@@ -308,6 +310,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     skipRestore: scrollRestoreAnchorRef.current !== null,
     stickSuppressRef,
     lastDistRef: chatLastDistRef,
+    lastAnchorRef: chatAnchorRef,
   });
   const { collapsedRuns, toggleRun, hiddenKeys, onEntryToggleClick, onEntryOpenDiff, onEntryRestore } = useChatFold({
     chat,
@@ -588,7 +591,11 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     chatStickRef.current = stick;
     setAtBottom(dist < 80);
     if (el.scrollHeight - el.clientHeight > 80) {
-      saveScrollPos(archiveKey, stick ? 0 : dist, stick ? undefined : chatAnchorOf(el));
+      const anchor = stick ? undefined : chatAnchorOf(el);
+      chatAnchorRef.current = anchor;
+      saveScrollPos(archiveKey, stick ? 0 : dist, anchor);
+    } else {
+      chatAnchorRef.current = undefined;
     }
   };
   /** 滚轮上翻立即脱离贴底:与 scroll 非对称闩互补(scroll 事件晚于 wheel 时也先放手);
