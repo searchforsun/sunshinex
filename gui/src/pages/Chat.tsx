@@ -581,6 +581,9 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
    *  跳底钮仍用 80 显隐(近底不闪钮)。 */
   const handleChatScroll = (e: { currentTarget: HTMLElement }): void => {
     const el = e.currentTarget;
+    // 2026-11-18 落点固化:隐藏驻留座(display:none)期间浏览器钳位 scrollTop 也会派 scroll,
+    // 此刻几何全零——照常存档会写入垃圾距底/垃圾锚(实测 o=6952),切回落点随即错乱。忽略之
+    if (el.clientHeight === 0) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     const prog = isProgBottom(el, el.scrollTop);
     const moved = Math.abs(el.scrollTop - chatLastTopRef.current) > 1;
