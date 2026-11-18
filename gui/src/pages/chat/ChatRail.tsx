@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
 import type { ChatEntry } from '../../chat-reducer';
 import { t } from '../../i18n';
@@ -72,22 +72,30 @@ export function ChatRail(props: {
   // 显隐+锚点+中线实测(RO 三值):余量=paddingLeft−18 判显隐;滚动口左缘/中线视觉坐标除以
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
-  const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
-  // 每部分回复正文(2026-10-31 用户裁定:取该轮**最后一个**正文条——流式/思考分段会把一轮拆成
-  // 多条 assistant,末条=收束全文;首条常只是开头段。持续覆盖直至下一用户消息)
-  const replyByKey = new Map<string, string>();
-  {
-    let pendingKey: string | null = null;
-    for (const e of entries) {
-      if (e.kind === 'user') {
-        pendingKey = e.md.trim() !== '' ? e.key : null;
-        continue;
-      }
-      if (pendingKey !== null && e.kind === 'assistant' && e.md.trim() !== '') {
-        replyByKey.set(pendingKey, previewText(e.md));
+  /** 刻度行数据一次算好随 entries 封存(2026-11-18 大会话滚动 CPU 轮):旧实现每次渲染现算
+   *  filter+replyByKey+N 份 previewText(正则剥 markdown),滚动期 activeIdx 每变一次=整条刻度
+   *  重渲染一遍——上千条会话即每秒数万次正则的 CPU 尖峰。预览串只随消息内容变,不与滚动相关 */
+  const rows = useMemo(() => {
+    const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
+    // 每部分回复正文(2026-10-31 用户裁定:取该轮**最后一个**正文条——流式/思考分段会把一轮拆成
+    // 多条 assistant,末条=收束全文;首条常只是开头段。持续覆盖直至下一用户消息)
+    const replyByKey = new Map<string, string>();
+    {
+      let pendingKey: string | null = null;
+      for (const e of entries) {
+        if (e.kind === 'user') {
+          pendingKey = e.md.trim() !== '' ? e.key : null;
+          continue;
+        }
+        if (pendingKey !== null && e.kind === 'assistant' && e.md.trim() !== '') {
+          replyByKey.set(pendingKey, previewText(e.md));
+        }
       }
     }
-  }
+    return users.map((u) => ({ key: u.key, pv: previewText(u.md), reply: replyByKey.get(u.key) }));
+  }, [entries]);
+  /** 键 → 刻度序(滚动判定用;随 rows 封存) */
+  const keyIdx = useMemo(() => new Map(rows.map((r, i) => [r.key, i])), [rows]);
   // 锚点直写 style 不经 React 提交(十三轮半,果冻效应根因):left/top 若走 state,重渲染
   // 落地比测量晚一拍——拖三栏滑动线/开关菜单时锚点追着布局跑,刻度悬在半空不落新边框。
   // show 仍走 state(挂卸载决策,翻转由 layout effect 当帧补锚)
@@ -167,46 +175,98 @@ export function ChatRail(props: {
       inner.style.top = `${a.top}px`;
     }
   }, [show, chatScrollRef]);
-  /** 当前滚动位置正对的刻度(九轮):视口顶下 120px 分界——最后一条顶边越线的用户气泡;
+  /** 当前滚动位置正对的刻度(九轮):视口下缘上 40px 分界——最后一条顶边越线的用户气泡;
    *  scroll rAF 节流单点,加重显色不加长(长度变化只在 hover)。
    *  十二轮半:DOM .entry-user 与刻度序列不再同序同长(纯图/空 md 用户气泡进 DOM 不进刻度),
-   *  按 data-entry-key 键寻址——越线的最后一只带键气泡反查刻度序,无键气泡跳过 */
-  const [activeIdx, setActiveIdx] = useState(-1);
+   *  按 data-entry-key 键寻址——越线的最后一只带键气泡反查刻度序。
+   *  2026-11-18 大会话滚动 CPU 轮(用户实测「打开多个会话后滑动 CPU 高」,上千条产品口径):
+   *  ①气泡节点表一次收集、按 rows 签名失效——旧实现每滚动帧 querySelectorAll 全表;
+   *  ②二分查越线气泡(O(log N) 次盒读,文档序=纵向序)——旧实现逐只 gBCR 严格 O(N)/帧;
+   *  ③加亮直改 DOM class,不走 state——旧实现每变一次 activeIdx 整条刻度重渲染(N 按钮+N 预览);
+   *  ④80ms 节流 + 尾帧补算:加亮是视觉指示,不需要逐帧。 */
+  const activeRef = useRef(-1);
+  const tickRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const applyActive = useCallback((idx: number): void => {
+    if (activeRef.current === idx) return;
+    const prev = tickRefs.current[activeRef.current];
+    if (prev !== undefined && prev !== null) prev.classList.remove('active');
+    activeRef.current = idx;
+    const next = tickRefs.current[idx];
+    if (next !== undefined && next !== null) next.classList.add('active');
+  }, []);
+  // rows 更替(或刻度条重挂)后新按钮无 active 类:按仍有效的旧序号补回(超界归 -1)
+  useLayoutEffect(() => {
+    if (activeRef.current >= rows.length) activeRef.current = -1;
+    const el = tickRefs.current[activeRef.current];
+    if (el !== undefined && el !== null) el.classList.add('active');
+  }, [rows, show]);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
-    const keyIdx = new Map(users.map((u, i) => [u.key, i]));
+    if (sideChat === true || rows.length < MIN_USERS) return;
     let raf = 0;
+    let trailing: ReturnType<typeof setTimeout> | null = null;
+    let lastAt = 0;
+    let nodes: Element[] = [];
+    let nodesSig = '';
+    const collect = (): Element[] => {
+      const sig = `${rows.length}:${rows[rows.length - 1]?.key ?? ''}`;
+      if (sig === nodesSig && nodes.length > 0 && nodes[0]!.isConnected) return nodes;
+      nodesSig = sig;
+      nodes = Array.from(el.querySelectorAll('.entry-user[data-entry-key]'));
+      return nodes;
+    };
+    const compute = (): void => {
+      lastAt = performance.now();
+      const list = collect();
+      if (list.length === 0) {
+        applyActive(-1);
+        return;
+      }
+      // 判定线=滚动口下缘上 40px(2026-10-28 用户裁定:加粗刻度=「输入框上面那个会话」,
+      // 旧 top+120 以视口顶为准,与尾随阅读位不符);取线上最后一只带键气泡反查刻度序
+      const line = el.getBoundingClientRect().bottom - 40;
+      let lo = 0;
+      let hi = list.length - 1;
+      let hit = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (list[mid]!.getBoundingClientRect().top <= line) {
+          hit = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
+      }
+      applyActive(hit < 0 ? -1 : (keyIdx.get(list[hit]!.getAttribute('data-entry-key') ?? '') ?? -1));
+    };
     const onScroll = (): void => {
       // 隐藏态(辅助对话/消息不足)不排动画帧:贴底跟随测试以 rAF 计数为不变量面,
-      // 且隐藏态 activeIdx 无意义;可见性随 users.length 变化由 effect 依赖重跑承接
-      if (raf !== 0 || sideChat === true || users.length < MIN_USERS) return;
+      // 且隐藏态无意义;可见性随 rows.length 变化由 effect 依赖重跑承接
+      if (raf !== 0 || trailing !== null) return;
       raf = requestAnimationFrame(() => {
         raf = 0;
-        const nodes = el.querySelectorAll('.entry-user[data-entry-key]');
-        // 判定线=滚动口下缘上 40px(2026-10-28 用户裁定:加粗刻度=「输入框上面那个会话」,
-        // 旧 top+120 以视口顶为准,与尾随阅读位不符);取线上最后一只带键气泡反查刻度序
-        const line = el.getBoundingClientRect().bottom - 40;
-        let idx = -1;
-        nodes.forEach((n) => {
-          if (n.getBoundingClientRect().top <= line) {
-            const ui = keyIdx.get(n.getAttribute('data-entry-key') ?? '');
-            if (ui !== undefined) idx = ui;
-          }
-        });
-        setActiveIdx(idx);
+        if (performance.now() - lastAt < 80) {
+          trailing = setTimeout(() => {
+            trailing = null;
+            compute();
+          }, 80);
+          return;
+        }
+        compute();
       });
     };
-    onScroll();
+    compute();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
       el.removeEventListener('scroll', onScroll);
       if (raf !== 0) cancelAnimationFrame(raf);
+      if (trailing !== null) clearTimeout(trailing);
     };
-  }, [chatScrollRef, users.length]);
+  }, [chatScrollRef, rows, keyIdx, sideChat, applyActive]);
 
   // 辅助对话/<2 条用户消息/余量不足放不下变长刻度:整条不渲染(用户裁定)
-  if (sideChat === true || users.length < MIN_USERS || !show) return <></>;
+  if (sideChat === true || rows.length < MIN_USERS || !show) return <></>;
 
 
   const jump = (index: number): void => {
@@ -214,7 +274,7 @@ export function ChatRail(props: {
     if (el === null) return;
     // 键寻址(十二轮半):DOM 用户气泡集 ⊇ 刻度序列(纯图/空 md 进 DOM 不进刻度),按序号
     // 反查会错位——按 data-entry-key 直取目标气泡
-    const target = users[index];
+    const target = rows[index];
     if (target === undefined) return;
     let node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
     if (node === null) {
@@ -268,13 +328,22 @@ export function ChatRail(props: {
         aria-label={t('Session outline rail', '会话刻度导航')}
       >
         <div className="sx-rail-list">
-          {users.map((u, i) => (
-            <button key={u.key} type="button" className={`sx-rail-tick${i === activeIdx ? ' active' : ''}`} aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)} onClick={() => jump(i)}>
+          {rows.map((r, i) => (
+            <button
+              key={r.key}
+              ref={(el) => {
+                tickRefs.current[i] = el;
+              }}
+              type="button"
+              className="sx-rail-tick"
+              aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)}
+              onClick={() => jump(i)}
+            >
               {/* hover 预览卡内容(2026-10-31 用户裁定改版:仅 hover 文字内容变)——前段=用户输入
                   (亮色,2 行封顶),后段=该轮回复正文(暗色,2 行封顶),各自 line-clamp 多余省略 */}
               <span className="sx-rail-preview">
-                <span className="sx-rail-pv-user">{previewText(u.md)}</span>
-                {replyByKey.get(u.key) !== undefined && <span className="sx-rail-pv-reply">{replyByKey.get(u.key)}</span>}
+                <span className="sx-rail-pv-user">{r.pv}</span>
+                {r.reply !== undefined && <span className="sx-rail-pv-reply">{r.reply}</span>}
               </span>
               <span className="sx-rail-bar" />
             </button>

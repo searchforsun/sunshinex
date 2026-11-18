@@ -13,6 +13,9 @@ export function useChatSessionInfo(deps: {
   readonly conn: Connection;
   readonly sessionId: string;
   readonly chat: ChatState;
+  /** 前台座门(2026-11-18 多会话卡顿轮):隐藏驻留座停 4s 上下文轮询/收尾刷新——隐藏席
+   *  status 冻在离开时值,「运行中」会无限轮询;切回 active 翻转自动补一次(见 refreshCtx 依赖) */
+  readonly active?: boolean;
 }): {
   modelInfo: SessionModelInfo | null;
   setModelInfo: Dispatch<SetStateAction<SessionModelInfo | null>>;
@@ -20,7 +23,7 @@ export function useChatSessionInfo(deps: {
   refreshCtx: () => void;
   runCount: number;
 } {
-  const { conn, sessionId, chat } = deps;
+  const { conn, sessionId, chat, active = true } = deps;
   const [modelInfo, setModelInfo] = useState<SessionModelInfo | null>(null);
   const cfgTicks = useConfigChanged(conn);
 /** 模型 pill 数据源(G10-C4):挂载即拉(choices 空=不可切,钮隐藏);settings/providers 变更帧到来重拉——
@@ -48,14 +51,15 @@ useEffect(() => {
   refreshCtx();
 }, [refreshCtx]);
 useEffect(() => {
+  if (!active) return; // 隐藏驻留座:零后台轮询(切回 active 翻转重跑本 effect 补一次刷新)
   if (chat.status !== 'idle') return; // run 收尾刷新(运行中由下方轮询与悬停面覆盖)
   refreshCtx();
-}, [chat.status, refreshCtx]); // eslint-disable-line react-hooks/exhaustive-deps -- status 回 idle 即轮尾信号
+}, [chat.status, refreshCtx, active]); // eslint-disable-line react-hooks/exhaustive-deps -- status 回 idle 即轮尾信号
 useEffect(() => {
-  if (chat.status !== 'running') return;
+  if (!active || chat.status !== 'running') return;
   const iv = setInterval(refreshCtx, 4000);
   return () => clearInterval(iv);
-}, [chat.status, refreshCtx]);
+}, [chat.status, refreshCtx, active]);
 /** 会话任务轮数(run 条计数——圆环弹层「轮次」;回放种子条同口径) */
 const runCount = chat.entries.reduce((n, e) => (e.kind === 'run' ? n + 1 : n), 0);
   return { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount };

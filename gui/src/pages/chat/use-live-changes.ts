@@ -36,6 +36,29 @@ export function notifyGitChanged(): void {
 
 const POLL_MS = 10_000;
 
+/** 同会话短窗合并(2026-11-18 多会话卡顿轮实测):/changes 单次 689–745ms(大会话/大仓
+ *  `git status`+numstat 口径),而每个 Chat 有两条消费线(live 改动条 + 顶栏总改动)同拍各发
+ *  一发——单线程 daemon 被同一 session 的重复请求插队。以 sessionId 为键共享 250ms 内的在途
+ *  /已落定 Promise(只够吃掉同拍双双发;不做长 TTL——git-changed 事件必须看到新鲜值)。
+ *  隐藏驻留座不轮询由调用面 enabled 门控(Chat 传 active)。 */
+const CHANGES_SHARE_MS = 250;
+const changesShare = new Map<string, { at: number; p: Promise<{ files: LiveChangeFile[] } | null> }>();
+function shareChanges(sessionId: string, run: () => Promise<{ files: LiveChangeFile[] } | null>): Promise<{ files: LiveChangeFile[] } | null> {
+  const now = performance.now();
+  const hit = changesShare.get(sessionId);
+  if (hit !== undefined && now - hit.at < CHANGES_SHARE_MS) return hit.p;
+  const p = run();
+  changesShare.set(sessionId, { at: now, p });
+  if (changesShare.size > 8) {
+    const oldest = changesShare.keys().next().value;
+    if (oldest !== undefined) changesShare.delete(oldest);
+  }
+  p.catch(() => {
+    if (changesShare.get(sessionId)?.p === p) changesShare.delete(sessionId);
+  });
+  return p;
+}
+
 export function useLiveGitChanges(
   /** 返回 null=非 git 目录(2026-11-10:checkpoint 面 git 无关,改动卡回落轮记录原样)或拉取失败——
    *  live 缺场时 visibleRunChanges 回落轮记录,轮次数据仍可见 */
@@ -58,7 +81,7 @@ export function useLiveGitChanges(
       return;
     }
     const gen = ++genRef.current;
-    f().then(
+    shareChanges(sessionId, f).then(
       (r) => {
         if (gen === genRef.current) setFiles(r === null ? null : r.files);
       },

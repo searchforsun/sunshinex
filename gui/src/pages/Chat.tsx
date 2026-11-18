@@ -303,7 +303,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   /** Sunx 显示名单点(2026-11-17):kind 已由打开链 hint 首帧定格;标题未载回落品牌名 'Sunx'
    *  (空名会让 hero/占位露「给  一个目标」) */
   const sunxLabel = kind === SESSION_KIND_SUNX ? (displayTitle.trim() !== '' ? displayTitle.trim() : 'Sunx') : undefined;
-  const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat });
+  const { modelInfo, setModelInfo, ctxInfo, refreshCtx, runCount } = useChatSessionInfo({ conn, sessionId, chat, active });
 
   /** 命令执行中(2026-10-31 用户裁定「命令运行态=可插入的运行态,可中断」):命令三态系统行未收终态
    *  (result 未到)即运行中——与 run 同权进 running(composer 显停止钮/插入占位,Enter 走 steer 排队;
@@ -323,17 +323,19 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
       : undefined,
     sessionId,
     running,
-    hasRunChanges,
+    active && hasRunChanges,
   );
   // 顶栏总改动(2026-11-10 用户裁定「主会话顶部实时展示 +A −D,点击开审查页」):独立于改动卡的
-  // enabled 门(有 run 改动记录才拉)——主会话恒拉(辅助会话不拉,零 git 开销);live 缺场=null 不渲染
+  // enabled 门(有 run 改动记录才拉)——主会话恒拉(辅助会话不拉,零 git 开销);live 缺场=null 不渲染。
+  // 2026-11-18 多会话卡顿轮:/changes 实测 689–745ms(单线程 daemon),隐藏驻留座恒停轮询——
+  // 切回合再随 enabled 翻转重拉一次(useLiveGitChanges effect 依赖 enabled)
   const topbarLive = useLiveGitChanges(
     sideChat !== true && typeof conn.sessionChanges === 'function'
       ? () => conn.sessionChanges(sessionId).then((r) => (r.branch === '' ? null : { files: r.files }))
       : undefined,
     sessionId,
     running,
-    sideChat !== true,
+    active && sideChat !== true,
   );
   const changesTotal = useMemo(() => {
     const files = topbarLive;
