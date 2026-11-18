@@ -12,6 +12,7 @@ import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { useUsageStats } from '../../usage-stats';
 import { dayUnitSpans, firstUnitAt, prefixOffsets, sliceRange } from './transcript-units';
+import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
 import type { UnitSpan } from './transcript-units';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
@@ -112,6 +113,8 @@ export interface MessageListProps {
   /** 虚拟窗口锚式恢复位(2026-11-18):块 key + 块顶相对视口偏移(负值)。与 Chat 的距底存档互斥
    *  接管(有锚=skipRestore);只读一次,应用后忽略 */
   readonly restoreAnchor?: { key: string; off: number };
+  /** 高度表归档作用域(会话档键,同滚动存档):重挂命中上次实测高度,滚动条/恢复一次到位 */
+  readonly heightScope?: string;
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
@@ -309,7 +312,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
   if (cut > 0) {
     while (cut > 0 && hiddenKeys.has(entries[cut]!.key)) cut -= 1;
   }
-  const visible = useMemo(() => (cut > 0 ? entries.slice(cut) : entries), [entries, cut]);
+  /** 尾部窗口只在无布局面(jsdom)保留(测试锚:入口 80/步进/回放/冻结);真浏览器=全量模型——
+   *  虚拟窗口只挂视口切片,千条会话无需「显示更早」逐段解锁(2026-11-18 结构性改造完全体) */
+  const windowed = LAYOUT_FREE;
+  const visible = useMemo(() => (windowed && cut > 0 ? entries.slice(cut) : entries), [windowed, entries, cut]);
   const hiddenCount = entries.length - visible.length;
   /** P1 派生冻结:日分组骨架 memo(区间切分随骨架缓存),成员数组 dayGroups 逐渲染按区间
    *  slice 重绑最新条目引用(流式尾行实时)——语义与逐帧全量分组等价,省去逐帧 Intl 构造 */
@@ -333,7 +339,9 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const viewHRef = useRef(viewH);
   const rangeRef = useRef<{ first: number; last: number } | null>(range);
   rangeRef.current = range;
-  const heightsRef = useRef<Map<string, number>>(new Map());
+  /** 高度表=会话档持久表(重挂命中上次实测值;reference 即持久档,RO 写入直接落档) */
+  const [heightsMap] = useState<Map<string, number>>(() => unitHeightsFor(props.heightScope ?? ''));
+  const heightsRef = useRef<Map<string, number>>(heightsMap);
   const unitElsRef = useRef<Map<string, HTMLElement>>(new Map());
   const offsetsRef = useRef<number[]>([0]);
   const unitIndexByKeyRef = useRef<Map<string, number>>(new Map());
@@ -352,15 +360,36 @@ export function MessageList(props: MessageListProps): JSX.Element {
     label: s.label,
     entries: visible.slice(s.start, s.end),
   })), [daySkeleton, visible]);
-  /** 块序列(虚拟列表挂载单位;纯投影,不建 React 元素) */
+  /** 块序列(虚拟列表挂载单位;纯投影,不建 React 元素)。2026-11-18 全量模型:千条会话每次渲染
+   *  重切全部分组会吃掉流式预算——按组缓存(键=组序号/键/首末条目;折叠态变更整表清空),渲染期
+   *  只做扁平化(O(组数)+数组引用拷贝) */
+  const spanCacheRef = useRef(new Map<string, UnitSpan[]>());
+  const spanHiddenRef = useRef(hiddenKeys);
+  if (spanHiddenRef.current !== hiddenKeys) {
+    spanHiddenRef.current = hiddenKeys;
+    spanCacheRef.current.clear();
+  }
   const units = useMemo(() => {
+    const cache = spanCacheRef.current;
     const out: UnitSpan[] = [];
+    const live = new Set<string>();
     for (let gi = 0; gi < dayGroups.length; gi += 1) {
       const g = dayGroups[gi]!;
-      out.push(...dayUnitSpans(gi, g.key, g.label, g.entries, hiddenKeys, office, isCommandEntry, isOfficeHiddenNotice));
+      const last = g.entries[g.entries.length - 1];
+      const key = `${structureVersion}:${seedGen}:${gi}:${g.key}:${g.entries.length}:${g.entries[0]?.key ?? ''}:${last?.key ?? ''}`;
+      live.add(key);
+      let spans = cache.get(key);
+      if (spans === undefined) {
+        spans = dayUnitSpans(gi, g.key, g.label, g.entries, hiddenKeys, office, isCommandEntry, isOfficeHiddenNotice);
+        cache.set(key, spans);
+      }
+      for (let i = 0; i < spans.length; i += 1) out.push(spans[i]!);
+    }
+    if (cache.size > live.size * 2) {
+      for (const k of cache.keys()) if (!live.has(k)) cache.delete(k);
     }
     return out;
-  }, [dayGroups, hiddenKeys, office]);
+  }, [dayGroups, hiddenKeys, office, structureVersion, seedGen]);
   const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
   unitIndexByKeyRef.current = unitIndexByKey;
   unitsRef.current = units;
@@ -458,6 +487,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         const old = heightsRef.current.get(key);
         if (old !== undefined && Math.abs(old - h) <= 0.5) continue;
         heightsRef.current.set(key, h);
+        rememberUnitHeight(props.heightScope ?? '', key, h);
         changed = true;
         const idx = unitIndexByKeyRef.current.get(key);
         // 块整体在视口顶之上(底边 ≤ scrollTop):高度差同帧回钉,正在读的内容不前跳
@@ -584,9 +614,20 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
    *  (滚动事件驱动切片),渲染落定后由刻度侧重试轮询收敛(见 ChatRail.seek) */
   const pendingRevealRef = useRef<{ key: string; off: number } | null>(null);
+  const landOnUnitByEntry = (entryKey: string, off: number): void => {
+    const ui = unitIndexOfEntryRef.current.get(entryKey);
+    if (ui === undefined) return;
+    const u = unitsRef.current[ui];
+    if (u !== undefined) landOnUnit(u.key, off);
+  };
   const revealEntry = (key: string): boolean => {
     const idx = entries.findIndex((e) => e.key === key);
     if (idx < 0) return false;
+    if (!windowed) {
+      // 全量模型:无窗口可扩——直接按块坐标落点(虚拟挂载,滚动事件驱动切片)
+      if (virtualRef.current) landOnUnitByEntry(key, 8);
+      return true;
+    }
     const need = entries.length - idx + 8; // 目标下缘再留 8 条缓冲,避免落点贴窗顶
     if (need > visibleCount) {
       windowTargetRef.current = Math.max(windowTargetRef.current, need);
@@ -686,6 +727,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  保证每批挂载后用户视口纹丝不动;与手动「显示更早」/滚顶回放共用同一 visibleCount 计数器,
    *  天花板 RENDER_WINDOW_MAX(超出仍走手动/滚顶)。文档不可见(后台页签)暂停;追平即自然停 */
   useEffect(() => {
+    if (!windowed) return; // 全量模型:无可补(浏览器路径)
     if (props.active === false) return; // 隐藏驻留座:零后台工作(切回时 active 变更重跑本 effect 续补)
     if (entries.length <= visibleCount) return;
     // 上限=min(600, 条数, 窗口目标):目标=挂载缓存窗或用户手动/滚顶回放抬升后的值——
@@ -708,7 +750,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     };
     schedule();
     return () => { alive = false; };
-  }, [entries.length, visibleCount, chatScrollRef, props.active]);
+  }, [entries.length, visibleCount, chatScrollRef, props.active, windowed]);
   /** 窗口变更上抛(2026-11-17 窗口缓存链尾):回放/手动步进每拍上报,Chat 收 ref 镜像卸载随
    *  chatMem 写回——经 propsRef 取最新回调;挂载首拍也报(同值写回幂等) */
   useEffect(() => {

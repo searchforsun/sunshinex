@@ -663,6 +663,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
       <ChatTranscript
         active={active}
         restoreAnchor={scrollRestoreAnchorRef.current ?? undefined}
+        heightScope={archiveKey}
         history={chat.history}
         setChat={setChat}
         initialRenderWindow={renderWindowRef.current}
