@@ -224,6 +224,10 @@ function AppShell(): JSX.Element {
    *  行内语义=React 19.2 <Activity> 的 React 18 手写等价:隐藏实例不注册事件 sink、不播种
    *  (useSessionEvents active 门),切回时轻量重播种(seedSig 同判免整替=零重渲) */
   const [cachedSeats, setCachedSeats] = useState<Array<{ id: string; journalId: string; root: string; kind: string | undefined }>>([]);
+  /** 在座座席表(journalId → 运行时座;2026-11-18):本运行打开过的会话在 daemon 恒在座(无回收,
+   *  仅删除/归档拆座)——侧栏再点该会话可直接复用运行时 id 打开,免 newSession+attach 两次往返
+   *  (实测 attach 198ms=冷进入主延迟)。journal 未铸前以运行时 id 双键登记 */
+  const liveSeatRef = useRef(new Map<string, { sessionId: string; root: string; kind?: string }>());
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
   /** side 父会话表(sideId → 主会话 id;2026-11-07 用户裁定「辅助投影挂到主对话下」):板/委派
@@ -488,6 +492,9 @@ function AppShell(): JSX.Element {
     recordNav({ k: 'chat', sessionId, root, journalId: jid }); // 导航史记录(navLock 回放期自抑制)
     // G14.2xx 恢复现场指针:打开即记应用级档(lastRoot+journal;新会话无 journal 记空——
     // 重启后只回落工作区,不凭空造会话);刷新/重开浏览器据此重放打开链
+    // 在座登记(直达快路径数据源):journal 键 + 运行时键双登记(journal 未铸时侧栏按运行时 id 寻址)
+    liveSeatRef.current.set(jid, { sessionId, root, ...(kindHint !== undefined ? { kind: kindHint } : {}) });
+    if (sessionId !== jid) liveSeatRef.current.set(sessionId, { sessionId, root, ...(kindHint !== undefined ? { kind: kindHint } : {}) });
     void connRef.current
       ?.saveAppGuiState({ v: 1, lastRoot: root, ...(journalId !== undefined && journalId !== '' ? { lastJournalId: journalId } : {}) })
       .catch(() => undefined);
@@ -613,6 +620,16 @@ function AppShell(): JSX.Element {
   const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
   const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
   const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
+  /** 侧栏点会话直达(2026-11-18):在座表命中=直接 openSession 复用运行时(零网络),未命中=false
+   *  走既有 newSession+attach 两步链(首次冷开仍需日志装载,不可免) */
+  const openLiveSeatStable = useStableCallback((journalId: string): boolean => {
+    // 仅会话内切换走直达:从欢迎页点会话=一次「打开」(既有 newSession+attach 链语义/收编核对不变)
+    if (journalId === '' || page !== 'chat') return false;
+    const hit = liveSeatRef.current.get(journalId);
+    if (hit === undefined) return false;
+    openSession(hit.sessionId, hit.root, journalId, false, hit.kind);
+    return true;
+  });
   const newChatFromMenu = useStableCallback((): void => {
     closeMenuDrawer();
     presetCompose(null);
@@ -1039,6 +1056,7 @@ function AppShell(): JSX.Element {
               runningIds={runningIds}
               nav={menuNav}
               onOpenSession={openSessionFromMenu}
+              onOpenLiveSeat={openLiveSeatStable}
               onOpenDirectory={openProjectDirectoryStable}
               onOpenSunxBoard={openSunxBoardFromMenu}
               dirView={menuDir}

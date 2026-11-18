@@ -107,6 +107,9 @@ export interface ProjectMenuProps {
   /** G14.52 活动会话运行态(App 本地权威,model-start 置位/done·error 复位):圆点亮熄以此为准 */
   readonly runningIds?: ReadonlySet<string>;
   readonly onOpenSession: (sessionId: string, root: string, journalId?: string, kind?: string) => void;
+  /** 本运行已打开会话直达(2026-11-18 冷进入提速):命中=App 侧直接复用在座运行时打开(零
+   *  newSession/attach 往返——实测 attach 198ms);未命中返回 false 走既有两步链 */
+  readonly onOpenLiveSeat?: (journalId: string) => boolean;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
@@ -137,7 +140,7 @@ export interface ProjectMenuProps {
 const EMPTY_RUNNING: ReadonlySet<string> = new Set();
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree, onOpenLiveSeat } = props;
   const recentVersion = props.recentVersion ?? 0;
   const pins = props.pins ?? [];
   const persistPins = props.persistPins ?? ((): void => undefined);
@@ -386,6 +389,13 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   busyRef.current = busy;
   const attachJournal = useCallback((root: string, journalId: string, journalUpdatedAt?: number): void => {
     if (busyRef.current) return;
+    // 2026-11-18 直达快路径:本运行已打开过的会话(daemon 在座、运行时 id 有效)直接复用——省
+    // newSession+attach 两次往返(实测 attach 198ms,是冷进入「卡一下才到」的主延迟)
+    if (onOpenLiveSeat?.(journalId) === true) {
+      markSeen(journalId, journalUpdatedAt ?? Date.now());
+      loadWorkspaces();
+      return;
+    }
     setBusy(true);
     setActionError('');
     conn
@@ -404,7 +414,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           setActionError(err instanceof Error ? err.message : String(err));
         },
       );
-  }, [conn, markSeen, markJournal, onOpenSession, loadWorkspaces]);
+  }, [conn, markSeen, markJournal, onOpenSession, loadWorkspaces, onOpenLiveSeat]);
   /** SUNX 条目点击链（sunx P3 Task 3 数据源改向）：attachSunx(journalId) 直寻址重开——域定位/
    *  壳铸造/attach 全链在 daemon 单点（不再 newSession(root)+attach 两步）。busy 防双发/已读压戳/
    *  journal 映射回填/onOpenSession 下发与 attachJournal 同拍；root 取应答真根（域旁车 meta.root） */
@@ -424,7 +434,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         setBusy(false);
         setActionError(errText(err));
       });
-  }, [conn, markSeen, markJournal, onOpenSession, loadWorkspaces]);
+  }, [conn, markSeen, markJournal, onOpenSession, loadWorkspaces, onOpenLiveSeat]);
   /** T6 行内归档(确认 morph 由分区组件行级 confirmId 承载):archiveSession 落库后重拉——
    *  组列表计数 + Recents(loadWorkspaces)、归档层列表(loadArchived,置顶行归档时归档层若
    *  开着需即时回显)与展开组会话行(loadSessions,归档行由服务端列表滤除,T2c)。失败经既有
