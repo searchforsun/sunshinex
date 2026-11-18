@@ -564,6 +564,22 @@ export function MessageList(props: MessageListProps): JSX.Element {
       }
     };
   }, [chatScrollRef]);
+  /** 模型变更后区间重算(2026-11-18 折叠展开缺口):折叠/展开/高度实测改块序列时,区间 state
+   *  里的旧序号已不对应新块——只等滚动事件会漏(点击展开不产生滚动):视口下侧内容不挂载,
+   *  用户看到「展开只有两个轮次」。块/偏移一变即按当前滚动位重算区间,保证视口全覆盖 */
+  useLayoutEffect(() => {
+    if (!virtualRef.current) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const h = el.clientHeight;
+    if (h <= 0) return;
+    const total = offsetsRef.current[offsetsRef.current.length - 1] ?? 0;
+    const top = stick ? Math.max(0, total - h) : el.scrollTop;
+    const r = sliceRange(offsetsRef.current, top, h, VIRTUAL_OVERSCAN);
+    const cur = rangeRef.current;
+    if (cur === null || r.first !== cur.first || r.last !== cur.last) setRange(r);
+  }, [offsets, units, stick, chatScrollRef]);
+
   /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管 */
   useLayoutEffect(() => {
     if (!virtualRef.current || stick) return;

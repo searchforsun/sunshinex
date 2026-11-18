@@ -324,6 +324,21 @@ const mergedThinkingCache = new WeakMap<ChatEntry, { parts: readonly ChatEntry[]
  *  异步落 notice,恰逢思考流式中即被内核封段,续流另起一段——视图上一段思考被拦腰切成两行。思考段之间
  *  只隔旁白(无工具/正文)必属同一思考流(新思考段只在工具调用之后出现),故合并为一行(正文直接拼接——
  *  截断点在句中;秒数相加;键取首段保持稳定),被夹的旁白顺移到合并行之后。无合并时原数组原样返回 */
+/** 无收尾标记的 run(daemon 重启/应用被杀中断)标停止(2026-11-18 用户实测「第一个被中断的没有
+ *  正确显示已中断」「折叠时错误显示复制分叉行」):settlement runmeta 恒带 endedTs,缺 endedTs
+ *  即未收口。仅 idle 快照调用(在途轮不标);kernel 条目与本投影视图同改,后续 mapEntries 不复活 */
+export function markDanglingRunsStopped(s: ChatState): ChatState {
+  let changed = false;
+  const kEntries = s.k.entries.map((e) => {
+    if (e.kind !== 'run' || e.meta?.endedTs !== undefined || e.meta?.stopped === true) return e;
+    changed = true;
+    return { ...e, meta: { ...e.meta, stopped: true as const } };
+  });
+  if (!changed) return s;
+  const entries = s.entries.map((v) => (v.kind === 'run' && v.stopped !== true && v.endedTs === undefined ? { ...v, stopped: true as const } : v));
+  return { ...s, k: { ...s.k, entries: kEntries }, entries, structureVersion: s.structureVersion + 1 };
+}
+
 export function mergeSplitThinking(list: ChatEntry[]): ChatEntry[] {
   let out: ChatEntry[] | null = null;
   for (let i = 0; i < list.length; i += 1) {

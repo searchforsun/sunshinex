@@ -3,7 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq, GuiPlanApprovalReq, GuiPlanDecision, SnapshotResponse } from '../../connection';
 import type { ChatState } from '../../chat-reducer';
-import { applyChatEvent, initialChatState, prependSeed, seedChatFromSnapshot } from '../../chat-reducer';
+import { applyChatEvent, initialChatState, markDanglingRunsStopped, prependSeed, seedChatFromSnapshot } from '../../chat-reducer';
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { ChatSink } from '../Chat';
 
@@ -165,6 +165,9 @@ export function useSessionEvents(deps: {
           // 2026-10-26 三期历史链:尾窗播种(服务端缺省 200)元数据入态——后台加载链(下方 effect)消费
           next = { ...next, history: { total: snap.total ?? snap.messages.length, oldestSeq: snap.oldestSeq ?? 0, hasMore: snap.hasMore === true, complete: snap.hasMore !== true } };
         }
+        // 2026-11-18 中断轮显示修复:非运行态快照里无 endedTs 的 run=重启被杀的中断轮——标停止
+        // (运行条显「已停止」、轮尾复制/分叉行按 stopped 退场);在途轮(status running)不标
+        if (snap.status !== 'running') next = markDanglingRunsStopped(next);
         // fork 分界横幅归 daemon attach 装载面合成(见 session-lifecycle:upToLine 边界 splice,内存态
         // 不落档)——快照 messages 已含横幅条目,GUI 零注入;此前 GUI 重播种追加=每次重进漂到转录底部
         let replayed = false;
