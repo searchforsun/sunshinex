@@ -41,8 +41,12 @@ export function useChatScroll(deps: {
   /** 虚拟窗口锚式恢复接管(2026-11-18):true=距底恢复不写 scrollTop(总高为估算值,反推不可靠;
    *  MessageList 按块坐标落点),只清存档位 */
   readonly skipRestore?: boolean;
+  /** 贴底重贴静默窗(2026-11-18 落点固化):切回驻留座的锚式/距底恢复期间,高度瞬态塌陷会让
+   *  dist<4 一次而把闩翻回 follow=贴底,恢复写完又被逐渲染贴底 effect 拽到底——读取位被吃掉
+   *  (用户实测「每次回来都是底部」)。窗口期内 handleChatScroll/归底 effect 都不得重贴 */
+  readonly stickSuppressRef?: MutableRefObject<boolean>;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
-  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false } = deps;
+  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false, stickSuppressRef } = deps;
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
@@ -51,6 +55,7 @@ export function useChatScroll(deps: {
  *  =每渲染后跑;wheel 上翻与 stick ref 互补。P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop
  *  赋值收进动画帧——同帧多渲染调度一次,回调内重核 stick,放手即弃 */
 useEffect(() => {
+  if (stickSuppressRef?.current === true) return; // 切回恢复静默窗:不得贴底(见 deps 注)
   if (bottomRafRef.current !== null) return;
   bottomRafRef.current = requestAnimationFrame(() => {
     bottomRafRef.current = null;
@@ -178,6 +183,15 @@ useEffect(() => {
     if (!active) return;
     const saved = hiddenScrollRef.current;
     hiddenScrollRef.current = null;
+    const reading = saved !== null && saved.dist > 80;
+    // 阅读位:先同步脱闩,再开静默窗——恢复落点前的 reseed 重渲/高度实测瞬态不得把闩翻回贴底
+    if (reading) {
+      chatStickRef.current = false;
+      if (stickSuppressRef !== undefined) stickSuppressRef.current = true;
+    }
+    const guard = reading && stickSuppressRef !== undefined
+      ? window.setTimeout(() => { stickSuppressRef.current = false; }, 350)
+      : 0;
     let raf1 = 0;
     let raf2 = 0;
     raf1 = requestAnimationFrame(() => {
@@ -195,7 +209,8 @@ useEffect(() => {
     return () => {
       cancelAnimationFrame(raf1);
       cancelAnimationFrame(raf2);
+      if (guard !== 0) window.clearTimeout(guard);
     };
-  }, [active, chatScrollRef, chatStickRef]);
+  }, [active, chatScrollRef, chatStickRef, stickSuppressRef]);
   return { dockRef };
 }
