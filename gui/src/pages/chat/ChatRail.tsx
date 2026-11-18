@@ -59,12 +59,16 @@ function previewText(md: string): string {
 }
 
 export function ChatRail(props: {
-  /** 可见窗内的条目(刻度序列=有正文的用户消息;DOM 气泡按 data-entry-key 键寻址,纯图/空 md 不入列) */
+  /** 全量条目(2026-11-18 用户裁定「刻度条一次加载完」:序列=模型而非挂载窗——冷/后台补齐期
+   *  刻度即刻完整;点击未挂载条目经 onReveal 先扩窗后落点)。DOM 气泡按 data-entry-key 寻址,
+   *  纯图/空 md 不入列 */
   readonly entries: readonly ChatEntry[];
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
   readonly sideChat?: boolean;
+  /** 目标条目未挂载时先扩挂载窗(MessageList 提供:返回是否已挂上);缺省=旧行为(找不到即不跳) */
+  readonly onReveal?: (key: string) => boolean;
 }): JSX.Element {
-  const { entries, chatScrollRef, sideChat } = props;
+  const { entries, chatScrollRef, sideChat, onReveal } = props;
   // 显隐+锚点+中线实测(RO 三值):余量=paddingLeft−18 判显隐;滚动口左缘/中线视觉坐标除以
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
@@ -212,8 +216,20 @@ export function ChatRail(props: {
     // 反查会错位——按 data-entry-key 直取目标气泡
     const target = users[index];
     if (target === undefined) return;
-    const node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
-    if (node === null) return;
+    let node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
+    if (node === null) {
+      // 未挂载条目(刻度已全量、挂载窗未覆盖):先扩窗,渲染落定后再落点(两帧:state→commit→layout)
+      if (onReveal === undefined || !onReveal(target.key)) return;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const n2 = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
+          if (n2 === null) return;
+          el.scrollTop += n2.getBoundingClientRect().top - el.getBoundingClientRect().top;
+          rAFConverge(el, () => n2.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => { el.scrollTop += d; }, 2);
+        });
+      });
+      return;
+    }
     // 落点要准(用户裁定,不要平滑滑动):.entry 挂 content-visibility:auto,离屏条目
     // 只有估算高(contain-intrinsic-size),scrollIntoView 一次到位按估算高算滚动量必落偏——
     // 即时跳到位后按目标真实盒位置迭代校正;上方条目陆续水合会把目标继续推偏,迭代骨架

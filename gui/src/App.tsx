@@ -223,7 +223,7 @@ function AppShell(): JSX.Element {
    *  刻度条原样,零重挂零分批。只驻留最近一个;再切走/回欢迎页即替换释放(内存有界)。
    *  行内语义=React 19.2 <Activity> 的 React 18 手写等价:隐藏实例不注册事件 sink、不播种
    *  (useSessionEvents active 门),切回时轻量重播种(seedSig 同判免整替=零重渲) */
-  const [cachedSeat, setCachedSeat] = useState<{ id: string; journalId: string; root: string; kind: string | undefined } | null>(null);
+  const [cachedSeats, setCachedSeats] = useState<Array<{ id: string; journalId: string; root: string; kind: string | undefined }>>([]);
   /** G14.29 辅助会话 sink 表(sideId → sink ref):连接帧按键路由到旁路 Chat(板/委派/子智能体不聚) */
   const sideSinksRef = useRef<Map<string, MutableRefObject<ChatSink | null>>>(new Map());
   /** side 父会话表(sideId → 主会话 id;2026-11-07 用户裁定「辅助投影挂到主对话下」):板/委派
@@ -447,9 +447,17 @@ function AppShell(): JSX.Element {
     }
     // 热切换 keep-alive:切走前把当前会话座登记为驻留座(状态即将被新会话覆写,须先取)。
     // page==='chat' 门:New chat 只切页不清会话态——从欢迎页开新会话时旧 Chat 已不在显示,
-    // 不应凭空驻留(否则白建一棵隐藏树,且测试的「无 s1 条目串扰」契约被打破)
-    if (page === 'chat' && sessionId !== openSessionId && openSessionId !== '') {
-      setCachedSeat({ id: openSessionId, journalId: openJournalId, root: openRoot, kind: openKind });
+    // 不应凭空驻留(否则白建一棵隐藏树,且测试的「无 s1 条目串扰」契约被打破)。
+    // 2026-11-18 二轮:驻留最近 2 个(LRU)——三个会话轮转皆无感,内存仍封顶;
+    // 目标座若在驻留表中则移出(它回前台,不是驻留)
+    {
+      const prev = page === 'chat' && sessionId !== openSessionId && openSessionId !== ''
+        ? { id: openSessionId, journalId: openJournalId, root: openRoot, kind: openKind }
+        : null;
+      setCachedSeats((list) => {
+        const next = list.filter((s) => s.id !== sessionId);
+        return prev !== null ? [prev, ...next.filter((s) => s.id !== prev.id)].slice(0, 2) : next;
+      });
     }
     sessionRef.current = sessionId;
     const jid = journalId !== undefined && journalId !== '' ? journalId : sessionId;
@@ -514,7 +522,7 @@ function AppShell(): JSX.Element {
 
   /** 返回欢迎态的壳层清场(记录面分离:backHome 记史,导航回放经 applyNav 复用本函数) */
   const leaveToWelcome = useStableCallback((): void => {
-    setCachedSeat(null); // 回欢迎页释放驻留 DOM(内存有界;再开走 chatMem 快路径)
+    setCachedSeats([]); // 回欢迎页释放驻留 DOM(内存有界;再开走 chatMem 快路径)
     sessionRef.current = '';
     setOpenSessionId('');
     setOpenJournalId('');
@@ -1114,25 +1122,25 @@ function AppShell(): JSX.Element {
                 onRewind={onRewindStable}
               />
               </div>
-              {cachedSeat !== null && cachedSeat.id !== openSessionId && (
-                <div className="sx-chat-seat sx-chat-cache" key={`seat:${cachedSeat.id}`} aria-hidden="true">
+              {cachedSeats.filter((cs) => cs.id !== openSessionId).map((cs) => (
+                <div className="sx-chat-seat sx-chat-cache" key={`seat:${cs.id}`} aria-hidden="true">
                   <ChatMemo
-                    key={cachedSeat.id}
+                    key={cs.id}
                     active={false}
                     conn={connInstance}
-                    sessionId={cachedSeat.id}
+                    sessionId={cs.id}
                     connState={connState}
                     onBack={noopSeat}
                     sinkRef={chatSinkRef}
                     chatMem={chatMem}
-                    journalId={cachedSeat.journalId}
-                    root={cachedSeat.root}
-                    kindHint={cachedSeat.kind}
+                    journalId={cs.journalId}
+                    root={cs.root}
+                    kindHint={cs.kind}
                     board={EMPTY_SEAT_BOARD}
                     teams={EMPTY_SEAT_TEAMS}
                   />
                 </div>
-              )}
+              ))}
               </>
             ) : connInstance !== null ? (
               <>

@@ -477,6 +477,20 @@ export function MessageList(props: MessageListProps): JSX.Element {
   }
   const visible = cut > 0 ? entries.slice(cut) : entries;
   const hiddenCount = entries.length - visible.length;
+  /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
+   *  隐藏行回退同口径,load 后同帧 DOM 即有该气泡);返回是否已覆盖(=可立即落点) */
+  const revealEntry = (key: string): boolean => {
+    const idx = entries.findIndex((e) => e.key === key);
+    if (idx < 0) return false;
+    const need = entries.length - idx + 8; // 目标下缘再留 8 条缓冲,避免落点贴窗顶
+    if (need > visibleCount) {
+      windowTargetRef.current = Math.min(RENDER_WINDOW_MAX, Math.max(windowTargetRef.current, need));
+      captureAnchor();
+      setVisibleCount(Math.min(RENDER_WINDOW_MAX, need));
+      return false; // 本帧尚未挂载,渲染落定后跳转侧重试
+    }
+    return true;
+  };
   const showEarlier = (): void => {
     captureAnchor();
     windowTargetRef.current = Math.min(RENDER_WINDOW_MAX, Math.max(windowTargetRef.current, visibleCount + RENDER_WINDOW_STEP));
@@ -555,7 +569,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       }}
     >
         {/* 2026-10-26 对话刻度导航条:左侧 sticky 悬浮(不参与内容流),余量自适应显隐 */}
-        <ChatRail entries={visible} chatScrollRef={chatScrollRef} sideChat={sideChat} />
+        <ChatRail entries={entries} chatScrollRef={chatScrollRef} sideChat={sideChat} onReveal={revealEntry} />
         {/* 空会话=对应欢迎页 hero(2026-11-17 用户裁定「去掉过时空态,空会话直接显示对应欢迎页」:
             标准会话=WelcomeLogo+欢迎标语(与欢迎页同件同尺),Sunx 会话=SunxMark 名片标+目标标语;
             原居中「给 Sunshinex 一个任务」旧空态(误读为加载态)退役;辅助对话面保留极简标示） */}

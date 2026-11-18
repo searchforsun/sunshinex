@@ -992,6 +992,34 @@ describe('会话流尾部窗口(D48)', () => {
     }
   });
 
+  it('刻度条按全量模型一次画完(2026-11-18 用户裁定):挂载窗 80 时刻度数=全量用户消息数', async () => {
+    // jsdom 无布局:刻度条显隐/锚点走实测门控(rect+padding)——补最小布局桩(chat 口 800×600,pad 40)
+    const rect = { width: 800, height: 600, top: 0, left: 40, right: 840, bottom: 600, x: 40, y: 0, toJSON: () => ({}) } as DOMRect;
+    const origGBCR = Element.prototype.getBoundingClientRect;
+    const origGCS = window.getComputedStyle;
+    Element.prototype.getBoundingClientRect = function (this: Element): DOMRect {
+      return this.classList?.contains('chat') === true ? rect : origGBCR.call(this);
+    };
+    window.getComputedStyle = ((el: Element, pe?: string | null): CSSStyleDeclaration => {
+      const st = pe === undefined ? origGCS(el) : origGCS(el, pe);
+      return el.classList?.contains('chat') === true ? ({ ...st, paddingLeft: '40px' } as CSSStyleDeclaration) : st;
+    }) as typeof getComputedStyle;
+    try {
+      const many = Array.from({ length: 620 }, (_, i) => ({ seq: i + 1, ts: DAY1, kind: 'user' as const, md: `m${i + 1}` }));
+      mountChat(many);
+      await flushed();
+      expect(document.querySelectorAll('.entry-user').length).toBe(80); // 挂载窗仍是入口窗
+      // 首亮沉降门 350ms:等过再断言(实机即此门)
+      await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+      await flushed();
+      // 刻度序列=全量 entries(620 条用户消息全有刻度),不再随挂载窗分批生长
+      expect(document.querySelectorAll('.sx-rail-tick').length).toBe(620);
+    } finally {
+      Element.prototype.getBoundingClientRect = origGBCR;
+      window.getComputedStyle = origGCS;
+    }
+  });
+
   it('非贴底读历史窗口顶冻结(2026-11-17 实测「运行中滚到上面时不时跳到底部」根因①):流式追加不再推走正在读的行', async () => {
     vi.useFakeTimers();
     try {
