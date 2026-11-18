@@ -1014,6 +1014,12 @@ describe('会话流尾部窗口(D48)', () => {
       await flushed();
       // 刻度序列=全量 entries(620 条用户消息全有刻度),不再随挂载窗分批生长
       expect(document.querySelectorAll('.sx-rail-tick').length).toBe(620);
+      // 2026-11-18 用户裁定「时刻显示视口下侧所属用户气泡轮次,没有空档期」:加亮按模型前缀和算。
+      // jsdom 走尾部窗口(jsdom 无布局,回退路径仍 80 条=条目 540..619);线=滚动口下缘 600-40=560,
+      // 估算块高 user=96/日分隔 46 → 窗内 5 号用户块(46+96*5=526≤560<622)=全量刻度第 545 枚
+      const activeTicks = document.querySelectorAll('.sx-rail-tick.active');
+      expect(activeTicks.length).toBe(1);
+      expect(Array.from(document.querySelectorAll('.sx-rail-tick')).indexOf(activeTicks[0]!)).toBe(545);
     } finally {
       Element.prototype.getBoundingClientRect = origGBCR;
       window.getComputedStyle = origGCS;
