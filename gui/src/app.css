@@ -1782,6 +1782,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .chat .entry-thinking + .entry-assistant,
 .chat .entry-tool + .entry-assistant,
 .chat .seg-collapse + .entry-assistant { margin-top: 0; }
+/* 2026-11-18 虚拟块壳跨块邻接补齐:条目各入独立 .chat-unit 后,上面这组相邻兄弟选择器跨不出块
+   边界——阶段正文(紧跟思考/工具/折叠段的 .entry-assistant)凭空多 10px 上距、段后首行也没了收口,
+   与工具/思考行距不一致(用户实测「阶段正文上行距被加高」)。用块壳 :has 补齐跨块同口径 */
+.chat-unit:has(.entry-thinking) + .chat-unit .entry-assistant,
+.chat-unit:has(.entry-tool) + .chat-unit .entry-assistant,
+.chat-unit:has(.seg-collapse) + .chat-unit .entry-assistant { margin-top: 0; }
+.chat-unit:has(.seg-collapse) + .chat-unit .entry-assistant { padding-top: 0; }
+.chat-unit:has(.entry-thinking) + .chat-unit .entry-assistant .entry-md-body > :first-child,
+.chat-unit:has(.entry-tool) + .chat-unit .entry-assistant .entry-md-body > :first-child,
+.chat-unit:has(.seg-collapse) + .chat-unit .entry-assistant .entry-md-body > :first-child { margin-top: 0; }
+/* 正文后接工具/思考/折叠段:下边距收口(原 .entry-assistant:has(+ …) 同样跨块失配) */
+.chat-unit:has(.entry-assistant):has(+ .chat-unit:has(.entry-tool, .entry-thinking, .seg-collapse)) .entry-assistant { padding-bottom: 0; }
 
 /* G14.216b 段后正文首元素收口:标题 md 首行自带 12px 顶 margin 叠加段距,思考/工具行→正文
    视觉断裂(截图实测 ~24px)——首元素顶边距归零+段后 padding-top 收口,恢复 8px 行距意图;
