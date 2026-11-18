@@ -117,11 +117,9 @@ export interface MessageListProps {
   readonly liveTokens: number;
 }
 
-/** 2026-10-26 性能轮:按日分组块级 memo——此前每帧(30ms 批)重建全部可见行元素(300 行
- *  createElement+对照,流式期间持续 CPU 占用)。组内行仍是行级 memo;组级比较器按
- *  「条目逐位引用+冻结回调」判定——未变组整块跳过(元素都不建),只有流式尾所在组重建。
- *  条目引用身份由 chat-reducer 映射缓存保证(未变行恒同引用);组边界由 daySkeleton 冻结
- *  (structureVersion 键),位置对位成立 */
+/** 会话流列表(2026-11-18 结构:虚拟窗口)——窗口内条目经 dayUnitSpans 切成「块」,只挂视口
+ *  ±overscan 的块,上下 spacer 占位;块高实测表 + 前缀和,阅读位按块坐标锚定。jsdom(无布局)
+ *  旁路为整窗逐块直渲(回退 DOM=旧 DayGroupBlock 拼接结果,测试面语义不变)。 */
 export function MessageList(props: MessageListProps): JSX.Element {
   const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=运行状态行隐步数+tokens
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
