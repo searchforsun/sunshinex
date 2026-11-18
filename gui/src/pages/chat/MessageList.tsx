@@ -396,6 +396,35 @@ export function MessageList(props: MessageListProps): JSX.Element {
     return out;
   }, [dayGroups, hiddenKeys, office, structureVersion, seedGen]);
   const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
+  /** 用户气泡块序号(刻度加亮按模型二分:线所属轮=块顶≤判定线的最后一枚用户块) */
+  const userUnitIdx = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 0; i < units.length; i += 1) if (units[i]!.kind === 'user') out.push(i);
+    return out;
+  }, [units]);
+  const userUnitIdxRef = useRef(userUnitIdx);
+  userUnitIdxRef.current = userUnitIdx;
+  /** 刻度加亮模型反查(线=内容坐标;offsetsRef 同空间):不依赖挂载窗,长正文轮也不断档 */
+  const activeUserKeyAt = useCallback((line: number): string | null => {
+    const arr = userUnitIdxRef.current;
+    const list = unitsRef.current;
+    const off = offsetsRef.current;
+    if (arr.length === 0) return null;
+    let lo = 0;
+    let hi = arr.length - 1;
+    let hit = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if ((off[arr[mid]!] ?? 0) <= line) {
+        hit = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (hit < 0) return null;
+    return list[arr[hit]!]?.key ?? null;
+  }, []);
   unitIndexByKeyRef.current = unitIndexByKey;
   unitsRef.current = units;
   /** 条目 key → 块序号(刻度跳转/未挂载定位用;段内条目指向所在段块) */
@@ -800,7 +829,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       }}
     >
         {/* 2026-10-26 对话刻度导航条:左侧 sticky 悬浮(不参与内容流),余量自适应显隐 */}
-        <ChatRail entries={entries} chatScrollRef={chatScrollRef} sideChat={sideChat} onReveal={revealEntry} />
+        <ChatRail entries={entries} chatScrollRef={chatScrollRef} sideChat={sideChat} onReveal={revealEntry} activeKeyAt={activeUserKeyAt} />
         {/* 空会话=对应欢迎页 hero(2026-11-17 用户裁定「去掉过时空态,空会话直接显示对应欢迎页」:
             标准会话=WelcomeLogo+欢迎标语(与欢迎页同件同尺),Sunx 会话=SunxMark 名片标+目标标语;
             原居中「给 Sunshinex 一个任务」旧空态(误读为加载态)退役;辅助对话面保留极简标示） */}

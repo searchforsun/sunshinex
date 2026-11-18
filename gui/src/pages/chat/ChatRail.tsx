@@ -67,6 +67,10 @@ export function ChatRail(props: {
   readonly sideChat?: boolean;
   /** 目标条目未挂载时先扩挂载窗(MessageList 提供:返回是否已挂上);缺省=旧行为(找不到即不跳) */
   readonly onReveal?: (key: string) => boolean;
+  /** 模型反查当前轮(2026-11-18 用户裁定「刻度时刻显示视口下侧所属用户气泡轮次、没有空档期」):
+   *  入参=判定线的内容坐标(块前缀和同空间),返回该线所属用户条的 key。虚拟窗口下长正文轮的
+   *  用户气泡常在挂载窗外,旧 DOM 反查取不到=加亮断档;传入即按模型算,缺省回落 DOM 反查 */
+  readonly activeKeyAt?: (lineContent: number) => string | null;
 }): JSX.Element {
   const { entries, chatScrollRef, sideChat, onReveal } = props;
   // 显隐+锚点+中线实测(RO 三值):余量=paddingLeft−18 判显隐;滚动口左缘/中线视觉坐标除以
@@ -218,6 +222,13 @@ export function ChatRail(props: {
     };
     const compute = (): void => {
       lastAt = performance.now();
+      // 模型反查优先(入参=内容坐标):视口下缘所属轮与挂载无关,永不断档
+      if (props.activeKeyAt !== undefined) {
+        const rect = el.getBoundingClientRect();
+        const key = props.activeKeyAt(el.scrollTop + (rect.bottom - 40 - rect.top));
+        applyActive(key === null ? -1 : (keyIdx.get(key) ?? -1));
+        return;
+      }
       const list = collect();
       if (list.length === 0) {
         applyActive(-1);
