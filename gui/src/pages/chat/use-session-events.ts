@@ -97,10 +97,6 @@ export function useSessionEvents(deps: {
   const seedGenRef = useRef(0);
   /** G5 idle 清卡:前次 status 记账(ref 免 effect 重复触发)——仅 running→idle 转换清卡 */
   const prevStatusRef = useRef<ChatState['status'] | null>(null);
-  /** 本 hook 实例已按哪个会话播过种(2026-11-18 驻留座回切卡顿):keep-alive 座从不卸载,
-   *  chatMem.memSeat 恒未写——仅凭 memSeat 判同则每次切回都整替重渲(markdown/表格重解析,
-   *  实测 ~1s 长任务)。同一实例的 sessionId 恒定,自播过种即同座,判同面加这条 */
-  const seededForRef = useRef('');
   /** chat 态镜像(2026-11-16 流畅轮):reseed 是 useCallback 固定闭包,读不到渲染期 deps.chat——
    *  缓存转录判定(chatMem 直渲态)经 ref 取现值 */
   const chatStateRef = useRef(deps.chat);
@@ -189,12 +185,11 @@ export function useSessionEvents(deps: {
         const skip = (
           cacheWarm && !replayed
           && next.seedSig !== undefined && next.seedSig === cached.seedSig
-          && (cached.memSeat === sessionId || seededForRef.current === sessionId)
+          && cached.memSeat === sessionId
           && cached.entries.length >= next.entries.length
           && cached.entries[cached.entries.length - 1]?.kind !== 'error'
         );
         if (!skip) setChat(next);
-        seededForRef.current = sessionId; // 本实例已同座播种(见声明处:驻留座回切免整替)
         // G10 欢迎页接力:播种落定即提交 welcome 目标(一次性——done 回调清 App 态位)。
         // G14.51:先本地回显再提交——daemon 不广播 user 事件,接力目标不回显则运行全程不可见
         const pg = pendingGoalRef.current;
