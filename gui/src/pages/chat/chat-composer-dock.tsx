@@ -101,6 +101,11 @@ export function ChatComposerDock(props: {
   terminalDockEnabled: boolean;
   dockOpen: boolean;
   setDockOpen: Dispatch<SetStateAction<boolean>>;
+  /** 终端下栏高度(px;>0=下栏在座 → composer 整体抬到下栏上方,呼吸缝 10px 留在中间)。
+   *  2026-11-18 座位壳回归:原由 CSS `.sx-main:has(> .terminal-dock)` 驱动,keep-alive 座位壳把
+   *  下栏变成孙代后计数恒假,composer 压回下栏之上(用户实测「输入框跑下面」)——改显式上传,
+   *  不再依赖 DOM 层级(dom 结构改写不再能静默弄丢抬升) */
+  dockLift: number;
   ctxInfo: { total: number; window: number; parts: Array<{ id: string; tokens: number; count: number }> } | null;
   refreshCtx: () => void;
   runCount: number;
@@ -123,7 +128,7 @@ export function ChatComposerDock(props: {
     filePalFiles, setFilePalFiles, filePalActive, setFilePalActive, loadWorkspaceFiles, loadRefEntries,
     pillOpen, setPillOpen, pickRelRef, slashPanelItems, cmdActive, setCmdActive, renderHighlightSpans,
     onInputClick, terminalDockEnabled, dockOpen, setDockOpen, ctxInfo, refreshCtx, runCount, steps, tokens,
-    cacheTokens, modelInfo, setModelInfo, send, interrupt, awaitModelSince,
+    cacheTokens, modelInfo, setModelInfo, send, interrupt, awaitModelSince, dockLift,
   } = props;
   /** 输入卡占位(2026-11-17 文案轮单点):按「运行中/辅助对话/Sunx/计划模式/只读/空会话 vs 接续」
    *  分档——占位=动作邀请而非说明书:运行中讲清可插话,辅助对话讲清不打断主任务,计划模式讲清
@@ -142,7 +147,7 @@ export function ChatComposerDock(props: {
               ? t('Describe the goal to begin', '描述目标即可开始')
               : t('Continue or ask for details', '继续交代或追问细节');
   return (
-    <div className="chat-dock" ref={dockRef}>
+    <div className="chat-dock" ref={dockRef} style={dockLift > 0 ? { bottom: dockLift + 10 } : undefined}>
       <div className="chat-dock-fade" aria-hidden="true" />
       {/* G14.88 审批挂起时队列条隐藏(dock 整体让位确认框),确认/拒绝后恢复 */}
       {queued.length > 0 && approvalCards.length === 0 && planCards.length === 0 && (
