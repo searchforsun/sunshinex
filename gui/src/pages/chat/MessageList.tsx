@@ -495,24 +495,28 @@ export function MessageList(props: MessageListProps): JSX.Element {
     if (idx < 0) return false;
     const need = entries.length - idx + 8; // 目标下缘再留 8 条缓冲,避免落点贴窗顶
     if (need > visibleCount) {
-      windowTargetRef.current = Math.min(RENDER_WINDOW_MAX, Math.max(windowTargetRef.current, need));
+      windowTargetRef.current = Math.max(windowTargetRef.current, need);
       captureAnchor();
-      setVisibleCount(Math.min(RENDER_WINDOW_MAX, need));
+      setVisibleCount(Math.min(entries.length, need));
       return false; // 本帧尚未挂载,渲染落定后跳转侧重试
     }
     return true;
   };
-  const showEarlier = (): void => {
+  const showEarlier = (step: number = RENDER_WINDOW_STEP): void => {
     captureAnchor();
-    windowTargetRef.current = Math.min(RENDER_WINDOW_MAX, Math.max(windowTargetRef.current, visibleCount + RENDER_WINDOW_STEP));
-    setVisibleCount((v) => Math.min(v + RENDER_WINDOW_STEP, RENDER_WINDOW_MAX));
+    // 2026-11-18:手动「显示更早」/滚顶回放不再受 RENDER_WINDOW_MAX 封顶——上万条会话必须能翻到
+    // 开头(此前 600 封顶=历史永远不可达);自动(pump)天花板仍是 600,仅控制后台预暖量
+    const next = Math.min(entries.length, visibleCount + step);
+    windowTargetRef.current = Math.max(windowTargetRef.current, next);
+    setVisibleCount(next);
   };
   /** 批2 滚动到顶自动回放:硬顶(scrollTop≤0)即触发步进回放——锚定回钉使展开后 scrollTop=Δ>0,
    *  不再贴顶即天然防循环;继续上滚到顶加载下一批。chat-earlier 按钮保留作显式入口 */
   const maybeReplayEarlier = (): void => {
     if (hiddenCount <= 0) return;
     const el = chatScrollRef.current;
-    if (el !== null && el.scrollTop <= 0) showEarlier();
+    // 滚顶自动回放用小步(2026-11-18):单帧挂载量小=滚动不顿;手动点「显示更早」仍取大步 300
+    if (el !== null && el.scrollTop <= 0) showEarlier(RENDER_WINDOW_IDLE_STEP);
   };
   /** 空闲分批回放(2026-11-13 用户裁定「切会话先进视口,之前的内容再平滑补齐,不要卡」):
    *  入口窗口外的更早条目在空闲时分批挂载(批间让出主线程,单帧不超一批),expandAnchor 回钉
@@ -600,7 +604,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
           </div>
         )}
         {hiddenCount > 0 && (
-          <button type="button" className="chat-earlier" onClick={showEarlier}>
+          <button type="button" className="chat-earlier" onClick={() => showEarlier()}>
             {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}
           </button>
         )}

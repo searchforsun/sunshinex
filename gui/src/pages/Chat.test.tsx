@@ -1296,7 +1296,8 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     expect(initial).toBeLessThanOrEqual(100); // 入口窗口=80(裁定量),非全量
     fireEvent.scroll(document.querySelector('.chat')!); // 硬顶 scrollTop=0 触发步进
     await flushed();
-    expect(document.querySelectorAll('.entry-user').length).toBe(initial + 300); // 步进=300 钉死
+    // 2026-11-18:滚顶自动回放改小步(24)——单帧挂载量小=滚动不顿;手动点「显示更早」仍取大步 300
+    expect(document.querySelectorAll('.entry-user').length).toBe(initial + 24);
   });
 
   it('G14.2xx 流式期间滚轮上翻立即脱离贴底跟随(wheel 意图直判)', async () => {
