@@ -38,6 +38,7 @@ import { useChatDraft } from './chat/use-chat-draft';
 import { useChatImages } from './chat/use-chat-images';
 import { useChatSeenArchive } from './chat/use-chat-seen-archive';
 import { useChatTerminalDock } from './chat/use-chat-terminal-dock';
+import { useCollapseTransition } from '../use-collapse-transition';
 import { expandFileRefs, expandRefContents, renderMentionSpans, slashTokenAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
@@ -138,6 +139,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
    *  CSS `:has(> .terminal-dock)` 抬升规则恒假,composer 压在下栏上(用户实测「输入框跑下面」)。
    *  active 不参与:隐藏驻留座不渲 composer/下栏,判定只服务前台渲染面。 */
   const dockShown = terminalDockEnabled && dockOpen && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined;
+  /** 下栏开合平滑(2026-11-18 用户裁定「下栏展开和关闭要平滑」):收起时保留挂载 200ms,外壳高度收到 0 跑过渡 */
+  const dockAnim = useCollapseTransition(dockShown);
 
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新);缺省 full-access(serve 缺省档) */
   const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
@@ -811,7 +814,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
       {/* 2026-11-10 终端下栏改版(用户六条):主对话对等区(.sx-main 直子,非 chat-dock 内——主对话滚条
          bottom 让位不再盖进下栏)——分割线+拖动条(侧栏分割条同款横置)+页签条(侧栏页签同形条形)。
          标签 × 走 App 既有 kill 链,面板 × 只收显不 kill——重开经 ptyIdFor 同 uid 重连 replay 还原 */}
-      {active && dockShown && (
+      {active && dockAnim.mounted && ptyIdFor !== undefined && onPtyAllocated !== undefined && onCloseDockTab !== undefined && (
+        <div className="terminal-dock-shell" style={{ height: dockAnim.closing ? 0 : dockHeight }}>
         <TerminalDock
           conn={conn}
           sessionId={sessionId}
@@ -822,6 +826,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
           onHide={() => setDockOpen(false)}
           onHeightChange={setDockHeight}
         />
+        </div>
       )}
       {lightboxSrc !== undefined && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(undefined)} />}
       </TurnUndoContext.Provider>

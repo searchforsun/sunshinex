@@ -3181,6 +3181,16 @@ input.sx-setting-input { width: 100%; }
 }
 .sx-shell.sx-sidebar-float .sx-resizer { display: none; } /* 抽屉不可调节,拖宽手柄隐藏(同菜单抽屉 4d69da4 惯例) */
 
+/* ===== 面板开合平滑(2026-11-18 用户裁定「应用的侧栏、菜单栏,下栏,展开和关闭要平滑效果」) =====
+   三块此前均条件渲染(开=挂载/关=立即卸载),过渡无从跑起:宿主改用 useCollapseTransition——
+   收起时保留挂载 200ms 并给根节点挂 .sx-closing(宽度收到 0 + transition),打开时根节点自带
+   sx-panel-in 入场 keyframe。transition 只写在 closing 类里:常态零过渡,拖宽手柄逐帧跟手不受累。 */
+@keyframes sx-panel-in { from { width: 0; min-width: 0; opacity: 0; } }
+.sx-menu { animation: sx-panel-in 0.22s var(--ease-enter); }
+.sx-menu.sx-closing { width: 0 !important; min-width: 0 !important; opacity: 0; overflow: hidden; border-right-width: 0; transition: width 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
+.sx-sidebar { animation: sx-panel-in 0.22s var(--ease-enter); }
+.sx-sidebar.sx-closing { width: 0 !important; min-width: 0 !important; opacity: 0; overflow: hidden; border-left-width: 0; transition: width 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
+
 /* 运行转圈统一 12px(正文 run-spinner);done/failed/stopped 仍为 6px 小圆点 */
 .tb-status-dot.bg-running {
   width: 12px;
@@ -3982,6 +3992,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 /* 2026-11-10 改版(用户实测六条):下栏=主对话对等区(.sx-main 直子,分割线+侧栏分割条同款横置拖带),
    不在 chat-dock 滚条区内;页签=侧栏页签同形条形 pill(.sx-tab 同款几何);面板 × 右缘常显(margin-left auto) */
 .terminal-dock { display: flex; flex-direction: column; flex: none; overflow: hidden; }
+/* 下栏外壳:高度过渡容器(2026-11-18「下栏展开和关闭要平滑」)——内层 .terminal-dock 自持高度,
+   外壳高度 0↔dockHeight 过渡时裁剪,收起/展开均有动画;挂载入场用 keyframe(内联高度为确定值) */
+@keyframes sx-dock-in { from { height: 0; } }
+.terminal-dock-shell { flex: none; overflow: hidden; animation: sx-dock-in 0.22s var(--ease-enter); transition: height 0.2s var(--ease-enter); }
 .terminal-dock-handle { height: 9px; flex: none; cursor: row-resize; touch-action: none; position: relative; }
 .terminal-dock-handle::before { content: ''; position: absolute; left: 0; right: 0; top: 4px; height: 1px; background: var(--border); }
 .terminal-dock-handle:hover::before, .terminal-dock-handle:active::before { background: color-mix(in srgb, var(--fg) 40%, transparent); } /* 分割线=1px 对齐主区/侧栏边界(2026-11-10 用户裁定「要一样窄」);9px 带仅作拖拽热区不显色 */

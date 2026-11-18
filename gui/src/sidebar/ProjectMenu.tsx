@@ -132,6 +132,9 @@ export interface ProjectMenuProps {
   /** 2026-10-25 应用级导航(前进/后退)控制面(全局史):菜单开着时钮对驻菜单头(用户裁定——
    *  菜单存在=菜单里承载,收起才回落顶栏/欢迎浮出簇);缺省不渲染(独立装配面免配) */
   readonly nav?: NavControls;
+  /** 收起过渡中(2026-11-18 用户裁定「展开和关闭要平滑」):宿主在关闭后保留挂载 200ms,根节点挂
+   *  sx-closing 把宽度收到 0 让过渡跑完再卸载;打开时由 sx-panel-in keyframe 入场 */
+  readonly closing?: boolean;
 }
 
 /** 相对时间:G8e-T2 抽共享 ui-util(与 SettingsForm 同款逻辑本地复制收敛) */
@@ -587,7 +590,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const openNewSunxDialog = useCallback((): void => setSunxOpen(true), []);
 
   return (
-    <nav className="sx-menu" aria-label="projects">
+    <nav className={`sx-menu${props.closing === true ? ' sx-closing' : ''}`} aria-label="projects">
       <header className="sx-menu-head" data-drag-band>
         <span className="sx-brand">Sunshinex</span>
         {/* 2026-10-25 前进/后退(全局导航史):品牌右侧左聚(浏览器/IDE 惯例位);菜单收起时

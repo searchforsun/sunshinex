@@ -47,6 +47,7 @@ import { useAppLinks } from './use-app-links';
 import { useAppServices } from './use-app-services';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
 import { prefetchEditorIcons } from './ui-util';
+import { useCollapseTransition } from './use-collapse-transition';
 import { clearAutoSeenSuppressed } from './sidebar/project-menu-util';
 
 /**
@@ -963,6 +964,12 @@ function AppShell(): JSX.Element {
   const { onActivateTab, onTabMeta, services, bgRunningCount, projectNameOfOpenRoot } = useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, onLocateTodo, openLeaderBubble, refreshFromSnapshot });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
+  /** 面板开合平滑(2026-11-18 用户裁定「应用的侧栏、菜单栏,下栏,展开和关闭要平滑效果」):
+   *  左菜单/右栏均条件渲染,收起时先保留挂载 200ms 让根节点关闭类跑完宽度过渡再卸载;
+   *  打开立即挂载,根节点自带 sx-panel-in 入场 keyframe */
+  const menuAnim = useCollapseTransition(!menuClosed);
+  const sidebarAnim = useCollapseTransition((page === 'chat' || page === 'welcome') && !tabState.collapsed);
+
   useWindowDrag();
 
   /** keep-alive LRU(use-heavy-tab-lru 单点,2026-10-27 技术债轮 D53 批F 外提):重标签上限 4 */
@@ -1044,8 +1051,9 @@ function AppShell(): JSX.Element {
           {/* 左栏:项目分组(Home 职能内化;装配中占位)。关闭态不渲染(顶栏 logo 呼出);
               浮窗抽屉态选中会话/设置/新会话/目录即自动收(各回调前挂 closeMenuDrawer) */
           }
-          {!menuClosed && (connInstance !== null ? (
+          {menuAnim.mounted && (connInstance !== null ? (
             <ProjectMenuMemo
+              closing={menuAnim.closing}
               conn={connInstance}
               connState={connState}
               activeSessionId={openSessionId}
@@ -1203,8 +1211,8 @@ function AppShell(): JSX.Element {
             )}
           </main>
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
-          {(page === 'chat' || page === 'welcome') && !tabState.collapsed && (
-          <aside className="sx-sidebar" ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
+          {sidebarAnim.mounted && (
+          <aside className={`sx-sidebar${sidebarAnim.closing ? ' sx-closing' : ''}`} ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
             <TabStripMemo
               tabs={tabState.tabs}
               activeUid={tabState.activeUid}
