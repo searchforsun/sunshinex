@@ -99,6 +99,9 @@ export interface MessageListProps {
   /** 贴底闩镜像(Chat 持有):false=用户在上方阅读态——窗口顶冻结(见 cut 计算处),流式追加
    *  不再推走正在读的行。缺省=贴底语义(测试桩/降级面) */
   readonly chatStickRef?: MutableRefObject<boolean>;
+  /** 前台态(2026-11-18 keep-alive):false=隐藏驻留座——空闲补齐 pump 停止(否则后台白挂条目,
+   *  与前台滚动抢主线程=「正文滑动卡顿/一会划不动」),切回再续 */
+  readonly active?: boolean;
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
@@ -416,7 +419,15 @@ export function MessageList(props: MessageListProps): JSX.Element {
     if (saved === null) return;
     expandAnchorRef.current = null;
     const el = chatScrollRef.current;
-    if (el === null || !saved.node.isConnected) return;
+    if (el === null) return;
+    // 贴底态(2026-11-18 用户实测「切回后划不到底/看不到运行行」):后台补齐在上方插条目,元素锚会
+    // 把「视图」钉住而让底部越走越远(实测距底 94px 持续增长)——贴底时改为补齐后重新贴底;
+    // 阅读态才走元素锚(保用户正在读的那一行不动)
+    if (props.chatStickRef === undefined || props.chatStickRef.current) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    if (!saved.node.isConnected) return;
     const cTop = el.getBoundingClientRect().top;
     const afterTop = saved.node.getBoundingClientRect().top - cTop;
     el.scrollTop += afterTop - saved.top;
@@ -508,6 +519,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  保证每批挂载后用户视口纹丝不动;与手动「显示更早」/滚顶回放共用同一 visibleCount 计数器,
    *  天花板 RENDER_WINDOW_MAX(超出仍走手动/滚顶)。文档不可见(后台页签)暂停;追平即自然停 */
   useEffect(() => {
+    if (props.active === false) return; // 隐藏驻留座:零后台工作(切回时 active 变更重跑本 effect 续补)
     if (entries.length <= visibleCount) return;
     // 上限=min(600, 条数, 窗口目标):目标=挂载缓存窗或用户手动/滚顶回放抬升后的值——
     // 2026-11-17:缓存窗改成「后台补齐目标」后,重挂不再同步渲染整段历史
@@ -529,7 +541,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     };
     schedule();
     return () => { alive = false; };
-  }, [entries.length, visibleCount, chatScrollRef]);
+  }, [entries.length, visibleCount, chatScrollRef, props.active]);
   /** 窗口变更上抛(2026-11-17 窗口缓存链尾):回放/手动步进每拍上报,Chat 收 ref 镜像卸载随
    *  chatMem 写回——经 propsRef 取最新回调;挂载首拍也报(同值写回幂等) */
   useEffect(() => {

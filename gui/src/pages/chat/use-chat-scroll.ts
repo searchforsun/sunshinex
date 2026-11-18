@@ -34,8 +34,12 @@ export function useChatScroll(deps: {
   readonly scrollRestoreRef: MutableRefObject<number | null>;
   readonly seeding: boolean;
   readonly entriesLen: number;
+  /** 前台态(2026-11-18 keep-alive):隐藏期间 composer/顶栏不渲染、容器零尺寸——切回时须
+   *  ①重测 dock 高写 padding-bottom(否则正文尾行/运行行被输入卡盖住,滚不到底)
+   *  ②恢复隐藏前滚动位(display:none 期间 scrollTop 被浏览器钳位) */
+  readonly active?: boolean;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
-  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen } = deps;
+  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true } = deps;
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
@@ -155,6 +159,39 @@ useEffect(() => {
     ro.disconnect();
     chat.style.paddingBottom = '';
   };
-}, []);
+  // active 入依赖(2026-11-18):隐藏座 composer 不渲染→切回重挂时本 effect 不重跑=padding 停旧值,
+  // 正文尾部/运行中行被输入卡盖住且滚不到底(用户实测截图);切回重测一次即复位
+}, [active]);
+  /** 隐藏前滚动位快照(2026-11-18 keep-alive):display:none 期间浏览器会把 scrollTop 钳为 0,
+   *  切回原样恢复——贴底态照旧贴底(运行行/尾部可见),阅读态按距底位回位 */
+  const hiddenScrollRef = useRef<{ dist: number } | null>(null);
+  useEffect(() => {
+    if (active) return;
+    const el = chatScrollRef.current;
+    if (el !== null) hiddenScrollRef.current = { dist: Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight) };
+  }, [active, chatScrollRef]);
+  useEffect(() => {
+    if (!active) return;
+    const saved = hiddenScrollRef.current;
+    hiddenScrollRef.current = null;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const el = chatScrollRef.current;
+        if (el === null) return;
+        if (chatStickRef.current) {
+          el.scrollTop = el.scrollHeight;
+          markProgBottom(el);
+        } else if (saved !== null) {
+          el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - saved.dist);
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [active, chatScrollRef, chatStickRef]);
   return { dockRef };
 }

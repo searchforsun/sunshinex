@@ -274,6 +274,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     scrollRestoreRef,
     seeding,
     entriesLen: chat.entries.length,
+    active,
   });
   const { collapsedRuns, toggleRun, hiddenKeys, onEntryToggleClick, onEntryOpenDiff, onEntryRestore } = useChatFold({
     chat,
@@ -634,6 +635,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
       ) : null}
 
       <ChatTranscript
+        active={active}
         history={chat.history}
         setChat={setChat}
         initialRenderWindow={renderWindowRef.current}
