@@ -1067,78 +1067,85 @@ function AppShell(): JSX.Element {
           <main className="sx-main" ref={mainRef}>
             {page === 'chat' && connInstance !== null ? (
               <>
-              {/* 前台座:wrapper 恒在(display:contents 保持主栏 flex 直子布局),切走→驻留座时
-                  同一 key/同类型 wrapper 只换类名——Chat 实例与 DOM 原样保留(热切换零重挂) */}
-              <div className="sx-chat-seat" key={`seat:${openSessionId}`}>
-              <ChatMemo
-                key={openSessionId}
-                nav={navControls}
-                menuClosed={menuClosed}
-                onToggleMenu={toggleMenuStable}
-                conn={connInstance}
-                sessionId={openSessionId}
-                kindHint={openKind}
-                journalId={openJournalId}
-                ptyIdFor={ptyIdFor}
-                onPtyAllocated={handlePtyAllocated}
-                onCloseDockTab={closeDockTab}
-                chatMem={chatMem}
-                connState={connState}
-                onBack={backHome}
-                sinkRef={chatSinkRef}
-                onSeeded={chatSeededStable}
-                onOpenFile={openFileTab}
-                onOpenDiff={openDiffTab}
-                onOpenTurnDiff={openTurndiffTab}
-                onOpenAgent={openAgentTab}
-                onOpenWeb={openWebTab}
-                onRunInTerminal={runInTerminalStable}
-                onOpenTask={openTaskFocus}
-                onOpenTab={openTabType}
-                onOpenArtifacts={openArtifactsTab}
-                agentTeamsOn={agentTeamsOn}
-                bgRunning={bgRunningCount}
-                board={projection.board}
-                teams={projection.teams}
-                onTodoBatches={setTodoBatches}
-                todoFocus={todoFocus}
-                leaderFocus={leaderFocus}
-                onSideAsk={startSideChat}
-                onTodoLocate={todoLocateStable}
-                pendingGoal={welcomeGoal ?? undefined}
-                onPendingGoalDone={() => setWelcomeGoal(null)}
-                root={openRoot}
-                onTodos={setSessionTodos}
-                onRenamed={bumpRecent}
-                onSessionsMutated={bumpRecent}
-                pins={pins}
-                persistPins={persistPins}
-                onSideChat={startSideChat}
-                onOpenMemory={openMemoryTab}
-                onOpenLearned={openLearnedTab}
-                onFork={onForkStable}
-                onOpenSession={openParentSessionStable}
-                onOpError={showOpError}
-                onRewind={onRewindStable}
-              />
-              </div>
-              {cachedSeats.filter((cs) => cs.id !== openSessionId).map((cs) => (
-                <div className="sx-chat-seat sx-chat-cache" key={`seat:${cs.id}`} aria-hidden="true">
-                  <ChatMemo
-                    key={cs.id}
-                    active={false}
-                    conn={connInstance}
-                    sessionId={cs.id}
-                    connState={connState}
-                    onBack={noopSeat}
-                    sinkRef={chatSinkRef}
-                    chatMem={chatMem}
-                    journalId={cs.journalId}
-                    root={cs.root}
-                    kindHint={cs.kind}
-                    board={EMPTY_SEAT_BOARD}
-                    teams={EMPTY_SEAT_TEAMS}
-                  />
+              {/* 2026-11-18 热切换 keep-alive 座位(单数组渲染):前台座+驻留座必须在**同一个 keyed
+                  数组**里——曾分「单元素 + map 数组」两处渲染,切走瞬间 key 跨集合移动不生效=React
+                  卸载重挂(且重挂初始化先于旧实例 chatMem 写回=驻留座空树,隐藏态又不播种),
+                  实测驻留座恒 0 条目。同数组渲染后按 key 复用实例:转录 DOM/滚动位/刻度条原样。
+                  前台座 display:contents 保持 .sx-main 直子(flex)布局;驻留座 display:none 零布局 */}
+              {[
+                { key: `seat:${openSessionId}`, active: true, seat: null as null | { id: string; journalId: string; root: string; kind: string | undefined } },
+                ...cachedSeats.filter((cs) => cs.id !== openSessionId).map((cs) => ({ key: `seat:${cs.id}`, active: false, seat: cs })),
+              ].map((slot) => (
+                <div className={slot.active ? 'sx-chat-seat' : 'sx-chat-seat sx-chat-cache'} key={slot.key} aria-hidden={slot.active ? undefined : 'true'}>
+                  {slot.active ? (
+                    <ChatMemo
+                      key={openSessionId}
+                      nav={navControls}
+                      menuClosed={menuClosed}
+                      onToggleMenu={toggleMenuStable}
+                      conn={connInstance}
+                      sessionId={openSessionId}
+                      kindHint={openKind}
+                      journalId={openJournalId}
+                      ptyIdFor={ptyIdFor}
+                      onPtyAllocated={handlePtyAllocated}
+                      onCloseDockTab={closeDockTab}
+                      chatMem={chatMem}
+                      connState={connState}
+                      onBack={backHome}
+                      sinkRef={chatSinkRef}
+                      onSeeded={chatSeededStable}
+                      onOpenFile={openFileTab}
+                      onOpenDiff={openDiffTab}
+                      onOpenTurnDiff={openTurndiffTab}
+                      onOpenAgent={openAgentTab}
+                      onOpenWeb={openWebTab}
+                      onRunInTerminal={runInTerminalStable}
+                      onOpenTask={openTaskFocus}
+                      onOpenTab={openTabType}
+                      onOpenArtifacts={openArtifactsTab}
+                      agentTeamsOn={agentTeamsOn}
+                      bgRunning={bgRunningCount}
+                      board={projection.board}
+                      teams={projection.teams}
+                      onTodoBatches={setTodoBatches}
+                      todoFocus={todoFocus}
+                      leaderFocus={leaderFocus}
+                      onSideAsk={startSideChat}
+                      onTodoLocate={todoLocateStable}
+                      pendingGoal={welcomeGoal ?? undefined}
+                      onPendingGoalDone={() => setWelcomeGoal(null)}
+                      root={openRoot}
+                      onTodos={setSessionTodos}
+                      onRenamed={bumpRecent}
+                      onSessionsMutated={bumpRecent}
+                      pins={pins}
+                      persistPins={persistPins}
+                      onSideChat={startSideChat}
+                      onOpenMemory={openMemoryTab}
+                      onOpenLearned={openLearnedTab}
+                      onFork={onForkStable}
+                      onOpenSession={openParentSessionStable}
+                      onOpError={showOpError}
+                      onRewind={onRewindStable}
+                    />
+                  ) : (
+                    <ChatMemo
+                      key={slot.seat!.id}
+                      active={false}
+                      conn={connInstance}
+                      sessionId={slot.seat!.id}
+                      connState={connState}
+                      onBack={noopSeat}
+                      sinkRef={chatSinkRef}
+                      chatMem={chatMem}
+                      journalId={slot.seat!.journalId}
+                      root={slot.seat!.root}
+                      kindHint={slot.seat!.kind}
+                      board={EMPTY_SEAT_BOARD}
+                      teams={EMPTY_SEAT_TEAMS}
+                    />
+                  )}
                 </div>
               ))}
               </>

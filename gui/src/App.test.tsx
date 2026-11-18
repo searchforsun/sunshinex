@@ -2070,6 +2070,32 @@ describe('G8c 设置态壳:左栏切换导航/项目上下文/表单引擎/来�
 });
 
 
+describe('热切换 keep-alive 座位(2026-11-18 实测轮:驻留座曾被重挂成空树)', () => {
+  it('会话内切走:上一会话驻留 DOM 同节点实例保留(非空树),切回不再重建', async () => {
+    const { conn, unmount } = mount();
+    openConn(conn);
+    fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
+    await clickSessionRow(); // 开 s1
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
+    await waitFor(() => expect((screen.getByLabelText('message input') as HTMLTextAreaElement).disabled).toBe(false));
+    type('s1 目标');
+    pressEnter();
+    const node = document.querySelector('.entry-user')!;
+    expect(node).not.toBeNull();
+    // 会话内直接点下一行 → 开 s2(走 openSession 驻留链,非回欢迎页)
+    conn.nextSessionId = 's2';
+    await clickSessionRow();
+    await waitFor(() => expect(screen.getByText('s2', { selector: '.chat-title-text' })).toBeDefined());
+    const cache = document.querySelector('.sx-chat-cache');
+    expect(cache).not.toBeNull();
+    // 2026-11-18 实测病根:座位分两处渲染致 key 跨集合失效=重挂,且重挂时 chatMem 写入晚于新实例
+    // 初始化 → 驻留座恒 0 条目。单数组 keyed 渲染后同节点实例保留、正文在场
+    expect(cache!.querySelector('.entry-user')).toBe(node);
+    expect(cache!.textContent).toContain('s1 目标');
+    unmount();
+  });
+});
+
 /** G8c 复杂面板五件簇退役:模型与提供方/MCP/智能体/技能+权限/高级 raw 的 App 级走通测已由
  *  src/settings/__tests__/{ProvidersPane,McpPane,AgentsPane,SkillsPane,PermissionsPane,RawPane}.test.tsx 
  *  组件专测承接(壳装配/nav 切换由上方 G8c 设置态壳簇覆盖)——面板内行为断言不再双维护 */
