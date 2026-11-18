@@ -148,6 +148,10 @@ export function useChatMemory(isRunning: (key: string) => boolean = () => false)
  *  board/delegation 不走此路(快照携带+attach seedShadow 既有可靠链),避免与播种窗交叉。
  *  refs 先声明、水合单点经 bindShadowHydration 后置绑定——解「水合需连接实例、装配需截流
  *  refs」的环(原 AppShell refs 前置+impl 后置同构) */
+/** 分片水合代次(2026-11-18 切换卡顿):大档 subagent 行全量同步 fold 一次 ~1s 长任务(实测
+ *  切到/切入后 300–430ms 处 1005–1144ms)——按时间片让出主线程;新水合/重置自增使旧分片自弃 */
+let shadowHydrateGen = 0;
+
 export function useShadowHydrationRefs(): {
   shadowHydrateRef: MutableRefObject<((sessionId: string) => void) | null>;
   shadowHydratedRef: MutableRefObject<Set<string>>;
@@ -188,10 +192,11 @@ export function bindShadowHydration(
     const fold = (acts: AgentActivities, e: SessionEvent): AgentActivities =>
       // delegation 行一并入折(journal 有档——delegation-ended 终语对卡状态的影响随重建保留)
       typeof e.payload?.subagent === 'string' || e.type.startsWith('delegation-') ? applyAgentEvent(acts, e) : acts;
+    const gen = ++shadowHydrateGen;
     void connInstance.shadowEvents(sessionId).then(
       ({ events, cut }) => {
         let acts: AgentActivities = {};
-        for (const e of events) acts = fold(acts, e); // journal 全量(到读档时刻)
+        const finish = (): void => {
         for (const { e, seq } of buf()) {
           if (seq > cut) acts = fold(acts, e); // 读档后到达的帧只在缓冲
         }
@@ -208,6 +213,24 @@ export function bindShadowHydration(
         settle?.dropPendingFolds(sessionId);
         bumpActs(sessionId, () => acts);
         settle?.flushActsNow(); // replace 同步落盘,防 100ms 窗内迟到帧插在 replace 后
+        };
+        // 时间片折叠(每片 ≤10ms,片间让出主线程;代次失效=新水合/重置已接管,旧片弃)
+        let i = 0;
+        const slice = (): void => {
+          if (gen !== shadowHydrateGen) return;
+          const t0 = performance.now();
+          while (i < events.length && performance.now() - t0 < 10) {
+            acts = fold(acts, events[i]!);
+            i += 1;
+          }
+          if (i < events.length) {
+            if (typeof requestIdleCallback === 'function') requestIdleCallback(() => slice(), { timeout: 120 });
+            else window.setTimeout(slice, 0);
+            return;
+          }
+          finish();
+        };
+        slice();
       },
       () => {
         // 拉取失败(daemon 未附/旧版无端点):摘标记放行实时帧直投并允许下次触发点重试
