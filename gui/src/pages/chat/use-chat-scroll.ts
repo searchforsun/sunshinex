@@ -45,8 +45,11 @@ export function useChatScroll(deps: {
    *  dist<4 一次而把闩翻回 follow=贴底,恢复写完又被逐渲染贴底 effect 拽到底——读取位被吃掉
    *  (用户实测「每次回来都是底部」)。窗口期内 handleChatScroll/归底 effect 都不得重贴 */
   readonly stickSuppressRef?: MutableRefObject<boolean>;
+  /** 最近一次滚动事件的距底值(2026-11-18 落点固化):display:none 后元素几何全零,切走当拍
+   *  读不到真实位置——用滚动期持续更新的镜像代替隐藏态读取 */
+  readonly lastDistRef?: MutableRefObject<number>;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
-  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false, stickSuppressRef } = deps;
+  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false, stickSuppressRef, lastDistRef } = deps;
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
@@ -177,8 +180,13 @@ useEffect(() => {
   useEffect(() => {
     if (active) return;
     const el = chatScrollRef.current;
-    if (el !== null) hiddenScrollRef.current = { dist: Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight) };
-  }, [active, chatScrollRef]);
+    if (el === null) return;
+    // display:none 已生效(几何全零)时用滚动期镜像;未隐藏(极少数提交序)直接实测
+    const dist = el.clientHeight === 0
+      ? (lastDistRef?.current ?? 0)
+      : Math.max(0, el.scrollHeight - el.scrollTop - el.clientHeight);
+    hiddenScrollRef.current = { dist: Math.max(0, dist) };
+  }, [active, chatScrollRef, lastDistRef]);
   useEffect(() => {
     if (!active) return;
     const saved = hiddenScrollRef.current;

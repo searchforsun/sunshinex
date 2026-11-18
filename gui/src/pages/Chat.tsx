@@ -166,6 +166,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const chatLastTopRef = useRef(0);
   /** 切回恢复静默窗(见 useChatScroll deps 注):期内 dist<4 不重贴,保阅读位 */
   const stickSuppressRef = useRef(false);
+  /** 滚动距底镜像(隐藏态几何全零时切走当拍读取的替代;见 useChatScroll deps 注) */
+  const chatLastDistRef = useRef(0);
   useChatLocate({ todoFocus, leaderFocus, chatScrollRef, chatStickRef });
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
@@ -305,6 +307,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     active,
     skipRestore: scrollRestoreAnchorRef.current !== null,
     stickSuppressRef,
+    lastDistRef: chatLastDistRef,
   });
   const { collapsedRuns, toggleRun, hiddenKeys, onEntryToggleClick, onEntryOpenDiff, onEntryRestore } = useChatFold({
     chat,
@@ -579,6 +582,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     const prog = isProgBottom(el, el.scrollTop);
     const moved = Math.abs(el.scrollTop - chatLastTopRef.current) > 1;
     chatLastTopRef.current = el.scrollTop;
+    chatLastDistRef.current = dist;
     const stick = stickSuppressRef.current ? chatStickRef.current : (dist < 4 ? true : prog ? chatStickRef.current : moved ? false : chatStickRef.current);
     if (stick !== chatStickRef.current) syncOverflowAnchor(el, stick);
     chatStickRef.current = stick;
