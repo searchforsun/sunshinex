@@ -353,6 +353,11 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const anchorRef = useRef<{ key: string; off: number } | null>(null);
   const rafRef = useRef(0);
   const unitRoRef = useRef<ResizeObserver | null>(null);
+  /** 滚动期暂存的高度实测(停手后批量落账;滚动中改 spacer=每帧 Layout/Layerize) */
+  const pendingHeightsRef = useRef<Map<string, number>>(new Map());
+  const settleTimerRef = useRef<number | null>(null);
+  /** 高度落账调度单点(RO/滚动两路共用;RO effect 挂载时写入) */
+  const scheduleHeightsRef = useRef<() => void>(() => undefined);
   const office = useUiMode() === 'office';
   /** 日分组(块模型的组边界;memo 免逐渲染 Intl 构造) */
   const dayGroups = useMemo(() => daySkeleton.map((s) => ({
@@ -439,6 +444,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
       const r = sliceRange(off, el.scrollTop, h, VIRTUAL_OVERSCAN);
       const cur = rangeRef.current;
       if (cur === null || r.first !== cur.first || r.last !== cur.last) setRange(r);
+      // 待落账高度:滚动中不断顺延(停手 200ms 后批量应用,见 RO effect)
+      if (pendingHeightsRef.current.size > 0) scheduleHeightsRef.current();
     });
   };
   /** 挂载期:量视口高(首帧估算值落地)+ 视口尺寸变化跟随;卸载取消在途帧 */
@@ -465,9 +472,35 @@ export function MessageList(props: MessageListProps): JSX.Element {
   /** 块高度实测(ResizeObserver 单点):高度表更新→spacer 重算;视口上方块变化同帧回钉 scrollTop */
   useLayoutEffect(() => {
     if (LAYOUT_FREE || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
+    /** 高度落账(滚动静默后批量应用):滚动中只入待办——逐拍改 spacer 高度=每帧 Layout/Layerize
+     *  (实测滚动期 Layerize 703ms/2s),成熟列表的做法都是滚动期零布局、停手后一次校正 */
+    const applyPending = (): void => {
+      settleTimerRef.current = null;
       const el = chatScrollRef.current;
-      if (el === null) return;
+      const pending = pendingHeightsRef.current;
+      if (el === null || pending.size === 0) return;
+      let above = 0;
+      const off = offsetsRef.current;
+      for (const [key, h] of pending) {
+        const old = heightsRef.current.get(key);
+        if (old !== undefined && Math.abs(old - h) <= 0.5) continue;
+        heightsRef.current.set(key, h);
+        rememberUnitHeight(props.heightScope ?? '', key, h);
+        const idx = unitIndexByKeyRef.current.get(key);
+        // 块整体在视口顶之上(底边 ≤ scrollTop):高度差回钉,正在读的内容不前跳
+        if (idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) above += h - (old ?? 0);
+      }
+      pending.clear();
+      if (above !== 0) el.scrollTop += above;
+      setHeightVer((v) => v + 1);
+    };
+    const deferApply = (): void => {
+      if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
+      const idleFor = performance.now() - lastScrollAtRef.current;
+      settleTimerRef.current = window.setTimeout(applyPending, Math.max(60, 200 - Math.min(idleFor, 190)));
+    };
+    scheduleHeightsRef.current = deferApply;
+    const ro = new ResizeObserver((entries) => {
       // 卸载块剪枝(节点已脱离文档:RO 不再交付,map 不留悬引用)
       for (const [k, n] of unitElsRef.current) {
         if (!n.isConnected) {
@@ -475,34 +508,30 @@ export function MessageList(props: MessageListProps): JSX.Element {
           ro.unobserve(n);
         }
       }
-      let changed = false;
-      let above = 0;
-      const off = offsetsRef.current;
+      const pending = pendingHeightsRef.current;
+      let got = false;
       for (const en of entries) {
         const node = en.target as HTMLElement;
         const key = node.dataset.unitKey ?? '';
         if (key === '') continue;
         const h = en.contentRect.height;
         if (!(h > 0.5)) continue;
-        const old = heightsRef.current.get(key);
+        const old = pending.get(key) ?? heightsRef.current.get(key);
         if (old !== undefined && Math.abs(old - h) <= 0.5) continue;
-        heightsRef.current.set(key, h);
-        rememberUnitHeight(props.heightScope ?? '', key, h);
-        changed = true;
-        const idx = unitIndexByKeyRef.current.get(key);
-        // 块整体在视口顶之上(底边 ≤ scrollTop):高度差同帧回钉,正在读的内容不前跳
-        if (idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) {
-          above += h - (old ?? 0);
-        }
+        pending.set(key, h);
+        got = true;
       }
-      if (above !== 0) el.scrollTop += above;
-      if (changed) setHeightVer((v) => v + 1);
+      if (got) deferApply();
     });
     unitRoRef.current = ro;
     for (const n of unitElsRef.current.values()) ro.observe(n);
     return () => {
       ro.disconnect();
       unitRoRef.current = null;
+      if (settleTimerRef.current !== null) {
+        clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
     };
   }, [chatScrollRef]);
   /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管 */
