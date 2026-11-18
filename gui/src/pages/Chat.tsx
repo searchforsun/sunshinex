@@ -22,7 +22,7 @@ import { useCommandPalette } from './chat/use-command-palette';
 import { TerminalDock } from '../tabs/terminal-dock';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
-import { flushScrollMem, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
+import { flushScrollMem, peekScrollAnchor, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
 import { isProgBottom, markProgBottom, syncOverflowAnchor, useChatScroll } from './chat/use-chat-scroll';
 import { useChatTitle } from './chat/use-chat-title';
 import { useChatSessionInfo } from './chat/use-chat-session-info';
@@ -86,6 +86,21 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
+/** 视口顶内容锚(虚拟窗口块包装 data-unit-key):块 key + 块顶相对视口偏移(负值);
+ *  无块包装(jsdom 回退/降级面)回 undefined——存档退化为只记距底 */
+function chatAnchorOf(el: HTMLElement): { key: string; off: number } | undefined {
+  const cTop = el.getBoundingClientRect().top;
+  for (const child of el.children) {
+    if (!(child instanceof HTMLElement) || !child.classList.contains('chat-unit')) continue;
+    const r = child.getBoundingClientRect();
+    if (r.bottom > cTop) {
+      const key = child.dataset.unitKey ?? '';
+      return key === '' ? undefined : { key, off: Math.round(r.top - cTop) };
+    }
+  }
+  return undefined;
+}
+
 export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
@@ -139,6 +154,9 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   // 存档位待恢复 + 贴底跟随挂起(stick 初值 false,每渲染归底 effect 让位;恢复后 onScroll 接管)。
   // 贴底离开无存档=照旧跳底
   const scrollRestoreRef = useRef<number | null>(peekScrollPos(archiveKey));
+  /** 虚拟窗口锚式恢复位(2026-11-18):块 key+块顶视口偏移——距底反推在估算总高下不可靠,
+   *  MessageList 按块坐标落点(只读一次;jsdom/无包装面恒 null) */
+  const scrollRestoreAnchorRef = useRef(peekScrollAnchor(archiveKey));
   const chatStickRef = useRef(scrollRestoreRef.current === null);
   /** 跟随闩位移指纹:上次 scroll 事件时的 scrollTop——本次事件里它没变=纯内容生长
    *  (钉底位被新内容顶成距底>0),不得据此释放 stick(二修根因见 handleChatScroll 注) */
@@ -280,6 +298,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     seeding,
     entriesLen: chat.entries.length,
     active,
+    skipRestore: scrollRestoreAnchorRef.current !== null,
   });
   const { collapsedRuns, toggleRun, hiddenKeys, onEntryToggleClick, onEntryOpenDiff, onEntryRestore } = useChatFold({
     chat,
@@ -559,7 +578,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     chatStickRef.current = stick;
     setAtBottom(dist < 80);
     if (el.scrollHeight - el.clientHeight > 80) {
-      saveScrollPos(archiveKey, stick ? 0 : dist);
+      saveScrollPos(archiveKey, stick ? 0 : dist, stick ? undefined : chatAnchorOf(el));
     }
   };
   /** 滚轮上翻立即脱离贴底:与 scroll 非对称闩互补(scroll 事件晚于 wheel 时也先放手);
@@ -643,6 +662,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
 
       <ChatTranscript
         active={active}
+        restoreAnchor={scrollRestoreAnchorRef.current ?? undefined}
         history={chat.history}
         setChat={setChat}
         initialRenderWindow={renderWindowRef.current}

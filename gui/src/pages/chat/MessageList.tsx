@@ -109,6 +109,9 @@ export interface MessageListProps {
   /** 前台态(2026-11-18 keep-alive):false=隐藏驻留座——空闲补齐 pump 停止(否则后台白挂条目,
    *  与前台滚动抢主线程=「正文滑动卡顿/一会划不动」),切回再续 */
   readonly active?: boolean;
+  /** 虚拟窗口锚式恢复位(2026-11-18):块 key + 块顶相对视口偏移(负值)。与 Chat 的距底存档互斥
+   *  接管(有锚=skipRestore);只读一次,应用后忽略 */
+  readonly restoreAnchor?: { key: string; off: number };
   readonly running: boolean;
   readonly liveSteps: number;
   readonly liveTokens: number;
@@ -582,7 +585,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
    *  (滚动事件驱动切片),渲染落定后由刻度侧重试轮询收敛(见 ChatRail.seek) */
-  const pendingRevealRef = useRef<string | null>(null);
+  const pendingRevealRef = useRef<{ key: string; off: number } | null>(null);
   const revealEntry = (key: string): boolean => {
     const idx = entries.findIndex((e) => e.key === key);
     if (idx < 0) return false;
@@ -590,7 +593,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     if (need > visibleCount) {
       windowTargetRef.current = Math.max(windowTargetRef.current, need);
       captureAnchor();
-      pendingRevealRef.current = key; // 扩窗后(下一拍块序列就位)落到模型坐标
+      pendingRevealRef.current = { key, off: 8 }; // 扩窗后(下一拍块序列就位)落到模型坐标
       setVisibleCount(Math.min(entries.length, need));
       return false; // 本帧尚未挂载,渲染落定后跳转侧重试
     }
@@ -604,18 +607,66 @@ export function MessageList(props: MessageListProps): JSX.Element {
     }
     return true;
   };
+  /** 模型坐标落点 + 实测收敛:目标块可能尚未挂载/高度仍是估算——先按前缀和落位(切片随滚动
+   *  事件重算、目标块随后挂载),再按真实盒位置迭代校正(≤40 帧,eps=2) */
+  const landOnUnit = (key: string, off: number): void => {
+    const el = chatScrollRef.current;
+    const ui = unitIndexByKeyRef.current.get(key);
+    if (el === null || ui === undefined) return;
+    el.scrollTop = Math.max(0, (offsetsRef.current[ui] ?? 0) - off);
+    scrollTopRef.current = el.scrollTop;
+    let tries = 0;
+    const seek = (): void => {
+      const el2 = chatScrollRef.current;
+      if (el2 === null) return;
+      const node = el2.querySelector<HTMLElement>(`[data-unit-key="${CSS.escape(key)}"]`);
+      if (node === null) {
+        if (++tries < 40) requestAnimationFrame(seek);
+        return;
+      }
+      const d = node.getBoundingClientRect().top - el2.getBoundingClientRect().top - off;
+      if (Math.abs(d) > 2 && tries < 40) {
+        tries += 1;
+        el2.scrollTop += d;
+        scrollTopRef.current = el2.scrollTop;
+        requestAnimationFrame(seek);
+      }
+    };
+    requestAnimationFrame(seek);
+  };
   /** 扩窗后的未挂载定位:块序列就位即把目标块滚进视口(切片随滚动/本帧重算,目标块随后挂载) */
   useLayoutEffect(() => {
-    const key = pendingRevealRef.current;
-    if (key === null) return;
-    const ui = unitIndexOfEntry.get(key);
-    if (ui === undefined) return;
+    const pending = pendingRevealRef.current;
+    if (pending === null) return;
+    if (unitIndexByKeyRef.current.get(pending.key) === undefined) return; // 块尚未进模型窗,等下一拍
     pendingRevealRef.current = null;
-    const el = chatScrollRef.current;
-    if (el === null) return;
-    el.scrollTop = Math.max(0, (offsetsRef.current[ui] ?? 0) - 8);
-    scrollTopRef.current = el.scrollTop;
+    landOnUnit(pending.key, pending.off);
   }, [unitIndexOfEntry, chatScrollRef]);
+
+  /** 锚式恢复(2026-11-18 虚拟窗口):按存档块坐标落点——目标在窗口外先扩窗(虚拟挂载下扩窗
+   *  不挂 DOM,代价=建块对象),块就位后 landOnUnit 落点并实测收敛。只应用一次 */
+  const restoreAppliedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (restoreAppliedRef.current) return;
+    const a = props.restoreAnchor;
+    if (a === undefined) {
+      restoreAppliedRef.current = true;
+      return;
+    }
+    if (!virtual || entries.length === 0 || units.length === 0) return; // 等布局测量/种子
+    restoreAppliedRef.current = true;
+    const entryKey = a.key.startsWith('seg:') ? a.key.slice(4) : a.key;
+    const idx = entries.findIndex((e) => e.key === entryKey);
+    if (idx < 0) return; // 存档条目已不在(rewind/删档):放弃锚,保持贴底语义由上层决定
+    const need = entries.length - idx + 8;
+    if (need > visibleCount) {
+      windowTargetRef.current = Math.max(windowTargetRef.current, need);
+      setVisibleCount(Math.min(entries.length, need));
+      pendingRevealRef.current = { key: a.key, off: a.off };
+      return;
+    }
+    landOnUnit(a.key, a.off);
+  }, [virtual, entries, units, visibleCount, props.restoreAnchor]);
   const showEarlier = (step: number = RENDER_WINDOW_STEP): void => {
     captureAnchor();
     // 2026-11-18:手动「显示更早」/滚顶回放不再受 RENDER_WINDOW_MAX 封顶——上万条会话必须能翻到

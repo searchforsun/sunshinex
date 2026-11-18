@@ -38,8 +38,11 @@ export function useChatScroll(deps: {
    *  ①重测 dock 高写 padding-bottom(否则正文尾行/运行行被输入卡盖住,滚不到底)
    *  ②恢复隐藏前滚动位(display:none 期间 scrollTop 被浏览器钳位) */
   readonly active?: boolean;
+  /** 虚拟窗口锚式恢复接管(2026-11-18):true=距底恢复不写 scrollTop(总高为估算值,反推不可靠;
+   *  MessageList 按块坐标落点),只清存档位 */
+  readonly skipRestore?: boolean;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
-  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true } = deps;
+  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false } = deps;
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
@@ -73,6 +76,7 @@ useEffect(() => {
   const d = scrollRestoreRef.current;
   if (d === null || seeding || entriesLen === 0) return;
   scrollRestoreRef.current = null;
+  if (skipRestore) return; // 锚式恢复(块坐标)接管
   let raf = 0;
   const t0 = Date.now();
   const step = (): void => {
@@ -87,7 +91,7 @@ useEffect(() => {
   };
   raf = requestAnimationFrame(step);
   return () => cancelAnimationFrame(raf);
-}, [seeding, entriesLen]);
+}, [seeding, entriesLen, skipRestore]);
 
 /** 2026-10-26 用户报障「贴地时打开思考/工具行,内容向下长看不见」:行展开是行组件本地 state
  *  不触发本组件渲染,逐渲染归底收不到信号——行组件切换时派 sx-row-toggle,贴地态在此逐帧
