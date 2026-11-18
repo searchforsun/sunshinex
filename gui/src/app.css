@@ -1895,10 +1895,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* G14.30 辅助对话窄面板:贴地壳(composer 钉底)+ pill 单行省略不换行;G14.2xx composer 与
    主对话 dock 同式(与流列同 token 对齐 +2px),面板宽时随阶梯限宽居中 */.sx-sidechat { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow: hidden; }.sx-sidechat .chat { flex: 1; min-height: 0; }
-/* 辅助会话左侧刻度行(2026-11-18 用户裁定「辅助会话也要正常显示左侧刻度行」):侧栏窄时主对话的
-   居中内边距钳到 18px,刻度行余量门控(pad−18≥17)不通过;左内边距下限抬到 36(=18 基线+18 刻度
-   槽,含 hover 膨到 24px 的弧),居中算式在宽面板下仍照常生效 */
-.sx-sidechat .chat { padding-left: max(36px, calc((100% - var(--chat-max) - 2 * var(--thread-gutter)) / 2 + 18px)); }.sx-sidechat .composer { width: min(calc(100% - 28px), calc(var(--chat-max) + 2px)); max-width: none; margin: 0 auto var(--thread-gutter); }.sx-sidechat .composer-pills { flex-wrap: nowrap; min-width: 0; } /* 2026-10-24 用户裁定:辅助对话 composer 对齐主对话——foot 禁折行(旧「两行折放」退役),溢出走全局 pills-tight 塌缩,模型名右缘渐隐同主对话 */.sx-sidechat .composer-pill { white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
+/* 辅助会话左侧刻度行与主会话同规(2026-11-18 用户裁定「到第一个阶梯时再有空隙才会显示,否则隐藏」):
+   内边距沿用 .chat 的居中算式,显隐只由 ChatRail 实测余量门控决定——限宽阶梯让出空档(pad−18≥17)
+   才出刻度条,窄面板自然隐藏;不为显示刻度条强行加宽内边距(首版 36px 硬下限已撤) */.sx-sidechat .composer { width: min(calc(100% - 28px), calc(var(--chat-max) + 2px)); max-width: none; margin: 0 auto var(--thread-gutter); }.sx-sidechat .composer-pills { flex-wrap: nowrap; min-width: 0; } /* 2026-10-24 用户裁定:辅助对话 composer 对齐主对话——foot 禁折行(旧「两行折放」退役),溢出走全局 pills-tight 塌缩,模型名右缘渐隐同主对话 */.sx-sidechat .composer-pill { white-space: nowrap; min-width: 0; overflow: hidden; flex: 0 1 auto; }
 /* 2026-11-06 用户截图裁定(改向):辅助对话模型 pill 与主对话同显思考强度徽标——
    隐藏规则(.sx-sidechat .model-effort-chip display:none)退役 */
 .sx-sidechat .composer-pill:not(.model-pill) .pill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } /* 强度徽标不入此规则(2026-11-06 用户实测「中右边被覆盖」):斜体字形右倾出 advance 盒,自身 overflow:hidden 即裁掉右缘;徽标单字 flex:none 无需省略 */ /* 模型名除外:2026-10-24 裁定动态宽+溢出渐隐,永不出省略号(wrap 态自然宽换行) */
