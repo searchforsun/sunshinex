@@ -4275,12 +4275,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-artifacts-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-artifacts-fold { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; font-size: calc(14px * var(--fz)); padding: 2px 6px; border-radius: var(--radius-sm); } /* 2026-11-14 用户裁定:居左+hover 与全部产物同语言(灰→主文字色,无底) */
 .sx-artifacts-fold:hover { color: var(--fg); }
-.sx-artifacts-grid { display: flex; flex-wrap: wrap; gap: 16px 8px; } /* 行距 16px(2026-11-14 用户裁定「纵向行距加大一些」,一轮 12px 用户未见效提档) */
-/* 卡宽策略(2026-11-18 用户裁定「最多两列包括侧栏」「宽度始终占满一行,只有一个产物时也要占满」):
-   flex 换行 + 等分增长——基宽 min(100%, max(360px, 50%-半隙)) 保证一行最多两张(半宽下限使第 3 张
-   挤不进,窄容器退单张),flex-grow 1 让每行剩余空间被吸收:单张=整行占满,末行落单一张同样占满;
-   min-width 0 防长名撑破(卡内 ellipsis 生效) */
-.sx-artifacts-grid > * { flex: 1 1 min(100%, max(360px, calc(50% - 4px))); min-width: 0; }
+.sx-artifacts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(360px, calc(50% - 4px))), 1fr)); gap: 16px 8px; } /* 行距 16px(2026-11-14 用户裁定「纵向行距加大一些」,一轮 12px 用户未见效提档);**最多两列**(2026-11-18 用户裁定「产物最多两列包括侧栏的」):每列最小宽 max(360px, 50%-半隙),半宽下限使 auto-fit 第 3 轨永远放不下;窄容器(<728px)退单列且 1fr 撑满 */
+.sx-artifacts-grid > :only-child { grid-column: 1 / -1; } /* 单个产物占满整行(2026-11-18 用户裁定「宽度始终占满一行,只有一个产物时也要占满」);3 个时末张保持半宽左对齐,不拉伸 */
 @keyframes sx-card-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .sx-artifacts-card { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 8px 10px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-md); animation: sx-card-in 0.22s var(--ease-enter); } /* 展开全部时后入卡渐入(2026-11-14 用户裁定「展开产物支持平滑展开」) */
 [data-theme='dark'] .sx-artifacts-card { background: var(--bubble-user); } /* 卡色与改动条(.run-changes)同源 */
