@@ -11,7 +11,7 @@ import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { useUsageStats } from '../../usage-stats';
-import { dayUnitSpans, firstUnitAt, prefixOffsets, sliceRange, unitEstimate } from './transcript-units';
+import { dayUnitSpans, firstUnitAt, prefixOffsets, sliceRange } from './transcript-units';
 import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
 import { peekScrollAnchor } from './scroll-mem';
 import type { UnitSpan } from './transcript-units';
@@ -892,13 +892,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {virtual && <div className="chat-spacer" style={{ height: offsets[firstUnit] ?? 0 }} aria-hidden="true" />}
         {units.slice(firstUnit, lastUnit).map((u) =>
           virtual ? (
-            <div
-              key={u.key}
-              className="chat-unit"
-              data-unit-key={u.key}
-              ref={unitRefCb}
-              style={{ containIntrinsicBlockSize: `${Math.round(heightsRef.current.get(u.key) ?? unitEstimate(u.kind, u.entryKind))}px` }}
-            >
+            <div key={u.key} className="chat-unit" data-unit-key={u.key} ref={unitRefCb}>
               {renderUnit(u)}
             </div>
           ) : (
