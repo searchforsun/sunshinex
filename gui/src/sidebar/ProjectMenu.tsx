@@ -36,7 +36,7 @@ export { FolderAddIcon } from './project-menu-util';
  * 回欢迎页预选该项目(审批模式由欢迎页选择器承载,G10-C16);会话行 Attach 两步(newSession 装配壳
  * → attach 播种)→ onOpenSession(sessionId, root)。Projects 分区头「+」开原生文件选择器(选完自动建项目, G10-C11);品牌行查找钮开项目/会话搜索面板 + 30s 定时自动刷新(G10-C13);
  * Home 的 modal-overlay 结构原样)。连接态显示退役(G10:一体本地,无连接语义可显)。
- * activeRoot 组自动展开(T5 App 壳传当前活动工作区;与手动展开共用同一 openSlug 态)。
+ * activeRoot 组自动展开(T5 App 壳传当前活动工作区;自动加开自己,不关其他已开组)。
  * 样式用 app.css T1 的 sx- 类 + Home 既有测试钩子类(workspace-、ws-、session- 前缀与
  * attach、no-root,零 e2e 迁移);唯一内联样式为组行锚定(mode 弹层定位面)与 chevron 旋转。
  */
@@ -165,26 +165,36 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  顶部快捷区行——与「新对话」主钮真同级(RECENTS 头簇的小钮用户看不见);成功后不走欢迎页,
    *  直接 openSession 打开新会话) */
   const [sunxOpen, setSunxOpen] = useState(false);
-  /** 展开中的组 slug(G14.32 恢复组展开;null = 全收)+ sessionsOf 应答缓存/错误 */
-  const [openSlug, setOpenSlug] = useState<string | null>(null);
-  const openSlugRef = useRef<string | null>(null);
-  openSlugRef.current = openSlug;
-  const [sessions, setSessions] = useState<SessionRow[] | null>(null);
-  const [sessionsError, setSessionsError] = useState('');
+  /** 展开中的组 slug 集(2026-11-18 用户裁定「左侧打开项目菜单,不要自动关闭另一个项目的」):
+   *  多组可同开——旧单 openSlug 是手风琴语义(开一组=收上一组)。集合同步进 ref:惰拉应答守卫/
+   *  30s 聚焦刷新/归档重拉都在异步回调里读现值 */
+  const [openSlugs, setOpenSlugs] = useState<ReadonlySet<string>>(() => new Set());
+  const openSlugsRef = useRef<ReadonlySet<string>>(openSlugs);
+  openSlugsRef.current = openSlugs;
+  /** 组会话行/错误/「显示更多」按 slug 分桶:各组独立惰拉、独立报错、独立放开 */
+  const [sessionsBySlug, setSessionsBySlug] = useState<Record<string, SessionRow[] | null>>({});
+  const [sessionsErrorBySlug, setSessionsErrorBySlug] = useState<Record<string, string>>({});
   /** attach/组内新建/添加工作区在途(按钮禁用防双发) */
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   /** 组内「+」的 mode 弹层挂哪组(slug;null = 收) */
   /** 分区折叠(G10-C18):PROJECTS/RECENTS 分区头可折叠(平滑过渡) */
   const [projectsOpen, setProjectsOpen] = useState(true);
-  // G14.2xx 组内会话默认收窄:默认显 24h 内活跃(最多 10),「显示更多」放全量,「收起」复位;切组复位
-  const [groupShowAll, setGroupShowAll] = useState(false);
-  const groupShowAllRef = useRef(false);
-  groupShowAllRef.current = groupShowAll;
+  // G14.2xx 组内会话默认收窄(2026-11-18 多组同开):「显示更多」按组独立(slug → 全量),
+  // 收起该组即复位;旧单布尔是全侧栏一份,多组同开下会互相串档
+  const [showAllBySlug, setShowAllBySlug] = useState<Record<string, boolean>>({});
   /** 查找面板簇(开合/查询词/聚合会话集)收口 use-menu-search(D62 批J) */
   const { searchOpen, setSearchOpen, allSessions, query, setQuery } = useMenuSearch(conn, rows);
+  /** 各组已载会话行并集(已读映射/journal 行寻址面):多组同开后活跃行不再只认单组数据 */
+  const openSessions = useMemo(() => {
+    const out: SessionRow[] = [];
+    for (const list of Object.values(sessionsBySlug)) {
+      if (list !== null && list !== undefined) out.push(...list);
+    }
+    return out;
+  }, [sessionsBySlug]);
   /** 已读档+journal 映射簇收口 use-menu-seen(D62 批J):双写收敛/自动已读/attach 映射 */
-  const { isUnseen, markSeen, markJournal, loadSeen, journalOfSession } = useMenuSeen(conn, sessions, activeSessionId);
+  const { isUnseen, markSeen, markJournal, loadSeen, journalOfSession } = useMenuSeen(conn, openSessions, activeSessionId);
 
   const loadWorkspaces = useCallback((): void => {
     conn.workspaces().then(
@@ -240,7 +250,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     const ro = new ResizeObserver(markSideCut);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [markSideCut, rows, sessions, recents, sunxRows, archivedRows, pins, openSlug, groupShowAll, recentLimit, projectsOpen, archiveOpen, searchOpen]);
+  }, [markSideCut, rows, openSessions, recents, sunxRows, archivedRows, pins, openSlugs, showAllBySlug, recentLimit, projectsOpen, archiveOpen, searchOpen]);
 
 
 
@@ -269,30 +279,49 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     };
   }, [conn, loadWorkspaces]);
 
-  /** 移除工作区(2026-10-23):conn.hideWorkspace 落库后刷新清单;展开组若是它即收起。
+  /** 组开合单点(集合同步写 ref:惰拉守卫/异步刷新须已见新集) */
+  const setGroupOpen = useCallback((slug: string, open: boolean): void => {
+    const cur = openSlugsRef.current;
+    if (open === cur.has(slug)) return;
+    const next = new Set(cur);
+    if (open) next.add(slug);
+    else next.delete(slug);
+    openSlugsRef.current = next;
+    setOpenSlugs(next);
+  }, []);
+
+  /** 移除工作区(2026-10-23):conn.hideWorkspace 落库后刷新清单;若它正展开即收(多组同开只收自己)。
    *  数据保留——重新「添加工作区」即原地加回 */
   const removeWorkspace = useCallback((slug: string): void => {
     conn.hideWorkspace(slug).then(
       () => {
-        if (openSlugRef.current === slug) {
-          openSlugRef.current = null;
-          setOpenSlug(null);
-          setSessions(null);
+        if (openSlugsRef.current.has(slug)) {
+          setGroupOpen(slug, false);
+          setSessionsBySlug((prev) => {
+            if (!(slug in prev)) return prev;
+            const next = { ...prev };
+            delete next[slug];
+            return next;
+          });
         }
         loadWorkspaces();
       },
       (err: unknown) => setActionError(errText(err)),
     );
-  }, [conn, loadWorkspaces]);
+  }, [conn, loadWorkspaces, setGroupOpen]);
 
-  /** 拉展开组的会话列表(slug 守卫):应答到达时已切组/收起则丢弃(慢应答竞态收口) */
+  /** 拉指定组的会话列表(slug 守卫):应答到达时该组已收起/已移除则丢弃(慢应答竞态收口) */
   const loadSessions = useCallback(
     (root: string, slug: string): void => {
       conn.sessionsOf(root).then(
         (list) => {
-          if (openSlugRef.current !== slug) return;
+          if (!openSlugsRef.current.has(slug)) return;
           // 2026-11-16 流畅轮:浅等守卫(同 loadWorkspaces——recentVersion bump/30s 重拉内容未变零重渲)
-          setSessions((prev) => (listShallowEqual(prev, list) ? prev : list));
+          setSessionsBySlug((prev) => {
+            const before = prev[slug];
+            if (before !== undefined && before !== null && listShallowEqual(before, list)) return prev;
+            return { ...prev, [slug]: list };
+          });
           // 树会话行分支缓存补拉(2026-11-11):隔离会话 sr.root=工作树路径,悬浮卡分支按真根取
           for (const r of list) {
             const rt = r.root;
@@ -304,53 +333,59 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           }
         },
         (err: unknown) => {
-          if (openSlugRef.current !== slug) return;
-          setSessionsError(err instanceof Error ? err.message : String(err));
+          if (!openSlugsRef.current.has(slug)) return;
+          const msg = err instanceof Error ? err.message : String(err);
+          setSessionsErrorBySlug((prev) => (prev[slug] === msg ? prev : { ...prev, [slug]: msg }));
         },
       );
     },
     [conn],
   );
 
-  /** 展开组:展开即惰拉 sessionsOf(root);ref 先行同步写(守卫须已见新 slug) */
+  /** 展开组:展开即惰拉 sessionsOf(root);多组可同开(2026-11-18 用户裁定——不再收上一组) */
   const expandGroup = useCallback(
     (row: WorkspaceRow): void => {
       if (row.root === undefined) return;
-      openSlugRef.current = row.slug;
-      setOpenSlug(row.slug);
-    setGroupShowAll(false);
-      setSessions(null);
-      setSessionsError('');
+      setGroupOpen(row.slug, true);
+      setShowAllBySlug((prev) => (prev[row.slug] === undefined || prev[row.slug] === false ? prev : { ...prev, [row.slug]: false }));
+      setSessionsBySlug((prev) => (prev[row.slug] === undefined ? { ...prev, [row.slug]: null } : prev));
+      setSessionsErrorBySlug((prev) => (prev[row.slug] === undefined || prev[row.slug] === '' ? prev : { ...prev, [row.slug]: '' }));
       loadSessions(row.root, row.slug);
     },
-    [loadSessions],
+    [loadSessions, setGroupOpen],
   );
 
   const toggleGroup = useCallback((row: WorkspaceRow): void => {
     if (row.root === undefined) return;
-    if (openSlug === row.slug) {
-      openSlugRef.current = null;
-      setOpenSlug(null);
-    setGroupShowAll(false);
+    if (openSlugsRef.current.has(row.slug)) {
+      setGroupOpen(row.slug, false);
+      setShowAllBySlug((prev) => (prev[row.slug] === true ? { ...prev, [row.slug]: false } : prev));
       return;
     }
     expandGroup(row);
-  }, [openSlug, expandGroup]);
+  }, [expandGroup, setGroupOpen]);
 
-  /** activeRoot 组自动展开(当前会话所属组;与手动 toggle 共用 openSlug 态) */
+  /** 已开组会话行全量重拉(归档/撤销/运行态变化后同拍回显;多组同开各自独立跟手) */
+  const reloadOpenGroups = useCallback((): void => {
+    for (const slug of openSlugsRef.current) {
+      const row = (rows ?? []).find((r) => r.slug === slug);
+      if (row?.root !== undefined) loadSessions(row.root, slug);
+    }
+  }, [rows, loadSessions]);
+
+  /** activeRoot 组自动展开(当前会话所属组;多组同开:只加开自己,不再收其他组) */
   useEffect(() => {
     const row = (rows ?? []).find((r) => r.root === activeRoot);
-    if (row === undefined || openSlugRef.current === row.slug) return;
+    if (row === undefined || openSlugsRef.current.has(row.slug)) return;
     expandGroup(row);
   }, [activeRoot, rows, expandGroup]);
 
-  /** G14.52:run 起跑/收束(App recentVersion bump)时,展开中的组重拉会话行——liveSessionId
+  /** G14.52:run 起跑/收束(App recentVersion bump)时,展开中的各组重拉会话行——liveSessionId
    *  运行圆点跟手。组列表只在展开时惰拉,不重拉则行恒为展开时刻快照(圆点不亮/不熄) */
   useEffect(() => {
-    if (recentVersion === 0 || openSlugRef.current === null) return;
-    const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
-    if (row?.root !== undefined) loadSessions(row.root, row.slug);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- recentVersion 即刷新信号;rows/openSlugRef 取现值
+    if (recentVersion === 0) return;
+    reloadOpenGroups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- recentVersion 即刷新信号;rows/openSlugsRef 取现值
   }, [recentVersion]);
 
 
@@ -360,12 +395,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   // 2026-10-23:展开组会话行同拍重拉——后台会话收束后 liveSessionId 卡旧列表即「已完成仍在转圈」
   // (workspaces 只刷计数/recents,组行本不在此列;他端/他页起落的运行态 30s/聚焦自愈)
   const refreshExpandedGroupRef = useRef<() => void>(() => undefined);
-  refreshExpandedGroupRef.current = () => {
-    const slug = openSlugRef.current;
-    if (slug === null) return;
-    const row = (rows ?? []).find((r) => r.slug === slug);
-    if (row?.root !== undefined) loadSessions(row.root, slug);
-  };
+  refreshExpandedGroupRef.current = reloadOpenGroups;
   useEffect(() => {
     const tick = (): void => {
       loadWorkspaces();
@@ -444,11 +474,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       conn.archiveSession(id, archived).then(() => {
         loadWorkspaces();
         loadArchived();
-        const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
-        if (row?.root !== undefined) loadSessions(row.root, row.slug);
+        reloadOpenGroups();
       }, (err: unknown) => setActionError(errText(err)));
     },
-    [conn, loadWorkspaces, loadArchived, loadSessions, rows],
+    [conn, loadWorkspaces, loadArchived, reloadOpenGroups],
   );
 
   const unarchiveArchivedRow = useCallback(
@@ -456,11 +485,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       conn.archiveSession(id, false).then(() => {
         loadArchived();
         loadWorkspaces(); // 撤销即回主列表:组计数/Recents 即时归位
-        const row = (rows ?? []).find((r) => r.slug === openSlugRef.current);
-        if (row?.root !== undefined) loadSessions(row.root, row.slug); // 展开组会话行即时回行(与 archiveRow 对称)
+        reloadOpenGroups(); // 已开组会话行即时回行(与 archiveRow 对称)
       }, (err: unknown) => setActionError(errText(err)));
     },
-    [conn, loadArchived, loadWorkspaces, loadSessions, rows],
+    [conn, loadArchived, loadWorkspaces, reloadOpenGroups],
   );
 
   /** 置顶簇(行快照入列/撤钉/钉 id 集)收口 use-menu-sections(D62 批J) */
@@ -553,7 +581,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 分区回调簇(2026-11-16 流畅轮:useCallback 恒稳——五 memo 分区的判等面,内联箭头每渲染
    *  换新即全分区每帧重渲) */
   const toggleProjects = useCallback((): void => setProjectsOpen((v) => !v), []);
-  const groupShowMore = useCallback((): void => setGroupShowAll(true), []);
+  const groupShowMore = useCallback((slug: string): void => {
+    setShowAllBySlug((prev) => (prev[slug] === true ? prev : { ...prev, [slug]: true }));
+  }, []);
   const openNewSunxDialog = useCallback((): void => setSunxOpen(true), []);
 
   return (
@@ -701,11 +731,11 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           actionError={actionError}
           rows={rows}
           listError={listError}
-          openSlug={openSlug}
-          groupShowAll={groupShowAll}
+          openSlugs={openSlugs}
+          showAllBySlug={showAllBySlug}
           onGroupShowMore={groupShowMore}
-          sessions={sessions}
-          sessionsError={sessionsError}
+          sessionsBySlug={sessionsBySlug}
+          sessionsErrorBySlug={sessionsErrorBySlug}
           activeRoot={activeRoot}
           activeSessionId={activeSessionId}
           runningIds={runningIds}

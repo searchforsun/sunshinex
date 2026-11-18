@@ -40,18 +40,20 @@ export interface ProjectsSectionProps {
   readonly actionError: string;
   readonly rows: WorkspaceRow[] | null;
   readonly listError: string;
-  readonly openSlug: string | null;
-  readonly sessions: SessionRow[] | null;
-  /** G14.2xx 组内会话默认收窄:24h 内活跃全显(上限 10),显示更多放全量,收起复位 */
-  readonly groupShowAll: boolean;
-  readonly onGroupShowMore: () => void;
+  /** 展开中的组 slug 集(2026-11-18 用户裁定「打开项目菜单不要自动关闭另一个项目的」:多组同开) */
+  readonly openSlugs: ReadonlySet<string>;
+  /** 组会话行/错误按 slug 分桶(各组独立惰拉) */
+  readonly sessionsBySlug: Readonly<Record<string, SessionRow[] | null>>;
+  readonly sessionsErrorBySlug: Readonly<Record<string, string>>;
+  /** G14.2xx 组内会话默认收窄:24h 内活跃全显(上限 10),显示更多放全量,收起复位(按组分桶) */
+  readonly showAllBySlug: Readonly<Record<string, boolean>>;
+  readonly onGroupShowMore: (slug: string) => void;
   /** 移除工作区(2026-10-23 用户裁定):组头 ⋯→移除——仅摘出侧栏,数据保留;重新添加即原地加回 */
   readonly onRemoveWorkspace: (slug: string) => void;
   /** 目录页签(2026-10-23 用户裁定):组头目录钮——开当前会话/项目第一会话的目录页签 */
   readonly onOpenDirectory: (root: string) => void;
   /** 2026-10-24 用户裁定:会话行 hover tooltip 分支信息(root→current branch;ProjectMenu 缓存拉取) */
   readonly branchByRoot?: Record<string, string>;
-  readonly sessionsError: string;
   readonly activeRoot: string;
   readonly activeSessionId: string;
   readonly runningIds: ReadonlySet<string>;
@@ -77,7 +79,7 @@ export interface ProjectsSectionProps {
 
 export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSectionProps): JSX.Element {
   useLanguage(); // memo 响应面:语言同步强制重渲染(memo bail 否则永钉启动期语言,2026-11-16 混排根修)
-  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlug, sessions, sessionsError, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, archiveScope, onExitArchive, pinnedIds, onPinRow, groupShowAll, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
+  const { projectsOpen, onToggleProjects, busy, onAddWorkspace, actionError, rows, listError, openSlugs, sessionsBySlug, sessionsErrorBySlug, activeRoot, activeSessionId, runningIds, journalOfSession, isUnseen, onToggleGroup, onComposeIn, onAttach, onArchiveRow, onOpenArchived, archiveMode, archiveScope, onExitArchive, pinnedIds, onPinRow, showAllBySlug, onGroupShowMore, onRemoveWorkspace, onOpenDirectory } = props;
   /** T6 行内归档确认 morph:存确认中的行 id('' = 无;行级单份,他行点击即换位) */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId('')); // 点外部取消归档确认(用户裁定)
@@ -183,13 +185,17 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
             )}
             {visibleWorkspaces(sortRows(rows ?? [], wsSort)).map((row) => {
               const root = row.root; // const 捕获:root 收窄可入回调
+              // 本组数据/开合态(2026-11-18 多组同开:各行只读自己的桶,互不串档)
+              const groupSessions = sessionsBySlug[row.slug] ?? null;
+              const groupSessionsError = sessionsErrorBySlug[row.slug] ?? '';
+              const groupOpen = openSlugs.has(row.slug);
               // G14.2xx 组内会话默认收窄:默认显 24h 内活跃(最多 10;活跃不足 10 有几条显几条),
               // 「显示更多」放全量、「收起」复位;当前打开的会话恒显(避免点开后从列表消失)
               const now24 = Date.now() - 24 * 60 * 60 * 1000;
-              const sorted24 = (sessions ?? []).slice().sort((a, b) => b.updatedAt - a.updatedAt);
+              const sorted24 = (groupSessions ?? []).slice().sort((a, b) => b.updatedAt - a.updatedAt);
               const activeN = sorted24.filter((sr) => sr.updatedAt >= now24).length;
               const defN = Math.min(10, Math.max(activeN, 1));
-              const showAll = groupShowAll;
+              const showAll = showAllBySlug[row.slug] === true;
               const isActiveRow = (sr: SessionRow) =>
                 activeSessionId !== '' && (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
               // 置顶滤除先行(2026-10-22 用户裁定:分页只数实际可显示行——钉/归档过滤不计为隐藏内容)
@@ -198,7 +204,7 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
               const tailRows = showAll ? [] : listable.slice(defN).filter((sr: SessionRow) => isActiveRow(sr));
               const visible = [...headRows, ...tailRows];
               const hidden = listable.length - visible.length;
-              const groupShowMore = () => onGroupShowMore();
+              const groupShowMore = () => onGroupShowMore(row.slug);
               return (
                 <li
                   key={row.slug}
@@ -210,12 +216,12 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
                       type="button"
                       className={`workspace-toggle sx-group-head${root !== undefined && root === activeRoot ? ' active' : ''}`}
                       disabled={root === undefined}
-                      aria-expanded={openSlug === row.slug}
+                      aria-expanded={groupOpen}
                       data-root={root} /* 2026-10-23:路径 tooltip 退役后,测试定位改走无视觉 data-root */
                       onClick={() => onToggleGroup(row)}
                     >
                       <span className="sx-ws-folder" aria-hidden="true">
-                        {openSlug === row.slug ? <FolderOpen size={16} strokeWidth={1.75} /> : <Folder size={16} strokeWidth={1.75} />}
+                        {groupOpen ? <FolderOpen size={16} strokeWidth={1.75} /> : <Folder size={16} strokeWidth={1.75} />}
                       </span>
                       <span className="ws-slug sx-ws-name">{wsName(row)}</span>
                     </button>
@@ -279,11 +285,11 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
                     </span>
                   </div>
                   {root !== undefined && (
-                    <div className={`sx-collapse${openSlug === row.slug ? ' open' : ''}`}>
+                    <div className={`sx-collapse${groupOpen ? ' open' : ''}`}>
                       <ul className="session-list" aria-label="sessions">
-                        {sessionsError !== '' && <li className="home-error">{sessionsError}</li>}
+                        {groupSessionsError !== '' && <li className="home-error">{groupSessionsError}</li>}
                         {/* G14.35:RECENTS 只收默认锚点会话,组内列表恢复展示本项目全部会话 */}
-                        {sessions !== null && sessions.length === 0 && (
+                        {groupSessions !== null && groupSessions.length === 0 && (
                           <li className="no-sessions">{t('No sessions', '暂无会话')}</li>
                         )}
                         {visible.map((sr) => {

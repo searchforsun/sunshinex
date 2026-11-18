@@ -100,6 +100,36 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1');
   });
 
+  it('多组同开(2026-11-18 用户裁定「打开项目菜单不要自动关闭另一个项目的」):展开第二组不收第一组,单点收起只收自己', async () => {
+    const conn = makeConn();
+    conn.workspaces = vi.fn(async () => [
+      { slug: 'p1', root: 'D:/w/p1', sessionCount: 1, mtime: Date.now() },
+      { slug: 'p2', root: 'D:/w/p2', sessionCount: 1, mtime: Date.now() },
+    ] as never);
+    conn.sessionsOf = async (root: string) =>
+      [{ id: root === 'D:/w/p1' ? 'j1' : 'j2', firstUser: root === 'D:/w/p1' ? 'goal one' : 'goal two', updatedAt: FIXED_TS }] as never;
+    renderMenu(conn, { activeRoot: '' });
+    await screen.findByText('p1');
+    const head1 = document.querySelector('.workspace-toggle[data-root="D:/w/p1"]')!;
+    const head2 = document.querySelector('.workspace-toggle[data-root="D:/w/p2"]')!;
+    fireEvent.click(head1);
+    await waitFor(() => expect(screen.getByText('goal one')).toBeDefined());
+    // 展开第二组:第一组保持展开(手风琴语义退役)
+    fireEvent.click(head2);
+    await waitFor(() => expect(screen.getByText('goal two')).toBeDefined());
+    expect(head1.getAttribute('aria-expanded')).toBe('true');
+    expect(head2.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('goal one')).toBeDefined(); // 第一组会话行仍在场
+    // 收起第一组:只收自己,第二组不动(折叠是 CSS 高度过渡,行仍在 DOM——断言 collapse 开合类)
+    const collapseOf = (head: Element): Element => head.closest('.workspace-item')!.querySelector('.sx-collapse')!;
+    expect(collapseOf(head1).className).toContain('open');
+    fireEvent.click(head1);
+    await waitFor(() => expect(head1.getAttribute('aria-expanded')).toBe('false'));
+    expect(head2.getAttribute('aria-expanded')).toBe('true');
+    expect(collapseOf(head1).className).not.toContain('open');
+    expect(collapseOf(head2).className).toContain('open');
+  });
+
   it('RECENTS 行=Attach 两步(newSession+attach)→ onOpenSession + 行 active + 未读点消失', async () => {
     const conn = makeConn();
     renderMenu(conn, { activeSessionId: 'new-D:/w/p1' });
