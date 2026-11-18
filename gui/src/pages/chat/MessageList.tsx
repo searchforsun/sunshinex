@@ -1,7 +1,7 @@
 import type { RewindOps } from './chat-types';
 import type { ComposerEnv } from './edit-composer';
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -11,6 +11,8 @@ import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { useUsageStats } from '../../usage-stats';
+import { dayUnitSpans, firstUnitAt, prefixOffsets, sliceRange } from './transcript-units';
+import type { UnitSpan } from './transcript-units';
 function fmtTokens(n: number): string {
   return fmtTokensShared(n);
 }
@@ -27,6 +29,11 @@ const RENDER_WINDOW_STEP = 300; // 手动回放步进(「显示更早」钮/滚�
 // 大块跳变变平滑渐进
 const RENDER_WINDOW_IDLE_STEP = 24;
 export const RENDER_WINDOW_MAX = 600; // 空闲回放天花板(沿旧入口窗口预算);超出部分仍走手动/滚顶回放
+/** 虚拟窗口旁路闸(2026-11-18 结构性改造):jsdom 无布局(clientHeight=0 / gBCR 全零),切片模型
+ *  无从测量——整窗逐块直渲,测试面语义与旧实现一致;真浏览器(Chromium/Electron)走虚拟窗口 */
+const LAYOUT_FREE = typeof window !== 'undefined' && typeof window.navigator !== 'undefined' && /jsdom/i.test(window.navigator.userAgent);
+/** 视口上下各多挂一屏内容(滚动提前就位,避免白块;估算误差由实测回钉吸收) */
+const VIRTUAL_OVERSCAN = 900;
 import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
@@ -112,268 +119,6 @@ export interface MessageListProps {
  *  「条目逐位引用+冻结回调」判定——未变组整块跳过(元素都不建),只有流式尾所在组重建。
  *  条目引用身份由 chat-reducer 映射缓存保证(未变行恒同引用);组边界由 daySkeleton 冻结
  *  (structureVersion 键),位置对位成立 */
-interface DayGroupProps {
-  readonly onOpenWeb?: (url: string) => void;
-  readonly onRunInTerminal?: (command: string) => void;
-
-  readonly label: string;
-  readonly entries: readonly ChatEntry[];
-  readonly hiddenKeys: ReadonlySet<string>;
-  readonly collapsedRuns: ReadonlySet<string>;
-  readonly callIdOf: (entry: ChatEntry) => string | undefined;
-  readonly conn: Connection;
-  readonly sessionId: string;
-  readonly onOpenFile?: (p: string) => void;
-  readonly onOpenDiff?: (callId: string, p: string) => void;
-  readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
-  readonly onOpenTask?: (ref: string) => void;
-  /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡 */
-  readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
-  readonly taskNameOf: (id: string) => string;
-  /** 后台任务 id → 子智能体(办公模式等待行链接转录页;use-chat-derived taskAgentResolverOf) */
-  readonly taskAgentOf?: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
-  readonly teamNameOf?: (ref: string) => string;
-  readonly teams?: readonly { teamId: string; name: string }[];
-  readonly toggleRun: (key: string) => void;
-  readonly submitText: (text: string) => Promise<void>;
-  readonly rewindOps?: RewindOps;
-
- readonly composerEnv?: ComposerEnv;
-  readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
-  /** 轮末产物卡区透传(ChatEntryView→ArtifactsStrip;可选防测试桩免配) */
-  readonly onOpError?: (err: unknown) => void;
-  readonly onOpenArtifacts?: () => void;
-  readonly onEntryOpenDiff: (p: string) => void;
-  readonly onEntryRestore: (p: string) => void;
-  readonly onOpenTurn?: (run: number, path: string) => void;
-  readonly onTurnRestore?: (run: number, paths: string[]) => Promise<Array<{ path: string; ok: boolean; stale?: boolean; noCheckpoint?: boolean }>>;
-  readonly onFork?: (runKey: string) => void;
-  /** fork 分界横幅回父会话(合成条目渲染面) */
-  readonly onOpenSession?: (sessionId: string) => void;
-  readonly onOpenImage?: (src: string) => void;
-  /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
-  readonly root?: string;
-  /** 用户气泡上间距分档(2026-10-27 用户裁定):辅助对话=紧凑档;运行中插入按逐条目判定 */
-  readonly sideChat?: boolean;
-}
-
-const DayGroupBlock = memo(
-  function DayGroupBlock(props: DayGroupProps): JSX.Element {
-    const { label, entries, hiddenKeys, collapsedRuns, callIdOf, conn, sessionId, root, onOpError, onOpenWeb, onRunInTerminal, onOpenArtifacts, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, taskNameOf, taskAgentOf, teamNameOf, teams, toggleRun, submitText, rewindOps, composerEnv, runFooterByEntry, onEntryOpenDiff, onEntryRestore, onOpenTurn, onTurnRestore, onFork, onOpenSession, onOpenImage, sideChat } = props;
-    const office = useUiMode() === 'office';
-    const renderTool = useCallback((e2: ChatEntry) => (
-      <ToolEntryView
-        key={e2.key}
-        entry={e2}
-        conn={conn}
-        sessionId={sessionId}
-        callId={callIdOf(e2)}
-        root={root}
-        onOpenFile={onOpenFile}
-        onOpenDiff={onOpenDiff}
-        onOpenAgent={onOpenAgent}
-        onOpenTask={onOpenTask}
-        onOpenTodos={onOpenTodos}
-        onOpenArtifacts={onOpenArtifacts}
-        taskNameOf={taskNameOf}
-        taskAgentOf={taskAgentOf}
-        teamNameOf={teamNameOf}
-        teams={teams}
-      />
-    ), [conn, sessionId, callIdOf, onOpenFile, onOpenDiff, onOpenAgent, onOpenTask, onOpenTodos, onOpenArtifacts, taskNameOf, taskAgentOf, teamNameOf, teams]);
-    const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-    const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiff} onOpenTurn={onOpenTurn} onTurnRestore={onTurnRestore} onOpenAgent={onOpenAgent} sideChat={sideChat} onSend={submitText} />, [onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, submitText]);
-    const renderFoldEntry = useCallback((e2: ChatEntry) => {
-      if (e2.kind === 'user') {
-        return (
-          <UserEntryView
-            key={e2.key}
-            entry={e2}
-            insert
-            onSend={submitText}
-            rewindOps={rewindOps}
-            composerEnv={composerEnv}
-            onOpenFile={onOpenFile}
-            onOpenImage={onOpenImage}
-            conn={conn}
-            root={root}
-            sideChat={sideChat}
-          />
-        );
-      }
-      return (
-        <ChatEntryView
-          key={e2.key}
-          entry={e2}
-          onOpenDiff={onEntryOpenDiff}
-          onOpenTurn={onOpenTurn}
-          onTurnRestore={onTurnRestore}
-          onOpenAgent={onOpenAgent}
-          onOpenFile={onOpenFile}
-          onSend={submitText}
-          sideChat={sideChat}
-          conn={conn}
-          sessionId={sessionId}
-          root={root}
-          onOpError={onOpError}
-          onOpenWeb={onOpenWeb}
-          onRunInTerminal={onRunInTerminal}
-          onOpenArtifacts={onOpenArtifacts}
-        />
-      );
-    }, [submitText, rewindOps, onOpenFile, onOpenImage, conn, sessionId, root, onOpError, onOpenWeb, onRunInTerminal, onOpenArtifacts, onEntryOpenDiff, onOpenTurn, onTurnRestore, onOpenAgent, sideChat, composerEnv]);
-    const nodes: ReactNode[] = [];
-    if (label !== '') {
-      nodes.push(
-        <div key={`day:${label}`} className="chat-day-sep" role="separator" aria-label={label}>
-          {label}
-        </div>,
-      );
-    }
-    /** G14.73:连续的折叠区条目(工具/思考/成员消息/记忆·技能旁白)聚成一段,包进 seg-collapse——
-     *  展开与收合都是 grid 高度过渡,不再瞬切;G14.215 段内工具行聚合(ToolSegBlock 抽件) */
-    let seg: ChatEntry[] = [];
-    /** 用户气泡上距:新开场 60px;轮内插入与辅助对话走 entry-user-insert 上下 10px */
-    const flushSeg = (): void => {
-      if (seg.length === 0) return;
-      const segEntries = seg;
-      nodes.push(
-        <ToolSegBlock
-          key={`seg:${segEntries[0]!.key}`}
-          seg={segEntries}
-          closed={hiddenKeys.has(segEntries[0]!.key)}
-          renderTool={renderTool}
-          renderThinking={renderThinking}
-          renderAssistant={renderAssistant}
-          renderEntry={renderFoldEntry}
-        />,
-      );
-      seg = [];
-    };
-    for (let i = 0; i < entries.length; i += 1) {
-      const entry = entries[i]!;
-      // 办公模式隐藏旁白整条跳过(不切断折叠段——留着会把前后思考/工具行拆成两段,中间多出空隙)
-      if (office && isOfficeHiddenNotice(entry.kind, entry.md)) continue;
-      // G14.136 折叠态的中间正文/成员消息随工具进 seg-collapse;轮内插入用户条不上折叠行
-      if (isCommandEntry(entry)) {
-        // 斜杠命令三态=系统提示行(2026-10-31 裁定):不进工具段聚合
-        flushSeg();
-        nodes.push(<CommandEntryView key={entry.key} entry={entry} />);
-        continue;
-      }
-      if (
-        entry.kind === 'tool'
-        || entry.kind === 'thinking'
-        || ((entry.kind === 'assistant' || entry.kind === 'user' || entry.kind === 'notice') && hiddenKeys.has(entry.key))
-      ) {
-        // 折叠态相异即分段:运行中折叠留出的末条工具/思考行与其前的折叠区不同段(段开合按首条判)
-        if (seg.length > 0 && hiddenKeys.has(seg[0]!.key) !== hiddenKeys.has(entry.key)) flushSeg();
-        seg.push(entry);
-        continue;
-      }
-      flushSeg();
-      if (entry.kind === 'run') {
-        nodes.push(
-          <RunEntryView
-            key={entry.key}
-            entry={entry}
-            wake={entry.wake} // bg-wake 批F:直接前驱唤醒 notice 的引用(chat-reducer 映射期配对,条目不可变)
-            scheduled={entry.schedule === true ? true : undefined} // 定时唤醒标记(fix round 2:前缀文案归显示层,同族挂载)
-            restored={entry.restored === true ? true : undefined} // 重启自动唤醒标记(2026-11-16 同族挂载,前缀「中断自动唤醒」)
-            onOpenTask={onOpenTask} // 任务名点击路由:bg:<账本id>→后台任务页签 / 板 id→团队页签(App openTaskFocus 既有分流)
-            collapsed={collapsedRuns.has(entry.key)}
-            onToggle={toggleRun} // 运行中也可折叠(2026-11-07 用户裁定)
-          />,
-        );
-      } else if (entry.kind === 'user') {
-        const insert = sideChat === true || isMidRunInsert(entries, i);
-        nodes.push(
-          <UserEntryView
-            key={entry.key}
-            entry={entry}
-            insert={insert}
-            onSend={submitText}
-            rewindOps={rewindOps}
-            composerEnv={composerEnv}
-            onOpenFile={onOpenFile} // G14.110 气泡内 @文件 token 点击开 file 标签
-            onOpenImage={onOpenImage}
-            conn={conn}
-            root={root}
-            sideChat={sideChat}
-          />,
-        );
-      } else {
-        nodes.push(
-          <ChatEntryView
-            key={entry.key}
-            entry={entry}
-            footerRun={runFooterByEntry.get(entry.key)}
-            onOpenDiff={onEntryOpenDiff}
-            onRestore={onEntryRestore}
-            onFork={onFork}
-            onOpenFile={onOpenFile}
-            onOpenAgent={onOpenAgent}
-            onOpenSession={onOpenSession}
-            // 2026-11-12 用户实测「轮尾卡点行开的是最后一刀 +1 -1,不是轮冻结面 +3 -0」:
-            // 此处是带 footerRun 的主渲染路径,漏传 checkpoint 两回调=轮尾卡恒走 callId 旧路
-            // (折叠段路径 renderFoldEntry 两回调齐全,可见路径唯独漏了);撤销同面补传
-            onOpenTurn={onOpenTurn}
-            onTurnRestore={onTurnRestore}
-            // 轮末产物卡区(2026-11-12 spec §4):conn/sessionId/root 数据面+错误通道;onOpenArtifacts
-            // 透传留 Task 12 消费(本任务未接线即 undefined)
-            conn={conn}
-            sessionId={sessionId}
-            root={root}
-            onOpError={onOpError}
-            onOpenWeb={onOpenWeb}
-            onRunInTerminal={onRunInTerminal}
-            onOpenArtifacts={onOpenArtifacts}
-            onSend={submitText}
-            sideChat={sideChat}
-          />,
-        );
-      }
-    }
-    flushSeg();
-    return <>{nodes}</>;
-  },
-  (prev, next) =>
-    prev.label === next.label
-    && prev.entries.length === next.entries.length
-    && prev.entries.every((e, i) => e === next.entries[i])
-    && prev.hiddenKeys === next.hiddenKeys
-    && prev.collapsedRuns === next.collapsedRuns
-    && prev.runFooterByEntry === next.runFooterByEntry
-    && prev.callIdOf === next.callIdOf
-    && prev.conn === next.conn
-    && prev.sessionId === next.sessionId
-    && prev.onOpenFile === next.onOpenFile
-    && prev.onOpenDiff === next.onOpenDiff
-    && prev.onOpenAgent === next.onOpenAgent
-    && prev.onOpenTask === next.onOpenTask
-    && prev.taskNameOf === next.taskNameOf
-    && prev.taskAgentOf === next.taskAgentOf
-    && prev.teamNameOf === next.teamNameOf
-    && prev.teams === next.teams
-    && prev.toggleRun === next.toggleRun
-    && prev.submitText === next.submitText
-    && prev.rewindOps === next.rewindOps
-    && prev.composerEnv === next.composerEnv
-    && prev.onEntryOpenDiff === next.onEntryOpenDiff
-    && prev.onEntryRestore === next.onEntryRestore
-    && prev.onOpenTurn === next.onOpenTurn
-    && prev.onTurnRestore === next.onTurnRestore
-    && prev.onFork === next.onFork
-    && prev.onOpenImage === next.onOpenImage
-    // 2026-11-16 流畅轮补比(原漏比——恒稳回调后入比较零成本):onOpenWeb/onRunInTerminal
-    && prev.onOpenWeb === next.onOpenWeb
-    && prev.onRunInTerminal === next.onRunInTerminal
-    && prev.root === next.root
-    && prev.onOpError === next.onOpError
-    && prev.onOpenArtifacts === next.onOpenArtifacts
-    && prev.sideChat === next.sideChat,
-);
-
 export function MessageList(props: MessageListProps): JSX.Element {
   const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=运行状态行隐步数+tokens
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
@@ -406,6 +151,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     let found: { node: Element; top: number } | null = null;
     for (const child of el.children) {
       if (child.classList.contains('sx-rail')) continue; // 左侧刻度条 sticky 悬浮不参与内容流,恒不为锚
+      if (child.classList.contains('chat-spacer')) continue; // 虚拟窗口占位条不是内容
       const r = child.getBoundingClientRect();
       if (r.bottom > cTop) {
         found = { node: child, top: r.top - cTop };
@@ -458,13 +204,89 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const teamNameOfOpt = useCallback(() => opt(teamNameOfStable, propsRef.current.teamNameOf), [teamNameOfStable]);
   const callIdOfStable = useCallback((e: ChatEntry) => propsRef.current.callIdOf(e), []);
   const toggleRunStable = useCallback((key: string) => propsRef.current.toggleRun(key), []);
-  const submitTextStable = useCallback((text: string, images?: string[]) => propsRef.current.submitText(text, images), []);
+  // 图片随行二参必须透传(2026-10-26 编辑卡重发原图);类型面用 unknown[] 收口——
+  // UserEntryView 声明 string[]、ChatEntryView 声明 File[](历史口径),单签名不收则两处不可赋值
+  const submitTextStable = useCallback((text: string, ...rest: unknown[]): Promise<void> =>
+    propsRef.current.submitText(text, rest[0] as string[] | undefined), []);
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
   const onOpenTurnStable = useCallback((run: number, path: string) => propsRef.current.onOpenTurn?.(run, path), []);
   const onTurnRestoreStable = useCallback((run: number, paths: string[]) => propsRef.current.onTurnRestore?.(run, paths) ?? Promise.resolve([]), []);
   const onOpenTurnOpt = useCallback(() => opt(onOpenTurnStable, propsRef.current.onOpenTurn), [onOpenTurnStable]);
   const onTurnRestoreOpt = useCallback(() => opt(onTurnRestoreStable, propsRef.current.onTurnRestore), [onTurnRestoreStable]);
+  /** 单位渲染面(2026-11-18 结构性改造):原 DayGroupBlock 的节点装配逻辑平移为「按块渲染」——
+   *  虚拟窗口只对挂载块调 renderUnit;jsdom/无布局回退整窗逐块直渲(DOM 与旧结构一致)。
+   *  回调全部走稳定化包装,行组件 memo 判等面不破 */
+  const onOpenFileArg = onOpenFileOpt();
+  const onOpenDiffArg = onOpenDiffOpt();
+  const onOpenAgentArg = onOpenAgentOpt();
+  const onOpenTaskArg = onOpenTaskOpt();
+  const teamNameOfArg = teamNameOfOpt();
+  const onOpenTurnArg = onOpenTurnOpt();
+  const onTurnRestoreArg = onTurnRestoreOpt();
+  const onForkArg = onForkOpt();
+  const onOpenSessionArg = onOpenSessionOpt();
+  const renderTool = useCallback((e2: ChatEntry) => (
+    <ToolEntryView
+      key={e2.key}
+      entry={e2}
+      conn={conn}
+      sessionId={sessionId}
+      callId={callIdOfStable(e2)}
+      root={root}
+      onOpenFile={onOpenFileArg}
+      onOpenDiff={onOpenDiffArg}
+      onOpenAgent={onOpenAgentArg}
+      onOpenTask={onOpenTaskArg}
+      onOpenTodos={props.onOpenTodos}
+      onOpenArtifacts={props.onOpenArtifacts}
+      taskNameOf={taskNameOfStable}
+      taskAgentOf={taskAgentOfStable}
+      teamNameOf={teamNameOfArg}
+      teams={props.teams}
+    />
+  ), [conn, sessionId, callIdOfStable, root, onOpenFileArg, onOpenDiffArg, onOpenAgentArg, onOpenTaskArg, props.onOpenTodos, props.onOpenArtifacts, taskNameOfStable, taskAgentOfStable, teamNameOfArg, props.teams]);
+  const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
+  const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiffStable} onOpenTurn={onOpenTurnArg} onTurnRestore={onTurnRestoreArg} onOpenAgent={onOpenAgentArg} sideChat={sideChat} onSend={submitTextStable} />, [onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat, submitTextStable]);
+  const renderFoldEntry = useCallback((e2: ChatEntry) => {
+    if (e2.kind === 'user') {
+      return (
+        <UserEntryView
+          key={e2.key}
+          entry={e2}
+          insert
+          onSend={submitTextStable}
+          rewindOps={props.rewindOps}
+          composerEnv={props.composerEnv}
+          onOpenFile={onOpenFileArg}
+          onOpenImage={onOpenImage}
+          conn={conn}
+          root={root}
+          sideChat={sideChat}
+        />
+      );
+    }
+    return (
+      <ChatEntryView
+        key={e2.key}
+        entry={e2}
+        onOpenDiff={onEntryOpenDiffStable}
+        onOpenTurn={onOpenTurnArg}
+        onTurnRestore={onTurnRestoreArg}
+        onOpenAgent={onOpenAgentArg}
+        onOpenFile={onOpenFileArg}
+        onSend={submitTextStable}
+        sideChat={sideChat}
+        conn={conn}
+        sessionId={sessionId}
+        root={root}
+        onOpError={props.onOpError}
+        onOpenWeb={onOpenWeb}
+        onRunInTerminal={props.onRunInTerminal}
+        onOpenArtifacts={props.onOpenArtifacts}
+      />
+    );
+  }, [submitTextStable, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, sessionId, root, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts, onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat]);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
    *  折叠组随头完整保留 */
   /** 窗口顶冻结(2026-11-17 用户实测「运行中滚到上面时不时跳到底部」根因①):cut=entries.length-
@@ -486,10 +308,281 @@ export function MessageList(props: MessageListProps): JSX.Element {
   if (cut > 0) {
     while (cut > 0 && hiddenKeys.has(entries[cut]!.key)) cut -= 1;
   }
-  const visible = cut > 0 ? entries.slice(cut) : entries;
+  const visible = useMemo(() => (cut > 0 ? entries.slice(cut) : entries), [entries, cut]);
   const hiddenCount = entries.length - visible.length;
+  /** P1 派生冻结:日分组骨架 memo(区间切分随骨架缓存),成员数组 dayGroups 逐渲染按区间
+   *  slice 重绑最新条目引用(流式尾行实时)——语义与逐帧全量分组等价,省去逐帧 Intl 构造 */
+  const daySkeleton = useMemo(() => {
+    const gs = groupEntriesByDay(visible);
+    let start = 0;
+    return gs.map((g) => {
+      const s = { key: g.key, label: g.label, start, end: start + g.entries.length };
+      start = s.end;
+      return s;
+    });
+    // 依赖=骨架判据四元组(visible 的切分只随 sv/seedGen/visibleCount/hiddenKeys 变)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [structureVersion, seedGen, visibleCount, hiddenKeys]);
+  /** 虚拟窗口(2026-11-18 结构性改造):窗口内条目按「块」挂载——只挂视口±overscan,上下 spacer
+   *  占位;高度表实测优先/估算兜底,视口上方块高度变化同帧回钉 scrollTop(阅读位不动)。
+   *  jsdom(无布局)整体旁路:整窗逐块直渲,测试面语义与旧实现逐字一致。 */
+  const [viewH, setViewH] = useState<number>(() => (LAYOUT_FREE ? 0 : Math.max(320, Math.round((typeof window === 'undefined' ? 800 : window.innerHeight) * 0.6))));
+  const [range, setRange] = useState<{ first: number; last: number } | null>(null);
+  const [heightVer, setHeightVer] = useState(0);
+  const viewHRef = useRef(viewH);
+  const rangeRef = useRef<{ first: number; last: number } | null>(range);
+  rangeRef.current = range;
+  const heightsRef = useRef<Map<string, number>>(new Map());
+  const unitElsRef = useRef<Map<string, HTMLElement>>(new Map());
+  const offsetsRef = useRef<number[]>([0]);
+  const unitIndexByKeyRef = useRef<Map<string, number>>(new Map());
+  const unitIndexOfEntryRef = useRef<Map<string, number>>(new Map());
+  const scrollTopRef = useRef(Number.MAX_SAFE_INTEGER); // 首帧贴底语义(恢复位由 Chat 的恢复效果随后写入)
+  const unitsRef = useRef<UnitSpan[]>([]);
+  /** 阅读态内容锚(2026-11-18 虚拟窗口):视口顶所在块 key + 块顶相对视口的偏移。块序列/高度
+   *  变化(扩窗上插、上方实测校正)后按新偏移回钉 scrollTop——索引平移不再靠元素锚(块可能未挂) */
+  const anchorRef = useRef<{ key: string; off: number } | null>(null);
+  const rafRef = useRef(0);
+  const unitRoRef = useRef<ResizeObserver | null>(null);
+  const office = useUiMode() === 'office';
+  /** 日分组(块模型的组边界;memo 免逐渲染 Intl 构造) */
+  const dayGroups = useMemo(() => daySkeleton.map((s) => ({
+    key: s.key,
+    label: s.label,
+    entries: visible.slice(s.start, s.end),
+  })), [daySkeleton, visible]);
+  /** 块序列(虚拟列表挂载单位;纯投影,不建 React 元素) */
+  const units = useMemo(() => {
+    const out: UnitSpan[] = [];
+    for (let gi = 0; gi < dayGroups.length; gi += 1) {
+      const g = dayGroups[gi]!;
+      out.push(...dayUnitSpans(gi, g.key, g.label, g.entries, hiddenKeys, office, isCommandEntry, isOfficeHiddenNotice));
+    }
+    return out;
+  }, [dayGroups, hiddenKeys, office]);
+  const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
+  unitIndexByKeyRef.current = unitIndexByKey;
+  unitsRef.current = units;
+  /** 条目 key → 块序号(刻度跳转/未挂载定位用;段内条目指向所在段块) */
+  const unitIndexOfEntry = useMemo(() => {
+    const m = new Map<string, number>();
+    units.forEach((u, i) => {
+      if (u.kind === 'day') return;
+      const g = dayGroups[u.group]!.entries;
+      for (let k = u.start; k < u.end; k += 1) m.set(g[k]!.key, i);
+    });
+    return m;
+  }, [units, dayGroups]);
+  unitIndexOfEntryRef.current = unitIndexOfEntry;
+  const virtual = !LAYOUT_FREE && viewH > 0 && units.length > 0;
+  const virtualRef = useRef(virtual);
+  virtualRef.current = virtual;
+  const offsets = useMemo(() => prefixOffsets(units, heightsRef.current), [units, heightVer]);
+  offsetsRef.current = offsets;
+  const totalH = offsets[units.length] ?? 0;
+  /** 本帧挂载区间:贴底恒取尾部(流式增长自动跟);阅读态取已提交区间(滚动事件更新) */
+  const rangeNow = virtual
+    ? stick
+      ? sliceRange(offsets, Math.max(0, totalH - viewH), viewH, VIRTUAL_OVERSCAN)
+      : range ?? sliceRange(offsets, Math.max(0, Math.min(scrollTopRef.current, Math.max(0, totalH - viewH))), viewH, VIRTUAL_OVERSCAN)
+    : null;
+  const firstUnit = Math.min(rangeNow?.first ?? 0, Math.max(0, units.length - 1));
+  const lastUnit = Math.min(rangeNow?.last ?? units.length, units.length);
+  /** 滚动 → 视口高/挂载区间更新(rAF 合并;区间不变不重渲) */
+  const scheduleViewport = (): void => {
+    if (LAYOUT_FREE || rafRef.current !== 0) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      const el = chatScrollRef.current;
+      if (el === null) return;
+      scrollTopRef.current = el.scrollTop;
+      const h = el.clientHeight;
+      if (h > 0 && h !== viewHRef.current) {
+        viewHRef.current = h;
+        setViewH(h);
+      }
+      if (!virtualRef.current) return;
+      const off = offsetsRef.current;
+      const at = firstUnitAt(off, el.scrollTop);
+      const uu = unitsRef.current[at];
+      if (uu !== undefined) anchorRef.current = { key: uu.key, off: (off[at] ?? 0) - el.scrollTop };
+      const r = sliceRange(off, el.scrollTop, h, VIRTUAL_OVERSCAN);
+      const cur = rangeRef.current;
+      if (cur === null || r.first !== cur.first || r.last !== cur.last) setRange(r);
+    });
+  };
+  /** 挂载期:量视口高(首帧估算值落地)+ 视口尺寸变化跟随;卸载取消在途帧 */
+  useLayoutEffect(() => {
+    if (LAYOUT_FREE) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const measure = (): void => {
+      const h = el.clientHeight;
+      if (h > 0 && h !== viewHRef.current) {
+        viewHRef.current = h;
+        setViewH(h);
+      }
+      scrollTopRef.current = el.scrollTop;
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (rafRef.current !== 0) cancelAnimationFrame(rafRef.current);
+    };
+  }, [chatScrollRef]);
+  /** 块高度实测(ResizeObserver 单点):高度表更新→spacer 重算;视口上方块变化同帧回钉 scrollTop */
+  useLayoutEffect(() => {
+    if (LAYOUT_FREE || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const el = chatScrollRef.current;
+      if (el === null) return;
+      // 卸载块剪枝(节点已脱离文档:RO 不再交付,map 不留悬引用)
+      for (const [k, n] of unitElsRef.current) {
+        if (!n.isConnected) {
+          unitElsRef.current.delete(k);
+          ro.unobserve(n);
+        }
+      }
+      let changed = false;
+      let above = 0;
+      const off = offsetsRef.current;
+      for (const en of entries) {
+        const node = en.target as HTMLElement;
+        const key = node.dataset.unitKey ?? '';
+        if (key === '') continue;
+        const h = en.contentRect.height;
+        if (!(h > 0.5)) continue;
+        const old = heightsRef.current.get(key);
+        if (old !== undefined && Math.abs(old - h) <= 0.5) continue;
+        heightsRef.current.set(key, h);
+        changed = true;
+        const idx = unitIndexByKeyRef.current.get(key);
+        // 块整体在视口顶之上(底边 ≤ scrollTop):高度差同帧回钉,正在读的内容不前跳
+        if (idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) {
+          above += h - (old ?? 0);
+        }
+      }
+      if (above !== 0) el.scrollTop += above;
+      if (changed) setHeightVer((v) => v + 1);
+    });
+    unitRoRef.current = ro;
+    for (const n of unitElsRef.current.values()) ro.observe(n);
+    return () => {
+      ro.disconnect();
+      unitRoRef.current = null;
+    };
+  }, [chatScrollRef]);
+  /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管 */
+  useLayoutEffect(() => {
+    if (!virtualRef.current || stick) return;
+    const a = anchorRef.current;
+    const el = chatScrollRef.current;
+    if (a === null || el === null) return;
+    const idx = unitIndexByKeyRef.current.get(a.key);
+    if (idx === undefined) return;
+    const want = Math.max(0, (offsetsRef.current[idx] ?? 0) - a.off);
+    if (Math.abs(el.scrollTop - want) > 1) {
+      el.scrollTop = want;
+      scrollTopRef.current = el.scrollTop;
+    }
+  }, [offsets, stick, chatScrollRef]);
+  /** 块包装引用(稳定回调:同一节点不重挂则不重 observe) */
+  const unitRefCb = useCallback((el: HTMLDivElement | null) => {
+    if (el === null) return;
+    const key = el.dataset.unitKey ?? '';
+    if (key === '') return;
+    unitElsRef.current.set(key, el);
+    unitRoRef.current?.observe(el);
+  }, []);
+  /** 按块渲染(原 DayGroupBlock 装配分支逐条镜像:日分隔/命令三态/折叠段/run/用户/正文) */
+  const renderUnit = (u: UnitSpan): ReactNode => {
+    if (u.kind === 'day') {
+      return (
+        <div key={u.key} className="chat-day-sep" role="separator" aria-label={u.label}>
+          {u.label}
+        </div>
+      );
+    }
+    const groupEntries = dayGroups[u.group]!.entries;
+    if (u.kind === 'seg') {
+      const segEntries = groupEntries.slice(u.start, u.end);
+      return (
+        <ToolSegBlock
+          key={u.key}
+          seg={segEntries}
+          closed={hiddenKeys.has(segEntries[0]!.key)}
+          renderTool={renderTool}
+          renderThinking={renderThinking}
+          renderAssistant={renderAssistant}
+          renderEntry={renderFoldEntry}
+        />
+      );
+    }
+    const entry = groupEntries[u.start]!;
+    if (u.kind === 'cmd') return <CommandEntryView key={entry.key} entry={entry} />;
+    if (u.kind === 'run') {
+      return (
+        <RunEntryView
+          key={entry.key}
+          entry={entry}
+          wake={entry.wake}
+          scheduled={entry.schedule === true ? true : undefined}
+          restored={entry.restored === true ? true : undefined}
+          onOpenTask={onOpenTaskArg}
+          collapsed={collapsedRuns.has(entry.key)}
+          onToggle={toggleRunStable}
+        />
+      );
+    }
+    if (u.kind === 'user') {
+      const insert = sideChat === true || isMidRunInsert(groupEntries, u.start);
+      return (
+        <UserEntryView
+          key={entry.key}
+          entry={entry}
+          insert={insert}
+          onSend={submitTextStable}
+          rewindOps={props.rewindOps}
+          composerEnv={props.composerEnv}
+          onOpenFile={onOpenFileArg}
+          onOpenImage={onOpenImage}
+          conn={conn}
+          root={root}
+          sideChat={sideChat}
+        />
+      );
+    }
+    return (
+      <ChatEntryView
+        key={entry.key}
+        entry={entry}
+        footerRun={runFooterByEntry.get(entry.key)}
+        onOpenDiff={onEntryOpenDiffStable}
+        onRestore={onEntryRestoreStable}
+        onFork={onForkArg}
+        onOpenFile={onOpenFileArg}
+        onOpenAgent={onOpenAgentArg}
+        onOpenSession={onOpenSessionArg}
+        onOpenTurn={onOpenTurnArg}
+        onTurnRestore={onTurnRestoreArg}
+        conn={conn}
+        sessionId={sessionId}
+        root={root}
+        onOpError={props.onOpError}
+        onOpenWeb={onOpenWeb}
+        onRunInTerminal={props.onRunInTerminal}
+        onOpenArtifacts={props.onOpenArtifacts}
+        onSend={submitTextStable}
+        sideChat={sideChat}
+      />
+    );
+  };
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
-   *  隐藏行回退同口径,load 后同帧 DOM 即有该气泡);返回是否已覆盖(=可立即落点) */
+   *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
+   *  (滚动事件驱动切片),渲染落定后由刻度侧重试轮询收敛(见 ChatRail.seek) */
+  const pendingRevealRef = useRef<string | null>(null);
   const revealEntry = (key: string): boolean => {
     const idx = entries.findIndex((e) => e.key === key);
     if (idx < 0) return false;
@@ -497,11 +590,32 @@ export function MessageList(props: MessageListProps): JSX.Element {
     if (need > visibleCount) {
       windowTargetRef.current = Math.max(windowTargetRef.current, need);
       captureAnchor();
+      pendingRevealRef.current = key; // 扩窗后(下一拍块序列就位)落到模型坐标
       setVisibleCount(Math.min(entries.length, need));
       return false; // 本帧尚未挂载,渲染落定后跳转侧重试
     }
+    if (virtualRef.current) {
+      const ui = unitIndexOfEntryRef.current.get(key);
+      const el = chatScrollRef.current;
+      if (ui !== undefined && el !== null) {
+        el.scrollTop = Math.max(0, (offsetsRef.current[ui] ?? 0) - 8);
+        scrollTopRef.current = el.scrollTop;
+      }
+    }
     return true;
   };
+  /** 扩窗后的未挂载定位:块序列就位即把目标块滚进视口(切片随滚动/本帧重算,目标块随后挂载) */
+  useLayoutEffect(() => {
+    const key = pendingRevealRef.current;
+    if (key === null) return;
+    const ui = unitIndexOfEntry.get(key);
+    if (ui === undefined) return;
+    pendingRevealRef.current = null;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    el.scrollTop = Math.max(0, (offsetsRef.current[ui] ?? 0) - 8);
+    scrollTopRef.current = el.scrollTop;
+  }, [unitIndexOfEntry, chatScrollRef]);
   const showEarlier = (step: number = RENDER_WINDOW_STEP): void => {
     captureAnchor();
     // 2026-11-18:手动「显示更早」/滚顶回放不再受 RENDER_WINDOW_MAX 封顶——上万条会话必须能翻到
@@ -551,26 +665,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
   useEffect(() => {
     propsRef.current.onRenderWindowChange?.(visibleCount);
   }, [visibleCount]);
-  /** P1 派生冻结:日分组骨架 memo(区间切分随骨架缓存),成员数组 dayGroups 逐渲染按区间
-   *  slice 重绑最新条目引用(流式尾行实时)——语义与逐帧全量分组等价,省去逐帧 Intl 构造 */
-  const daySkeleton = useMemo(() => {
-    const gs = groupEntriesByDay(visible);
-    let start = 0;
-    return gs.map((g) => {
-      const s = { key: g.key, label: g.label, start, end: start + g.entries.length };
-      start = s.end;
-      return s;
-    });
-    // 依赖=骨架判据四元组(visible 的切分只随 sv/seedGen/visibleCount/hiddenKeys 变)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [structureVersion, seedGen, visibleCount, hiddenKeys]);
-  /** 组级装配(2026-10-26 性能轮):回调全部走稳定化包装,DayGroupBlock 比较器条目逐位
-   *  引用判等——未变组零元素构建,只有流式尾所在组重建 */
-  const dayGroups = daySkeleton.map((s) => ({
-    key: s.key,
-    label: s.label,
-    entries: visible.slice(s.start, s.end),
-  }));
   return (
     <main
       className="chat"
@@ -582,6 +676,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         lastScrollAtRef.current = performance.now();
         onScroll(e);
         maybeReplayEarlier();
+        scheduleViewport();
       }}
     >
         {/* 2026-10-26 对话刻度导航条:左侧 sticky 悬浮(不参与内容流),余量自适应显隐 */}
@@ -608,46 +703,21 @@ export function MessageList(props: MessageListProps): JSX.Element {
             {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}
           </button>
         )}
-        {/* 会话流按日分组:跨日插居中日期分隔(纯投影 groupEntriesByDay;无 ts 头组无标不渲染)。
-            G14.31 折叠轮/组级 memo 见 DayGroupBlock 注 */}
-        {dayGroups.map((g) => (
-          <DayGroupBlock
-            key={`grp:${g.key}`}
-            label={g.label}
-            entries={g.entries}
-            hiddenKeys={hiddenKeys}
-            collapsedRuns={collapsedRuns}
-            callIdOf={callIdOfStable}
-            conn={conn}
-            sessionId={sessionId}
-            root={root}
-            onOpenWeb={onOpenWeb}
-            onRunInTerminal={props.onRunInTerminal}
-            onOpenFile={onOpenFileOpt()}
-            onOpenDiff={onOpenDiffOpt()}
-            onOpenAgent={onOpenAgentOpt()}
-            onOpenTask={onOpenTaskOpt()}
-            taskNameOf={taskNameOfStable}
-            taskAgentOf={taskAgentOfStable}
-            teamNameOf={teamNameOfOpt()}
-            teams={props.teams}
-            toggleRun={toggleRunStable}
-            submitText={submitTextStable}
-            rewindOps={props.rewindOps}
-            composerEnv={props.composerEnv}
-            runFooterByEntry={runFooterByEntry}
-            onOpError={props.onOpError}
-            onOpenArtifacts={props.onOpenArtifacts}
-            onEntryOpenDiff={onEntryOpenDiffStable}
-            onEntryRestore={onEntryRestoreStable}
-            onOpenTurn={onOpenTurnOpt()}
-            onTurnRestore={onTurnRestoreOpt()}
-            onFork={onForkOpt()}
-            onOpenSession={onOpenSessionOpt()}
-            onOpenImage={onOpenImage}
-            sideChat={sideChat}
-          />
-        ))}
+        {/* 会话流(2026-11-18 结构性改造):窗口内条目按「块」渲染——虚拟窗口只挂视口±overscan,
+            上下 spacer 占位;jsdom 回退整窗逐块直渲(DOM=旧 DayGroupBlock 拼接结果) */}
+        {virtual && <div className="chat-spacer" style={{ height: offsets[firstUnit] ?? 0 }} aria-hidden="true" />}
+        {units.slice(firstUnit, lastUnit).map((u) =>
+          virtual ? (
+            <div key={u.key} className="chat-unit" data-unit-key={u.key} ref={unitRefCb}>
+              {renderUnit(u)}
+            </div>
+          ) : (
+            <Fragment key={u.key}>{renderUnit(u)}</Fragment>
+          ),
+        )}
+        {virtual && (
+          <div className="chat-spacer" style={{ height: Math.max(0, totalH - (offsets[lastUnit] ?? totalH)) }} aria-hidden="true" />
+        )}
         {/* G14.52 运行状态行:常驻流区末行(圆圈+步数+tokens),轮次完成/停止即隐;
             原「尾参挂最后一个工具行」只在工具执行期可见且左缘随工具行缩进不齐——独立成行对齐 */}
         {running && (

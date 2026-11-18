@@ -278,16 +278,23 @@ export function ChatRail(props: {
     if (target === undefined) return;
     let node = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
     if (node === null) {
-      // 未挂载条目(刻度已全量、挂载窗未覆盖):先扩窗,渲染落定后再落点(两帧:state→commit→layout)
-      if (onReveal === undefined || !onReveal(target.key)) return;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const n2 = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
-          if (n2 === null) return;
-          el.scrollTop += n2.getBoundingClientRect().top - el.getBoundingClientRect().top;
-          rAFConverge(el, () => n2.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => { el.scrollTop += d; }, 2);
-        });
-      });
+      // 未挂载条目(刻度全量、挂载窗/虚拟窗口未覆盖):先扩窗并落模型坐标(虚拟窗口下滚动事件
+      // 驱动切片重算),块序列/切片落定后节点才出现——有界 rAF 轮询(≤90 帧)再落点收敛;
+      // 旧实现只给扩窗返回值 true 的路径重试,跨窗跳转(返回 false)会直接放弃
+      if (onReveal === undefined) return;
+      onReveal(target.key);
+      let tries = 0;
+      const seek = (): void => {
+        const n2 = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);
+        if (n2 === null) {
+          tries += 1;
+          if (tries < 90) requestAnimationFrame(seek);
+          return;
+        }
+        el.scrollTop += n2.getBoundingClientRect().top - el.getBoundingClientRect().top;
+        rAFConverge(el, () => n2.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => { el.scrollTop += d; }, 2);
+      };
+      requestAnimationFrame(seek);
       return;
     }
     // 落点要准(用户裁定,不要平滑滑动):.entry 挂 content-visibility:auto,离屏条目
