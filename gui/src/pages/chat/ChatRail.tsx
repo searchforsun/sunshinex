@@ -64,6 +64,7 @@ export function ChatRail(props: {
    *  纯图/空 md 不入列 */
   readonly entries: readonly ChatEntry[];
   readonly chatScrollRef: MutableRefObject<HTMLElement | null>;
+  /** 辅助对话标记(2026-11-18 起不再门控显隐——辅助会话同样显示刻度行;保留 prop 兼容调用方) */
   readonly sideChat?: boolean;
   /** 目标条目未挂载时先扩挂载窗(MessageList 提供:返回是否已挂上);缺省=旧行为(找不到即不跳) */
   readonly onReveal?: (key: string) => boolean;
@@ -72,7 +73,7 @@ export function ChatRail(props: {
    *  用户气泡常在挂载窗外,旧 DOM 反查取不到=加亮断档;传入即按模型算,缺省回落 DOM 反查 */
   readonly activeKeyAt?: (lineContent: number) => string | null;
 }): JSX.Element {
-  const { entries, chatScrollRef, sideChat, onReveal } = props;
+  const { entries, chatScrollRef, onReveal } = props;
   // 显隐+锚点+中线实测(RO 三值):余量=paddingLeft−18 判显隐;滚动口左缘/中线视觉坐标除以
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
@@ -207,7 +208,7 @@ export function ChatRail(props: {
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
-    if (sideChat === true || rows.length < MIN_USERS) return;
+    if (rows.length < MIN_USERS) return;
     let raf = 0;
     let trailing: ReturnType<typeof setTimeout> | null = null;
     let lastAt = 0;
@@ -274,10 +275,12 @@ export function ChatRail(props: {
       if (raf !== 0) cancelAnimationFrame(raf);
       if (trailing !== null) clearTimeout(trailing);
     };
-  }, [chatScrollRef, rows, keyIdx, sideChat, applyActive]);
+  }, [chatScrollRef, rows, keyIdx, applyActive]);
 
-  // 辅助对话/<2 条用户消息/余量不足放不下变长刻度:整条不渲染(用户裁定)
-  if (sideChat === true || rows.length < MIN_USERS || !show) return <></>;
+  // <2 条用户消息/余量不足放不下变长刻度:整条不渲染(用户裁定);辅助对话同样显示
+  // (2026-11-18 用户裁定「辅助会话也要正常显示左侧刻度行」——侧栏窄,几何余量由
+  //  .sx-sidechat .chat 的加宽左内边距供给,见 app.css)
+  if (rows.length < MIN_USERS || !show) return <></>;
 
 
   const jump = (index: number): void => {
