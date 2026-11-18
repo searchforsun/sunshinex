@@ -253,12 +253,13 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
     }
     // v1 行(chain/compact/model/todos/view/snapshots/msg)与未知行:转录面忽略(另路读面)
   }
-  // 悬空 run(run-open 无 runmeta 对位):daemon 重启即 run 已死——标停止态,回放显「已停止」非永转
-  for (let i = entries.length - 1; i >= 0; i -= 1) {
+  // 悬空 run(run-open 无收尾 runmeta/endedTs):daemon 重启被杀即 run 已死——标停止态,回放显
+  // 「已停止」非永转。2026-11-18 修正:遍历**全部** run 条——中断轮可能不是末个(后续轮另开
+  // run-open 后旧悬空轮被挤到中间,只查末个会让它显示「已运行」并漏出轮尾复制/分叉行)
+  for (let i = 0; i < entries.length; i += 1) {
     const e = entries[i]!;
-    if (e.kind !== 'run') continue;
-    if (e.meta?.endedTs === undefined) entries[i] = { ...e, meta: { ...e.meta, stopped: true } };
-    break; // 只看末个 run 条(在途只可能有一个)
+    if (e.kind !== 'run' || e.meta?.endedTs !== undefined || e.meta?.stopped === true) continue;
+    entries[i] = { ...e, meta: { ...e.meta, stopped: true } };
   }
   // 悬空 tool 行收口(渲染中立 spec §7.4;v3 自身语义,非旧档归一):result 永不到达=执行体已死——
   // 补 interrupted result(渲染 ✗,不永转)。status 不落行:装载面条目恒终态,done 以缺省承载
