@@ -1,4 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
+import { memo } from 'react';
 import type { ChatEntry, ChatState } from '../../chat-reducer';
 import { t } from '../../i18n';
 import { MessageList } from './MessageList';
@@ -12,7 +13,11 @@ import type { ChatProps } from './chat-types';
  * 落 DOM,此处统一接管开页签+定位)+ 圈选操作浮层+消息流。MessageList 装配面整体平移,
  * callIdOf/onOpenTodos 两个内联适配器内化为本件局部(diff 寻址键/待办定位上抛)。
  */
-export function ChatTranscript(props: Omit<MessageListProps, 'callIdOf' | 'onOpenTodos'> & {
+/** 2026-11-18 输入卡顿轮:转录区按数据面 memo——输入框逐字 setInput 会重渲整个 Chat,
+ *  旧路径连带转录/悬浮层全量 reconciliation(千条模型下打字即卡、CPU 高)。回调面按仓内契约
+ *  恒稳(稳定化包装),比较器只认数据/形态键;回调语义变化必伴随 entries/hiddenKeys 等数据
+ *  变化(会话切换/折叠/重播),不会漏渲。内部 state(虚拟窗口区间/高度)重渲不受此影响 */
+export const ChatTranscript = memo(function ChatTranscript(props: Omit<MessageListProps, 'callIdOf' | 'onOpenTodos'> & {
   history: ChatState['history'];
   setChat: Dispatch<SetStateAction<ChatState>>;
   onOpenMemory: ChatProps['onOpenMemory'];
@@ -103,4 +108,21 @@ export function ChatTranscript(props: Omit<MessageListProps, 'callIdOf' | 'onOpe
       </div>
     </>
   );
-}
+}, (a, b) =>
+    a.entries === b.entries
+    && a.history === b.history
+    && a.hiddenKeys === b.hiddenKeys
+    && a.collapsedRuns === b.collapsedRuns
+    && a.runFooterByEntry === b.runFooterByEntry
+    && a.structureVersion === b.structureVersion
+    && a.seedGen === b.seedGen
+    && a.active === b.active
+    && a.running === b.running
+    && a.liveSteps === b.liveSteps
+    && a.liveTokens === b.liveTokens
+    && a.sideChat === b.sideChat
+    && a.sunxName === b.sunxName
+    && a.initialRenderWindow === b.initialRenderWindow
+    && a.restoreAnchor === b.restoreAnchor
+    && a.heightScope === b.heightScope,
+);
