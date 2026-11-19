@@ -160,7 +160,10 @@ if (!app.requestSingleInstanceLock()) {
       } catch {
         // 首启无档:回落临时端口
       }
+      // 2026-11-19 安装器「完成」未响应回归:daemon 重活前后各让消息循环一口(细节见 daemon.ts yieldLoop)
+      await new Promise((resolve) => setTimeout(resolve, 0));
       daemon = await startDaemon(paths, preferredPort);
+      await new Promise((resolve) => setTimeout(resolve, 0));
       try {
         fs.writeFileSync(portFile, JSON.stringify({ port: daemon.port }));
       } catch {
