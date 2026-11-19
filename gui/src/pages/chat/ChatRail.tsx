@@ -90,7 +90,11 @@ export function ChatRail(props: {
     let pending: { key: string; user: ChatEntry; reply?: ChatEntry } | null = null;
     for (const e of entries) {
       if (e.kind === 'user') {
-        pending = e.md.trim() !== '' ? { key: e.key, user: e } : null;
+        // 纯图用户输入也进刻度(2026-11-19 用户裁定「图片要识别成用户输入,刻度也要显示只有图片
+        //  对应的用户输入」):判据=正文非空 **或** 带图——旧实现只看 md,图-only 条不进刻度,
+        //  滚动/跳转少一档;图片条在气泡侧本就独立成行,锚点照常落在其用户条上
+        const hasImages = e.images !== undefined && e.images.length > 0;
+        pending = e.md.trim() !== '' || hasImages ? { key: e.key, user: e } : null;
         if (pending !== null) out.push(pending);
         continue;
       }
@@ -105,7 +109,9 @@ export function ChatRail(props: {
   const hoverPreview = useMemo(() => {
     const r = hover >= 0 ? rows[hover] : undefined;
     if (r === undefined) return null;
-    return { pv: previewText(r.user.md), reply: r.reply !== undefined ? previewText(r.reply.md) : undefined };
+    // 纯图条无正文:预览卡显占位文案(图片条数),不落空卡
+    const pv = r.user.md.trim() !== '' ? previewText(r.user.md) : t('Image', '图片') + ((r.user.images?.length ?? 0) > 1 ? ` ×${r.user.images!.length}` : '');
+    return { pv, reply: r.reply !== undefined ? previewText(r.reply.md) : undefined };
   }, [hover, rows]);
   // 锚点直写 style 不经 React 提交(十三轮半,果冻效应根因):left/top 若走 state,重渲染
   // 落地比测量晚一拍——拖三栏滑动线/开关菜单时锚点追着布局跑,刻度悬在半空不落新边框。
