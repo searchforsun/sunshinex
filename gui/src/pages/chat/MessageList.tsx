@@ -533,8 +533,43 @@ export function MessageList(props: MessageListProps): JSX.Element {
       }
       // 待落账高度:滚动中不断顺延(停手 200ms 后批量应用,见 RO effect)
       if (pendingHeightsRef.current.size > 0) scheduleHeightsRef.current();
+      schedulePrefetch();
     });
   };
+  /** 停顿期向前预挂载(2026-11-19 大块滑动轮「不改显示效果」方案):用户停手 300ms 后,把视口
+   *  前方再多挂 2 个块——大正文块(实测单块首次挂载 ~80ms)的 React 提交/布局成本在空闲时付掉,
+   *  滚动经过时不再现挂。按「块数」而非像素扩(大块本身上万 px,像素距离盖不住一块);只向前扩、
+   *  不缩后方;滚动中定时器被新滚动重置,不会抢当前帧;上限 48 块兜底内存 */
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetchAhead = (): void => {
+    if (!virtualRef.current) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const h = el.clientHeight;
+    if (h <= 0) return;
+    const off = offsetsRef.current;
+    const cur = rangeRef.current;
+    const viewR = sliceRange(off, el.scrollTop, h, 0);
+    const n = unitsRef.current.length;
+    const last = Math.min(n, viewR.last + 2);
+    const merged = { first: cur === null ? viewR.first : cur.first, last: Math.max(cur?.last ?? 0, last) };
+    if (merged.last - merged.first > 48) return;
+    if (cur === null || merged.last !== cur.last || merged.first !== cur.first) {
+      rangeRef.current = merged;
+      setRange(merged);
+    }
+  };
+  const schedulePrefetch = (): void => {
+    if (LAYOUT_FREE) return;
+    if (prefetchTimerRef.current !== null) clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = setTimeout(() => {
+      prefetchTimerRef.current = null;
+      prefetchAhead();
+    }, 300);
+  };
+  useEffect(() => () => {
+    if (prefetchTimerRef.current !== null) clearTimeout(prefetchTimerRef.current);
+  }, []);
   /** 挂载期:量视口高(首帧估算值落地)+ 视口尺寸变化跟随;卸载取消在途帧 */
   useLayoutEffect(() => {
     if (LAYOUT_FREE) return;
@@ -635,6 +670,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
     const r = sliceRange(offsetsRef.current, top, h, VIRTUAL_OVERSCAN);
     const cur = rangeRef.current;
     if (cur === null || r.first !== cur.first || r.last !== cur.last) setRange(r);
+    // 模型落定(种子/折叠/高度校正/流式停顿)后同样排一次前方预挂载
+    schedulePrefetch();
   }, [offsets, units, stick, chatScrollRef]);
 
   /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管 */

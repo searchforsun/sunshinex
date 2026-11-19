@@ -175,16 +175,19 @@ export function firstUnitAt(offsets: readonly number[], scrollTop: number): numb
 }
 
 /** 视口切片:返回 [first, last) 块区间(含 overscan 像素上下余量;至少 1 块)。
- *  二分定位:首块 = 底部越过视口顶-overscan 的第一块;末块 = 顶部越过视口底+overscan 的第一块。 */
+ *  二分定位:首块 = 底部越过视口顶-(behind 缺省=overscan) 的第一块;末块 = 顶部越过视口底+overscan
+ *  的第一块。behind 独立入参供「停顿期向前预挂载」用(2026-11-19 大块滑动轮:只往前扩,
+ *  不往前缩)。 */
 export function sliceRange(
   offsets: readonly number[],
   scrollTop: number,
   viewport: number,
   overscan: number,
+  behind: number = overscan,
 ): { first: number; last: number } {
   const n = offsets.length - 1;
   if (n <= 0) return { first: 0, last: 0 };
-  const lo = scrollTop - overscan;
+  const lo = scrollTop - behind;
   const hi = scrollTop + Math.max(viewport, 0) + overscan;
   // 第一个 offsets[i+1] > lo 的 i(scrollTop 之前的块不挂)
   let a = 0;
