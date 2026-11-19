@@ -12,11 +12,25 @@ export function useWelcomeBranch(conn: WelcomeComposerConn, picked: string, isDe
   const [selectedBranch, setSelectedBranch] = useState('');
   const [creating, setCreating] = useState(false);
   const branchRef = useRef<HTMLDivElement | null>(null);
+  /** 应答代际号(2026-11-19 用户实测「默认工作区没有 git 却有分支残留」):切项目瞬间旧项目的
+   *  gitBranches 应答可能晚到,把刚清空的 gitBr 又写回来——非 git 的默认工作区于是残留上个项目
+   *  的分支/隔离 pill。每次请求/清空递增代际,应答回来代际不符即丢弃 */
+  const reqRef = useRef(0);
   const refresh = (root: string): void => {
-    void conn.gitBranches(root).then((r) => setGitBr(r.branches.length > 0 ? r : null), () => setGitBr(null));
+    const id = ++reqRef.current;
+    void conn.gitBranches(root).then(
+      (r) => {
+        if (reqRef.current !== id) return;
+        setGitBr(r.branches.length > 0 ? r : null);
+      },
+      () => {
+        if (reqRef.current === id) setGitBr(null);
+      },
+    );
   };
   useEffect(() => {
     if (picked === '' || isDefaultPicked) {
+      reqRef.current += 1; // 作废在途应答(旧项目的分支清单不得回写)
       setGitBr(null);
       setSelectedBranch('');
       setBranchOpen(false);
