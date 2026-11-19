@@ -721,8 +721,8 @@ describe('应用级导航历史:前进/后退(2026-10-25)', () => {
     await screen.findByLabelText('welcome');
     fireEvent.click(screen.getByRole('button', { name: 'collapse menu' }));
     await waitFor(() => expect(document.querySelector('.sx-welcome-nav')).not.toBeNull());
-    // 菜单收起:菜单头退场,浮出簇接管(单点不双显)
-    expect(document.querySelector('.sx-menu-head')).toBeNull();
+    // 菜单收起:菜单头退场,浮出簇接管(单点不双显)——关闭过渡保挂载 200ms 后真卸载,等待退场
+    await waitFor(() => expect(document.querySelector('.sx-menu-head')).toBeNull());
     expect(navBtn('nav back').disabled).toBe(false);
     expect(navBtn('nav forward').disabled).toBe(true);
     // 后退:回 s1——不经 newSession/attach(记录的 sessionId 仍常驻 daemon)

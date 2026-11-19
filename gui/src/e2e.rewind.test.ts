@@ -28,8 +28,13 @@ import { applyDeveloperMode } from './developer-mode';
 const write = (p: string, content: string): string => JSON.stringify({ tool: 'write', input: { path: p, content } });
 const done = (reply: string): string => JSON.stringify({ done: true, reply });
 
+/** 热切换驻留座(2026-11-18)与前台座并列挂载、驻留座 display:none——转录断言只看前台座,
+ *  否则容器全文/全条目扫描会把隐藏座的旧条目一并数进来 */
+const fgSeat = (container: HTMLElement): HTMLElement =>
+  container.querySelector<HTMLElement>('.sx-chat-seat:not(.sx-chat-cache)') ?? container;
+
 function userTexts(container: HTMLElement): string[] {
-  return [...container.querySelectorAll('.entry-user .user-md-plain')].map((n) => n.textContent ?? '');
+  return [...fgSeat(container).querySelectorAll('.entry-user .user-md-plain')].map((n) => n.textContent ?? '');
 }
 
 /** 模型响应留出真实间隔:提交回执须先于 run 收束到达(Chat 的等待待态只认 run-open 之后的条目) */
@@ -80,23 +85,23 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       const goal = screen.getByLabelText('welcome goal');
       fireEvent.change(goal, { target: { value: '问一' } });
       fireEvent.keyDown(goal, { key: 'Enter' });
-      await waitFor(() => expect(container.textContent).toContain('答一'), { timeout: 15_000 });
-      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
+      await waitFor(() => expect(fgSeat(container).textContent).toContain('答一'), { timeout: 15_000 });
+      await waitFor(() => expect(fgSeat(container).querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
       await waitFor(() => expect(container.querySelector('button[aria-label="send"]')).not.toBeNull(), { timeout: 15_000 });
 
       const input = screen.getByLabelText('message input');
       fireEvent.change(input, { target: { value: '问二' } });
       fireEvent.keyDown(input, { key: 'Enter' });
-      await waitFor(() => { if (!container.textContent!.includes('答二')) throw new Error('未到答二: ' + container.querySelector('.sx-main')?.textContent?.slice(0, 400) + ' input=' + (input as HTMLTextAreaElement).value); }, { timeout: 15_000 });
+      await waitFor(() => { if (!(fgSeat(container).textContent ?? '').includes('答二')) throw new Error('未到答二: ' + (fgSeat(container).textContent ?? '').slice(0, 400) + ' input=' + (input as HTMLTextAreaElement).value); }, { timeout: 15_000 });
       expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
       expect(fs.existsSync(path.join(root, 'b.txt'))).toBe(true);
-      await waitFor(() => expect(container.querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
+      await waitFor(() => expect(fgSeat(container).querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
 
       // 被丢弃轮打开的 Diff 页签:回退后应随时间线消失
-      const writeRow = [...container.querySelectorAll<HTMLButtonElement>('button')].find((b) => (b.textContent ?? '').includes('b.txt'));
+      const writeRow = [...fgSeat(container).querySelectorAll<HTMLButtonElement>('button')].find((b) => (b.textContent ?? '').includes('b.txt'));
       fireEvent.click(writeRow!);
-      await waitFor(() => expect(container.querySelector('.tool-path[aria-label="b.txt"]')).not.toBeNull(), { timeout: 15_000 });
-      fireEvent.click(container.querySelector('.tool-path[aria-label="b.txt"]')!);
+      await waitFor(() => expect(fgSeat(container).querySelector('.tool-path[aria-label="b.txt"]')).not.toBeNull(), { timeout: 15_000 });
+      fireEvent.click(fgSeat(container).querySelector('.tool-path[aria-label="b.txt"]')!);
       await waitFor(() => expect([...container.querySelectorAll('.sx-tab')].some((t) => (t.textContent ?? '').includes('b.txt'))).toBe(true), { timeout: 15_000 });
 
       fireEvent.click(screen.getAllByRole('button', { name: 'Edit' }).at(-1)!);
@@ -110,12 +115,12 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
 
       fireEvent.click(screen.getByRole('button', { name: 'Rewind session and files' }));
-      await waitFor(() => expect(container.textContent).toContain('答三'), { timeout: 15_000 });
+      await waitFor(() => expect(fgSeat(container).textContent).toContain('答三'), { timeout: 15_000 });
 
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(userTexts(container)).toEqual(['问一', '改后的问二']);
-      expect(container.textContent).not.toContain('答二');
-      expect(container.textContent).toContain('Files rewound');
+      expect(fgSeat(container).textContent).not.toContain('答二');
+      expect(fgSeat(container).textContent).toContain('Files rewound');
       expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v1');
       expect(fs.existsSync(path.join(root, 'b.txt'))).toBe(false);
 

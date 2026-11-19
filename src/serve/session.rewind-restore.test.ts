@@ -90,7 +90,8 @@ async function withRig(replies: string[], fn: (rig: Rig) => Promise<void>): Prom
     else process.env.SUNSHINEX_PROJECTS_DIR = prevProjects;
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
-    fs.rmSync(tmp, { recursive: true, force: true });
+    // Windows 下后台任务子进程句柄释放略滞后(严格回退用例停任务后即刻清目录)→ EPERM;重试窗口收口
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 }
 

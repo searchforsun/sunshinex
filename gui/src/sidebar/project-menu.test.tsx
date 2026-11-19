@@ -135,7 +135,7 @@ describe('ProjectMenu(G14.9 launcher IA:RECENTS 主列表 + 项目启动器)', (
     renderMenu(conn, { activeSessionId: 'new-D:/w/p1' });
     const row = await screen.findByText('demo goal');
     fireEvent.click(row);
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'j1')); // G14.213 journalId 随行
+    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'j1', undefined)); // journalId 随行 + 形态 kind(标准会话无形态)
     await waitFor(() => expect(row.closest('.sx-session-row')!.className).toContain('active'));
     // 未读点消失晚于 active 类一帧(markRead 异步回写)——裸断言在帧隙必抖(waitFor 钉)
     await waitFor(() => expect(row.closest('.sx-session-row')!.querySelector('.sx-session-dot.unseen')).toBeNull());
@@ -318,7 +318,7 @@ describe('ProjectMenu T6 侧栏行归档钮(确认 morph)+ 组头归档入口', 
     const opensBefore = open.mock.calls.length;
     const list = await screen.findByRole('list', { name: 'archived sessions' });
     fireEvent.click(within(list).getByText('已归档会话'));
-    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'a1'));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('new-D:/w/p1', 'D:/w/p1', 'a1', undefined));
     expect(open.mock.calls.length).toBe(opensBefore + 1);
   });
 });
@@ -343,7 +343,7 @@ describe('ProjectMenu 新建 Sunx 入口(sunx P1 Task 6;2026-11-15 提为顶部�
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '编排者' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() => expect(conn.newSession).toHaveBeenCalledWith('default', undefined, undefined, undefined, { kind: 'sunx', name: '编排者' }));
-    await waitFor(() => expect(open).toHaveBeenCalledWith('sx-1', 'default')); // 既有 openSession 链路
+    await waitFor(() => expect(open).toHaveBeenCalledWith('sx-1', 'default', undefined, 'sunx')); // 既有 openSession 链路 + 形态 kind
     expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull(); // 关弹窗
   });
 });
@@ -391,7 +391,7 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;20
     renderMenu(conn, { onOpenSession: open });
     fireEvent.click(await screen.findByText('编排一'));
     await waitFor(() => expect(conn.attachSunx).toHaveBeenCalledWith('sx-j1'));
-    await waitFor(() => expect(open).toHaveBeenCalledWith('sx-live-sx-j1', 'D:/w/p1', 'sx-j1')); // journalId 随行
+    await waitFor(() => expect(open).toHaveBeenCalledWith('sx-live-sx-j1', 'D:/w/p1', 'sx-j1', 'sunx')); // journalId 随行 + 形态 kind
   });
 
   it('组头看板钮:接线 onOpenSunxBoard 渲染+点击上抛;未接线不渲染(guard)', async () => {
