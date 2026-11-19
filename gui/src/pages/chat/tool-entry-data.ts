@@ -254,7 +254,7 @@ export function fileLabelOf(path: string, root?: string): { base: string; dir: s
   // 根下绝对路径相对化(2026-11-14 用户问「多项目时工具行怎么显示绝对路径」:模型传绝对路径合法
   // (read/write/edit 均允许),折叠行显示归一根相对——与 @ 面包屑同语言;根外路径保持原样)
   if (root !== undefined && root !== '') {
-    const r = root.replace(/\\\\/g, '/').replace(/\/+$/, '');
+    const r = root.replace(/\\/g, '/').replace(/\/+$/, '');
     if (r !== '' && norm.toLowerCase().startsWith(r.toLowerCase() + '/')) norm = norm.slice(r.length + 1);
   }
   const base = pathBasename(norm);

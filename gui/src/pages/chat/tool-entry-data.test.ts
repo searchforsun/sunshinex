@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { taskOpNameOf } from './tool-entry-data';
+import { fileLabelOf, taskOpNameOf } from './tool-entry-data';
 
 /** task_stop 折叠行任务名解析（2026-11-17 用户实测「停止行显示命令原文,不是后台任务名称」+
  *  「taskid 不对(带 task 前缀)」三修回归）：人名(purpose/转录映射)优先→回执 label 兜底;
@@ -35,5 +35,26 @@ describe('taskOpNameOf', () => {
     expect(taskOpNameOf('get_task', { taskId: 't-1' }, '', () => '架构评审')).toBe('架构评审');
     expect(taskOpNameOf('get_task', { taskId: 't-1' }, '', undefined)).toBe('t-1');
     expect(taskOpNameOf('task_stop', {}, receipt, undefined)).toBeUndefined();
+  });
+});
+
+
+/** 折叠行路径相对化(2026-11-19 用户实测「相对路径怎么还是渲染成了绝对路径」):Windows 根路径的
+ *  反斜杠归一正则曾写成 /\\/(匹配双反斜杠),实际单反斜杠路径永不命中→回显绝对路径 */
+describe('fileLabelOf 根相对化', () => {
+  test('Windows 反斜杠绝对路径 → 根相对目录(单反斜杠也归一)', () => {
+    expect(fileLabelOf(String.raw`D:\project\bi-kronos-internals\src\main\java\A.java`, String.raw`D:\project\bi-kronos-internals`)).toEqual({
+      base: 'A.java',
+      dir: 'src/main/java/',
+    });
+  });
+
+  test('正斜杠绝对路径/根尾斜杠/根目录文件', () => {
+    expect(fileLabelOf('D:/repo/src/a.ts', 'D:/repo/')).toEqual({ base: 'a.ts', dir: 'src/' });
+    expect(fileLabelOf(String.raw`D:\repo\a.ts`, String.raw`D:\repo`)).toEqual({ base: 'a.ts', dir: '' });
+  });
+
+  test('根外路径保持原样(不误剥)', () => {
+    expect(fileLabelOf('E:/other/x.md', 'D:/repo')).toEqual({ base: 'x.md', dir: 'E:/other/' });
   });
 });
