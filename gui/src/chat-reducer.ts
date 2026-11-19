@@ -173,9 +173,10 @@ const mapCache = new WeakMap<KernelState, {
 let seedGenCounter = 0;
 
 /** G14.90/G14.106 显示过滤:P10 起裁定单点在内核(isQuietNotice),TUI/GUI 同源——本模块只消费 */
-/** 沉淀类系统通知不占正文(2026-11-19 用户裁定「系统通知不要占用正文中」):记忆/技能收口行
- *  (`[memory] saved|updated: …` / `[skills] learned|updated: …`)是后台旁路产物,渲染成行会
- *  打断正文阅读流;GUI 侧直接不入显示列表(链与日志完整保留,记忆页签/学习技能页签仍是查看面) */
+/** 沉淀类系统通知延后到轮尾(2026-11-19 用户复裁定「系统提示显示到正文中导致正文被截断,这个
+ *  系统提示要放到最后,复制思考行之下」):`[memory] saved|updated: …` / `[skills] learned|updated: …`
+ *  是收口旁路产物,夹在正文/工具行之间会把阅读流切断——mapEntries 内缓冲,遇下一条 user/run
+ *  边界(即本轮结束处)再落列,渲染位置=本轮最后一条正文/工具行之后(复制行之下);链与日志不动 */
 function isAmbientSinkNotice(md: string): boolean {
   return /^\[(?:memory|skills)\]\s*(?:saved|updated|learned)\b/.test(md);
 }
@@ -252,9 +253,20 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
   let pendingWake: WakeRef[] | undefined;
   let pendingSchedule: true | undefined;
   let pendingRestored: true | undefined;
+  /** 沉淀系统通知缓冲(2026-11-19):轮尾统一落列,不夹正文 */
+  let pendingSink: ChatEntry[] = [];
   for (let i = 0; i < k.entries.length; i += 1) {
     const e = k.entries[i]!;
-    if (e.kind === 'notice' && isAmbientSinkNotice(e.md)) continue; // 沉淀系统通知不占正文(2026-11-19)
+    if (e.kind === 'notice' && isAmbientSinkNotice(e.md)) {
+      // 沉淀系统通知延后到轮尾(2026-11-19 用户复裁定):缓冲,遇 user/run 边界或末尾再落列
+      pendingSink.push(mapOne(e, false, runBases[e.seq]));
+      continue;
+    }
+    // 轮边界:把上一轮缓冲的沉淀通知落在本条之前(=上一轮最后一条之后,复制/思考行之下)
+    if (pendingSink.length > 0 && (e.kind === 'user' || e.kind === 'run')) {
+      for (const v of pendingSink) out.push(v);
+      pendingSink = [];
+    }
     if (e.kind === 'notice' && isQuietNotice(e.md)) {
       if (e.wake !== undefined) pendingWake = e.wake; // 唤醒引用暂存(本条照旧不显示)
       if (e.schedule === true) pendingSchedule = true; // 定时唤醒标记暂存(同族)
@@ -318,6 +330,11 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
         else en.artifacts = filtered;
       }
     }
+  }
+  // 轮尾落列:最后一段缓冲的沉淀通知(本轮无后继 user/run 时)接在末尾
+  if (pendingSink.length > 0) {
+    for (const v of pendingSink) out.push(v);
+    pendingSink = [];
   }
   const mapped = mergeSplitThinking(out);
   mapCache.set(k, { runBases, kernel: k.entries, parallel, mapped, lang });

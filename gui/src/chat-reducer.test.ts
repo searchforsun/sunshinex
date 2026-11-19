@@ -806,18 +806,35 @@ describe('run 行定时唤醒前缀配对(2026-11-15 sunx P2 Task 3,fix round 2 
 });
 
 
-/** 沉淀类系统通知不占正文(2026-11-19 用户裁定「系统通知不要占用正文中」):记忆/技能收口行
- *  不进显示列表(链与日志保留,记忆/学习技能页签为查看面) */
-describe('沉淀系统通知不渲染正文', () => {
-  it('memory/skills 收口 notice 不入显示列表,普通 notice 照常', () => {
+describe('沉淀系统通知延后到轮尾', () => {
+  it('memory/skills 收口 notice 不在正文中间,落在本轮末尾(复制/思考行之下)', () => {
     const s = fold([
       ev('model-start'),
+      ev('token', '正文第一段'),
       ev('notice', '[memory] saved: flink-checkpoint-tune', { source: 'memory' }),
-      ev('notice', '[skills] learned: fast-check', { source: 'skills' }),
-      ev('notice', '其它系统提示'),
-      ev('done', 'x'),
+      ev('token', '正文第二段'),
+      ev('done', '正文第二段'),
     ]);
-    const notices = s.entries.filter((e) => e.kind === 'notice').map((e) => e.md);
-    expect(notices).toEqual(['其它系统提示']);
+    const list = s.entries.map((e) => (e.kind === 'assistant' ? `A:${e.md}` : e.kind === 'notice' ? `N:${e.md}` : e.kind));
+    // 沉淀通知不在两段正文之间,而在本轮末尾
+    expect(list.filter((x) => x.startsWith('N:'))).toEqual(['N:[memory] saved: flink-checkpoint-tune']);
+    expect(list[list.length - 1]).toBe('N:[memory] saved: flink-checkpoint-tune');
+  });
+
+  it('下一条 user/run 边界前落列(不串到下一轮)', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('token', '答一'),
+      ev('done', '答一'),
+      ev('notice', '[skills] learned: fast-check', { source: 'skills' }),
+      ev('model-start'),
+      ev('token', '答二'),
+      ev('done', '答二'),
+    ]);
+    const list = s.entries.map((e) => (e.kind === 'assistant' ? `A:${e.md}` : e.kind === 'notice' ? `N:${e.md}` : e.kind));
+    const nAt = list.findIndex((x) => x.startsWith('N:'));
+    const secondRunAt = list.indexOf('run', list.indexOf('run') + 1);
+    expect(nAt).toBeGreaterThan(list.indexOf('A:答一'));
+    if (secondRunAt !== -1) expect(nAt).toBeLessThan(secondRunAt);
   });
 });
