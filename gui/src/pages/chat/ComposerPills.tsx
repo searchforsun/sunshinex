@@ -104,6 +104,9 @@ interface PillsRightProps {
   readonly setSessEffort: Dispatch<SetStateAction<string | undefined>>;
   readonly running: boolean;
   readonly input: string;
+  /** 运行中是否仍有可发送内容(2026-11-19 用户实测「只有图片,输入框也没有变成发送按钮」):
+   *  纯图附件(正文为空)也算——运行中「停止/发送」二选一按「空输入且无图」判停止 */
+  readonly hasImages?: boolean;
   readonly send: () => void;
   readonly interrupt: () => void;
   readonly connState: ConnectionState;
@@ -118,7 +121,7 @@ interface PillsRightProps {
 }
 
 export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
-  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading } = props;
+  const { pillOpen, setPillOpen, conn, sessionId, ctxInfo, refreshCtx, runCount, steps, tokens, cacheTokens, modelInfo, setModelInfo, sessEffort, setSessEffort, running, input, send, interrupt, connState, seeding, sendLoading, hasImages } = props;
   const dev = useDeveloperMode();
   return (
           <div className="composer-pills composer-pills-right">
@@ -188,8 +191,10 @@ export function ComposerPillsRight(props: PillsRightProps): JSX.Element {
                 </div>
               )}
             </div>
-            {/* G14.89 运行中输入框有内容 → 显示发送(入队)而非停止;空输入才是停止 */}
-            {running && input.trim() === '' ? (
+            {/* G14.89 运行中输入框有内容 → 显示发送(入队)而非停止;空输入才是停止。
+                2026-11-19 用户实测「只有图片,输入框也没有变成发送按钮」:纯图附件同样算可发送内容,
+                停止钮只在「无正文且无图」时出现 */}
+            {running && input.trim() === '' && hasImages !== true ? (
               <button type="button" className="send" aria-label="stop" data-tip={t('Stop', '停止')} onClick={interrupt}>
                 <Square size={14} strokeWidth={2.5} aria-hidden="true" />
               </button>

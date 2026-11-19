@@ -388,6 +388,7 @@ export function ChatComposerDock(props: {
               setSessEffort={setSessEffort}
               running={running}
               input={input}
+              hasImages={pendingImages.length > 0}
               send={send}
               interrupt={interrupt}
               connState={connState}
