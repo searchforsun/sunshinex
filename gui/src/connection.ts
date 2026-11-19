@@ -148,9 +148,15 @@ export function createConnection(opts: ConnectionOpts): Connection {
    *  bumpSeq=false 供辅助拉取（批准后的 mode 轻同步等）——只读数据不动 seq 门（2026-11-04 实测
    *  根修:批准回执落定→executor 同拍恢复→tool-result 帧在途;此刻辅助快照应答先行处理即把
    *  lastSeq 抬过在途帧序,帧落门内被当重放丢=交稿行永卡「正在提交」） */
-  async function fetchSessionSnapshot(id: string, page?: { before?: number; limit?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }> {
+  async function fetchSessionSnapshot(id: string, page?: { before?: number; limit?: number; tail?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }> {
     const gen = transport.generation();
-    const q = page !== undefined ? `?before=${page.before}&limit=${page.limit}` : '';
+    // tail 与 before 互斥(daemon 400):tail=尾窗条数(2026-11-19 刻度一次加载轮——
+    // reseed 取全量尾窗 2000=kernel 档面上限,免分页补历史致刻度/正文两段加载)
+    const q = page === undefined
+      ? ''
+      : page.tail !== undefined
+        ? `?tail=${page.tail}`
+        : `?before=${page.before}&limit=${page.limit}`;
     const resp = await getJson<SnapshotResponse & { lastSeq: number }>(`/session/${encodeURIComponent(id)}/snapshot${q}`);
     if (opts?.bumpSeq === false) return resp;
     if (gen === transport.generation() && resp.lastSeq > (transport.lastSeqBySession.get(id) ?? 0)) {

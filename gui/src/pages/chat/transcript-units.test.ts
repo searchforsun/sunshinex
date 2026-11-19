@@ -56,6 +56,21 @@ describe('转录块模型:块划分(镜像 DayGroupBlock 聚合规则)', () => {
     expect(spans).toHaveLength(1);
     expect([spans[0]!.kind, spans[0]!.start, spans[0]!.end]).toEqual(['seg', 0, 3]);
   });
+
+  it('内容估算:正文按 md 长度放大、折叠段保持头行高度、用户气泡随文长增长(2026-11-19 冷开长帧轮)', () => {
+    const long = 'x'.repeat(3000);
+    const entries = [e('u1', 'user', long), e('a1', 'assistant', long), e('t1', 'tool', long)];
+    const spans = dayUnitSpans(0, 'd', '', entries, new Set(['t1']), false, isCmd, officeHidden);
+    const byKey = new Map(spans.map((s) => [s.key, s]));
+    expect(byKey.get('a1')!.est!).toBeGreaterThan(150 + 1000); // 3000 字 ≫ 常数 150
+    expect(byKey.get('u1')!.est!).toBeGreaterThan(96 + 500);
+    expect(byKey.get('seg:t1')!.est).toBe(44); // 整段折叠=只有 Worked 头
+    // 前缀和吃 est;实测值仍优先
+    const off = prefixOffsets(spans, new Map());
+    expect(off[2]! - off[1]!).toBe(byKey.get('a1')!.est);
+    const off2 = prefixOffsets(spans, new Map([['a1', 42]]));
+    expect(off2[2]! - off2[1]!).toBe(42);
+  });
 });
 
 describe('转录块模型:高度前缀与视口切片', () => {

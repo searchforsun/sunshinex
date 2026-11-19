@@ -198,7 +198,7 @@ export interface Connection {
   sessionInterrupt(id: string): Promise<void>;
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
    *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
-  sessionSnapshot(id: string, page?: { before?: number; limit?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }>;
+  sessionSnapshot(id: string, page?: { before?: number; limit?: number; tail?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }>;
   /** 2026-10-26 三期 §4.5:按需全量观测(快照分页剥 full 后,工具行展开按 seq 单条拉) */
   fetchObservation(id: string, seq: number): Promise<{ seq: number; text?: string; full?: string }>;
   /** POST /approval/:pid {decision}（G4）：decision ∈ 'allow'|'always'|'deny'——回执寻址用帧

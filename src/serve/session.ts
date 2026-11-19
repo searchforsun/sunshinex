@@ -1847,8 +1847,10 @@ ${this.sessionCharter ?? ''}` }
     void this.todos; // 会话 todo 投影读面（批准播种/模型 todo_write 收写;GUI 面走 todo-batches）——TS6133 豁免读
     const full = this.kernel.replay();
     // 2026-10-26 三期:缺省尾窗 200(首屏);before/limit 向前翻页(补全页,缺省 600 上限 2000)。
+    // 2026-11-19:GUI reseed 改传 tail=2000 一次取全(分页补历史使刻度/正文两段加载)——内核
+    // 档面本就以 CAP 2000 封顶(src/session/entry.ts),tail 同口径钳上限,其它客户端缺省 200 不变。
     // result.full 恒剥(载荷瘦身,全量观测走 entry/observation 按需端点);journal 落盘不动
-    const tail = page?.tail ?? 200;
+    const tail = Math.min(page?.tail ?? 200, 2000);
     const before = page?.before;
     const limit = Math.min(Math.max(page?.limit ?? 600, 1), 2000);
     let messages: readonly KernelEntry[];

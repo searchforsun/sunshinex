@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { ChatRail } from './ChatRail';
 import type { ChatEntry } from '../../chat-reducer';
 
@@ -63,8 +63,15 @@ describe('ChatRail 滚动定位(大会话 CPU 轮)', () => {
     // 判定线 = 滚动口下缘 600 − 40 = 560:越线最后一只 = u3(300 ≤ 560 < 700)
     expect(ticks[2]!.classList.contains('active')).toBe(true);
     expect(ticks[3]!.classList.contains('active')).toBe(false);
-    // 预览串来自封存行(回复预览取末条 assistant)
+    // 预览串按需:未 hover 时零预览卡(2026-11-19 切换/流式卡顿轮——旧实现 N×2 预览 span 常驻,
+    // 且每渲染重算 N 份 previewText)
+    expect(document.querySelectorAll('.sx-rail-preview').length).toBe(0);
+    // 预览串来自封存行(回复预览取末条 assistant),只在 hover 那一枚算/挂
+    fireEvent.mouseEnter(ticks[0]!);
     expect(ticks[0]!.querySelector('.sx-rail-pv-user')!.textContent).toBe('m1');
+    expect(document.querySelectorAll('.sx-rail-preview').length).toBe(1);
+    fireEvent.mouseLeave(ticks[0]!);
+    fireEvent.mouseEnter(ticks[3]!);
     expect(ticks[3]!.querySelector('.sx-rail-pv-reply')!.textContent).toBe('reply-4');
     view.unmount();
   });

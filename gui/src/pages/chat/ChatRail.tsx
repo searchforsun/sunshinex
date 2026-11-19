@@ -78,29 +78,35 @@ export function ChatRail(props: {
   // zoomScale 换算回 CSS 坐标注入 fixed 子树(zoom 子树内坐标=视觉/zoom,D50 契约)
 
   /** 刻度行数据一次算好随 entries 封存(2026-11-18 大会话滚动 CPU 轮):旧实现每次渲染现算
-   *  filter+replyByKey+N 份 previewText(正则剥 markdown),滚动期 activeIdx 每变一次=整条刻度
-   *  重渲染一遍——上千条会话即每秒数万次正则的 CPU 尖峰。预览串只随消息内容变,不与滚动相关 */
+   *  filter+replyByKey+N 份 previewText(正则剥 markdown)。
+   *  2026-11-19 切换/流式卡顿轮(用户实测「热切换还是会卡一下」「刻度两段加载」):行只存条目引用,
+   *  预览串不再封存——previewText 要对每条正文全文跑正则,长回答(大表格/代码)上是 O(总字符),
+   *  切会话与每个流式 token 都重算 N 份=首帧长任务。预览只在 hover 那一刻算当前一枚(下方
+   *  hoverPreview),DOM 也只挂当前一枚预览卡(旧实现 N×2 个预览 span 常驻) */
   const rows = useMemo(() => {
-    const users = entries.filter((e) => e.kind === 'user' && e.md.trim() !== '');
+    const out: Array<{ key: string; user: ChatEntry; reply?: ChatEntry }> = [];
     // 每部分回复正文(2026-10-31 用户裁定:取该轮**最后一个**正文条——流式/思考分段会把一轮拆成
     // 多条 assistant,末条=收束全文;首条常只是开头段。持续覆盖直至下一用户消息)
-    const replyByKey = new Map<string, string>();
-    {
-      let pendingKey: string | null = null;
-      for (const e of entries) {
-        if (e.kind === 'user') {
-          pendingKey = e.md.trim() !== '' ? e.key : null;
-          continue;
-        }
-        if (pendingKey !== null && e.kind === 'assistant' && e.md.trim() !== '') {
-          replyByKey.set(pendingKey, previewText(e.md));
-        }
+    let pending: { key: string; user: ChatEntry; reply?: ChatEntry } | null = null;
+    for (const e of entries) {
+      if (e.kind === 'user') {
+        pending = e.md.trim() !== '' ? { key: e.key, user: e } : null;
+        if (pending !== null) out.push(pending);
+        continue;
       }
+      if (pending !== null && e.kind === 'assistant' && e.md.trim() !== '') pending.reply = e;
     }
-    return users.map((u) => ({ key: u.key, pv: previewText(u.md), reply: replyByKey.get(u.key) }));
+    return out;
   }, [entries]);
   /** 键 → 刻度序(滚动判定用;随 rows 封存) */
   const keyIdx = useMemo(() => new Map(rows.map((r, i) => [r.key, i])), [rows]);
+  /** hover/focus 的刻度序(-1=无):预览串按需只为这一枚计算 */
+  const [hover, setHover] = useState(-1);
+  const hoverPreview = useMemo(() => {
+    const r = hover >= 0 ? rows[hover] : undefined;
+    if (r === undefined) return null;
+    return { pv: previewText(r.user.md), reply: r.reply !== undefined ? previewText(r.reply.md) : undefined };
+  }, [hover, rows]);
   // 锚点直写 style 不经 React 提交(十三轮半,果冻效应根因):left/top 若走 state,重渲染
   // 落地比测量晚一拍——拖三栏滑动线/开关菜单时锚点追着布局跑,刻度悬在半空不落新边框。
   // show 仍走 state(挂卸载决策,翻转由 layout effect 当帧补锚)
@@ -108,8 +114,12 @@ export function ChatRail(props: {
   const [show, setShow] = useState(false);
   /** 首亮放行门(2026-10-31 用户复测「稳定门后仍会跳」):两次相同测量可能都落在内容未渲染的
    *  过渡布局上,条目落位后照样跳——改为时限放行:挂载 350ms 沉降期内的测量只静默写坐标不放行
-   *  显示,沉降完成才可首亮(亮起即终位);已亮后实时跟随不受门限(流式高度变化不停亮) */
+   *  显示,沉降完成才可首亮(亮起即终位);已亮后实时跟随不受门限(流式高度变化不停亮)。
+   *  2026-11-19 热切换轮:挂载即有行(keep-alive 缓存座重挂/切回)时沉降期缩到 40ms——座内
+   *  布局随显示翻转同拍定格(RO 可立即量到终值),350ms 门只剩「刻度迟一步出现」的观感;
+   *  冷座(播种未到)维持 350ms,避免首亮落在内容涌进的重排期 */
   const revealAtRef = useRef(false);
+  const warmAtMountRef = useRef(rows.length > 0);
   useEffect(() => {
     const el = chatScrollRef.current;
     if (el === null) return;
@@ -140,11 +150,11 @@ export function ChatRail(props: {
     // 顶栏/菜单/字体未定稿,rect 是过渡值;其后滚动口尺寸若不变 RO 不再触发,错锚即滞留。
     // 挂载后数帧+350ms+字体就绪各补测一次(railAnchor 幂等,零尺寸由守卫收起)
     const settleRafs = [2, 5, 9].map(() => requestAnimationFrame(() => measure()));
-    // 沉降放行(首亮门):350ms 补测同帧放行首亮——此前测量只养坐标不显示
+    // 沉降放行(首亮门):补测同帧放行首亮——此前测量只养坐标不显示;时长见 warmAtMountRef 注
     const settleTimer = window.setTimeout(() => {
       revealAtRef.current = true;
       measure();
-    }, 350);
+    }, warmAtMountRef.current ? 40 : 350);
     void Promise.resolve(document.fonts?.ready).then(() => measure(), () => undefined);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
@@ -359,13 +369,21 @@ export function ChatRail(props: {
               className="sx-rail-tick"
               aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)}
               onClick={() => jump(i)}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover((h) => (h === i ? -1 : h))}
+              onFocus={() => setHover(i)}
+              onBlur={() => setHover((h) => (h === i ? -1 : h))}
             >
               {/* hover 预览卡内容(2026-10-31 用户裁定改版:仅 hover 文字内容变)——前段=用户输入
-                  (亮色,2 行封顶),后段=该轮回复正文(暗色,2 行封顶),各自 line-clamp 多余省略 */}
-              <span className="sx-rail-preview">
-                <span className="sx-rail-pv-user">{r.pv}</span>
-                {r.reply !== undefined && <span className="sx-rail-pv-reply">{r.reply}</span>}
-              </span>
+                  (亮色,2 行封顶),后段=该轮回复正文(暗色,2 行封顶),各自 line-clamp 多余省略。
+                  2026-11-19:只有 hover/focus 这一枚挂预览,文本也到此刻才算(剥 markdown 正则
+                  是全文扫描,切会话/流式不再为 N 枚常驻付费) */}
+              {hover === i && hoverPreview !== null && (
+                <span className="sx-rail-preview">
+                  <span className="sx-rail-pv-user">{hoverPreview.pv}</span>
+                  {hoverPreview.reply !== undefined && <span className="sx-rail-pv-reply">{hoverPreview.reply}</span>}
+                </span>
+              )}
               <span className="sx-rail-bar" />
             </button>
           ))}

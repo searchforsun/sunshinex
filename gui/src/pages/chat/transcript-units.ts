@@ -29,11 +29,31 @@ export interface UnitSpan {
   readonly label: string;
   /** 条目种类(估算用;单条块) */
   readonly entryKind?: ChatEntry['kind'];
+  /** 内容估算高(px,建块时按 md 长度算;实测表命中时不用它)。2026-11-19 冷开长帧轮:
+   *  旧估算按块种类给常数(正文恒 150),巨型正文(大表格/代码)在首帧被当成 150px——
+   *  视口±overscan 的切片一口气挂十几个大单元(实测 x0e2 冷开 225ms 长任务)。按字符量
+   *  估算后首帧切片即贴着真实占比,只挂真正进视口的那几个;实测后仍由高度表覆盖 */
+  readonly est?: number;
 }
 
 /** 段聚合判据(与 DayGroupBlock 同口径):工具/思考/折叠态正文·用户·旁白并入折叠段 */
 export function isSegmentEntry(e: ChatEntry, hiddenKeys: ReadonlySet<string>): boolean {
   return e.kind === 'tool' || e.kind === 'thinking' || ((e.kind === 'assistant' || e.kind === 'user' || e.kind === 'notice') && hiddenKeys.has(e.key));
+}
+
+/** 内容估算(px):字符量 × 每字符占高。样本口径=实测正文 3058 字≈2479px(0.81);正文取略
+ *  保守的 0.7(表格留白多、代码折行少),用户气泡窄取 0.5,折叠段按行数主算 */
+const estUser = (md: string): number => Math.max(96, 72 + Math.ceil(md.length * 0.5));
+const estAssistant = (md: string, entryKind?: ChatEntry['kind']): number =>
+  entryKind === 'notice' ? 48 : Math.max(150, 120 + Math.ceil(md.length * 0.7));
+const estSeg = (count: number, chars: number): number => 44 + count * 30 + Math.ceil(chars * 0.2);
+/** 单条块内容估算(日分隔/命令/run 与渲染高度基本无关,沿常数) */
+function estOfEntry(entry: ChatEntry, kind: UnitKind): number {
+  if (kind === 'user') return estUser(entry.md);
+  if (kind === 'assistant') return estAssistant(entry.md, entry.kind);
+  if (kind === 'cmd') return 40;
+  if (kind === 'run') return 30;
+  return 80;
 }
 
 /**
@@ -60,7 +80,18 @@ export function dayUnitSpans(
   let segHidden = false;
   const flushSeg = (end: number): void => {
     if (segStart < 0) return;
-    out.push({ key: `seg:${entries[segStart]!.key}`, kind: 'seg', group: groupIndex, start: segStart, end, label: '' });
+    let chars = 0;
+    for (let k = segStart; k < end; k += 1) chars += entries[k]!.md.length;
+    // 整段折叠态=只渲染「Worked」头,高度与行数无关;展开态按行+字符估
+    out.push({
+      key: `seg:${entries[segStart]!.key}`,
+      kind: 'seg',
+      group: groupIndex,
+      start: segStart,
+      end,
+      label: '',
+      est: segHidden ? 44 : estSeg(end - segStart, chars),
+    });
     segStart = -1;
   };
   for (let i = 0; i < entries.length; i += 1) {
@@ -68,7 +99,7 @@ export function dayUnitSpans(
     if (office && isOfficeHidden(entry.kind, entry.md)) continue;
     if (isCommand(entry)) {
       flushSeg(i);
-      out.push({ key: entry.key, kind: 'cmd', group: groupIndex, start: i, end: i + 1, label: '', entryKind: entry.kind });
+      out.push({ key: entry.key, kind: 'cmd', group: groupIndex, start: i, end: i + 1, label: '', entryKind: entry.kind, est: 40 });
       continue;
     }
     if (isSegmentEntry(entry, hiddenKeys)) {
@@ -83,15 +114,17 @@ export function dayUnitSpans(
     }
     flushSeg(i);
     const kind: UnitKind = entry.kind === 'run' ? 'run' : entry.kind === 'user' ? 'user' : 'assistant';
-    out.push({ key: entry.key, kind, group: groupIndex, start: i, end: i + 1, label: '', entryKind: entry.kind });
+    out.push({ key: entry.key, kind, group: groupIndex, start: i, end: i + 1, label: '', entryKind: entry.kind, est: estOfEntry(entry, kind) });
   }
   flushSeg(entries.length);
   return out;
 }
 
-/** 未实测单位的估算高度(px;实测后由高度表覆盖)。值取各块典型渲染高度,仅影响首帧 spacer 与
- *  滚动条比例,偏差在块挂载测量后按「上方变化回钉」校正,不产生视觉跳动 */
-export function unitEstimate(kind: UnitKind, entryKind?: ChatEntry['kind']): number {
+/** 未实测单位的估算高度(px;实测后由高度表覆盖)。块自带 est(按 md 长度算)优先;
+ *  缺省常数仅作老调用面/日分隔兜底。值影响首帧切片与滚动条比例,偏差在块挂载测量后按
+ *  「上方变化回钉」校正,不产生视觉跳动 */
+export function unitEstimate(kind: UnitKind, entryKind?: ChatEntry['kind'], est?: number): number {
+  if (est !== undefined && est > 0) return est;
   switch (kind) {
     case 'day':
       return 46;
@@ -116,7 +149,7 @@ export function prefixOffsets(units: readonly UnitSpan[], heights: ReadonlyMap<s
   offsets[0] = 0;
   for (let i = 0; i < units.length; i += 1) {
     const u = units[i]!;
-    const h = heights.get(u.key) ?? unitEstimate(u.kind, u.entryKind);
+    const h = heights.get(u.key) ?? unitEstimate(u.kind, u.entryKind, u.est);
     offsets[i + 1] = offsets[i]! + h;
   }
   return offsets;

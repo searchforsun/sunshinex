@@ -7,6 +7,13 @@ import { applyChatEvent, initialChatState, markDanglingRunsStopped, prependSeed,
 import type { SessionEvent, TodoItem } from '../../../../src/types';
 import type { ChatSink } from '../Chat';
 
+/** 播种尾窗=kernel 档面上限(2000,src/session/entry.ts CAP):一次取全。
+ *  2026-11-19 用户实测「刻度条有两段加载」根因:默认尾窗 200 播种后,更早历史由前置分页
+ *  600/页补齐——刻度行按 entries 全量投影,先出尾窗那截,再随每页长大;热切换若 seedSig
+ *  不符,缓存全量态还会被尾窗整替再重灌=两次可见跳变。档面本来就封顶 2000,一次请求即全量,
+ *  分页链成为超限历史(本仓不存在)的死路径;正文/刻度同拍落定 */
+const SNAPSHOT_TAIL_FULL = 2000;
+
 /** 挂起卡(approval/ask/plan-approval 判别联合;pid 为 daemon 级寻址键)。plan-approval=阶段三
  *  plan-arm 裁决卡(spec §5.1,req {doc,items} 计划书+步骤) */
 export type PendingCard =
@@ -146,7 +153,8 @@ export function useSessionEvents(deps: {
     const cacheWarm = chatStateRef.current.seedGen > 0 && chatStateRef.current.entries.length > 0;
     if (!cacheWarm) setChat(initialChatState());
     setSeeding(true);
-    conn.sessionSnapshot(sessionId).then(
+    // 一次取全档面(SNAPSHOT_TAIL_FULL 注):默认尾窗 200 + 分页补历史=刻度/正文两段加载
+    conn.sessionSnapshot(sessionId, { tail: SNAPSHOT_TAIL_FULL }).then(
       (snap) => {
         if (seedGenRef.current !== gen) return; // 后继 reseed 已接管(在途窗内重连)
         setQueued(snap.queued ?? []);
