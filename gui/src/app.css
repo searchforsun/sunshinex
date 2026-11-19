@@ -2969,7 +2969,7 @@ input.sx-setting-input { width: 100%; }
 .sx-lightbox-img:active{cursor:grabbing}
 .sx-lightbox-bar{position:fixed;top:22px;right:30px;display:flex;align-items:center;gap:2px;background:var(--surface-elevated);border-radius:var(--radius-sm);padding:6px 8px;box-shadow:var(--elev-composer);color:var(--fg)}
 .sx-lightbox-act{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:none;background:transparent;color:inherit;border-radius:8px;cursor:pointer;text-decoration:none}
-.sx-lightbox-act:hover{background:var(--bubble-user)}
+.sx-lightbox-act:hover{background:color-mix(in srgb,var(--fg) 8%,transparent)} /* 2026-11-19 用户实测「亮色下按钮还是暗色的 hover」:原 var(--bubble-user) 在亮色+暗色气泡偏好(data-bubble-dark)下=#272729,工具栏 hover 变黑块;改中性前景混色,与 .sx-tip/.mermaid-lb-actions 同语言 */
 .sx-lightbox-pct{min-width:46px;text-align:center;font-size: calc(14px * var(--fz));font-variant-numeric:tabular-nums;opacity:.85}
 .sx-lightbox-sep{width:1px;height:16px;background:var(--fg);opacity:.15;margin:0 4px}
 /* 工具行结果图片缩略(2026-10-26 插件体系图片通道):折叠行下横排——96px 见方/12px 圆角与用户气泡
