@@ -368,6 +368,11 @@ export function MessageList(props: MessageListProps): JSX.Element {
   /** 阅读态内容锚(2026-11-18 虚拟窗口):视口顶所在块 key + 块顶相对视口的偏移。块序列/高度
    *  变化(扩窗上插、上方实测校正)后按新偏移回钉 scrollTop——索引平移不再靠元素锚(块可能未挂) */
   const anchorRef = useRef<{ key: string; off: number } | null>(null);
+  /** 高度实测回钉的待应用增量(2026-11-19 刻度跳转后回弹):applyPending 只累计、不即时写 scrollTop——
+   *  旧实现「改高度前先 scrollTop += Δ」,滚动先于 React 提交新 spacer,中间一帧整段可见内容上移
+   *  (用户实测刻度跳转 ~400ms 后上滑 ~10px)。现在统一在下方 layout effect(提交后、绘制前)应用:
+   *  有阅读锚=按锚块新偏移回钉(蕴含 Δ);无锚才用本增量兜底 */
+  const pendingAboveRef = useRef(0);
   const rafRef = useRef(0);
   const unitRoRef = useRef<ResizeObserver | null>(null);
   /** 滚动期暂存的高度实测(停手后批量落账;滚动中改 spacer=每帧 Layout/Layerize) */
@@ -619,7 +624,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
         if (idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) above += h - (old ?? 0);
       }
       pending.clear();
-      if (above !== 0) el.scrollTop += above;
+      // 增量不在此写 scrollTop(见 pendingAboveRef 注):交下方 layout effect 在提交后统一回钉
+      if (above !== 0) pendingAboveRef.current += above;
       setHeightVer((v) => v + 1);
     };
     const deferApply = (): void => {
@@ -680,17 +686,26 @@ export function MessageList(props: MessageListProps): JSX.Element {
     schedulePrefetch();
   }, [offsets, units, stick, chatScrollRef]);
 
-  /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管 */
+  /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管。
+   *  2026-11-19 刻度跳转回弹:高度实测的「上方增量」也统一在此应用(提交后、绘制前)——有锚按
+   *  锚块新偏移回钉(蕴含增量),无锚才用 pendingAboveRef 兜底;贴底语义下增量作废(底部自跟随) */
   useLayoutEffect(() => {
-    if (!virtualRef.current || stick) return;
-    const a = anchorRef.current;
     const el = chatScrollRef.current;
-    if (a === null || el === null) return;
-    const idx = unitIndexByKeyRef.current.get(a.key);
-    if (idx === undefined) return;
-    const want = Math.max(0, (offsetsRef.current[idx] ?? 0) - a.off);
-    if (Math.abs(el.scrollTop - want) > 1) {
-      el.scrollTop = want;
+    const pendingAbove = pendingAboveRef.current;
+    pendingAboveRef.current = 0;
+    if (!virtualRef.current || stick || el === null) return;
+    const a = anchorRef.current;
+    const idx = a !== null ? unitIndexByKeyRef.current.get(a.key) : undefined;
+    if (a !== null && idx !== undefined) {
+      const want = Math.max(0, (offsetsRef.current[idx] ?? 0) - a.off);
+      if (Math.abs(el.scrollTop - want) > 1) {
+        el.scrollTop = want;
+        scrollTopRef.current = el.scrollTop;
+      }
+      return;
+    }
+    if (pendingAbove !== 0) {
+      el.scrollTop += pendingAbove;
       scrollTopRef.current = el.scrollTop;
     }
   }, [offsets, stick, chatScrollRef]);
