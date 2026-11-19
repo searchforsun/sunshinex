@@ -173,6 +173,12 @@ const mapCache = new WeakMap<KernelState, {
 let seedGenCounter = 0;
 
 /** G14.90/G14.106 显示过滤:P10 起裁定单点在内核(isQuietNotice),TUI/GUI 同源——本模块只消费 */
+/** 沉淀类系统通知不占正文(2026-11-19 用户裁定「系统通知不要占用正文中」):记忆/技能收口行
+ *  (`[memory] saved|updated: …` / `[skills] learned|updated: …`)是后台旁路产物,渲染成行会
+ *  打断正文阅读流;GUI 侧直接不入显示列表(链与日志完整保留,记忆页签/学习技能页签仍是查看面) */
+function isAmbientSinkNotice(md: string): boolean {
+  return /^\[(?:memory|skills)\]\s*(?:saved|updated|learned)\b/.test(md);
+}
 /** 内核态 → 视图条目(纯映射):key=`k<seq>`;streaming=openSeg/openRun 派生(§3.1b 派生态);
  *  run meta→view 字段(steps=runSteps 优先「本轮」口径)+open run 注入基线;delegation 已被内核滤除 */
 function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: number } | undefined): ChatEntry {
@@ -248,6 +254,7 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
   let pendingRestored: true | undefined;
   for (let i = 0; i < k.entries.length; i += 1) {
     const e = k.entries[i]!;
+    if (e.kind === 'notice' && isAmbientSinkNotice(e.md)) continue; // 沉淀系统通知不占正文(2026-11-19)
     if (e.kind === 'notice' && isQuietNotice(e.md)) {
       if (e.wake !== undefined) pendingWake = e.wake; // 唤醒引用暂存(本条照旧不显示)
       if (e.schedule === true) pendingSchedule = true; // 定时唤醒标记暂存(同族)

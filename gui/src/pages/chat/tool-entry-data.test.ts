@@ -54,6 +54,11 @@ describe('fileLabelOf 根相对化', () => {
     expect(fileLabelOf(String.raw`D:\repo\a.ts`, String.raw`D:\repo`)).toEqual({ base: 'a.ts', dir: '' });
   });
 
+  test('POSIX 根(linux/macos)同样相对化', () => {
+    expect(fileLabelOf('/home/u/proj/src/a.ts', '/home/u/proj')).toEqual({ base: 'a.ts', dir: 'src/' });
+    expect(fileLabelOf('/Users/u/proj/a.ts', '/Users/u/proj/')).toEqual({ base: 'a.ts', dir: '' });
+  });
+
   test('根外路径保持原样(不误剥)', () => {
     expect(fileLabelOf('E:/other/x.md', 'D:/repo')).toEqual({ base: 'x.md', dir: 'E:/other/' });
   });
