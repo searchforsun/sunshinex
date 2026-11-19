@@ -11,7 +11,7 @@ import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { useUsageStats } from '../../usage-stats';
-import { dayUnitSpans, firstUnitAt, prefixOffsets, sliceRange } from './transcript-units';
+import { dayUnitSpans, firstUnitAt, prefixOffsets, reuseUnchangedSpans, sliceRange } from './transcript-units';
 import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
 import { peekScrollAnchor } from './scroll-mem';
 import type { UnitSpan } from './transcript-units';
@@ -371,8 +371,11 @@ export function MessageList(props: MessageListProps): JSX.Element {
   /** 高度实测回钉的待应用增量(2026-11-19 刻度跳转后回弹):applyPending 只累计、不即时写 scrollTop——
    *  旧实现「改高度前先 scrollTop += Δ」,滚动先于 React 提交新 spacer,中间一帧整段可见内容上移
    *  (用户实测刻度跳转 ~400ms 后上滑 ~10px)。现在统一在下方 layout effect(提交后、绘制前)应用:
-   *  有阅读锚=按锚块新偏移回钉(蕴含 Δ);无锚才用本增量兜底 */
+   *  有阅读锚=按锚块**真实盒位移**回钉(估算校正不算位移);无锚才用本增量兜底 */
   const pendingAboveRef = useRef(0);
+  /** 程序化落点代次(0=无落点收敛):落点由 landOnUnit 的实测收敛独占,回钉让路——两边同时
+   *  按同一真实位移补差会把内容推两次;新落点递增代次,旧收敛循环见代次不符即自行退出 */
+  const landingRef = useRef(0);
   const rafRef = useRef(0);
   const unitRoRef = useRef<ResizeObserver | null>(null);
   /** 滚动期暂存的高度实测(停手后批量落账;滚动中改 spacer=每帧 Layout/Layerize) */
@@ -409,21 +412,27 @@ export function MessageList(props: MessageListProps): JSX.Element {
     for (let gi = 0; gi < dayGroups.length; gi += 1) {
       const g = dayGroups[gi]!;
       const last = g.entries[g.entries.length - 1];
-      const key = `${structureVersion}:${seedGen}:${gi}:${g.key}:${g.entries.length}:${g.entries[0]?.key ?? ''}:${last?.key ?? ''}`;
+      // 键只管分组身份(序号/日键/首末):成员集变化由下方条目引用逐位校验兜底——把
+      // structureVersion/seedGen 也放进键,会让一次工具落账(结构变更)整表 miss,
+      // 未变的组也跟着整组换 span/整组重渲;引用校验已覆盖插入/替换/切种
+      const key = `${gi}:${g.key}:${g.entries.length}:${g.entries[0]?.key ?? ''}:${last?.key ?? ''}`;
       live.add(key);
-      let spans = cache.get(key);
+      const oldSpans = cache.get(key);
+      const oldEntries = entriesCache.get(key);
+      let spans = oldSpans;
       if (spans !== undefined) {
-        const prev = entriesCache.get(key);
-        if (prev === undefined || prev.length !== g.entries.length) {
+        if (oldEntries === undefined || oldEntries.length !== g.entries.length) {
           spans = undefined;
         } else {
           for (let k = 0; k < g.entries.length; k += 1) {
-            if (prev[k] !== g.entries[k]) { spans = undefined; break; }
+            if (oldEntries[k] !== g.entries[k]) { spans = undefined; break; }
           }
         }
       }
       if (spans === undefined || spans.length === 0) {
-        spans = dayUnitSpans(gi, g.key, g.label, g.entries, hiddenKeys, office, isCommandEntry, isOfficeHiddenNotice);
+        const fresh = dayUnitSpans(gi, g.key, g.label, g.entries, hiddenKeys, office, isCommandEntry, isOfficeHiddenNotice);
+        // 组重建但只有尾块变化时,未变块沿用旧 span 对象(UnitView memo bail-out)
+        spans = oldSpans === undefined || oldEntries === undefined ? fresh : reuseUnchangedSpans(fresh, oldSpans, oldEntries, g.entries);
         cache.set(key, spans);
         entriesCache.set(key, g.entries);
       }
@@ -502,6 +511,24 @@ export function MessageList(props: MessageListProps): JSX.Element {
     : null;
   const firstUnit = Math.min(rangeNow?.first ?? 0, Math.max(0, units.length - 1));
   const lastUnit = Math.min(rangeNow?.last ?? units.length, units.length);
+  /** 记阅读锚(2026-11-19 二次回弹根修):锚块已挂载时记**真实盒位**——模型偏移含估算,
+   *  实测校正只让模型追赶、不产生真实 DOM 位移;以估算坐标为锚会在下一次回钉时把误差再补一遍。
+   *  锚块未挂载(极少,overscan 保证视口块恒挂)才回落模型坐标 */
+  const setReadingAnchor = (): void => {
+    if (LAYOUT_FREE || !virtualRef.current) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const off = offsetsRef.current;
+    const at = firstUnitAt(off, el.scrollTop);
+    const uu = unitsRef.current[at];
+    if (uu === undefined) return;
+    const node = unitElsRef.current.get(uu.key);
+    if (node !== undefined && node.isConnected) {
+      anchorRef.current = { key: uu.key, off: node.getBoundingClientRect().top - el.getBoundingClientRect().top };
+    } else {
+      anchorRef.current = { key: uu.key, off: (off[at] ?? 0) - el.scrollTop };
+    }
+  };
   /** 滚动 → 视口高/挂载区间更新(rAF 合并;区间不变不重渲) */
   const scheduleViewport = (): void => {
     if (LAYOUT_FREE || rafRef.current !== 0) return;
@@ -517,9 +544,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
       }
       if (!virtualRef.current) return;
       const off = offsetsRef.current;
-      const at = firstUnitAt(off, el.scrollTop);
-      const uu = unitsRef.current[at];
-      if (uu !== undefined) anchorRef.current = { key: uu.key, off: (off[at] ?? 0) - el.scrollTop };
+      setReadingAnchor();
       // 2026-11-19 快速滑动轮:切片滞回——视口仍稳稳落在已挂载覆盖区内(离上/下边界还余
       // RANGE_EDGE_MARGIN)就不重算区间。旧实现每帧 setRange:提交期整段可视树重渲(实测快速
       // 滑动 2.4s 内 React 提交 241 次、占主线程 ~43%),且每帧装卸边界单元=持续 layout 抖动。
@@ -547,13 +572,17 @@ export function MessageList(props: MessageListProps): JSX.Element {
       schedulePrefetch();
     });
   };
-  /** 停顿期向前预挂载(2026-11-19 大块滑动轮「不改显示效果」方案):用户停手 300ms 后,把视口
-   *  前方再多挂 2 个块——大正文块(实测单块首次挂载 ~80ms)的 React 提交/布局成本在空闲时付掉,
-   *  滚动经过时不再现挂。按「块数」而非像素扩(大块本身上万 px,像素距离盖不住一块);只向前扩、
-   *  不缩后方;滚动中定时器被新滚动重置,不会抢当前帧;上限 48 块兜底内存 */
+  /** 停顿期向前预挂载(2026-11-19 大块滑动轮「不改显示效果」方案):用户停手后把视口前方再多挂
+   *  2 个块——大正文块(实测单块首次挂载 ~80ms)的 React 提交/布局成本在空闲时付掉,滚动经过时
+   *  不再现挂。按「块数」而非像素扩(大块本身上万 px,像素距离盖不住一块);只向前扩、不缩后方;
+   *  滚动中定时器被新滚动重置,不会抢当前帧;上限 48 块兜底内存。
+   *  2026-11-19 复测(用户「滑动又加重」):300ms 与真实「滑—停—再滑」节奏(300-400ms)重叠,
+   *  大块挂载恰好落在用户再次起滑前一帧=反被感知成卡顿——提到 600ms,只在真正读停时预挂 */
+  const PREFETCH_IDLE_MS = 600;
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefetchAhead = (): void => {
     if (!virtualRef.current) return;
+    if (document.visibilityState !== 'visible') return;
     const el = chatScrollRef.current;
     if (el === null) return;
     const h = el.clientHeight;
@@ -576,7 +605,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     prefetchTimerRef.current = setTimeout(() => {
       prefetchTimerRef.current = null;
       prefetchAhead();
-    }, 300);
+    }, PREFETCH_IDLE_MS);
   };
   useEffect(() => () => {
     if (prefetchTimerRef.current !== null) clearTimeout(prefetchTimerRef.current);
@@ -620,8 +649,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
         heightsRef.current.set(key, h);
         rememberUnitHeight(props.heightScope ?? '', key, h);
         const idx = unitIndexByKeyRef.current.get(key);
-        // 块整体在视口顶之上(底边 ≤ scrollTop):高度差回钉,正在读的内容不前跳
-        if (idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) above += h - (old ?? 0);
+        // 块整体在视口顶之上(底边 ≤ scrollTop)且是**已实测值的再变化**(内容真长高/缩短)才回钉。
+        // 首测(旧值缺省=估算占位)不算:浏览器早已按真实高度排版,DOM 位移为 0——把「实测-估算」
+        // 也当增量会重复补差(实测刻度跳转 ~300ms 后上滑 13.6px 即此,模型追赶≠真实位移)
+        if (old !== undefined && idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) above += h - old;
       }
       pending.clear();
       // 增量不在此写 scrollTop(见 pendingAboveRef 注):交下方 layout effect 在提交后统一回钉
@@ -686,23 +717,39 @@ export function MessageList(props: MessageListProps): JSX.Element {
     schedulePrefetch();
   }, [offsets, units, stick, chatScrollRef]);
 
-  /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块新偏移校正 scrollTop;贴底/无锚不接管。
-   *  2026-11-19 刻度跳转回弹:高度实测的「上方增量」也统一在此应用(提交后、绘制前)——有锚按
-   *  锚块新偏移回钉(蕴含增量),无锚才用 pendingAboveRef 兜底;贴底语义下增量作废(底部自跟随) */
+  /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块**真实 DOM 位移**校正 scrollTop;
+   *  贴底/无锚不接管。
+   *  2026-11-19 刻度跳转二次回弹(用户实测「隔一下又跳动/上滑」):旧实现按模型偏移
+   *  `offsets[anchor]-a.off` 回钉——模型对未实测块用的是估算值,块挂载实测后模型追赶(实测-估算),
+   *  但浏览器早已按真实高度排版,DOM 位移为 0;按模型补差=把误差再推一遍(实测 +13.6px)。
+   *  改为锚块已挂载时直接量它的盒位移:只有真实 DOM 变化(图片/字体/代码高亮把内容撑高)才回钉,
+   *  模型估算校正不再制造位移。锚块未挂载(极少)才回退模型坐标。 */
   useLayoutEffect(() => {
     const el = chatScrollRef.current;
     const pendingAbove = pendingAboveRef.current;
     pendingAboveRef.current = 0;
     if (!virtualRef.current || stick || el === null) return;
+    if (landingRef.current !== 0) return; // 落点收敛接管(见 landingRef 注)
     const a = anchorRef.current;
-    const idx = a !== null ? unitIndexByKeyRef.current.get(a.key) : undefined;
-    if (a !== null && idx !== undefined) {
-      const want = Math.max(0, (offsetsRef.current[idx] ?? 0) - a.off);
-      if (Math.abs(el.scrollTop - want) > 1) {
-        el.scrollTop = want;
-        scrollTopRef.current = el.scrollTop;
+    if (a !== null) {
+      const node = unitElsRef.current.get(a.key);
+      if (node !== undefined && node.isConnected) {
+        const delta = (node.getBoundingClientRect().top - el.getBoundingClientRect().top) - a.off;
+        if (Math.abs(delta) > 1) {
+          el.scrollTop += delta;
+          scrollTopRef.current = el.scrollTop;
+        }
+        return;
       }
-      return;
+      const idx = unitIndexByKeyRef.current.get(a.key);
+      if (idx !== undefined) {
+        const want = Math.max(0, (offsetsRef.current[idx] ?? 0) - a.off);
+        if (Math.abs(el.scrollTop - want) > 1) {
+          el.scrollTop = want;
+          scrollTopRef.current = el.scrollTop;
+        }
+        return;
+      }
     }
     if (pendingAbove !== 0) {
       el.scrollTop += pendingAbove;
@@ -804,20 +851,23 @@ export function MessageList(props: MessageListProps): JSX.Element {
   }, [hiddenKeys, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, submitTextStable, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
-   *  (滚动事件驱动切片),渲染落定后由刻度侧重试轮询收敛(见 ChatRail.seek) */
+   *  (滚动事件驱动切片),渲染落定后由 landOnUnit 独占实测收敛(返回 true=刻度侧不再另开循环) */
   const pendingRevealRef = useRef<{ key: string; off: number } | null>(null);
-  const landOnUnitByEntry = (entryKey: string, off: number): void => {
+  const landOnUnitByEntry = (entryKey: string, off: number, triesMax = 40): void => {
     const ui = unitIndexOfEntryRef.current.get(entryKey);
     if (ui === undefined) return;
     const u = unitsRef.current[ui];
-    if (u !== undefined) landOnUnit(u.key, off);
+    if (u !== undefined) landOnUnit(u.key, off, triesMax);
   };
   const revealEntry = (key: string): boolean => {
     const idx = entries.findIndex((e) => e.key === key);
     if (idx < 0) return false;
     if (!windowed) {
-      // 全量模型:无窗口可扩——直接按块坐标落点(虚拟挂载,滚动事件驱动切片)
-      if (virtualRef.current) landOnUnitByEntry(key, 8);
+      // 全量模型:无窗口可扩——直接按块坐标落点(虚拟挂载,滚动事件驱动切片)。
+      // 落点/收敛单点(2026-11-19 跳动根修):落点由 landOnUnit 独占(off 与已挂载路径一致取 0),
+      // ChatRail 见 true 即不再开自己的 rAFConverge——旧实现两个收敛循环(目标 8px vs 0px)
+      // 每帧互相推翻,跳转后内容 ~8px 高频抖动;收敛窗放到 150 帧覆盖大块实测期
+      if (virtualRef.current) landOnUnitByEntry(key, 0, 150);
       return true;
     }
     const need = entries.length - idx + 8; // 目标下缘再留 8 条缓冲,避免落点贴窗顶
@@ -839,28 +889,39 @@ export function MessageList(props: MessageListProps): JSX.Element {
     return true;
   };
   /** 模型坐标落点 + 实测收敛:目标块可能尚未挂载/高度仍是估算——先按前缀和落位(切片随滚动
-   *  事件重算、目标块随后挂载),再按真实盒位置迭代校正(≤40 帧,eps=2) */
-  const landOnUnit = (key: string, off: number): void => {
+   *  事件重算、目标块随后挂载),再按真实盒位置迭代校正(默认 ≤40 帧,eps=2;刻度跳转 150 帧)。
+   *  收敛期置 landingRef 代次:阅读锚回钉让路,且新落点会令旧循环自行退出(不互抢 scrollTop) */
+  const landOnUnit = (key: string, off: number, triesMax = 40): void => {
     const el = chatScrollRef.current;
     const ui = unitIndexByKeyRef.current.get(key);
     if (el === null || ui === undefined) return;
+    const gen = ++landingRef.current;
     el.scrollTop = Math.max(0, (offsetsRef.current[ui] ?? 0) - off);
     scrollTopRef.current = el.scrollTop;
     let tries = 0;
+    const finish = (): void => {
+      if (landingRef.current !== gen) return;
+      landingRef.current = 0;
+      setReadingAnchor(); // 收敛落定后以真实盒位重记锚,后续回钉不再补估算差
+    };
     const seek = (): void => {
+      if (landingRef.current !== gen) return; // 新落点/已收口:旧循环退出
       const el2 = chatScrollRef.current;
-      if (el2 === null) return;
+      if (el2 === null) { finish(); return; }
       const node = el2.querySelector<HTMLElement>(`[data-unit-key="${CSS.escape(key)}"]`);
       if (node === null) {
-        if (++tries < 40) requestAnimationFrame(seek);
+        if (++tries < triesMax) requestAnimationFrame(seek);
+        else finish();
         return;
       }
       const d = node.getBoundingClientRect().top - el2.getBoundingClientRect().top - off;
-      if (Math.abs(d) > 2 && tries < 40) {
+      if (Math.abs(d) > 2 && tries < triesMax) {
         tries += 1;
         el2.scrollTop += d;
         scrollTopRef.current = el2.scrollTop;
         requestAnimationFrame(seek);
+      } else {
+        finish();
       }
     };
     requestAnimationFrame(seek);
@@ -972,11 +1033,15 @@ export function MessageList(props: MessageListProps): JSX.Element {
       aria-label="chat"
       ref={chatScrollRef}
       onClickCapture={onEntryToggleClick}
-      onWheel={onWheel}
+      onWheel={(e) => {
+        landingRef.current = 0; // 用户接管滚动:立即终止落点收敛,不与其抢 scrollTop
+        onWheel(e);
+      }}
       onScroll={(e) => {
         lastScrollAtRef.current = performance.now();
         onScroll(e);
         maybeReplayEarlier();
+        setReadingAnchor(); // 同步记锚(事件派发时布局已定):rAF 合并窗内若有高度提交,锚不是旧的
         scheduleViewport();
       }}
     >

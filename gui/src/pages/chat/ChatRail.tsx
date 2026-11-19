@@ -312,7 +312,10 @@ export function ChatRail(props: {
       // 驱动切片重算),块序列/切片落定后节点才出现——有界 rAF 轮询(≤90 帧)再落点收敛;
       // 旧实现只给扩窗返回值 true 的路径重试,跨窗跳转(返回 false)会直接放弃
       if (onReveal === undefined) return;
-      onReveal(target.key);
+      // 2026-11-19 跳转后跳动根修:虚拟窗口下 revealEntry 已用 landOnUnit 按目标块独占落点并
+      // 自收敛(150 帧);这里若再开一套 rAFConverge(目标 0 vs 落点 off)两循环每帧互相推翻,
+      // 实测跳转后内容 ~8-13px 高频抖动。true=已接管,直接返回
+      if (onReveal(target.key)) return;
       let tries = 0;
       const seek = (): void => {
         const n2 = el.querySelector(`.entry-user[data-entry-key="${CSS.escape(target.key)}"]`);

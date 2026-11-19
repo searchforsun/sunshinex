@@ -218,3 +218,31 @@ export function sliceRange(
   if (last <= first) last = Math.min(n, first + 1);
   return { first, last };
 }
+
+/** 组内重切时复用未变块的 span 身份(2026-11-19 流式/滑动去重渲):UnitView memo 以 span 对象
+ *  为身份指纹,流式尾块一变整组重切——若整组 span 全换新,同组已挂块(长会话一个日分组成百块)
+ *  每个流式批次全量重渲。按 key 对齐后逐位比对成员条目引用:未变块沿用旧 span,只有真变的块换新。
+ *  成员区间用条目引用比对而非下标:前面有插入/隐藏时 start 平移不影响判定 */
+export function reuseUnchangedSpans(
+  fresh: UnitSpan[],
+  oldSpans: readonly UnitSpan[],
+  oldEntries: readonly ChatEntry[],
+  entries: readonly ChatEntry[],
+): UnitSpan[] {
+  if (oldSpans.length === 0) return fresh;
+  const byKey = new Map(oldSpans.map((s) => [s.key, s]));
+  for (let i = 0; i < fresh.length; i += 1) {
+    const f = fresh[i]!;
+    const old = byKey.get(f.key);
+    if (old === undefined) continue;
+    const len = f.end - f.start;
+    if (old.end - old.start !== len) continue;
+    if (f.start + len > entries.length || old.start + len > oldEntries.length) continue;
+    let same = true;
+    for (let k = 0; k < len; k += 1) {
+      if (oldEntries[old.start + k] !== entries[f.start + k]) { same = false; break; }
+    }
+    if (same) fresh[i] = old;
+  }
+  return fresh;
+}

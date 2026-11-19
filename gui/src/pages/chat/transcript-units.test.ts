@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ChatEntry } from '../../chat-reducer';
-import { dayUnitSpans, isSegmentEntry, prefixOffsets, sliceRange, unitEstimate } from './transcript-units';
+import { dayUnitSpans, isSegmentEntry, prefixOffsets, reuseUnchangedSpans, sliceRange, unitEstimate } from './transcript-units';
 import type { UnitSpan } from './transcript-units';
 
 /** 2026-11-18 结构性改造第一层:转录块模型(纯投影)单测。
@@ -105,5 +105,59 @@ describe('转录块模型:高度前缀与视口切片', () => {
     const one = prefixOffsets([spans[1]!], new Map());
     expect(sliceRange(one, 0, 100, 0)).toEqual({ first: 0, last: 1 });
     expect(sliceRange(one, 900, 100, 0)).toEqual({ first: 0, last: 1 }); // 越界钳到唯一块
+  });
+});
+
+describe('块 identity 复用(2026-11-19 流式组重切不整组重渲)', () => {
+  const mk = (entries: ChatEntry[], hidden = new Set<string>()): UnitSpan[] =>
+    dayUnitSpans(0, 'd', '', entries, hidden, false, isCmd, officeHidden);
+
+  it('只有成员引用真变的块换新 span,其余沿用旧对象', () => {
+    const u1 = e('u1', 'user', 'a');
+    const a1 = e('a1', 'assistant', 'old');
+    const u2 = e('u2', 'user', 'b');
+    const oldEntries = [u1, a1, u2];
+    const oldSpans = mk(oldEntries);
+    const changed = e('a1', 'assistant', 'new'); // 流式尾块:key 同、对象换新
+    const newEntries = [u1, changed, u2];
+    const fresh = mk(newEntries);
+    const out = reuseUnchangedSpans(fresh, oldSpans, oldEntries, newEntries);
+    expect(out[0]).toBe(oldSpans[0]); // u1 未变
+    expect(out[1]).not.toBe(oldSpans[1]); // a1 真变
+    expect(out[2]).toBe(oldSpans[2]); // u2 未变
+  });
+
+  it('折叠段:段内成员不变则整段复用,任一成员变化即整段换新', () => {
+    const t1 = e('t1', 'tool');
+    const t2 = e('t2', 'tool');
+    const u1 = e('u1', 'user', 'hi');
+    const oldEntries = [t1, t2, u1];
+    const oldSpans = mk(oldEntries);
+    // 段成员引用全同(数组重排但对象未换):整段复用
+    const same = [t1, t2, u1];
+    const sameOut = reuseUnchangedSpans(mk(same), oldSpans, oldEntries, same);
+    expect(sameOut[0]).toBe(oldSpans[0]);
+    expect(sameOut[1]).toBe(oldSpans[1]);
+    // 段内 t2 流式换新:段换新,后面的用户条仍复用
+    const t2new = e('t2', 'tool');
+    const changed = [t1, t2new, u1];
+    const changedOut = reuseUnchangedSpans(mk(changed), oldSpans, oldEntries, changed);
+    expect(changedOut[0]).not.toBe(oldSpans[0]);
+    expect(changedOut[1]).toBe(oldSpans[1]);
+  });
+
+  it('开头插入使 start 平移时按条目引用仍复用;日分隔(零成员)恒复用', () => {
+    const u1 = e('u1', 'user', 'a');
+    const u2 = e('u2', 'user', 'b');
+    const oldEntries = [u1, u2];
+    const oldSpans = dayUnitSpans(0, 'd', '11月19日', oldEntries, new Set(), false, isCmd, officeHidden);
+    const u0 = e('u0', 'user', 'z');
+    const inserted = [u0, u1, u2];
+    const fresh = dayUnitSpans(0, 'd', '11月19日', inserted, new Set(), false, isCmd, officeHidden);
+    const out = reuseUnchangedSpans(fresh, oldSpans, oldEntries, inserted);
+    expect(out[0]).toBe(oldSpans[0]); // 日分隔 label 未变
+    expect(out[1]).not.toBe(oldSpans[1]); // u0 新块
+    expect(out[2]).toBe(oldSpans[1]); // u1(start 0→1)按引用命中
+    expect(out[3]).toBe(oldSpans[2]); // u2 同理
   });
 });

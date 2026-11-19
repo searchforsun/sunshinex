@@ -56,6 +56,10 @@ nsis:
   createStartMenuShortcut: true
   # 安装程序加 -setup 后缀（与将来的便携版区分）；其余同顶层模板
   artifactName: sunshinex-${version}-${os}-${arch}-setup.${ext}
+  # 自定义完成页(2026-11-19 用户复测「点击完成未响应」):模板 StartApp 走
+  # StdUtils::ExecShellAsUser,在安装器 UI 线程等应用首窗输入空闲——冷机 Defender 扫描
+  # 拖慢首启时整窗卡死。改由 Explorer 分离拉起(见 assets/installer.nsh 头注)
+  include: assets/installer.nsh
 # node-pty 1.1.0 为 N-API（node-addon-api）构建，ABI 跨 Electron/Node 版本稳定；
 # H1/H2 壳冒烟（dev 态 Electron 主进程 in-process 加载同一二进制）已实证免重建——
 # 关闭 electron-builder 重编译（npmRebuild 走 node-gyp 全量重建，win 下慢且引入工具链依赖）
