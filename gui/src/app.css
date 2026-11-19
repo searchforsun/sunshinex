@@ -2422,6 +2422,9 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
    顶边被裁。改正值槽位精确同拍——行→行既有视觉距=16px 槽位-10px 链=6px;头→首行用 body
    open margin-top 5px 同距(零负边距,无裁切面);2026-11-16 gap→margin 迁移见上幽灵 6px 根修 */
 .concise-wrap { display: flex; flex-direction: column; }
+/* 运行中常显的最后一条折叠工具行(2026-11-19 用户裁定「折叠运行中也要常驻显示最后一个折叠工具行,
+   不要一会显示一会不显示」):钉在折叠体之外,间距与展开体同拍(5px),不参与 0fr/1fr 过渡 */
+.concise-live { margin-top: 5px; }
 @keyframes concise-fold-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .concise-icon { flex: none; } /* 2026-11-14 用户裁定:图标与行文字同色,纯继承 */ /* 2026-11-14 后台任务行 kind 前缀图标(subagent=Bot/exec=SquareTerminal) */
 .bg-dur svg { flex: none; }

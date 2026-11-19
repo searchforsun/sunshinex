@@ -434,6 +434,12 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  换新会让回调换新→UnitView 全量重渲;组内容变化已由上方成员引用校验反映为 span 换新 */
   const dayGroupsRef = useRef(dayGroups);
   dayGroupsRef.current = dayGroups;
+  /** 运行中的末段(2026-11-19 简洁模式常显最后一条工具行):末个 seg 块,供 ToolSegBlock 钉住 */
+  const liveSegKey = useMemo(() => {
+    if (!running) return undefined;
+    for (let i = units.length - 1; i >= 0; i -= 1) if (units[i]!.kind === 'seg') return units[i]!.key;
+    return undefined;
+  }, [units, running]);
   const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
   /** 用户气泡块序号(刻度加亮按模型二分:线所属轮=块顶≤判定线的最后一枚用户块) */
   const userUnitIdx = useMemo(() => {
@@ -715,6 +721,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
           key={u.key}
           seg={segEntries}
           closed={hiddenKeys.has(segEntries[0]!.key)}
+          live={u.key === liveSegKey}
           renderTool={renderTool}
           renderThinking={renderThinking}
           renderAssistant={renderAssistant}
