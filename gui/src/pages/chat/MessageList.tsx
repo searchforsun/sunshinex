@@ -252,7 +252,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     />
   ), [conn, sessionId, callIdOfStable, root, onOpenFileArg, onOpenDiffArg, onOpenAgentArg, onOpenTaskArg, props.onOpenTodos, props.onOpenArtifacts, taskNameOfStable, taskAgentOfStable, teamNameOfArg, props.teams]);
   const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
-  const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiffStable} onOpenTurn={onOpenTurnArg} onTurnRestore={onTurnRestoreArg} onOpenAgent={onOpenAgentArg} sideChat={sideChat} onSend={submitTextStable} />, [onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat, submitTextStable]);
+  const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiffStable} onOpenTurn={onOpenTurnArg} onTurnRestore={onTurnRestoreArg} onOpenAgent={onOpenAgentArg} sideChat={sideChat} />, [onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat]);
   const renderFoldEntry = useCallback((e2: ChatEntry) => {
     if (e2.kind === 'user') {
       return (
@@ -280,7 +280,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
         onTurnRestore={onTurnRestoreArg}
         onOpenAgent={onOpenAgentArg}
         onOpenFile={onOpenFileArg}
-        onSend={submitTextStable}
         sideChat={sideChat}
         conn={conn}
         sessionId={sessionId}
@@ -680,7 +679,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
         onOpenWeb={onOpenWeb}
         onRunInTerminal={props.onRunInTerminal}
         onOpenArtifacts={props.onOpenArtifacts}
-        onSend={submitTextStable}
         sideChat={sideChat}
       />
     );
