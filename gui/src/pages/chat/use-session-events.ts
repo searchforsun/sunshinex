@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq, GuiPlanApprovalReq, GuiPlanDecision, SnapshotResponse } from '../../connection';
@@ -343,7 +343,9 @@ export function useSessionEvents(deps: {
           pendingRef.current.push({ e, seq }); // 种子在途:缓冲不投(直投会被种子整替清掉)
           return;
         }
-        setChat((c) => applyChatEvent(c, e));
+        // 2026-11-19 输入粘滞轮:流式帧走 transition 优先级——token 密集时键盘/输入框的离散更新
+        // 可抢占转录重渲(React 在组件间让出),打字不再排在整段流式渲染之后;转录落后半帧无感
+        startTransition(() => setChat((c) => applyChatEvent(c, e)));
       },
       reset: () => reseed(),
       onApproval: (pid, req) => addCard({ kind: 'approval', pid, req }),

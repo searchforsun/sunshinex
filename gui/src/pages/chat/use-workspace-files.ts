@@ -20,18 +20,26 @@ export function useWorkspaceFiles(
   filesVer: number;
 } {
   const filesCacheRef = useRef<{ key: string; files: string[] } | null>(null);
+  /** basename → 路径索引(2026-11-19 输入粘滞轮):resolveFileRef 旧实现 files.find 线性扫全表,
+   *  大工作区(万级文件)+ 未走选中记账的手打 token 时每次按键都扫一遍;建表一次 O(n),
+   *  之后 O(1)。同 basename 取首个(索引按 mtime 倒序,语义与 find 原序一致) */
+  const baseIndexRef = useRef<Map<string, string>>(new Map());
+  const rememberFiles = (key: string, files: string[]): void => {
+    const idx = new Map<string, string>();
+    for (const f of files) {
+      const b = pathBasename(f);
+      if (!idx.has(b)) idx.set(b, f);
+    }
+    baseIndexRef.current = idx;
+    filesCacheRef.current = { key, files };
+  };
   const [filesVer, setFilesVer] = useState(0);
   /** 解析器:@文件名 → 相对路径(选中记账优先,工作区索引按 mtime 最近兜底) */
   const resolveFileRef = useCallback(
     (name: string): string | undefined => {
       const picked = pickRelRef.current.get(name);
       if (picked !== undefined) return picked;
-      const files = filesCacheRef.current?.files;
-      if (files !== undefined) {
-        const hit = files.find((f) => pathBasename(f) === name);
-        if (hit !== undefined) return hit;
-      }
-      return undefined;
+      return baseIndexRef.current.get(name);
     },
     [],
   );
@@ -48,7 +56,7 @@ export function useWorkspaceFiles(
       } catch {
         files = []; // 索引拉取失败=空索引(@面板无候选;键入路径仍可走发送期解析兜底),面板照常开
       }
-      filesCacheRef.current = { key: root, files };
+      rememberFiles(root, files);
       setFilesVer((v) => v + 1);
       return files;
     }
@@ -86,7 +94,7 @@ export function useWorkspaceFiles(
       return out;
     };
     const files = await walk('', 0);
-    filesCacheRef.current = { key: sessionId, files };
+    rememberFiles(sessionId, files);
     setFilesVer((v) => v + 1);
     return files;
   }, [conn, sessionId, root]);

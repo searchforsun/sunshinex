@@ -1,7 +1,7 @@
 import type { RewindOps } from './chat-types';
 import type { ComposerEnv } from './edit-composer';
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -122,6 +122,21 @@ export interface MessageListProps {
   readonly liveSteps: number;
   readonly liveTokens: number;
 }
+
+/** 虚拟块视图(2026-11-19 滑动去重渲):滚动期 unit 对象与 renderUnit 回调恒稳(useCallback),
+ *  React.memo 让已挂载块整段 bail-out——旧实现每次切片换界都重调全部块的 renderUnit,块内
+ *  ToolSegBlock/Markdown 元素全量重建;模型/折叠/流式换新回调时照常重渲(身份判等) */
+const UnitView = memo(function UnitView({ unit, render, unitRef }: {
+  unit: UnitSpan;
+  render: (u: UnitSpan) => ReactNode;
+  unitRef: (el: HTMLDivElement | null) => void;
+}): JSX.Element {
+  return (
+    <div className="chat-unit" data-unit-key={unit.key} ref={unitRef}>
+      {render(unit)}
+    </div>
+  );
+});
 
 /** 会话流列表(2026-11-18 结构:虚拟窗口)——窗口内条目经 dayUnitSpans 切成「块」,只挂视口
  *  ±overscan 的块,上下 spacer 占位;块高实测表 + 前缀和,阅读位按块坐标锚定。jsdom(无布局)
@@ -369,15 +384,21 @@ export function MessageList(props: MessageListProps): JSX.Element {
   })), [daySkeleton, visible]);
   /** 块序列(虚拟列表挂载单位;纯投影,不建 React 元素)。2026-11-18 全量模型:千条会话每次渲染
    *  重切全部分组会吃掉流式预算——按组缓存(键=组序号/键/首末条目;折叠态变更整表清空),渲染期
-   *  只做扁平化(O(组数)+数组引用拷贝) */
+   *  只做扁平化(O(组数)+数组引用拷贝)。
+   *  2026-11-19 流式/滑动去重渲:缓存命中还要校验成员条目引用逐位未变——span 对象是 UnitView
+   *  memo 的身份指纹,末条正文流式增长时条目对象换新但缓存键不变,不重切=块被 memo 判等跳过,
+   *  正文冻住。成员引用有变即重切该组(只有变化组付 O(n),其余组仍复用旧 span 对象) */
   const spanCacheRef = useRef(new Map<string, UnitSpan[]>());
+  const spanEntriesRef = useRef(new Map<string, readonly ChatEntry[]>());
   const spanHiddenRef = useRef(hiddenKeys);
   if (spanHiddenRef.current !== hiddenKeys) {
     spanHiddenRef.current = hiddenKeys;
     spanCacheRef.current.clear();
+    spanEntriesRef.current.clear();
   }
   const units = useMemo(() => {
     const cache = spanCacheRef.current;
+    const entriesCache = spanEntriesRef.current;
     const out: UnitSpan[] = [];
     const live = new Set<string>();
     for (let gi = 0; gi < dayGroups.length; gi += 1) {
@@ -386,17 +407,33 @@ export function MessageList(props: MessageListProps): JSX.Element {
       const key = `${structureVersion}:${seedGen}:${gi}:${g.key}:${g.entries.length}:${g.entries[0]?.key ?? ''}:${last?.key ?? ''}`;
       live.add(key);
       let spans = cache.get(key);
-      if (spans === undefined) {
+      if (spans !== undefined) {
+        const prev = entriesCache.get(key);
+        if (prev === undefined || prev.length !== g.entries.length) {
+          spans = undefined;
+        } else {
+          for (let k = 0; k < g.entries.length; k += 1) {
+            if (prev[k] !== g.entries[k]) { spans = undefined; break; }
+          }
+        }
+      }
+      if (spans === undefined || spans.length === 0) {
         spans = dayUnitSpans(gi, g.key, g.label, g.entries, hiddenKeys, office, isCommandEntry, isOfficeHiddenNotice);
         cache.set(key, spans);
+        entriesCache.set(key, g.entries);
       }
       for (let i = 0; i < spans.length; i += 1) out.push(spans[i]!);
     }
     if (cache.size > live.size * 2) {
       for (const k of cache.keys()) if (!live.has(k)) cache.delete(k);
+      for (const k of entriesCache.keys()) if (!live.has(k)) entriesCache.delete(k);
     }
     return out;
   }, [dayGroups, hiddenKeys, office, structureVersion, seedGen]);
+  /** 渲染期取组条目(2026-11-19:renderUnit 回调不再以 dayGroups 身份为依赖——流式每帧 dayGroups
+   *  换新会让回调换新→UnitView 全量重渲;组内容变化已由上方成员引用校验反映为 span 换新 */
+  const dayGroupsRef = useRef(dayGroups);
+  dayGroupsRef.current = dayGroups;
   const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
   /** 用户气泡块序号(刻度加亮按模型二分:线所属轮=块顶≤判定线的最后一枚用户块) */
   const userUnitIdx = useMemo(() => {
@@ -620,8 +657,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
     unitElsRef.current.set(key, el);
     unitRoRef.current?.observe(el);
   }, []);
-  /** 按块渲染(原 DayGroupBlock 装配分支逐条镜像:日分隔/命令三态/折叠段/run/用户/正文) */
-  const renderUnit = (u: UnitSpan): ReactNode => {
+  /** 按块渲染(原 DayGroupBlock 装配分支逐条镜像:日分隔/命令三态/折叠段/run/用户/正文)。
+   *  2026-11-19 滑动去重渲:回调以 useCallback 封存(滚动期依赖全稳)——配合下方 UnitView 的
+   *  memo,切片换界时只渲染新进视口的块,已挂载块整段 bail-out */
+  const renderUnit = useCallback((u: UnitSpan): ReactNode => {
     if (u.kind === 'day') {
       return (
         <div key={u.key} className="chat-day-sep" role="separator" aria-label={u.label}>
@@ -629,7 +668,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         </div>
       );
     }
-    const groupEntries = dayGroups[u.group]!.entries;
+    const groupEntries = dayGroupsRef.current[u.group]!.entries;
     if (u.kind === 'seg') {
       const segEntries = groupEntries.slice(u.start, u.end);
       return (
@@ -701,7 +740,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         sideChat={sideChat}
       />
     );
-  };
+  }, [hiddenKeys, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, submitTextStable, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
    *  (滚动事件驱动切片),渲染落定后由刻度侧重试轮询收敛(见 ChatRail.seek) */
@@ -909,9 +948,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {virtual && <div className="chat-spacer" style={{ height: offsets[firstUnit] ?? 0 }} aria-hidden="true" />}
         {units.slice(firstUnit, lastUnit).map((u) =>
           virtual ? (
-            <div key={u.key} className="chat-unit" data-unit-key={u.key} ref={unitRefCb}>
-              {renderUnit(u)}
-            </div>
+            <UnitView key={u.key} unit={u} render={renderUnit} unitRef={unitRefCb} />
           ) : (
             <Fragment key={u.key}>{renderUnit(u)}</Fragment>
           ),

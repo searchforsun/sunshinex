@@ -168,7 +168,14 @@ export interface MentionToken {
   kind: 'plain' | 'file' | 'cmd' | 'skill' | 'ref' | 'agent' | 'team' | 'mdlink';
 }
 
+/** 上一份输入的分词缓存(2026-11-19 输入粘滞轮):一次按键周期里 keydown 原子性判定/高亮层/
+ *  面板活性锚都对同一份 text 各扫一遍全文正则——长草稿下=多份 O(n)。按入参字符串缓存最近
+ *  一份(同一帧内引用相同),返回值只读(调用方均遍历/map,无原地修改) */
+let splitCacheText: string | null = null;
+let splitCacheOut: MentionToken[] = [];
+
 export function splitMentionTokens(text: string): MentionToken[] {
+  if (text === splitCacheText) return splitCacheOut;
   // G14.121 @ 分支扩 `:\\`:绝对路径 token(D:/ws/a.ts、D:\ws\a.ts)整体着色
   // 2026-11-04 ref 分支:⟦…⟧ 元素/终端片段引用(选取面插入,发送期 expandRefContents 展开全量)
   // 2026-11-04 §3.1 加 $/# 软引用支:词边界组+小写首字符(小写限定即测试语义——
@@ -206,6 +213,8 @@ export function splitMentionTokens(text: string): MentionToken[] {
     last = idx + matched.length;
   }
   if (last < text.length) out.push({ text: text.slice(last), kind: 'plain' });
+  splitCacheText = text;
+  splitCacheOut = out;
   return out;
 }
 
