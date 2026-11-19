@@ -3204,13 +3204,19 @@ input.sx-setting-input { width: 100%; }
 
 /* ===== 面板开合平滑(2026-11-18 用户裁定「应用的侧栏、菜单栏,下栏,展开和关闭要平滑效果」) =====
    三块此前均条件渲染(开=挂载/关=立即卸载),过渡无从跑起:宿主改用 useCollapseTransition——
-   收起时保留挂载 200ms 并给根节点挂 .sx-closing(宽度收到 0 + transition),打开时根节点自带
-   sx-panel-in 入场 keyframe。transition 只写在 closing 类里:常态零过渡,拖宽手柄逐帧跟手不受累。 */
+   收起时保留挂载 200ms 并给根节点挂 .sx-closing,打开时根节点自带入场 keyframe。transition 只写在
+   closing 类里:常态零过渡,拖宽手柄逐帧跟手不受累。
+   2026-11-19 侧栏卡顿轮(用户实测「展开折叠这个非常卡」):右栏旧动画改的是 width——0.22s 内
+   主对话每帧按新宽度重排整段正文(大块表格/代码逐帧 layout,帧线 20-30ms×十几帧)。宽度改为
+   即时到位(整段正文只重排一次),面板本体用 transform 滑入/滑出(transform 不参与布局,滚动区
+   全程零重排)。左菜单同款处理(滑动方向相反);sx-panel-in 宽度 keyframe 保留作兜底。 */
 @keyframes sx-panel-in { from { width: 0; min-width: 0; opacity: 0; } }
-.sx-menu { animation: sx-panel-in 0.22s var(--ease-enter); }
-.sx-menu.sx-closing { width: 0 !important; min-width: 0 !important; opacity: 0; overflow: hidden; border-right-width: 0; transition: width 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
-.sx-sidebar { animation: sx-panel-in 0.22s var(--ease-enter); }
-.sx-sidebar.sx-closing { width: 0 !important; min-width: 0 !important; opacity: 0; overflow: hidden; border-left-width: 0; transition: width 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
+@keyframes sx-panel-in-right { from { transform: translateX(100%); opacity: 0; } }
+@keyframes sx-panel-in-left { from { transform: translateX(-100%); opacity: 0; } }
+.sx-menu { animation: sx-panel-in-left 0.22s var(--ease-enter); }
+.sx-menu.sx-closing { transform: translateX(-100%); opacity: 0; transition: transform 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
+.sx-sidebar { animation: sx-panel-in-right 0.22s var(--ease-enter); }
+.sx-sidebar.sx-closing { transform: translateX(100%); opacity: 0; transition: transform 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
 
 /* 运行转圈统一 12px(正文 run-spinner);done/failed/stopped 仍为 6px 小圆点 */
 .tb-status-dot.bg-running {
