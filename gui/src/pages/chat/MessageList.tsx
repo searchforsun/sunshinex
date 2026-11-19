@@ -526,6 +526,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
         const r = sliceRange(off, viewTop, h, VIRTUAL_OVERSCAN);
         if (cur === null || r.first !== cur.first || r.last !== cur.last) {
           rangeRef.current = r;
+          // 滚动驱动的挂载窗变更保持同步(2026-11-19 实测对照:试过 transition 降级,连续滚动
+          // 下被反复打断+覆盖滞后,帧线反而变差 p99 ~20→23-26;overscan 900px 内同步挂块更稳)
           setRange(r);
         }
       }

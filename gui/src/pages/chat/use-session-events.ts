@@ -100,6 +100,29 @@ export function useSessionEvents(deps: {
   const seedingRef = useRef(true);
   /** 种子在途窗到达的本会话帧缓冲(reseed 清空重来;unmount 随组件销毁) */
   const pendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
+  /** 流式转录帧合并(2026-11-19 长会话滑动轮):每个 token 一次 setChat 会把增长中的整段
+   *  markdown 解析/重渲一遍——会话越长、回答越长,边滚边流越卡(用户实测「轮次越长滑动越卡」)。
+   *  同一次事件循环窗口内的帧合并成一次 reduce+render(32ms≈30fps);done/error 立即冲刷保终态,
+   *  播种窗内仍走 pendingRef；滚动/打字期间主线程可让出。 */
+  const streamQueueRef = useRef<SessionEvent[]>([]);
+  const streamTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 合批窗口(ms):测试面=0(用例逐帧即时断言;startTransition 直投),生产 32ms≈30fps */
+  const STREAM_BATCH_MS = (import.meta as { env?: { MODE?: string } }).env?.MODE === 'test' ? 0 : 32;
+  /** 冲刷排队帧(按序 reduce;调用面:定时器到点 / done·error / 卸载前) */
+  const flushStream = useCallback((): void => {
+    if (streamTimerRef.current !== null) {
+      clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
+    const batch = streamQueueRef.current;
+    if (batch.length === 0) return;
+    streamQueueRef.current = [];
+    startTransition(() => setChat((c) => {
+      let next = c;
+      for (const ev of batch) next = applyChatEvent(next, ev);
+      return next;
+    }));
+  }, [setChat]);
   /** 播种代次:后继 reseed(在途窗内重连)使先行应答失效 */
   const seedGenRef = useRef(0);
   /** G5 idle 清卡:前次 status 记账(ref 免 effect 重复触发)——仅 running→idle 转换清卡 */
@@ -145,6 +168,12 @@ export function useSessionEvents(deps: {
   const reseed = useCallback((): void => {
     const gen = ++seedGenRef.current;
     pendingRef.current = [];
+    // 未落账的流式帧随快照重建作废(快照 lastSeq 基线会滤掉重放)
+    streamQueueRef.current = [];
+    if (streamTimerRef.current !== null) {
+      clearTimeout(streamTimerRef.current);
+      streamTimerRef.current = null;
+    }
     seedingRef.current = true;
     // idle 清卡跳过 reseed 瞬态:initialChatState 的 running→idle 回摆不是真转换——若不豁免,
     // 重连时运行中挂起卡被瞬态清掉,而 daemon 重发被连接层 pid 去重拦下 → 卡永久丢(G4 不变式)
@@ -343,9 +372,23 @@ export function useSessionEvents(deps: {
           pendingRef.current.push({ e, seq }); // 种子在途:缓冲不投(直投会被种子整替清掉)
           return;
         }
-        // 2026-11-19 输入粘滞轮:流式帧走 transition 优先级——token 密集时键盘/输入框的离散更新
-        // 可抢占转录重渲(React 在组件间让出),打字不再排在整段流式渲染之后;转录落后半帧无感
-        startTransition(() => setChat((c) => applyChatEvent(c, e)));
+        // 终态帧立即冲刷(先按序落账排队帧,再投终态),其余帧按 STREAM_BATCH_MS 合批——见 streamQueueRef 注
+        if (e.type === 'done' || e.type === 'error') {
+          flushStream();
+          startTransition(() => setChat((c) => applyChatEvent(c, e)));
+          return;
+        }
+        if (STREAM_BATCH_MS === 0) {
+          startTransition(() => setChat((c) => applyChatEvent(c, e)));
+          return;
+        }
+        streamQueueRef.current.push(e);
+        if (streamTimerRef.current === null) {
+          streamTimerRef.current = setTimeout(() => {
+            streamTimerRef.current = null;
+            flushStream();
+          }, STREAM_BATCH_MS);
+        }
       },
       reset: () => reseed(),
       onApproval: (pid, req) => addCard({ kind: 'approval', pid, req }),
@@ -363,10 +406,15 @@ export function useSessionEvents(deps: {
       if (sinkRef.current === sink) sinkRef.current = null;
       flushScrollMem(); // G14.212 滚动位存档落盘(节流尾随写外的兜底)
       pendingRef.current = []; // unmount 清缓冲(组件销毁,无跨会话残留)
+      streamQueueRef.current = []; // 未落账流式帧随卸载弃(重挂走快照基线)
+      if (streamTimerRef.current !== null) {
+        clearTimeout(streamTimerRef.current);
+        streamTimerRef.current = null;
+      }
       seedGenRef.current++; // G6 终审首优先(G7 落地):在途快照应答的 then 回调经 gen 失配早退——
       // 防 backHome→重开窗口内陈旧会话快照经 onSeeded 污染 App 态(team/board——旧板落新壳)
     };
-  }, [sinkRef, reseed, addCard, active]);
+  }, [sinkRef, reseed, addCard, active, flushStream]);
 
   /** 2026-10-26 三期历史链(先上车再补票):尾窗播种落定即自动分段补更老——一页一 effect 轮
    *  (页成 history 换新重触发),失败退避三试置 failed(指示器可点重试重启);Chat 按 sessionId
