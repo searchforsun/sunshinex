@@ -33,9 +33,10 @@ export function chatMaxFor(w: number): number {
 
 /** 主对话区最小宽(.sx-main min-width 同值)——三栏拖拽的公共约束:被拖栏可加宽的上界=
  *  视口−另两栏−此值(中栏触底即停,任何栏不越视口;无固定最大宽,用户裁定)。
- *  2026-10-24 用户裁定 440→320:模式 pill 窄端塌缩为纯图标后 composer 窄端可用,取 320;
+ *  2026-10-24 用户裁定 440→320;2026-11-19 用户裁定「加宽主对话最小宽度,能放下终端图标」320→340
+ *  (composer 底栏五件套:加附件/审批模式/终端/模型名/发送,320 时终端钮被塌缩吞掉;340 为最小够用档)。
  *  CSS 侧 .sx-main min-width 与两处 max-width calc 的减数同值联动改 */
-export const MAIN_MIN_WIDTH = 320;
+export const MAIN_MIN_WIDTH = 340;
 
 /** --chat-max 写入事件(2026-10-27 技术债轮 I4 根修):App 限宽 RO 在落内联值后于写入元素同步派发
  *  (冒泡至 window)——限宽变化的一手通知;消费方(ChatRail 刻度显隐/锚点)经 window 监听它,

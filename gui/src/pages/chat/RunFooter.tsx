@@ -166,7 +166,7 @@ export function RunChangesBar({
         <button type="button" className="run-changes-toggle" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
           {open ? <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" /> : <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />}
           <span>
-            {t(`${visible.length} files changed`, `${visible.length} 个文件已改动`)}
+            {t(`${visible.length} files changed`, `${visible.length} 个文件改动`)}
           </span>
           <span className="run-changes-stat">
             <ChangeStat add={add} del={del} />

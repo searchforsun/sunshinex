@@ -37,7 +37,7 @@
   --radius-md: 22px;
   --radius-lg: 22px;
   /* 2026-10-24 用户裁定:三栏最小宽全部视觉空间归一(zoom>1.1 本地 px 膨胀而阈值不动=换行/超视口根因) */
-  --main-min-w: calc(320px / var(--ui-zoom, 1));
+  --main-min-w: calc(340px / var(--ui-zoom, 1)); /* 2026-11-19 用户裁定「加宽主对话最小宽度,能放下终端图标」320→340(thread-width.ts MAIN_MIN_WIDTH 同值) */
   /* 视口守卫:窗宽低于设计最小宽(minWidth 296<320)时主面钳到视口,不越界 */
   --menu-min-w: calc(240px / var(--ui-zoom, 1));
   --sb-min-w: calc(296px / var(--ui-zoom, 1));
@@ -1543,7 +1543,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   background: color-mix(in srgb, var(--fg) 4%, transparent);
   overflow: hidden;
 }
-[data-theme='dark'] .run-changes { background: var(--bubble-user); } /* 暗色底=用户气泡色(2026-11-11 用户裁定) */.run-changes-head { display: flex; align-items: center; gap: 4px; padding: 4px 10px; }
+[data-theme='dark'] .run-changes { background: var(--bubble-user); } /* 暗色底=用户气泡色(2026-11-11 用户裁定) */.run-changes-head { display: flex; align-items: center; gap: 4px; padding: 4px 10px; container-type: inline-size; } /* container:供下方窄宽隐统计用 */
+/* 宽度不足时隐去 +N −M(2026-11-19 用户裁定「diff 如果宽度不足,则隐藏后面的 +1 -0」):保留文件数主文案与撤销钮,
+   统计段让位;320px 起判(文件数+撤销钮占位后剩余不足一行的常规档) */
+@container (max-width: 320px) { .run-changes-stat { display: none; } }
 .run-changes-head:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); } /* hover=整行提亮(不是椭圆高亮区,用户裁定) */.run-changes-toggle {
   display: inline-flex; align-items: center; gap: 8px;
   border: none; background: transparent; color: var(--fg);
@@ -3188,7 +3191,7 @@ input.sx-setting-input { width: 100%; }
   /* 钳制单位归一(2026-10-28 zoom1.25 实测越界 375px 根修):100vw 解析=视觉视口宽,
      而 menu-occ/渲染结果均为本地 px(×zoom 才是视觉)——100vw 在 html zoom 下=innerWidth/zoom(再除 --ui-zoom 即双重除法,
      zoom1.25 实测抽屉压成 25px 细条)——fixed/流内元素 100%=包含块宽,天生本地单位免换算 */
-  max-width: calc(100% - var(--menu-occ, 0px) - var(--main-min-w, 320px));
+  max-width: calc(100% - var(--menu-occ, 0px) - var(--main-min-w, 400px));
 }
 .sx-shell.sx-sidebar-float .sx-sidebar {
   /* 浮窗态抽屉=**固定宽 --drawer-w**(2026-10-29 用户裁定终版:抽屉宽恒=应用最小宽−24,
