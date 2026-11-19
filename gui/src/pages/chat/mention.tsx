@@ -209,6 +209,13 @@ export function splitMentionTokens(text: string): MentionToken[] {
   return out;
 }
 
+/** 输入框是否需要高亮叠层(2026-11-19 输入粘滞轮):纯文本(无 @文件/命令/skill/⟦引用⟧ token)
+ *  不挂叠层——ComposerCard 走原生 textarea 显字(原生字形/光标/IME 候选上下文),免去每键
+ *  「透明文字 + React 同步重排叠层」这一层;命中 token 才走高亮层 */
+export function hasMentionTokens(text: string): boolean {
+  return splitMentionTokens(text).some((tk) => tk.kind !== 'plain');
+}
+
 /** 用户气泡 markdown 的 token 视觉化:token 包行内 code(特殊样式),原文不变(复制走 entry.md);
  *  P10:内核 `> ` 前缀已在投影层剥除(chat-reducer mapEntries)——此处收裸文本,仅对行内内容做 token 包装。
  *  G14.116 file token 显形去 @ 前缀(图标+名称由 buildUserMdComponents 接管)。

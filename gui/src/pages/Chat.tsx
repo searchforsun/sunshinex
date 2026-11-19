@@ -39,8 +39,8 @@ import { useChatImages } from './chat/use-chat-images';
 import { useChatSeenArchive } from './chat/use-chat-seen-archive';
 import { useChatTerminalDock } from './chat/use-chat-terminal-dock';
 import { useCollapseTransition } from '../use-collapse-transition';
-import { expandFileRefs, expandRefContents, renderMentionSpans, slashTokenAt } from './chat/mention';
-export { atomicRange, expandFileRefs, fileHit, FilePalette, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, hasMentionTokens, renderMentionSpans, slashTokenAt } from './chat/mention';
+export { atomicRange, expandFileRefs, fileHit, FilePalette, hasMentionTokens, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
 import { DirResolverContext, MdImageContext, MdImageKeyContext } from './chat/md-render';
@@ -568,7 +568,10 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   /** IME 组字段范围(compositionstart/update/end 三拍回抛,ComposerCard 上抛)——高亮层把与范围
    *  交叠的 token 压平为普通段,既有芯片全程保留(2026-11-05 用户实测「组字期芯片消失」根修) */
   const [compRange, setCompRange] = useState<{ start: number; end: number } | null>(null);
-  const renderHighlightSpans = (text: string): ReactNode => renderMentionSpans(text, resolveFileRef, refContentsRef.current, undefined, true, compRange);
+  const renderHighlightSpans = (text: string): ReactNode =>
+    hasMentionTokens(text)
+      ? renderMentionSpans(text, resolveFileRef, refContentsRef.current, undefined, true, compRange)
+      : undefined;
 
   /** 流区滚动:贴底跟随置态 + G14.213 容量守卫存档(短会话/mermaid 换渲等瞬时塌陷不记不删——
    *  防塌陷窗内杂散 scroll 把非贴底存档误清;贴底删档/非贴底记距底位)。

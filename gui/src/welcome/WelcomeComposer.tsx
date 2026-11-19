@@ -6,7 +6,7 @@ import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, Welc
 import { WelcomeProjectPop } from './welcome-project-pop';
 import { dropRefsOf, pathBasename, insertRefBase, insertRefToken } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
-import { atomicRange, baseModelName, expandFileRefs, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
+import { atomicRange, baseModelName, expandFileRefs, hasMentionTokens, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerCard } from '../composer/ComposerCard';
@@ -481,7 +481,7 @@ export function WelcomeComposer({
           onRemoveImage={(i) => setImages((cur) => cur.filter((_, idx) => idx !== i))}
           onImageOpen={setLightboxSrc}
           onPasteFiles={attachImages}
-          highlight={renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true)}
+          highlight={hasMentionTokens(goal) ? renderMentionSpans(goal, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), undefined, undefined, true) : undefined}
           onDropFile={(rel) => {
             // 与会话内同构:拖入 → @文件名短写+账本记绝对/相对路径(insertRefToken 单点,目录保尾斜杠标记)
             insertRefToken(rel, { get: () => goal, set: setGoal, ta: () => goalRef.current, ledger: pickRelRef.current });

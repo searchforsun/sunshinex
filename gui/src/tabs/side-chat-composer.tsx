@@ -4,7 +4,7 @@ import { t } from '../i18n';
 import type { Connection } from '../connection';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ComposerPillsLeft, ComposerPillsRight } from '../pages/chat/ComposerPills';
-import { expandFileRefs, expandRefContents, fileHit, FilePalette, rankFileHits, RefPalette, refContentConsume, renderMentionSpans, slashTokenAt } from '../pages/chat/mention';
+import { expandFileRefs, expandRefContents, fileHit, FilePalette, hasMentionTokens, rankFileHits, RefPalette, refContentConsume, renderMentionSpans, slashTokenAt } from '../pages/chat/mention';
 import { CommandPalette, type CmdItem } from '../CommandPalette';
 import { slashItemsFor, useCommandPalette } from '../pages/chat/use-command-palette';
 import { useComposerKeys } from '../pages/chat/use-composer-keys';
@@ -347,8 +347,8 @@ export function SideChatComposer(props: {
       overlays={overlays}
       highlight={
         /* refContents=会话私有账本优先(2026-11-07 串扰根修):全局注册表键跨会话共享,同键异内容
-           时 hover 取到别的会话的片段——私有账本命中即不落全局 */
-        renderMentionSpans(text, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), refContentsRef.current, undefined, true)
+           时 hover 取到别的会话的片段——私有账本命中即不落全局。纯文本不挂叠层(2026-11-19) */
+        hasMentionTokens(text) ? renderMentionSpans(text, (n) => pickRelRef.current.get(n) ?? filePalFiles.find((f) => pathBasename(f) === n), refContentsRef.current, undefined, true) : undefined
       }
       footLeft={
         <ComposerPillsLeft

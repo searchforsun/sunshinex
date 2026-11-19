@@ -190,78 +190,21 @@ export function ComposerCard({
           ))}
         </div>
       )}
-      {highlight !== undefined ? (
-        /* G14.106 包裹式对齐:highlight 与 textarea 同 wrapper 同盒(inset 0 即 textarea 盒),
-           天然无错位(此前 inset 挂卡根,少卡的 padding 位移 → 文字偏左上) */
-        <div className="sx-composer-inputwrap">
+      {/* 2026-11-19 输入粘滞轮:单一 textarea,高亮叠层按需——highlight 在场=透明文字+同步
+          高亮层(token 着色);纯文本 highlight=undefined → 原生显字(原生字形/光标/IME 上下文),
+          不建叠层、不做每键的层间同步。两种形态共用同一 textarea 节点(不换实例),首枚 token
+          出现/消失时焦点与光标不丢;包裹层恒在,盒模型与 token 态逐项一致 */}
+      <div className="sx-composer-inputwrap">
+        {highlight !== undefined && (
           <div className="sx-composer-highlight" aria-hidden="true" ref={hlRef}>
             {highlight}
           </div>
-          <textarea
-            ref={(el) => { taRef.current = el; if (inputRef !== undefined) inputRef.current = el; }}
-            aria-label={label}
-            className="sx-composer-input transparent-text"
-            spellCheck={false}
-            value={value}
-            placeholder={placeholder}
-            disabled={disabled}
-            rows={rows}
-            onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKeyDown}
-            onBeforeInput={onBeforeInput}
-            onPaste={handlePaste}
-            onCompositionStart={(e) => {
-              compStartRef.current = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
-              onCompositionRange?.({ start: compStartRef.current, end: compStartRef.current });
-              onCompositionGuard?.(e);
-            }}
-            onCompositionUpdate={(e) => {
-              const start = compStartRef.current;
-              if (start !== null) onCompositionRange?.({ start, end: start + e.data.length });
-            }}
-            onCompositionEnd={() => {
-              compStartRef.current = null;
-              onCompositionRange?.(null);
-              onCompositionEndGuard?.();
-            }}
-            onSelect={onSelectGuard}
-            onClick={() => onInputClick?.()}
-            onDragOver={(e) => {
-              // sunshinex-file=内部树拖入;Files=外部 OS 拖拽(资源管理器文件/文件夹)——两类都放行
-              // 放置(拦 text/plain 原生插入绝对路径——欢迎页未接 onDropFile 时曾整段路径进框)
-              const types = [...e.dataTransfer.types];
-              if (types.includes('text/sunshinex-file') || types.includes('Files')) e.preventDefault();
-            }}
-            onDrop={(e) => {
-              const rel = e.dataTransfer.getData('text/sunshinex-file');
-              if (rel !== '') {
-                e.preventDefault();
-                e.stopPropagation();
-                onDropFile?.(rel);
-                return;
-              }
-              // 外部拖拽:OS File 列表经壳桥解绝对路径,宿主面归一为 @短写链接(高亮可点)
-              if (onDropPaths !== undefined && e.dataTransfer.files.length > 0 && window.sunshinex?.dropPath !== undefined) {
-                e.preventDefault();
-                e.stopPropagation();
-                const paths = [...e.dataTransfer.files].map((f) => window.sunshinex!.dropPath!(f)).filter((p) => p !== '');
-                if (paths.length > 0) onDropPaths(paths);
-              }
-            }}
-            onScroll={(e) => {
-              const hl = hlRef.current;
-              if (hl !== null) {
-                hl.scrollTop = e.currentTarget.scrollTop;
-                hl.scrollLeft = e.currentTarget.scrollLeft;
-              }
-            }}
-          />
-        </div>
-      ) : (
+        )}
         <textarea
-          ref={inputRef}
+          ref={(el) => { taRef.current = el; if (inputRef !== undefined) inputRef.current = el; }}
           aria-label={label}
-          className="sx-composer-input"
+          className={highlight !== undefined ? 'sx-composer-input transparent-text' : 'sx-composer-input'}
+          spellCheck={false}
           value={value}
           placeholder={placeholder}
           disabled={disabled}
@@ -270,11 +213,53 @@ export function ComposerCard({
           onKeyDown={onKeyDown}
           onBeforeInput={onBeforeInput}
           onPaste={handlePaste}
-          onCompositionStart={(e) => onCompositionGuard?.(e)}
-          onCompositionEnd={() => onCompositionEndGuard?.()}
+          onCompositionStart={(e) => {
+            compStartRef.current = e.currentTarget.selectionStart ?? e.currentTarget.value.length;
+            onCompositionRange?.({ start: compStartRef.current, end: compStartRef.current });
+            onCompositionGuard?.(e);
+          }}
+          onCompositionUpdate={(e) => {
+            const start = compStartRef.current;
+            if (start !== null) onCompositionRange?.({ start, end: start + e.data.length });
+          }}
+          onCompositionEnd={() => {
+            compStartRef.current = null;
+            onCompositionRange?.(null);
+            onCompositionEndGuard?.();
+          }}
           onSelect={onSelectGuard}
+          onClick={() => onInputClick?.()}
+          onDragOver={(e) => {
+            // sunshinex-file=内部树拖入;Files=外部 OS 拖拽(资源管理器文件/文件夹)——两类都放行
+            // 放置(拦 text/plain 原生插入绝对路径——欢迎页未接 onDropFile 时曾整段路径进框)
+            const types = [...e.dataTransfer.types];
+            if (types.includes('text/sunshinex-file') || types.includes('Files')) e.preventDefault();
+          }}
+          onDrop={(e) => {
+            const rel = e.dataTransfer.getData('text/sunshinex-file');
+            if (rel !== '') {
+              e.preventDefault();
+              e.stopPropagation();
+              onDropFile?.(rel);
+              return;
+            }
+            // 外部拖拽:OS File 列表经壳桥解绝对路径,宿主面归一为 @短写链接(高亮可点)
+            if (onDropPaths !== undefined && e.dataTransfer.files.length > 0 && window.sunshinex?.dropPath !== undefined) {
+              e.preventDefault();
+              e.stopPropagation();
+              const paths = [...e.dataTransfer.files].map((f) => window.sunshinex!.dropPath!(f)).filter((p) => p !== '');
+              if (paths.length > 0) onDropPaths(paths);
+            }
+          }}
+          onScroll={(e) => {
+            const hl = hlRef.current;
+            if (hl !== null) {
+              hl.scrollTop = e.currentTarget.scrollTop;
+              hl.scrollLeft = e.currentTarget.scrollLeft;
+            }
+          }}
         />
-      )}
+      </div>
       {belowInput}
       <div className="sx-composer-foot">
         <div className="sx-composer-foot-left">{footLeft}</div>

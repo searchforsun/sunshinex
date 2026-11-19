@@ -9,7 +9,7 @@ import { dropRefsOf, pathBasename } from '../../ui-util';
 import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
-import { FilePalette, RefPalette, fileHit, rankFileHits, refContentRegistry, renderMentionSpans, slashTokenAt, splitMentionTokens } from './mention';
+import { FilePalette, RefPalette, fileHit, hasMentionTokens, rankFileHits, refContentRegistry, renderMentionSpans, slashTokenAt, splitMentionTokens } from './mention';
 import { flatRefItems, refTokenAt } from './ref-palette';
 import type { RefEntries, RefItem, RefPal } from './ref-palette';
 import { slashItemsFor, useCommandPalette } from './use-command-palette';
@@ -361,7 +361,7 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
         onSelectGuard={composerKeys.onSelectGuard}
         overlays={<div className="user-edit-overlay-zone" ref={zoneRef}>{overlay}</div>}
         inputRef={taRef}
-        highlight={renderMentionSpans(value, resolveFileRef, undefined, onOpenFile, true, compRange)}
+        highlight={hasMentionTokens(value) ? renderMentionSpans(value, resolveFileRef, undefined, onOpenFile, true, compRange) : undefined}
         onDropFile={(rel) => {
           const bare = rel.replace(/[\\/]+$/, '');
           const isDir = bare !== rel;

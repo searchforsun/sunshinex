@@ -12,7 +12,13 @@ const SCROLL_KEY = 'sunshinex.chat-scroll';
 type ScrollMem = Record<string, { d: number; t: number; k?: string; o?: number }>;
 let scrollMem: ScrollMem | null = null;
 let scrollFlushAt = 0;
+/** 最近一次 saveScrollPos 时刻(=滚动活动探针):落盘必须等滚动停顿,滚动中同步写 localStorage
+ *  会打进当前帧——2026-11-19 用户实测「快速滑动有卡顿感」:滚动中每 ~800ms 一次的同步落盘
+ *  (JSON.stringify 全表 + setItem)在实测帧线里对应 22ms 尖峰(压掉 setItem 后 0 帧>20ms) */
+let lastSaveAt = 0;
 let scrollFlushTimer: ReturnType<typeof setTimeout> | null = null;
+/** 滚动停顿判据(ms):最后一次存档后静默这么久才允许落盘 */
+const SETTLE_MS = 400;
 
 function scrollMemMap(): ScrollMem {
   if (scrollMem !== null) return scrollMem;
@@ -31,16 +37,29 @@ export function flushScrollMem(): void {
   persistCappedMap(SCROLL_KEY, scrollMem, 100, (v) => v.t);
 }
 
+/** 滚动停顿后再落盘:定时器到点仍见新的滚动存档(用户还在滑)就顺延,绝不插进滚动帧 */
+function flushWhenSettled(): void {
+  scrollFlushTimer = null;
+  const now = Date.now();
+  if (now - lastSaveAt < SETTLE_MS) {
+    scrollFlushTimer = setTimeout(flushWhenSettled, 300);
+    return;
+  }
+  flushScrollMem();
+}
+
 /** 落档(2026-11-18 虚拟窗口):除距底 dist 外再记内容锚(块 key + 块顶相对视口偏移)——虚拟
  *  窗口下总高是估算值,距底反推不可靠;锚式恢复按块模型坐标落点,冷开/换座都准。
- *  anchor 缺省(jsdom/降级面)照旧只记距底。 */
+ *  anchor 缺省(jsdom/降级面)照旧只记距底。
+ *  2026-11-19:落盘异步化(见 lastSaveAt 注)——内存表即权威,localStorage 仅供跨重启;
+ *  滚动停顿 SETTLE_MS 后才写,滚动中零同步 I/O */
 export function saveScrollPos(id: string, dist: number, anchor?: { key: string; off: number }): void {
   const m = scrollMemMap();
+  lastSaveAt = Date.now();
   if (dist <= 0) delete m[id];
-  else m[id] = { d: Math.round(dist), t: Date.now(), ...(anchor !== undefined && anchor.key !== '' ? { k: anchor.key, o: Math.round(anchor.off) } : {}) };
+  else m[id] = { d: Math.round(dist), t: lastSaveAt, ...(anchor !== undefined && anchor.key !== '' ? { k: anchor.key, o: Math.round(anchor.off) } : {}) };
   if (scrollFlushTimer !== null) return;
-  if (Date.now() - scrollFlushAt > 800) flushScrollMem();
-  else scrollFlushTimer = setTimeout(flushScrollMem, 800);
+  scrollFlushTimer = setTimeout(flushWhenSettled, Date.now() - scrollFlushAt > 800 ? 120 : 800);
 }
 
 /** 存档读取:仅非贴底位(≤80px 视为贴底语义,回 null 走跳底) */

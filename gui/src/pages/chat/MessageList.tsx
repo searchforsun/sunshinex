@@ -36,6 +36,8 @@ export const RENDER_WINDOW_MAX = 600; // 空闲回放天花板(沿旧入口窗�
 const LAYOUT_FREE = typeof window !== 'undefined' && typeof window.navigator !== 'undefined' && /jsdom/i.test(window.navigator.userAgent);
 /** 视口上下各多挂一屏内容(滚动提前就位,避免白块;估算误差由实测回钉吸收) */
 const VIRTUAL_OVERSCAN = 900;
+/** 切片滞回安全边(2026-11-19 快速滑动轮):视口离已挂载覆盖区边界还剩这么多 px 时不重算切片 */
+const RANGE_EDGE_MARGIN = 240;
 import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
 import { ToolSegBlock } from './ToolGroups';
@@ -470,9 +472,26 @@ export function MessageList(props: MessageListProps): JSX.Element {
       const at = firstUnitAt(off, el.scrollTop);
       const uu = unitsRef.current[at];
       if (uu !== undefined) anchorRef.current = { key: uu.key, off: (off[at] ?? 0) - el.scrollTop };
-      const r = sliceRange(off, el.scrollTop, h, VIRTUAL_OVERSCAN);
+      // 2026-11-19 快速滑动轮:切片滞回——视口仍稳稳落在已挂载覆盖区内(离上/下边界还余
+      // RANGE_EDGE_MARGIN)就不重算区间。旧实现每帧 setRange:提交期整段可视树重渲(实测快速
+      // 滑动 2.4s 内 React 提交 241 次、占主线程 ~43%),且每帧装卸边界单元=持续 layout 抖动。
+      // 覆盖区自带 900px overscan,典型滚速下每滚 ~700px 才更新一次;贴底(cur.last 覆盖末块)
+      // 视为已覆盖,避免底部反复重算
       const cur = rangeRef.current;
-      if (cur === null || r.first !== cur.first || r.last !== cur.last) setRange(r);
+      const total = off[off.length - 1] ?? 0;
+      const viewTop = el.scrollTop;
+      const viewBot = viewTop + h;
+      const covered = cur !== null && (
+        (viewBot >= total - 1 && cur.last >= unitsRef.current.length)
+        || (viewTop >= (off[cur.first] ?? 0) + RANGE_EDGE_MARGIN && viewBot <= (off[cur.last] ?? 0) - RANGE_EDGE_MARGIN)
+      );
+      if (!covered) {
+        const r = sliceRange(off, viewTop, h, VIRTUAL_OVERSCAN);
+        if (cur === null || r.first !== cur.first || r.last !== cur.last) {
+          rangeRef.current = r;
+          setRange(r);
+        }
+      }
       // 待落账高度:滚动中不断顺延(停手 200ms 后批量应用,见 RO effect)
       if (pendingHeightsRef.current.size > 0) scheduleHeightsRef.current();
     });
