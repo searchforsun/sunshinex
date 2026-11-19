@@ -540,8 +540,10 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           icon={copied === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
           onClick={copy}
         />
-        {/* 2026-11-06 用户裁定 P2:辅助会话正文不再支持编辑用户气泡——入口裁剪 */}
-        {onSend !== undefined && sideChat !== true && (
+        {/* 编辑入口裁剪(2026-11-06 用户裁定 P2 + 2026-11-19 用户裁定「我自己发的插入消息也不支持编辑」):
+            辅助会话正文与轮内插入档用户气泡均不给编辑——插入=运行中追加的历史,重发会打乱轮序;
+            可编辑面只剩常规(非插入)用户气泡 */}
+        {onSend !== undefined && sideChat !== true && insert !== true && (
           <TipButton className="user-action" tip={t('Edit', '编辑')} label="Edit" icon={<PenLine size={14} strokeWidth={1.75} aria-hidden="true" />} onClick={openEdit} />
         )}
       </div>

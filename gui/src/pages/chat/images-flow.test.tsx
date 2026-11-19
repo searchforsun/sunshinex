@@ -48,7 +48,8 @@ export function connOf(opts?: { supportsImages?: boolean; assistantMd?: string; 
       Promise.resolve({
         messages: [
           { seq: 1, ts: Date.now(), kind: 'user', md: '看这张图', images: [PNG] },
-          { seq: 2, ts: Date.now(), kind: 'assistant', md: opts?.assistantMd ?? '好的' },
+          { seq: 2, ts: Date.now(), kind: 'run', md: '' }, // 真实轮序:run-open 在用户条之后(非插入档)
+          { seq: 3, ts: Date.now(), kind: 'assistant', md: opts?.assistantMd ?? '好的' },
         ],
         status: 'idle',
         openRun: -1,

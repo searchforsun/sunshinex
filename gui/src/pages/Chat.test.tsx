@@ -74,7 +74,7 @@ afterEach(() => {
 const DAY1 = new Date(2026, 0, 10, 10).getTime();
 const DAY2 = new Date(2026, 0, 11, 10).getTime();
 
-type Seed = { seq: number; ts?: number; kind: 'user' | 'assistant'; md: string };
+type Seed = { seq: number; ts?: number; kind: 'user' | 'assistant' | 'run'; md?: string };
 
 function connOf(messages: Seed[], status: 'idle' | 'running' = 'idle'): Connection {
   return {
@@ -2367,11 +2367,15 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
 describe('编辑发送=二次确认后回退(2026-11-05)', () => {
   beforeEach(() => setLanguage('en'));
 
+  /** 真实轮序:用户发问 → 内核 run-open → 回复(run 条在场 = 常规用户消息,非轮内插入;
+   *  2026-11-19 起插入档气泡无编辑入口,夹具须与生产投影同形,否则被 isMidRunInsert 判成插入) */
   const seeds: Seed[] = [
     { seq: 1, ts: DAY1, kind: 'user', md: '问一' },
-    { seq: 2, ts: DAY1, kind: 'assistant', md: '答一' },
-    { seq: 3, ts: DAY1, kind: 'user', md: '问二' },
-    { seq: 4, ts: DAY1, kind: 'assistant', md: '答二' },
+    { seq: 2, ts: DAY1, kind: 'run', md: '' },
+    { seq: 3, ts: DAY1, kind: 'assistant', md: '答一' },
+    { seq: 4, ts: DAY1, kind: 'user', md: '问二' },
+    { seq: 5, ts: DAY1, kind: 'run', md: '' },
+    { seq: 6, ts: DAY1, kind: 'assistant', md: '答二' },
   ];
 
   async function openDialog(status: 'idle' | 'running', files: Array<{ path: string; deleted: boolean }>): Promise<{ onRewind: ReturnType<typeof vi.fn>; submit: ReturnType<typeof vi.fn>; restorePlan: ReturnType<typeof vi.fn> }> {
