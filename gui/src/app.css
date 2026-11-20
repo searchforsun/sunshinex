@@ -4516,3 +4516,19 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-effort-pop { top: auto; bottom: calc(100% + 6px); right: 0; padding: 6px; }
 .sx-schedule-mode-pop { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; min-width: 150px; }
 .sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; width: min(320px, calc(100vw - 32px)); }
+/* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
+   失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链(无按钮边框) ===== */
+.sx-schedule-records { background: var(--surface-elevated); border-radius: var(--radius-lg); padding: 2px 18px 6px; }
+.sx-schedule-table { width: 100%; border-collapse: collapse; font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-table th { padding: 11px 10px 9px; text-align: left; font-weight: 500; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.sx-schedule-table td { padding: 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--fg-secondary); }
+.sx-schedule-table tr:last-child td { border-bottom: none; }
+.sx-schedule-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sx-schedule-status { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); white-space: nowrap; }
+.sx-schedule-err { margin-top: 3px; color: var(--err); font-size: calc(11.5px * var(--fz)); }
+.sx-schedule-note { margin-top: 3px; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); }
+.sx-schedule-open { display: inline-flex; align-items: center; gap: 4px; padding: 0; color: var(--accent); font-size: calc(12px * var(--fz)); white-space: nowrap; }
+.sx-schedule-open:hover { text-decoration: underline; }
+/* 空/加载态与取数失败:容器面内补内边距防贴边(错误色复用 Task 8 的 .sx-schedule-error) */
+.sx-schedule-empty { margin: 0; padding: 18px 10px; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-records > .sx-schedule-error { padding: 14px 10px; }
