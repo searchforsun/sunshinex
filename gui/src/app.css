@@ -4509,20 +4509,20 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-editor-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sx-schedule-editor-sub .sx-schedule-back { margin-left: -8px; }
 .sx-schedule-editor-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.sx-schedule-save { height: 32px; padding: 0 18px; border: none; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); font: calc(13px * var(--fz)) var(--font-ui); font-weight: 600; }
+.sx-schedule-save { height: 32px; padding: 0 18px; border: none; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); font: var(--sx-font) var(--font-ui); font-weight: 600; }
 .sx-schedule-save:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
 .sx-schedule-save:disabled { opacity: 0.45; cursor: default; }
 .sx-schedule-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.sx-schedule-field-label { color: var(--fg-secondary); font-size: calc(13px * var(--fz)); font-weight: 500; }
+.sx-schedule-field-label { color: var(--fg-secondary); font-size: var(--sx-label-font); font-weight: 500; }
 /* 任务标题=纯文本标题（2026-11-20 用户裁定「不要用线 hover，就显示标题」）：无底无边，
    只在聚焦时保留光标；上方小标签负责说明这是可编辑的任务标题 */
 /* 标题输入框=与日期选择控件同一底色/圆角/高度（2026-11-21 用户裁定「和日期选择一样的背景色」）：
    surface-soft 填充、无边框线、常规字重，值用正文色可读 */
-.sx-schedule-name-input { width: 100%; height: 30px; padding: 0 10px; background: var(--surface-soft); border: none; border-radius: var(--radius-md); color: var(--fg); font: 400 calc(13px * var(--fz))/1.4 var(--font-ui); outline: none; }
+.sx-schedule-name-input { width: 100%; height: 30px; padding: 0 10px; background: var(--surface-soft); border: none; border-radius: var(--radius-md); color: var(--fg); font: 400 var(--sx-font)/var(--f-base-lh, 1.6) var(--font-ui); outline: none; }
 .sx-schedule-name-input:hover, .sx-schedule-name-input:focus { border: none; background: var(--surface-soft); outline: none; }
 .sx-schedule-when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 30px; }
 .sx-schedule-dd { flex: none; }
-.sx-schedule-when .sx-dd-trigger { height: 30px; padding: 0 10px; font-size: calc(13px * var(--fz)); border-radius: var(--radius-md); background: var(--surface-soft); }
+.sx-schedule-when .sx-dd-trigger { height: 30px; padding: 0 10px; font-size: var(--sx-font); border-radius: var(--radius-md); background: var(--surface-soft); }
 .sx-schedule-dd-unit { width: 96px; }
 .sx-schedule-dd-num { width: 62px; }
 .sx-schedule-dd-day { width: 74px; }
@@ -4530,23 +4530,27 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-weekday-pop, .sx-schedule-time .sx-dd-pop { min-width: 84px; }
 .sx-schedule-time { display: inline-flex; align-items: center; gap: 4px; }
 .sx-schedule-time-colon { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
-.sx-schedule-when-inline { color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
-.sx-schedule-hint { margin: 0; color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
+.sx-schedule-when-inline { color: var(--fg-tertiary); font-size: var(--sx-font); }
+.sx-schedule-hint { margin: 0; color: var(--fg-tertiary); font-size: var(--sx-font); }
 .sx-schedule-instruction { width: 100%; }
-.sx-schedule-instruction .sx-composer-input { min-height: 112px; }
+/* 指令复用输入框：正文/底栏 pills 全部随配置页字号（与标题输入框同字号），最低 14px */
+.sx-schedule-instruction .sx-composer { font-size: var(--sx-font); }
+.sx-schedule-instruction .sx-composer-input { min-height: 112px; font-size: var(--sx-font); line-height: calc(var(--sx-font) * var(--f-base-lh, 1.6)); }
+.sx-schedule-instruction .composer-pill, .sx-schedule-instruction .model-effort-chip, .sx-schedule-instruction .effort-scale, .sx-schedule-instruction .mode-item-name, .sx-schedule-instruction .mode-item-desc, .sx-schedule-instruction .sx-menu-pop .sx-menuitem { font-size: var(--sx-font); }
+.sx-schedule-editor .proj-pop, .sx-schedule-editor .proj-pop .sx-menuitem { font-size: var(--sx-font); }
 /* 截止时间：调度行右端（自绘月历 + 时/分下拉；不用原生日期控件） */
 .sx-schedule-deadline-anchor { position: relative; margin-left: auto; }
-.sx-schedule-deadline-pill { max-width: 220px; }
+.sx-schedule-deadline-pill { max-width: 220px; font-size: var(--sx-font); }
 .sx-schedule-deadline-pill .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-schedule-deadline-pop { position: absolute; top: calc(100% + 6px); right: 0; left: auto; z-index: 30; width: 280px; padding: 8px; }
 .sx-deadline-head { display: flex; align-items: center; gap: 6px; }
-.sx-deadline-month { flex: 1; text-align: center; color: var(--fg); font-size: calc(13px * var(--fz)); font-weight: 500; }
-.sx-deadline-clear { margin-left: auto; padding: 2px 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: calc(12px * var(--fz)); }
+.sx-deadline-month { flex: 1; text-align: center; color: var(--fg); font-size: var(--sx-font); font-weight: 500; }
+.sx-deadline-clear { margin-left: auto; padding: 2px 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: var(--sx-font); }
 .sx-deadline-clear:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-deadline-clear.is-active { color: var(--accent); }
-.sx-deadline-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; color: var(--fg-tertiary); font-size: calc(11px * var(--fz)); text-align: center; }
+.sx-deadline-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; color: var(--fg-tertiary); font-size: var(--sx-font); text-align: center; }
 .sx-deadline-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 2px; }
-.sx-deadline-day { height: 26px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font-size: calc(12.5px * var(--fz)); }
+.sx-deadline-day { height: 28px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font-size: var(--sx-font); }
 .sx-deadline-day:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-deadline-day.is-today { box-shadow: inset 0 0 0 1px var(--border-strong); }
 .sx-deadline-day.is-selected { background: var(--fg); color: var(--fg-on-solid); }
@@ -4554,9 +4558,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-deadline-day.is-blank { visibility: hidden; }
 .sx-deadline-time { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
 .sx-deadline-time .sx-dd { flex: none; }
-.sx-deadline-time .sx-dd-trigger { height: 26px; padding: 0 8px; font-size: calc(13px * var(--fz)); }
+.sx-deadline-time .sx-dd-trigger { height: 28px; padding: 0 8px; font-size: var(--sx-font); }
 .sx-deadline-time .sx-dd-pop { min-width: 84px; }
-.sx-schedule-error { margin: 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-deadline-pop .sx-dd-opt { font-size: var(--sx-font); }
+.sx-schedule-error { margin: 0; color: var(--err); font-size: var(--sx-font); }
 .sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; width: min(320px, calc(100vw - 32px)); }
 /* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
    失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链(无按钮边框) ===== */
@@ -4580,7 +4585,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-records > .sx-schedule-error { padding: 14px 10px; }
 /* ===== 定时任务页(scheduled-tasks Task 10,spec §9.4;2026-11-20 设置页式布局):页顶空白拖拽条 + 内容区标题/筛选/操作 ===== */
 .sx-schedules-layer { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; flex-direction: column; }
-.sx-schedule-page { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.sx-schedule-page { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0;
+  /* 2026-11-21 用户裁定：配置页文字受系统字号控制且不低于 14px;标签（标题/调度/指令）再大一档 */
+  --sx-font: max(var(--f-base-size, 14px), 14px); --sx-label-font: calc(var(--sx-font) + 1px); }
 /* 左菜单收起时的重开钮：与欢迎页同款浮动左上角（2026-11-20 用户裁定） */
 .sx-schedule-nav { position: absolute; top: 10px; left: 10px; z-index: 65; display: flex; align-items: center; }
 /* 与 .sx-settings-topbar 同构：40px 空带只承载窗控(−□× 是全局 fixed 簇)+ 底部分割线；数据拖拽带 */
@@ -4594,7 +4601,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-heading { display: flex; align-items: center; gap: 6px; min-height: 30px; }
 .sx-schedule-title { margin: 0; color: var(--fg); font-size: calc(20px * var(--fz)); font-weight: 600; letter-spacing: 0.2px; }
-.sx-schedule-back { display: inline-flex; align-items: center; gap: 4px; height: 26px; margin-left: -8px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: calc(13px * var(--fz)); }
+.sx-schedule-back { display: inline-flex; align-items: center; gap: 4px; height: 26px; margin-left: -8px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: var(--sx-font); }
 .sx-schedule-back:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-schedule-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .sx-schedule-filters { display: inline-flex; align-items: center; gap: 2px; }
@@ -4612,7 +4619,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 [data-theme='light'] .sx-schedule-error, [data-theme='light'] .sx-schedule-err { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 [data-theme='light'] .sx-schedules-content > .sx-schedule-error { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 .sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: calc(12.5px * var(--fz)); }
-.sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: var(--sx-font); }
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */
