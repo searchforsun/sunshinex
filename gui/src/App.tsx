@@ -1013,7 +1013,7 @@ function AppShell(): JSX.Element {
    *  各按自身实时内容宽经 chatMaxFor 阶梯落内联值(同一策略覆盖主对话、欢迎页、辅助对话、
    *  子智能体转录页;流列/输入卡随三栏拖拽、右栏折叠、视口缩放即时跟宽)。首次 observe 即回调,
    *  首帧就位零闪;jsdom 桩回调宽 0,chatMaxFor 托底不落负。deps:两容器随设置态/页面/折叠/
-   *  切会话换挂,重挂后需重挂观察器 */
+   *  切会话换挂,重挂后需重挂观察器;定时任务层开合也令右栏卸载/重挂(2026-11-20 评审) */
   useEffect(() => {
     const els = [mainRef.current, sidebarRef.current].filter((el): el is HTMLElement => el !== null);
     if (els.length === 0) return;
@@ -1027,7 +1027,7 @@ function AppShell(): JSX.Element {
     });
     els.forEach((el) => ro.observe(el));
     return () => ro.disconnect();
-  }, [settingsOpen, page, tabState.collapsed, openSessionId]);
+  }, [settingsOpen, page, tabState.collapsed, openSessionId, schedulesMain]);
 
   // 目录打开上下文(2026-10-30):正文目录芯片 → openDirectoryPath(在册项目左侧树定位展开;区外按
   //  左上角配置的打开方式外开)——Chat/tabs 全子树可达
@@ -1381,7 +1381,7 @@ function AppShell(): JSX.Element {
         <WebTabPool
           conn={connInstance}
           items={webPoolItems}
-          visibleKey={(page === 'chat' || page === 'welcome') && !settingsOpen && !tabState.collapsed && activeTab?.type === 'web' ? poolKey(curSeatRef.current, activeTab.uid) : null}
+          visibleKey={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain && !tabState.collapsed && activeTab?.type === 'web' ? poolKey(curSeatRef.current, activeTab.uid) : null}
           anchorRef={tabBodyRef}
           root={openRoot}
           draftSeat={WELCOME_TAB_SEAT}

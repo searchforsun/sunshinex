@@ -2143,6 +2143,9 @@ describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿
     expect(document.querySelector('.sx-sidebar')).not.toBeNull();
 
     conn.scheduleJobs = [job()];
+    // 记录行 root 与当前会话 root('/w/root-a')区分:既有的会话行点击已记过 newSession('/w/root-a'),
+    // 同值断言不能证明记录链把 run root 传下去(评审 F4)
+    const runRoot = '/w/sched-run-a';
     conn.scheduleRunsResp = [
       {
         id: 'run-1',
@@ -2151,7 +2154,7 @@ describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿
         endedAt: Date.now() - 59_000,
         status: 'succeeded',
         journalId: 'sched-journal',
-        root: '/w/root-a',
+        root: runRoot,
         seconds: 1,
       },
     ];
@@ -2177,7 +2180,7 @@ describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿
     conn.nextSessionId = 'sched-live';
     fireEvent.click(await screen.findByRole('button', { name: /open session/i }));
     await waitFor(() => expect(document.querySelector('.sx-schedules-layer')).toBeNull());
-    expect(conn.newSessionCalls).toContain('/w/root-a');
+    expect(conn.newSessionCalls).toContain(runRoot);
     expect(conn.attachCalls).toContainEqual(['sched-live', 'sched-journal']);
     openConn(conn);
     await waitFor(() => expect(screen.getByText('sched-live', { selector: '.chat-title-text' })).toBeDefined());
