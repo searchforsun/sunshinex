@@ -342,6 +342,8 @@ function DeadlinePicker({ value, onChange }: { value: number | undefined; onChan
                 <TimeWheel values={HOUR_VALUES} value={hour} ariaLabel={t('Deadline hour', '截止小时')} onChange={(h) => setTime(h, minute)} />
                 <span className="sx-schedule-time-colon" aria-hidden="true">:</span>
                 <TimeWheel values={MINUTE_VALUES} value={minute} ariaLabel={t('Deadline minute', '截止分钟')} onChange={(m) => setTime(hour, m)} />
+                <span className="sx-wheel-fade is-top" aria-hidden="true" />
+                <span className="sx-wheel-fade is-bottom" aria-hidden="true" />
               </div>
             </div>
           </div>

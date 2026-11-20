@@ -4566,16 +4566,19 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-deadline-time-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; padding-left: 10px; border-left: 1px solid var(--border-subtle); }
 /* 2026-11-21 用户实测「时间和周几对不上一行」：星期行有 6px 上边距，这里补同值，两栏表头同基线 */
 .sx-deadline-time-label { margin-top: 6px; color: var(--fg-tertiary); font-size: var(--sx-font); }
-/* 滚轮：可视 5 行(28px/行)，上下各留 2 行做淡出；中间高亮带即当前值 */
+/* 滚轮：可视 5 行(28px/行)，上下各留 2 行做淡出；中间高亮带即当前值。
+   2026-11-21 用户实测「滑动一下会卡顿」：撤掉 scroll-snap-type:mandatory（滚一格被强制
+   吸附=顿挫）与滚动层的 mask-image（每帧重合成），吸附交给 JS 停稳后做；淡出改渐变浮层（合成廉价） */
 .sx-wheel-pair { position: relative; display: flex; align-items: center; gap: 2px; }
 .sx-wheel-pair::before { content: ''; position: absolute; left: 0; right: 0; top: 56px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); pointer-events: none; }
 .sx-wheel-pair:focus-within::before { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-.sx-wheel { position: relative; z-index: 1; width: 34px; height: 140px; overflow-y: auto; overflow-x: hidden; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; outline: none;
-  mask-image: linear-gradient(to bottom, transparent 0, #000 24%, #000 76%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 24%, #000 76%, transparent 100%); }
+.sx-wheel-fade { position: absolute; left: 0; right: 0; height: 56px; pointer-events: none; z-index: 2; }
+.sx-wheel-fade.is-top { top: 0; background: linear-gradient(to bottom, var(--surface-elevated), transparent); }
+.sx-wheel-fade.is-bottom { bottom: 0; background: linear-gradient(to top, var(--surface-elevated), transparent); }
+.sx-wheel { position: relative; z-index: 1; width: 34px; height: 140px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: none; outline: none; }
 .sx-wheel::-webkit-scrollbar { width: 0; height: 0; }
 .sx-wheel::before, .sx-wheel::after { content: ''; display: block; height: 56px; }
-.sx-wheel-item { display: flex; align-items: center; justify-content: center; width: 100%; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-tertiary); font: 400 var(--sx-font) var(--font-ui); font-variant-numeric: tabular-nums; scroll-snap-align: center; }
+.sx-wheel-item { display: flex; align-items: center; justify-content: center; width: 100%; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-tertiary); font: 400 var(--sx-font) var(--font-ui); font-variant-numeric: tabular-nums; }
 .sx-wheel-item:hover { color: var(--fg); }
 .sx-wheel-item.is-active { color: var(--fg); font-weight: 600; }
 .sx-schedule-error { margin: 0; color: var(--err); font-size: var(--sx-font); }
