@@ -1186,6 +1186,7 @@ function AppShell(): JSX.Element {
                       bgRunning={bgRunningCount}
                       board={projection.board}
                       teams={projection.teams}
+                      members={projection.team}
                       onTodoBatches={setTodoBatches}
                       todoFocus={todoFocus}
                       leaderFocus={leaderFocus}

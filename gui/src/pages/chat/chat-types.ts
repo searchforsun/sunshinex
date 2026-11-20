@@ -98,6 +98,8 @@ export interface ChatProps {
   board?: TaskBoardState;
   /** 队名解析材料(get_agent_team_board/create_agent_team 链接;App 注入投影 teams) */
   teams?: readonly import('../../projection').BoardTeamRef[];
+  /** 存活成员(2026-11-21 $ 面板「本会话成员」段):App 注入投影 team */
+  members?: ReadonlyArray<{ name: string; busy: boolean }>;
   /** G14.174 待办批次上抛(每批 todo_write 一卡:时间/关联轮次输入/条目;App 经 services 供待办页签) */
   onTodoBatches?: (batches: TodoBatch[]) => void;
   /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文输入气泡 */

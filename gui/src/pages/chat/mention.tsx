@@ -142,6 +142,8 @@ export function RefPalette({
         const secLabel = item.section !== undefined
           ? item.section === 'Live teams' ? t('In this session: teams', '本会话团队')
             : item.section === 'Live tasks' ? t('In this session: tasks', '本会话任务')
+              : item.section === 'Live members' ? t('In this session: members', '本会话成员')
+              : item.section === 'Catalog agents' ? t('Catalog agents', '目录成员')
               : t('Catalog teams', '目录团队')
           : undefined;
         const showSec = secLabel !== undefined && (i === 0 || items[i - 1]!.section !== item.section);
@@ -194,6 +196,7 @@ export function setRefLabels(
   teams: ReadonlyArray<{ id: string; name: string }>,
   liveTeams: ReadonlyArray<{ id: string; name: string }> = [],
   liveTasks: ReadonlyArray<{ id: string; title: string }> = [],
+  liveMembers: ReadonlyArray<{ id: string; name: string }> = [],
 ): void {
   refLabels.clear();
   refIds.clear();
@@ -205,6 +208,10 @@ export function setRefLabels(
       refIds.set(`${sym}${label}`, e.id);
       if (sym === '#') refKinds.set(`#${e.id}`, 'team');
     }
+  }
+  for (const m of liveMembers) {
+    refLabels.set(`$${m.id}`, m.name !== '' ? m.name : m.id);
+    refIds.set(`$${m.name}`, m.id);
   }
   for (const t of liveTasks) {
     const label = t.title !== '' ? t.title : t.id;

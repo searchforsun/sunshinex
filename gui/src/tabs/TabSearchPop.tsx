@@ -5,12 +5,31 @@ import { FileIcon, hasFileTypeIcon } from '../file-icon';
 import { TAB_ICONS, tabEntry } from './registry';
 import { disambiguateTabTitles } from './tab-state';
 import type { ClosedTab, TabInstance } from './tab-state';
+import { SearchCatBar, SearchSectionHead, useSearchListNav } from '../search-kit';
 
 /**
  * G14.2xx 标签搜索弹窗(chrome「搜索标签页」同位,用户裁定纵向形态):搜索框过滤 +
  * 「打开的标签页」(图标/消歧标题/相对时间/×关)+「最近关闭的标签页」(点击重开)。
  * 纯受控渲染件:开合与数据全部上抛(TabStrip 触发,App 持 recentClosed/reopen)。
+ * 2026-11-21 用户裁定「所有搜索框下边可以置顶分类,搜索出来内容可以进行合理跳转」:
+ * 搜索框下常驻 全部/打开的标签页/最近关闭 分类条,分组头吸顶;↑↓/Enter 直达(打开项切过去,
+ * 最近关闭项重开)。
  */
+
+type TabCat = 'all' | 'open' | 'closed';
+
+interface OpenHit {
+  readonly kind: 'open';
+  readonly tab: TabInstance;
+  readonly title: string;
+}
+interface ClosedHit {
+  readonly kind: 'closed';
+  readonly closed: ClosedTab;
+  readonly index: number;
+  readonly title: string;
+}
+type TabHit = OpenHit | ClosedHit;
 
 export interface TabSearchPopProps {
   readonly tabs: readonly TabInstance[];
@@ -37,6 +56,7 @@ function fmtAge(ts: number | undefined, now: number): string {
 
 export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseTab, onReopen, onDone }: TabSearchPopProps): JSX.Element {
   const [q, setQ] = useState('');
+  const [cat, setCat] = useState<TabCat>('all');
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
   // 挂载即聚焦搜索框;开席期 30s tick 刷新相对时间(刚刚→N分 不冻结)
@@ -48,12 +68,28 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
   const titles = useMemo(() => disambiguateTabTitles(tabs), [tabs]);
   const needle = q.trim().toLowerCase();
   const hit = (title: string): boolean => needle === '' || title.toLowerCase().includes(needle);
-  const openRows = tabs
-    .map((t) => ({ t, title: titles.get(t.uid) ?? tabEntry(t.type).title(t.params) }))
+  const openRows: OpenHit[] = tabs
+    .map((tab) => ({ kind: 'open' as const, tab, title: titles.get(tab.uid) ?? tabEntry(tab.type).title(tab.params) }))
     .filter((r) => hit(r.title));
-  const closedRows = recentClosed
-    .map((c, index) => ({ c, index, title: tabEntry(c.type).title(c.params) }))
+  const closedRows: ClosedHit[] = recentClosed
+    .map((closed, index) => ({ kind: 'closed' as const, closed, index, title: tabEntry(closed.type).title(closed.params) }))
     .filter((r) => hit(r.title));
+  const showOpen = cat !== 'closed';
+  const showClosed = cat !== 'open';
+  const entries: TabHit[] = [...(showOpen ? openRows : []), ...(showClosed ? closedRows : [])];
+  const pick = (index: number): void => {
+    const entry = entries[index];
+    if (entry === undefined) return;
+    if (entry.kind === 'open') onSelect(entry.tab.uid);
+    else onReopen(entry.index);
+    onDone();
+  };
+  const nav = useSearchListNav<HTMLDivElement>({ count: entries.length, onPick: pick, resetKey: q + '|' + cat });
+  const closedOffset = showOpen ? openRows.length : 0;
+  const pickCat = (id: string): void => {
+    setCat(id as TabCat);
+    inputRef.current?.focus(); // 分类点击后回搜索框:方向键/Enter 连续可用
+  };
   const iconOf = (type: TabInstance['type'], path: string | undefined): JSX.Element => {
     if (path !== undefined && hasFileTypeIcon(path)) return <FileIcon path={path} size={16} />;
     const Icon = TAB_ICONS[type] ?? FileText;
@@ -73,27 +109,34 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
             if (e.key === 'Escape') {
               e.stopPropagation();
               onDone();
+              return;
             }
+            nav.onKeyDown(e);
           }}
         />
       </div>
+      <SearchCatBar
+        cats={[
+          { id: 'all', en: 'All', zh: '全部', count: entries.length },
+          { id: 'open', en: 'Open tabs', zh: '打开的标签页', count: openRows.length },
+          { id: 'closed', en: 'Recently closed', zh: '最近关闭', count: closedRows.length },
+        ]}
+        active={cat}
+        onPick={pickCat}
+      />
       <div className="sx-tabsearch-body">
-        {openRows.length > 0 && <div className="sx-tabsearch-sec">{t('Open tabs', '打开的标签页')}</div>}
-        {openRows.map(({ t: tab, title }) => (
+        {showOpen && openRows.length > 0 && <SearchSectionHead label={t('Open tabs', '打开的标签页')} count={openRows.length} />}
+        {showOpen && openRows.map(({ tab, title }, i) => (
           <div
             key={tab.uid}
+            ref={i === nav.active ? nav.activeRef : undefined}
             role="button"
             tabIndex={0}
-            className={`sx-tabsearch-row${tab.uid === activeUid ? ' active' : ''}`}
-            onClick={() => {
-              onSelect(tab.uid);
-              onDone();
-            }}
+            className={`sx-tabsearch-row${tab.uid === activeUid ? ' active' : ''}${i === nav.active ? ' nav-active' : ''}`}
+            onMouseEnter={() => nav.setActive(i)}
+            onClick={() => pick(i)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onSelect(tab.uid);
-                onDone();
-              }
+              if (e.key === 'Enter') pick(i);
             }}
           >
             {iconOf(tab.type, tab.params.path)}
@@ -118,33 +161,30 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
             </span>
           </div>
         ))}
-        {closedRows.length > 0 && <div className="sx-tabsearch-sec">{t('Recently closed', '最近关闭的标签页')}</div>}
-        {closedRows.map(({ c, index, title }) => (
-          <div
-            key={`${c.closedAt}:${index}`}
-            role="button"
-            tabIndex={0}
-            className="sx-tabsearch-row"
-            data-tip={title}
-            onClick={() => {
-              onReopen(index);
-              onDone();
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                onReopen(index);
-                onDone();
-              }
-            }}
-          >
-            {iconOf(c.type, c.params.path)}
-            <span className="sx-tabsearch-name">{title}</span>
-            <span className="sx-tabsearch-time">{fmtAge(c.closedAt, now)}</span>
-          </div>
-        ))}
-        {openRows.length === 0 && closedRows.length === 0 && (
-          <div className="sx-tabsearch-empty">{t('No matching tabs', '无匹配标签页')}</div>
-        )}
+        {showClosed && closedRows.length > 0 && <SearchSectionHead label={t('Recently closed', '最近关闭的标签页')} count={closedRows.length} />}
+        {showClosed && closedRows.map(({ closed, index, title }, i) => {
+          const idx = closedOffset + i;
+          return (
+            <div
+              key={`${closed.closedAt}:${index}`}
+              ref={idx === nav.active ? nav.activeRef : undefined}
+              role="button"
+              tabIndex={0}
+              className={`sx-tabsearch-row${idx === nav.active ? ' nav-active' : ''}`}
+              data-tip={title}
+              onMouseEnter={() => nav.setActive(idx)}
+              onClick={() => pick(idx)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') pick(idx);
+              }}
+            >
+              {iconOf(closed.type, closed.params.path)}
+              <span className="sx-tabsearch-name">{title}</span>
+              <span className="sx-tabsearch-time">{fmtAge(closed.closedAt, now)}</span>
+            </div>
+          );
+        })}
+        {entries.length === 0 && <div className="sx-tabsearch-empty">{t('No matching tabs', '无匹配标签页')}</div>}
       </div>
     </div>
   );

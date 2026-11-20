@@ -537,6 +537,30 @@ export class SessionRuntime {
     this.currentMode = opts.mode ?? 'full-access';
     this.kernel = new SessionKernel({ onKernelEvent: (ev) => this.persistKernelEvent(ev) });
     this.runtimeImpl = this.assemble();
+    this.bindStopAudit(this.runtimeImpl);
+  }
+
+  /** 任务停止审计线（2026-11-21 用户需求）：后台任务终态 stopped 时——该任务名下若有待答提问
+   *  （子智能体路由版 ask，req.askedBy 归因），取消并落 pending-resolve、在主对话留一行说明。
+   *  此前静默清卡：用户事后只看到子转录里停在「正在等待回答」+轮带已停止，无从判断「问了没等到」
+   *  还是「压根没问」。换铸（reset/rehomeRoot/setMode）后须对新运行时重绑 */
+  private bindStopAudit(rt: KernelRuntime): void {
+    rt.harness.tasks.setStopNotifier((t) => {
+      for (const [pid, entry] of [...this.pending.entries()]) {
+        if (entry.kind !== 'ask') continue;
+        const by = entry.req.askedBy;
+        if (by === undefined) continue;
+        if (by.taskId !== t.id && by.label !== t.label) continue;
+        this.pending.delete(pid);
+        this.logPendingRow({ t: 'pending-resolve', pid, outcome: 'cancelled: task stopped' });
+        entry.resolve({ type: 'dismissed' });
+        this.pump({
+          type: 'notice',
+          text: `[${by.label}] 提问已随任务停止取消（task ${t.id}）`,
+          ts: Date.now(),
+        });
+      }
+    });
   }
 
   /** attach 重挂根(2026-11-11):档记 meta.root 在盘且异于壳根时由 attachSessionIn 调——**整链换根**
@@ -547,6 +571,7 @@ export class SessionRuntime {
     this.opts = { ...this.opts, root };
     this.root = root;
     this.runtimeImpl = this.assemble();
+    this.bindStopAudit(this.runtimeImpl);
     if (this.journal !== undefined) {
       this.syncSessionStores();
       this.hookJournalSink();
@@ -570,6 +595,7 @@ export class SessionRuntime {
     this.sessionCharter = opts.charter ?? undefined; // null=无品性层（装配 charter 键缺席同形）
     this.charterCurrent = opts.charter ?? null; // 读面=调用方传文（fix round 1：attach 侧 meta.charterText 编辑文优先/缺席回落快照出生文——与链回放替代行同文,读面/模型面两窗不漂移;null=无品性层同缺席门。reset 路径另归 birth 文,见 reset() 注释）
     this.runtimeImpl = this.assemble();
+    this.bindStopAudit(this.runtimeImpl);
     if (this.journal !== undefined) {
       this.syncSessionStores();
       this.hookJournalSink();
@@ -1731,6 +1757,7 @@ ${this.sessionCharter ?? ''}` }
     this.charterCurrent = this.sessionCharter ?? null;
     const old = this.runtimeImpl;
     this.runtimeImpl = this.assemble();
+    this.bindStopAudit(this.runtimeImpl);
     // reset 终结已落档调度（终审修复波 Fix 1）：下方 disposeRuntime 的 timer.reset() 只清内存位不落盘
     // ——盘上未触发 wake-schedule 行存活，daemon 重启 attach rearmSchedules 会把用户 /reset 丢弃的
     // 闹钟对已清空上下文重布防起一轮定时唤醒（「软重置后调度不复活」此前只在同进程内为真）。对当前

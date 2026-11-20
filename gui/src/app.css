@@ -4382,6 +4382,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-bar:disabled:hover { background: var(--surface-soft); }
 .sx-sunx-ws-anchor .choose-project-bar { width: 100%; text-align: left; }
 .sx-sunx-ws-anchor .choose-project-bar:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }
+/* 弹窗内选择条带软底：hover 要在软底上再压一档（上面的透明混色是欢迎页裸条口径，
+   直接套会把 hover 刷得比静默态更浅）；仍无边框线 */
+.sx-sunx-ws-anchor .sx-sunx-ws-bar:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 5%, var(--surface-soft)); }
 .sx-sunx-ws-anchor .proj-pop { bottom: auto; top: calc(100% + 6px); left: 0; right: 0; width: auto; }
 /* 侧栏会话行 kind 徽标(标题旁小 chip):文字 14px(界面文字铁律),accent 描边降存在感;
    flex:none 不挤标题省略/悬浮卡;行 hover 时段 meta 隐而徽标恒显(归属辨识常驻) */

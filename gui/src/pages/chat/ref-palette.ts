@@ -30,6 +30,9 @@ export interface RefEntries {
   teams: RefEntry[];
   liveTeams?: RefEntry[];
   liveTasks?: RefTask[];
+  /** 本会话存活团队成员（2026-11-21 用户实测「$ 怎么不显示会话中的团队成员」）：id=成员名
+   *  （send_agent_team_message 按名寻址），name 同值仅作显示 */
+  liveMembers?: RefEntry[];
 }
 
 /** palette 触发态（use-composer-keys 键面与 Chat 渲染面共享形态） */
@@ -86,6 +89,9 @@ export function expandRefNames(text: string, entries: RefEntries): string {
     const label = refPickLabel(t);
     if (label !== t.id) pairs.push({ from: `#${label}`, to: `#${t.id}` });
   }
+  for (const m of entries.liveMembers ?? []) {
+    if (m.name !== m.id) pairs.push({ from: `$${m.name}`, to: `$${m.id}` });
+  }
   for (const t of entries.liveTasks ?? []) {
     const label = t.title !== '' ? t.title : t.id;
     if (!/\s/.test(label) && label !== t.id) pairs.push({ from: `#${label}`, to: `#${t.id}` });
@@ -115,7 +121,19 @@ export function flatRefItems(entries: RefEntries, query: string, sym: '$' | '#')
  *  目录团队三段（2026-11-20 用户裁定「直接 $ # 出来当前会话正在运行的或存在的团队及任务」）。
  *  实时段任一在场时目录段补「目录团队」组头以示来源；实时全空=旧形单段无组头（零回归）。 */
 export function refPanelItems(entries: RefEntries, query: string, sym: '$' | '#'): RefItem[] {
-  if (sym === '$') return flatRefItems(entries, query, '$');
+  if (sym === '$') {
+    // 本会话成员置顶（2026-11-21）：成员名即寻址键，选中插 $名；目录 agents 在后
+    const qs = query.toLowerCase();
+    const liveM = (entries.liveMembers ?? [])
+      .filter((e) => qs === '' || e.name.toLowerCase().includes(qs))
+      .map((e) => ({ ...e, sym: '$' as const, section: 'Live members' }));
+    const catalogA = filterRefEntries(entries, query).agents.map((e) => ({
+      ...e,
+      sym: '$' as const,
+      ...(liveM.length > 0 ? { section: 'Catalog agents' } : {}),
+    }));
+    return [...liveM, ...catalogA];
+  }
   const q = query.toLowerCase();
   const hit = (id: string, name: string): boolean => q === '' || id.toLowerCase().includes(q) || name.toLowerCase().includes(q);
   const liveTeams = (entries.liveTeams ?? []).filter((e) => hit(e.id, e.name)).map((e) => ({ ...e, sym: '#' as const, section: 'Live teams' }));

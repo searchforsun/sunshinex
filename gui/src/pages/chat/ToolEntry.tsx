@@ -185,7 +185,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 分派回执解析(2026-11-16 用户实测「分派任务要和子智能体一样显示蓝色任务名和超链接」):
    *  回执形态 task <id> started (output: <path>)——id 据此取(入参无 taskId 面);名=入参 label
    *  (模型自拟卡名,缺省回落 agent_id) */
-  const dispatchReceipt = toolName === 'dispatch_task' ? /task (\S+) started \(output:/.exec(resultText) : null;
+  // 双通道回执(2026-11-21 用户实测「分派任务怎么不显示超链接」):fork=「task <id> started (output: …)」,
+  // team=「board task <id> created (team …)」——此前只认 fork 形态,team 行退化为纯文本
+  const dispatchReceipt = toolName === 'dispatch_task' ? /task (\S+) (?:started|created)/.exec(resultText) : null;
   const dispatchReceiptId = dispatchReceipt !== null ? dispatchReceipt[1]! : undefined;
   const dispatchLabel = toolName === 'dispatch_task'
     ? (typeof input.label === 'string' && input.label !== ''

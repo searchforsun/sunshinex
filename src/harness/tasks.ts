@@ -75,6 +75,9 @@ export class TaskRegistry {
   private readonly restartAckedIds = new Set<string>();
   /** 运行态变更旁路(submit/finish 后触发;装载/adopt 重放零回调——避免开会话刷屏) */
   private onChange?: (task: BackgroundTask) => void;
+  /** 停止通知缝（2026-11-21 用户需求「任务在待答期间被停止/重启时,主对话留一行审计」）：
+   *  finish(stopped) 时回调——宿主据此取消该任务的待答提问并留痕；与 onChange 分立不抢占 */
+  private stopNotifier?: (task: BackgroundTask) => void;
 
   constructor(
     private readonly tasksDir: string,
@@ -86,6 +89,10 @@ export class TaskRegistry {
   }
 
   /** 装配期挂 live 旁路(须在 adoptLedger 之后——重放不经此口) */
+  setStopNotifier(cb: ((task: BackgroundTask) => void) | undefined): void {
+    this.stopNotifier = cb;
+  }
+
   setOnChange(cb: ((task: BackgroundTask) => void) | undefined): void {
     this.onChange = cb;
   }
@@ -255,6 +262,7 @@ export class TaskRegistry {
       ...(opts?.exitCode !== undefined ? { exitCode: opts.exitCode } : {}),
       ...(opts?.reason !== undefined ? { reason: opts.reason } : {}),
     });
+    if (status === 'stopped') this.stopNotifier?.(t); // 审计缝:宿主取消该任务的待答提问
     this.onChange?.(t);
     return t;
   }

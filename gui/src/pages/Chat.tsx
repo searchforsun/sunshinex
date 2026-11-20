@@ -102,7 +102,7 @@ function chatAnchorOf(el: HTMLElement): { key: string; off: number } | undefined
   return undefined;
 }
 
-export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
+export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
@@ -185,13 +185,19 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
    *  不在板,天然排除;与目录合并后的单点供面板/注册表/发送展开三面共用 */
   const liveRefEntries = useMemo<RefEntries>(() => {
     const liveTeams = (teams ?? []).map((t) => ({ id: t.teamId, name: t.name }));
+    const liveMembers = (members ?? []).map((m) => ({ id: m.name, name: m.name }));
     const liveTasks = board !== undefined
       ? Object.values(board.tasks)
           .filter((t) => t.status === 'pending' || t.status === 'running')
           .map((t) => ({ id: t.id, title: t.title, status: t.status }))
       : [];
-    return { ...refEntries, ...(liveTeams.length > 0 ? { liveTeams } : {}), ...(liveTasks.length > 0 ? { liveTasks } : {}) };
-  }, [refEntries, teams, board]);
+    return {
+      ...refEntries,
+      ...(liveTeams.length > 0 ? { liveTeams } : {}),
+      ...(liveTasks.length > 0 ? { liveTasks } : {}),
+      ...(liveMembers.length > 0 ? { liveMembers } : {}),
+    };
+  }, [refEntries, teams, board, members]);
   const [refActive, setRefActive] = useState(0);
   const refEntriesLoadedRef = useRef(false);
   // G14.211 @ 面板点外即收:收口此前只有 Esc/改写输入两条路,焦点离开输入框后 Esc 不可达、
@@ -218,7 +224,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
    *  与页面蓝色超链接一致」):目录装载后写入模块级注册表——气泡/输入框按名显示、按 id 跳转;
    *  跳转路由=团队卡(`team:<id>`)/成员转录(onOpenAgent) */
   useEffect(() => {
-    setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? []);
+    setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? [], liveRefEntries.liveMembers ?? []);
   }, [liveRefEntries]);
   useEffect(() => {
     setRefOpenHandler((sym, id) => {
