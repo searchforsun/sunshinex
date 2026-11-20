@@ -47,6 +47,8 @@ import type { CreateSessionOpts, SessionLifecycleIo } from './session-lifecycle'
 import { ScheduleStore, schedulesFile } from './schedules/store';
 import { ScheduleEngine } from './schedules/engine';
 import { ScheduleExecutor } from './schedules/executor';
+import { validateDraft } from './schedules/model';
+import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
 import * as scheduleHandlers from './schedules/handlers';
 import type { SchedulesHandlerIo } from './schedules/handlers';
 import { WsHub } from './daemon-ws';
@@ -265,6 +267,32 @@ export class GuiDaemon {
       },
       watchProject: (root) => this.watchProjectRoot(root),
       unwatchProject: (root) => this.unwatchProjectRoot(root),
+      scheduleCreate: this.scheduleCreateSeam,
+    };
+  }
+
+  /** create_scheduled_task 工具出口（2026-11-20）：与 HTTP /schedules 面同一 validateDraft + 同一
+   *  ScheduleEngine.create——自然语言创建与表单创建共用一套校验/落档/布防规则，不另造第二套。
+   *  root 缺省已由工具填当前会话根；这里只兜绝对路径/目录存在（executor 每轮按 root 建会话）。 */
+  private get scheduleCreateSeam(): ScheduleCreateSeam {
+    return {
+      create: (draft) => {
+        const v = validateDraft(draft, Date.now());
+        if (!v.ok) return { ok: false, code: 'INVALID_ARG', message: v.error };
+        const root = v.value.root;
+        if (root !== 'default') {
+          if (!path.isAbsolute(root)) {
+            return { ok: false, code: 'INVALID_ARG', message: `root must be an absolute workspace path: ${root}` };
+          }
+          try {
+            if (!fs.statSync(root).isDirectory()) return { ok: false, code: 'INVALID_ARG', message: `root is not a directory: ${root}` };
+          } catch {
+            return { ok: false, code: 'INVALID_ARG', message: `root does not exist: ${root}` };
+          }
+        }
+        const job = this.scheduleEngine.create(v.value);
+        return { ok: true, value: { id: job.id, name: job.name, nextRunAt: job.nextRunAt, enabled: job.enabled } };
+      },
     };
   }
 

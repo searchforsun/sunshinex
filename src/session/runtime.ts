@@ -3,6 +3,8 @@ import { Harness, SESSION_FACE_PROFILES } from '../harness';
 import { buildHarness } from '../runtime';
 import type { PermissionMode } from '../harness/security/modes';
 import type { ToolDisplayMeta } from '../harness/tools';
+import { makeCreateScheduledTaskTool } from '../harness/tools/schedule-create-tool';
+import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
 import { setToolDisplayMeta } from '../tui/tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import type { BackgroundTask } from '../harness/tasks';
@@ -44,6 +46,9 @@ export interface KernelRuntimeOpts {
   schedule?: {
     arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string };
   };
+  /** 定时任务创建接缝（2026-11-20）：create_scheduled_task 工具的宿出口（daemon ScheduleEngine）。
+   *  缺省不注入=工具不注册（TUI/CLI 无 daemon 调度器；场景不适用即诚实缺席） */
+  scheduleCreate?: ScheduleCreateSeam;
   /** 会话形态（2026-11-14 sunx 设计）：与 HarnessOptions.kind 同名同域的装配接缝（TUI/daemon 装配单点入参面）。
    *  已透传（2026-11-15 提示词面 fix round 1）：buildHarness（→ 稳定段观测面 + 单发 Reactor）与 loopDeps
    *  （→ loop 主链 agent 节点 childDeps → Reactor）同源携带；缺席=standard */
@@ -100,6 +105,11 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     // 学习沉淀开关透传（2026-11-15 sunx P3 Task 2）：缺席=既有推导零变化
     ...(opts.learnSkills !== undefined ? { learnSkills: opts.learnSkills } : {}),
   });
+  // 定时任务创建工具（2026-11-20）：接缝在场即注册（标准会话全量面/太阳面白名单各自生效），
+  // 先于 face 派生——sunx 白名单面按 derive 快照取交集，晚注册不会进白名单面
+  if (opts.scheduleCreate !== undefined) {
+    harness.tools.register(makeCreateScheduledTaskTool(opts.scheduleCreate, opts.root));
+  }
   // 工具面选择（2026-11-15 sunx P1 Task 3；D74 收敛 2026-11-16）：主链 face=会话形态档案表白名单
   // 派生（SESSION_FACE_PROFILES 单点,与装配注册钩同源）——loop 主链模型面（loopDeps.registry）与
   // TUI 呈现表（displayMeta）同源消费 effective face；无白名单档案恒 harness.tools 原样（face 基线字节不变）

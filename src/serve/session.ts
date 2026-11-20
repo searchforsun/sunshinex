@@ -7,6 +7,7 @@ import { parseEffort } from '../model/effort';
 import type { ModelTier, ReasoningEffort, SessionKind } from '../types';
 import { ModelSwitcher } from '../model/catalog';
 import type { KernelRuntime } from '../session/runtime';
+import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
 import type { ModelAdapter } from '../model/adapter';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, SessionEvent, TodoItem } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
@@ -190,6 +191,9 @@ export interface SessionRuntimeOpts {
    *  `~/.sunshinex/sunx/<journalId>/data`——assemble() 透传 buildHarness（持久化数据面全落域），
    *  `dataDir` 外窥供 handler 寻址；缺席（standard/TUI/CLI）=resolveDataDir(root) 既有推导逐字节不变 */
   dataDir?: string;
+  /** 定时任务创建接缝（2026-11-20）：daemon 注入 ScheduleEngine 出口，assemble() 透传
+   *  createKernelRuntime——create_scheduled_task 工具由它落档/布防；缺席=工具不注册（TUI/CLI） */
+  scheduleCreate?: ScheduleCreateSeam;
 }
 
 /** 挂起表条目（P6 §4 下沉,原 daemon-wire 资产）：kind 判别联合；resolve 即回执值（interrupt/reset
@@ -804,6 +808,9 @@ ${this.sessionCharter ?? ''}` }
       // 宿主 TimerController 承载（id 铸造+机制行落档+被替换终态行都在会话）；仅 sunx 装配注入
       // （standard 字节不变——工具不注册+缝缺席双保险）
       ...(this.sessionKind === 'sunx' ? { schedule: { arm: (rec: { fireAt: number; note: string; taskSpec?: string }) => this.armSchedule(rec) } } : {}),
+      // 定时任务创建工具接缝（2026-11-20）：宿主 daemon 的 ScheduleEngine 出口——接缝在场即注册
+      // create_scheduled_task（标准/sunx 会话同源；CLI/TUI 不注入=工具缺席）
+      ...(this.opts.scheduleCreate !== undefined ? { scheduleCreate: this.opts.scheduleCreate } : {}),
       // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;

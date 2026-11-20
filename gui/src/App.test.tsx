@@ -2192,6 +2192,20 @@ describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿
     await waitFor(() => expect(screen.getByText('sched-live', { selector: '.chat-title-text' })).toBeDefined());
     unmount();
   });
+
+  it('「在会话中创建」：退层回欢迎页并把示例提示词预填进输入框', async () => {
+    const { conn, unmount } = mount();
+    conn.scheduleJobs = [job()];
+    fireEvent.click(screen.getByRole('button', { name: 'scheduled tasks' }));
+    await screen.findByText('夜间巡检');
+    fireEvent.click(screen.getByRole('button', { name: /more create options|更多创建方式/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /create in chat|在会话中创建/i }));
+    await waitFor(() => expect(document.querySelector('.sx-schedules-layer')).toBeNull());
+    expect(screen.getByLabelText('welcome')).toBeDefined();
+    const ta = screen.getByLabelText('welcome goal') as HTMLTextAreaElement;
+    expect(ta.value).toMatch(/定时任务|scheduled task/i);
+    unmount();
+  });
 });
 
 /** G8c 复杂面板五件簇退役:模型与提供方/MCP/智能体/技能+权限/高级 raw 的 App 级走通测已由

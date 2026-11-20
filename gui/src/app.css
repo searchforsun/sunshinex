@@ -4541,13 +4541,34 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    的 48px 大留白不得覆盖记录卡的紧凑空态 */
 .sx-schedule-records .sx-schedule-empty { margin: 0; padding: 18px 10px; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-records > .sx-schedule-error { padding: 14px 10px; }
-/* ===== 定时任务页(scheduled-tasks Task 10,spec §9.4):列表两列三行卡/配置/记录三态 ===== */
+/* ===== 定时任务页(scheduled-tasks Task 10,spec §9.4;2026-11-20 设置页式布局):页顶空白拖拽条 + 内容区标题/筛选/操作 ===== */
 .sx-schedules-layer { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; flex-direction: column; }
 .sx-schedule-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.sx-schedules-topbar { padding-right: 126px; }
-.sx-schedules-spacer { flex: 1; align-self: stretch; }
+/* 与 .sx-settings-topbar 同构：40px 空带只承载窗控(−□× 是全局 fixed 簇)+ 底部分割线；数据拖拽带 */
+.sx-schedules-topbar { flex: none; height: var(--toolbar-h); background: var(--surface); border-bottom: 1px solid var(--border); user-select: none; }
 .sx-schedules-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.sx-schedules-content { max-width: 980px; margin: 0 auto; padding: 18px 24px 60px; }
+.sx-schedules-content { max-width: var(--chat-max, 980px); margin: 0 auto; padding: 24px 28px 60px; }
+/* 页头：设置页 h2 档标题 + 一行筛选(左)/刷新+创建(右) */
+.sx-schedule-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.sx-schedule-heading { display: flex; align-items: center; gap: 6px; min-height: 30px; }
+.sx-schedule-title { margin: 0; color: var(--fg); font-size: calc(20px * var(--fz)); font-weight: 600; letter-spacing: 0.2px; }
+.sx-schedule-back { display: inline-flex; align-items: center; gap: 4px; height: 26px; margin-left: -8px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: calc(13px * var(--fz)); }
+.sx-schedule-back:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-schedule-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sx-schedule-filters { display: inline-flex; align-items: center; gap: 2px; }
+.sx-schedule-filter { height: 28px; padding: 0 10px; border: none; border-radius: var(--radius-row); background: transparent; color: var(--fg-secondary); font: calc(13px * var(--fz)) var(--font-ui); }
+.sx-schedule-filter:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-schedule-filter.is-active { background: color-mix(in srgb, var(--fg) 9%, transparent); color: var(--fg); font-weight: 500; }
+.sx-schedule-tools { display: inline-flex; align-items: center; gap: 6px; }
+/* 创建主钮 + 下拉箭头同壳（设置页添加钮同色语言；箭头只开「在会话中创建」） */
+.sx-schedule-create { position: relative; display: inline-flex; align-items: stretch; height: 30px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-soft); }
+.sx-schedule-create-main { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: none; border-radius: var(--radius-md) 0 0 var(--radius-md); background: transparent; color: var(--fg); font: calc(13px * var(--fz)) var(--font-ui); }
+.sx-schedule-create-main:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-schedule-create-caret { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; border: none; border-left: 1px solid var(--border); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: transparent; color: var(--fg-secondary); }
+.sx-schedule-create-caret:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-schedule-create-menu { top: calc(100% + 6px); right: 0; left: auto; }
+.sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: calc(12.5px * var(--fz)); }
+.sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */

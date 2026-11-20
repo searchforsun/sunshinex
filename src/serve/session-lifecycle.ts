@@ -14,6 +14,7 @@ import type { RestoredInterrupted } from '../session/wake';
 import { projectsRoot, projectSlug, resolveDataDir, sunxDomainDir, worktreeMainRootOf } from '../config/data-dir';
 import { findSunxJournalOwner } from './sessions-list-handlers';
 import { validSessionId } from './session-id';
+import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
 
 /**
  * 会话生命周期域(2026-10-27 技术债轮 自 daemon.ts 外提,D31 骨架域续批,行为零变化):
@@ -36,6 +37,9 @@ export interface SessionLifecycleIo {
   readonly watchProject: (root: string) => void;
   /** 拆项目配置监听（daemon 侧守护：同 root 仍被其他会话持有时不拆） */
   readonly unwatchProject: (root: string) => void;
+  /** 定时任务创建接缝（2026-11-20）：daemon ScheduleEngine 出口——构造 SessionRuntime 时透传，
+   *  create_scheduled_task 工具据此落档；缺席（测试/纯终端）=工具不注册 */
+  readonly scheduleCreate?: ScheduleCreateSeam;
 }
 
 /** root 缺省锚字面量单点（GUI 欢迎页非项目会话的缺省锚，serve 侧解析面同源引用） */
@@ -164,6 +168,7 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     ...(opts?.charter !== undefined ? { charter: opts.charter } : {}),
     // 域绑定（2026-11-15 sunx P3 Task 2）：dataDir=域——持久化数据面全落域,handler 寻址走 dataDir 外窥
     ...(domainDir !== undefined ? { dataDir: domainDir } : {}),
+    ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);
@@ -449,6 +454,7 @@ export function attachSunxIn(io: SessionLifecycleIo, journalId: string): Result<
     ...(meta.title !== undefined ? { name: meta.title } : {}),
     ...(charter !== null ? { charter } : {}),
     dataDir: domain,
+    ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);

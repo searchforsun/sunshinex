@@ -405,3 +405,53 @@ test('POST /schedules 非法 draft 400', async () => {
     assert.deepEqual(list.jobs, []);
   });
 });
+
+test('create_scheduled_task 工具：模型自然语言创建走同一 engine（GET /schedules 可见）', async () => {
+  const model = new ScriptedAdapter([
+    {
+      toolCalls: [
+        {
+          name: 'create_scheduled_task',
+          args: {
+            name: '晨间巡检',
+            prompt: '总结昨天以来的提交并给出风险提示',
+            recurrence: { unit: 'day', every: 1, at: '09:00', weekdays: null, day_of_month: null, month: null, day: null },
+            start_at: null,
+            until: null,
+            root: null,
+            effort: 'high',
+            mode: 'acceptEdits',
+          },
+        },
+      ],
+    },
+    '{"done":true,"reply":"已创建"}',
+  ]);
+  await withSchedulesDaemon(async ({ base, tmp }) => {
+    const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+    assert.equal(created.status, 200);
+    const { sessionId } = (await created.json()) as { sessionId: string };
+    const sub = await fetch(`${base}/session/${sessionId}/submit`, {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({ goal: '帮我创建一个每天 9 点的巡检定时任务' }),
+    });
+    assert.equal(sub.status, 202);
+
+    type Job = { name: string; root: string; prompt: string; effort: string; mode: string; recurrence: Record<string, unknown> };
+    let jobs: Job[] = [];
+    const deadline = Date.now() + 10_000;
+    while (jobs.length === 0) {
+      jobs = ((await (await fetch(`${base}/schedules`, { headers: AUTH })).json()) as { jobs: Job[] }).jobs;
+      if (jobs.length === 0 && Date.now() > deadline) throw new Error('工具未在 10s 内创建定时任务');
+      if (jobs.length === 0) await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.equal(jobs.length, 1);
+    assert.equal(jobs[0]!.name, '晨间巡检');
+    assert.equal(jobs[0]!.prompt, '总结昨天以来的提交并给出风险提示');
+    assert.equal(jobs[0]!.root, tmp, 'root 缺省=当前会话工作区');
+    assert.deepEqual(jobs[0]!.recurrence, { unit: 'day', every: 1, at: '09:00' });
+    assert.equal(jobs[0]!.effort, 'high');
+    assert.equal(jobs[0]!.mode, 'acceptEdits');
+  }, undefined, model);
+});

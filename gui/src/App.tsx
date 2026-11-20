@@ -128,6 +128,15 @@ export function App(): JSX.Element {
   return <AppShell />;
 }
 
+/** 定时任务「在会话中创建」示例提示词（点击时按当前语言求值）：预填进欢迎页输入框，
+ *  用户可改后发送；agent 经 create_scheduled_task 工具落档（自然语言创建）。 */
+function scheduleCreateExample(): string {
+  return t(
+    'Create a scheduled task for me: every day at 9:00, review the code changes in this project since yesterday and give a short report with risks. Use the current workspace.',
+    '帮我创建一个定时任务：每天 9:00 检查当前项目自昨天以来的代码变更，给出简要报告和风险提示，工作目录用当前项目。',
+  );
+}
+
 
 /** 应用壳:单连接装配 + 三栏路由(左 ProjectMenu|中 Chat 恒挂|右标签栏);welcome = 无会话空态 */
 function AppShell(): JSX.Element {
@@ -144,8 +153,8 @@ function AppShell(): JSX.Element {
   /** 欢迎页预选工作区(G10-C16):New chat=空(自选);项目行「+」=该项目(快捷预选) */
   /** 欢迎页预选意图:root=项目行「+」带来的项目,null=新对话(回默认工作区);seq 每次入口递增——
    *  同值重复点击(欢迎页已挂载、用户在条上改选后再点新对话)也要重新生效 */
-  const [composePreset, setComposePreset] = useState<{ root: string | null; seq: number }>({ root: null, seq: 0 });
-  const presetCompose = useCallback((root: string | null): void => setComposePreset((p) => ({ root, seq: p.seq + 1 })), []);
+  const [composePreset, setComposePreset] = useState<{ root: string | null; seq: number; goal?: string }>({ root: null, seq: 0 });
+  const presetCompose = useCallback((root: string | null, goal?: string): void => setComposePreset((p) => ({ root, seq: p.seq + 1, ...(goal !== undefined ? { goal } : {}) })), []);
   const [openSessionId, setOpenSessionId] = useState<string>('');
   /** 打开期会话形态 hint(2026-11-17):sunx 打开链同步下发,首屏即 Sunx 欢迎面 */
   const [openKind, setOpenKind] = useState<string | undefined>(undefined);
@@ -634,6 +643,14 @@ function AppShell(): JSX.Element {
     setSchedulesMain(true);
   });
   const closeSchedulesStable = useStableCallback((): void => setSchedulesMain(false));
+  /** 「在会话中创建」：退层 → 欢迎页 → 输入框预填示例提示词（用户可改后发送；agent 用
+   *  create_scheduled_task 工具落档）——与 New chat 同路径，goal 走 preset 序号通道 */
+  const createScheduleInChatStable = useStableCallback((): void => {
+    setSchedulesMain(false);
+    presetCompose(null, scheduleCreateExample());
+    setPage('welcome');
+    recordNav({ k: 'welcome' });
+  });
   /** 记录 → 会话(定时任务 Task 11):关层 + 既有 newSession+attach 打开链(daemon 在座会收编/复用),
    *  root 取 attach 应答真根、缺省回退记录行根;失败经 showOpError 上屏 */
   const openJournalSessionStable = useStableCallback((journalId: string, root: string): void => {
@@ -1233,6 +1250,7 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 presetRoot={composePreset.root ?? undefined}
                 presetSeq={composePreset.seq}
+                presetGoal={composePreset.goal !== undefined ? { text: composePreset.goal, seq: composePreset.seq } : undefined}
                 onPickedChange={setWelcomePicked}
                 onOpened={(sessionId, root, goal, images) => {
                   setWelcomeGoal({ root, goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });
@@ -1253,7 +1271,9 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 onOpenSession={openJournalSessionStable}
                 onExit={closeSchedulesStable}
-                onToggleMenu={toggleMenuStable}
+                /* 菜单开着时页内不再放菜单钮（设置页同构：标题行只有标题）；收进抽屉后留一个重开入口 */
+                onToggleMenu={menuClosed ? toggleMenuStable : undefined}
+                onCreateInChat={createScheduleInChatStable}
               />
             </div>
           )}

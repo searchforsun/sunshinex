@@ -15,6 +15,10 @@ function job(over: Partial<ScheduleJobView> = {}): ScheduleJobView {
   };
 }
 
+function lastRun(status: 'running' | 'succeeded' | 'failed'): NonNullable<ScheduleJobView['lastRun']> {
+  return { id: `run-${status}`, trigger: 'schedule', startedAt: 1, status, root: 'default' };
+}
+
 /** 页面 conn 桩:列表 read 面+开关/删除/立即执行/记录四写面+配置页回源(workspaces/预览/建改)。
  *  写面返回具名 mock,断言 read 面零强转。 */
 function makeConn(jobs: ScheduleJobView[]) {
@@ -175,7 +179,7 @@ describe('SchedulePage 列表', () => {
     const onExit = vi.fn();
     render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={onExit} />);
     await screen.findByText('仓库巡检');
-    const newTask = (): HTMLElement => screen.getByRole('button', { name: bi('New task', '新建任务') });
+    const newTask = (): HTMLElement => screen.getByRole('button', { name: bi('Create scheduled task', '创建定时任务') });
 
     // 弹层最内层:菜单开着时 Esc 只收菜单,不退出页面
     fireEvent.click(screen.getByRole('button', { name: bi('More', '更多') }));
@@ -210,7 +214,7 @@ describe('SchedulePage 列表', () => {
     const onExit = vi.fn();
     render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={onExit} />);
     await screen.findByText('仓库巡检');
-    fireEvent.click(screen.getByRole('button', { name: bi('New task', '新建任务') }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Create scheduled task', '创建定时任务') }));
     await screen.findByText(bi('New scheduled task', '新建定时任务'));
 
     const modelPill = document.querySelector('.sx-schedule-model-pill')!;
@@ -223,7 +227,7 @@ describe('SchedulePage 列表', () => {
     expect(onExit).not.toHaveBeenCalled();
     // 弹层已收:Esc 回列表
     fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.getByRole('button', { name: bi('New task', '新建任务') })).toBeDefined());
+    await waitFor(() => expect(screen.getByRole('button', { name: bi('Create scheduled task', '创建定时任务') })).toBeDefined());
     expect(onExit).not.toHaveBeenCalled();
   });
 
@@ -252,13 +256,82 @@ describe('SchedulePage 列表', () => {
     expect(screen.getByText(bi('1d 0h', '1 天 0 小时后'))).toBeDefined();
   });
 
-  it('可选菜单开关：传入 onToggleMenu 才出左缘菜单钮并回调；顶栏带拖拽带', async () => {
+  it('筛选页签：按最近一次执行状态过滤（进行中/完成/失败）；无 run 只落「全部」', async () => {
+    const { conn } = makeConn([
+      job({ id: 'j1', name: '运行中任务', lastRun: lastRun('running') }),
+      job({ id: 'j2', name: '完成任务', lastRun: lastRun('succeeded') }),
+      job({ id: 'j3', name: '失败任务', lastRun: lastRun('failed') }),
+      job({ id: 'j4', name: '从没跑过' }),
+    ]);
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    await screen.findByText('运行中任务');
+    expect(screen.getByText('从没跑过')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: bi('Running', '进行中') }));
+    expect(screen.getByText('运行中任务')).toBeDefined();
+    expect(screen.queryByText('完成任务')).toBeNull();
+    expect(screen.queryByText('失败任务')).toBeNull();
+    expect(screen.queryByText('从没跑过')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: bi('Completed', '完成') }));
+    expect(screen.getByText('完成任务')).toBeDefined();
+    expect(screen.queryByText('运行中任务')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: bi('Failed', '失败') }));
+    expect(screen.getByText('失败任务')).toBeDefined();
+    expect(screen.queryByText('完成任务')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: bi('All', '全部') }));
+    expect(screen.getByText('从没跑过')).toBeDefined();
+    expect(screen.getByText('运行中任务')).toBeDefined();
+  });
+
+  it('筛选空态：没有对应状态时显示该页签空文案', async () => {
+    const { conn } = makeConn([job({ name: '只有完成', lastRun: lastRun('succeeded') })]);
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    await screen.findByText('只有完成');
+    fireEvent.click(screen.getByRole('button', { name: bi('Failed', '失败') }));
+    expect(screen.getByText(bi('No failed tasks', '暂无失败的任务'))).toBeDefined();
+  });
+
+  it('创建下拉：主钮开配置；「在会话中创建」回调；Esc 先收下拉', async () => {
+    const { conn } = makeConn([job()]);
+    const onCreateInChat = vi.fn();
+    const onExit = vi.fn();
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={onExit} onCreateInChat={onCreateInChat} />);
+    await screen.findByText('仓库巡检');
+    const caret = screen.getByRole('button', { name: bi('More create options', '更多创建方式') });
+    fireEvent.click(caret);
+    fireEvent.click(screen.getByRole('menuitem', { name: bi('Create in chat', '在会话中创建') }));
+    expect(onCreateInChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menuitem', { name: bi('Create in chat', '在会话中创建') })).toBeNull();
+
+    fireEvent.click(caret);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menuitem', { name: bi('Create in chat', '在会话中创建') })).toBeNull();
+    expect(onExit).not.toHaveBeenCalled();
+
+    // 主钮仍直接进配置页
+    fireEvent.click(screen.getByRole('button', { name: bi('Create scheduled task', '创建定时任务') }));
+    expect(await screen.findByText(bi('New scheduled task', '新建定时任务'))).toBeDefined();
+  });
+
+  it('忽略未传 onCreateInChat 时的下拉箭头（只有主钮）', async () => {
+    const { conn } = makeConn([job()]);
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    await screen.findByText('仓库巡检');
+    expect(screen.queryByRole('button', { name: bi('More create options', '更多创建方式') })).toBeNull();
+  });
+
+  it('可选菜单开关：传入 onToggleMenu 才出左缘菜单钮并回调；顶栏是空拖拽条（只有窗控）', async () => {
     const { conn } = makeConn([job()]);
     const onToggleMenu = vi.fn();
     const { rerender } = render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
     await screen.findByText('仓库巡检');
     expect(document.querySelector('.sx-menu-toggle')).toBeNull();
-    expect(document.querySelector('.sx-schedules-topbar [data-drag-band]')).not.toBeNull();
+    expect(document.querySelector('.sx-schedules-topbar[data-drag-band]')).not.toBeNull();
+    // 设置页同构：页顶条不得有任何动作钮（−□× 是全局窗控簇，不在本层内）
+    expect(document.querySelectorAll('.sx-schedules-topbar button')).toHaveLength(0);
 
     rerender(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} onToggleMenu={onToggleMenu} />);
     const toggle = document.querySelector('.sx-menu-toggle');

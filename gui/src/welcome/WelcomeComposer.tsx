@@ -47,6 +47,7 @@ export function WelcomeComposer({
   conn,
   presetRoot,
   presetSeq,
+  presetGoal,
   onOpened,
   onPickedChange,
 }: {
@@ -55,6 +56,9 @@ export function WelcomeComposer({
   presetRoot?: string;
   /** 预选意图序号:递增即按 presetRoot 重选(缺 presetRoot=回默认工作区) */
   presetSeq?: number;
+  /** 预填输入框(2026-11-20 定时任务「在会话中创建」):seq 递增即把 text 写进 goal——用户可改后发送;
+   *  与草稿持久化同槽（写入后照常落 localStorage），不改发送/建会话链 */
+  presetGoal?: { text: string; seq: number };
   onOpened: (sessionId: string, root: string, goal: string, images?: string[]) => void;
   /** 选中工作区上提(2026-11-14 用户裁定「欢迎页终端实时用当前选的工作区目录」):picked 每变
    *  即回传 App 镜像,右栏终端草稿页签 cwd 数据源;缺省不传=零影响 */
@@ -73,6 +77,15 @@ export function WelcomeComposer({
       return '';
     }
   });
+  // 外部预填(定时任务「在会话中创建」):只在 seq 递增时写——同 seq 的用户编辑不被 App 重渲冲掉；
+  // 序号 0=从未预填（New chat/项目「+」路径不写 goal，草稿恢复语义不变）
+  const presetGoalSeq = presetGoal?.seq ?? 0;
+  useEffect(() => {
+    if (presetGoalSeq === 0 || presetGoal === undefined) return;
+    setGoal(presetGoal.text);
+    // eslint 依赖引导：只看序号（text 与 seq 同拍下发；同序号重渲不得覆写用户编辑）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetGoalSeq]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [projOpen, setProjOpen] = useState(false);
