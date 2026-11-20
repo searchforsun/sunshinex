@@ -985,7 +985,7 @@ export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: im
     },
     name: 'load_agent_teams',
     description:
-      "Load a CATALOG team's charter card by id (predefined teams from the available agent teams list). Call it only when the referenced id appears in that catalog list. A team you created in this session, or one announced by a [teams] notice, is ALREADY loaded — its charter is in this conversation already; do not call this tool for it, and do not retry if an id is not in the catalog (it is either already loaded or unknown — retrying cannot succeed). The charter is returned verbatim and never truncated. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
+      "Load a team's charter card by id. Teams come from two sources: the catalog (predefined team.md entries listed in the available agent teams section) and this session (created by create_agent_team, or announced by a [teams] notice). A session team's charter is already part of this conversation, so loading it again returns nothing new — loading is what surfaces a catalog team's charter. The charter is returned verbatim and never truncated. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
     category: 'read' as const,
     fullObservation: true,
     executor: async (input: ToolInput) => {
@@ -1022,7 +1022,7 @@ export function makeAgentTool(agents: { get(id: string): { id: string; name: str
     },
     name: 'load_subagent',
     description:
-      "Load a REGISTERED agent's card (role framing) by id — only ids listed in the available agents catalog; never invent one. Then delegate via spawn with that agent_id — do not absorb the role yourself. The registry is frozen for this session: an agent added later is announced by an [agents] notice but is usable only in a NEW session — in this session the load will fail, so do not retry. A live teammate created by create_agent_teammate is not a spawn target here either; do not call this tool for it",
+      "Load a registered agent's card (role framing) by id from the available agents catalog, then delegate via spawn with that agent_id — the role belongs to the delegate, not to you. The agents catalog is a session snapshot: agents announced later by an [agents] notice become loadable in a new session. Live teammates from create_agent_teammate already carry their framing in this session, so their cards need no loading",
     category: 'read' as const,
     fullObservation: true,
     executor: async (input: ToolInput) => {
