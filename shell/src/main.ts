@@ -331,6 +331,9 @@ if (!app.requestSingleInstanceLock()) {
     };
     win.on('maximize', notifyMaximized);
     win.on('unmaximize', notifyMaximized);
+    // 2026-11-21 用户实测升级后仍见旧样式/旧工具名：同端口同 URL 的 dist-gui index.html 被 Chromium
+    // HTTP cache 命中，hash 资源不重新取。启动时先清 cache 再 load（壳升级一次后长期生效）。
+    await win.webContents.session.clearCache();
     win.loadURL(appUrl(daemon.port, daemon.token)).catch((err) => console.error('[shell] loadURL failed:', err));
 
     // Web 标签「外开」（H2-T3）：window.open / target=_blank 一律放行为原生新窗（同 session——
