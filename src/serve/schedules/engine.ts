@@ -18,8 +18,8 @@ function newJobId(): string {
   return `sch-${randomBytes(4).toString('hex')}`;
 }
 
-/** 「下一次（含当前时刻）」：创建/恢复/preview 用 now-1 让此刻的锚点也能成为第一次 */
-export function nextAtOrAfter(rec: ScheduleJob['recurrence'], startAt: number, now: number, until?: number): number | null {
+/** 「下一次（含当前时刻）」：仅 create 用 now-1，让此刻的锚点也能成为第一次 */
+function nextAtOrAfter(rec: ScheduleJob['recurrence'], startAt: number, now: number, until?: number): number | null {
   return nextRunAt(rec, startAt, now - 1, until);
 }
 

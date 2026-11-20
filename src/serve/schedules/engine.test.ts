@@ -11,10 +11,14 @@ class FakeClock {
   t = 1_000_000;
   private id = 0;
   private timers = new Map<number, { at: number; fn: () => void }>();
+  /** 每次 setTimeoutImpl 请求的绝对落点，用于核验封顶与重布防 */
+  readonly scheduled: number[] = [];
   now = (): number => this.t;
   setTimeoutImpl = (fn: () => void, ms: number): number => {
     const id = ++this.id;
-    this.timers.set(id, { at: this.t + ms, fn });
+    const at = this.t + ms;
+    this.scheduled.push(at);
+    this.timers.set(id, { at, fn });
     return id;
   };
   clearTimeoutImpl = (h: unknown): void => { this.timers.delete(h as number); };
@@ -148,15 +152,85 @@ test('runNow 手动运行不受进行中的运行阻塞', () => {
 test('超长间隔按 2^31-1 封顶并在早醒后重新布防', () => {
   const clock = new FakeClock();
   const calls: string[] = [];
-  const far = clock.now() + 2 ** 31 - 1 + 60_000;
+  const start = clock.now();
+  const far = start + 2 ** 31 - 1 + 60_000;
   const engine = new ScheduleEngine({ store: tmpStore(), execute: (_j, trigger) => { calls.push(trigger); return 'run'; }, now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
   engine.start();
   const job = engine.create(draft({ startAt: far }));
   assert.equal(engine.get(job.id)!.nextRunAt, far);
+  assert.deepEqual(clock.scheduled, [start + 2 ** 31 - 1]);
   clock.advance(2 ** 31 - 1);
   assert.equal(calls.length, 0);
   assert.equal(clock.pending(), 1);
+  assert.deepEqual(clock.scheduled, [start + 2 ** 31 - 1, far]);
   clock.advance(60_000);
   assert.deepEqual(calls, ['schedule']);
+  engine.stop();
+});
+
+test('update 改频率后重算 nextRunAt 并按新间隔重新布防', () => {
+  const clock = new FakeClock();
+  const calls: string[] = [];
+  const store = tmpStore();
+  const engine = new ScheduleEngine({ store, execute: (_j, trigger) => { calls.push(trigger); return 'run'; }, now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
+  engine.start();
+  const job = engine.create(draft());
+  clock.advance(60_000);
+  assert.deepEqual(calls, ['schedule']);
+  const updated = engine.update(job.id, draft({ recurrence: { unit: 'minute', every: 5 } }))!;
+  assert.equal(updated.recurrence.every, 5);
+  assert.equal(updated.nextRunAt, 1_000_000 + 300_000);
+  assert.equal(clock.pending(), 1);
+  assert.equal(clock.scheduled[clock.scheduled.length - 1], 1_000_000 + 300_000);
+  clock.advance(240_000);
+  assert.deepEqual(calls, ['schedule', 'schedule']);
+  assert.equal(engine.get(job.id)!.nextRunAt, 1_600_000);
+  clock.advance(299_999);
+  assert.equal(calls.length, 2);
+  clock.advance(1);
+  assert.equal(calls.length, 3);
+  engine.stop();
+});
+
+test('先推进 nextRunAt 再 execute（执行时看到的是下一次）', () => {
+  const clock = new FakeClock();
+  const store = tmpStore();
+  const seen: Array<number | null> = [];
+  const engine = new ScheduleEngine({ store, execute: (job) => { seen.push(store.get(job.id)!.nextRunAt); return 'run'; }, now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
+  engine.start();
+  engine.create(draft());
+  clock.advance(60_000);
+  assert.deepEqual(seen, [1_120_000]);
+  engine.stop();
+});
+
+test('runNow 不改变 nextRunAt', () => {
+  const clock = new FakeClock();
+  const store = tmpStore();
+  const engine = new ScheduleEngine({ store, execute: () => 'run', now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
+  engine.start();
+  const job = engine.create(draft());
+  const before = engine.get(job.id)!.nextRunAt;
+  assert.equal(before, 1_000_000);
+  assert.equal(engine.runNow(job.id), 'run');
+  assert.equal(engine.get(job.id)!.nextRunAt, before);
+  engine.stop();
+});
+
+test('start 把上次 running 标为 interrupted 且不触发补跑', () => {
+  const clock = new FakeClock();
+  const store = tmpStore();
+  const seeded = { ...draft(), id: 'job', createdAt: 1, updatedAt: 1, enabled: true, nextRunAt: 1_000_000 + 60_000, runs: [] } as ScheduleJob;
+  store.upsert(seeded);
+  store.addRun('job', { id: 'r', trigger: 'schedule', startedAt: 1_000_000 - 60_000, status: 'running', root: 'default' });
+  const calls: string[] = [];
+  const engine = new ScheduleEngine({ store, execute: (_j, trigger) => { calls.push(trigger); return 'run'; }, now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
+  engine.start();
+  const run = engine.get('job')!.runs[0]!;
+  assert.equal(run.status, 'interrupted');
+  assert.equal(run.endedAt, clock.now());
+  assert.match(run.error ?? '', /restart/i);
+  assert.deepEqual(calls, []);
+  assert.equal(clock.pending(), 1);
   engine.stop();
 });
