@@ -19,6 +19,11 @@ import type {
   PermissionOpInput,
   PluginRow,
   ProviderOpInput,
+  ScheduleDraft,
+  ScheduleJobView,
+  ScheduleRecurrence,
+  ScheduleRunView,
+  SchedulesView,
   SessionRow,
   SessionTaskRow,
   SettingsView,
@@ -44,6 +49,17 @@ export interface Connection {
   /** GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：sunx 域容器全域枚举——
    *  SUNX 组/总览页数据源单点（kind 恒 'sunx'，行附 liveSessionId/awaiting/status 标注） */
   sunxSessions(): Promise<SessionRow[]>;
+  /** 定时任务面（2026-11-20 scheduled-tasks Task 7）：daemon /schedules* 端点全声明——
+   *  GET 清单 / POST 创建 / PUT 更新 / DELETE 删除 / POST run 立即运行 / POST enabled 启停 /
+   *  GET runs 运行史（limit 可选）/ POST preview 预览 next 时刻。写面 body=ScheduleDraft 直发 */
+  schedules(): Promise<SchedulesView>;
+  createSchedule(body: ScheduleDraft): Promise<ScheduleJobView>;
+  updateSchedule(id: string, body: ScheduleDraft): Promise<ScheduleJobView>;
+  deleteSchedule(id: string): Promise<{ ok: true }>;
+  runScheduleNow(id: string): Promise<{ ok: true; runId: string }>;
+  setScheduleEnabled(id: string, enabled: boolean): Promise<ScheduleJobView>;
+  scheduleRuns(id: string, limit?: number): Promise<{ runs: ScheduleRunView[] }>;
+  previewSchedule(body: { recurrence: ScheduleRecurrence; startAt: number; until?: number }): Promise<{ next: number[] }>;
   /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切)。

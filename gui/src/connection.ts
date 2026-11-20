@@ -24,6 +24,11 @@ import type {
   PermissionOpInput,
   PluginRow,
   ProviderOpInput,
+  ScheduleDraft,
+  ScheduleJobView,
+  ScheduleRecurrence,
+  ScheduleRunView,
+  SchedulesView,
   SessionRow,
   SessionTaskRow,
   SettingsView,
@@ -142,6 +147,23 @@ export function createConnection(opts: ConnectionOpts): Connection {
     });
     if (!res.ok) throw new Error(`${path} -> ${res.status}`);
     return (await res.json()) as T;
+  }
+
+  /** PUT 带 JSON 应答（scheduled-tasks Task 7:POST 同款形——schedule 更新回任务行） */
+  async function putJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${base}${path}`, {
+      method: 'PUT',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    return (await res.json()) as T;
+  }
+
+  /** DELETE 无应答体（scheduled-tasks Task 7:schedule 删除,成功 200 {ok:true} 只作成功信号） */
+  async function del(path: string): Promise<void> {
+    const res = await fetch(`${base}${path}`, { method: 'DELETE', headers: authHeaders });
+    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   }
 
   /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗）。
@@ -452,6 +474,34 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sunxSessions() {
       return getJson<SessionRow[]>('/sunx/sessions');
+    },
+    // 定时任务面（2026-11-20 scheduled-tasks Task 7）：路径/形状与 brief 逐字对齐；id 恒 encodeURIComponent
+    schedules() {
+      return getJson<SchedulesView>('/schedules');
+    },
+    createSchedule(body: ScheduleDraft) {
+      return postJson<ScheduleJobView>('/schedules', body);
+    },
+    updateSchedule(id: string, body: ScheduleDraft) {
+      return putJson<ScheduleJobView>(`/schedules/${encodeURIComponent(id)}`, body);
+    },
+    async deleteSchedule(id: string): Promise<{ ok: true }> {
+      await del(`/schedules/${encodeURIComponent(id)}`);
+      return { ok: true };
+    },
+    runScheduleNow(id: string) {
+      return postJson<{ ok: true; runId: string }>(`/schedules/${encodeURIComponent(id)}/run`, {});
+    },
+    setScheduleEnabled(id: string, enabled: boolean) {
+      return postJson<ScheduleJobView>(`/schedules/${encodeURIComponent(id)}/enabled`, { enabled });
+    },
+    scheduleRuns(id: string, limit?: number) {
+      return getJson<{ runs: ScheduleRunView[] }>(
+        `/schedules/${encodeURIComponent(id)}/runs${limit !== undefined ? `?limit=${limit}` : ''}`,
+      );
+    },
+    previewSchedule(body: { recurrence: ScheduleRecurrence; startAt: number; until?: number }) {
+      return postJson<{ next: number[] }>('/schedules/preview', body);
     },
     sessionSubmit(id: string, goal: string, images?: string[]): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/submit`, { goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });

@@ -651,6 +651,88 @@ export interface PluginRow {
   warnings: string[];
 }
 
+// ---------- 定时任务面类型（2026-11-20 scheduled-tasks Task 7；字段形与 daemon /schedules* 应答同形） ----------
+
+/** GUI 周期下拉七预设（cycle.ts 单点；存储侧 recurrence 的 GUI 友好投影） */
+export type ScheduleCycle = 'every15m' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly';
+
+/** 重复规则单位（对齐 daemon RecurrenceUnit） */
+export type ScheduleRecurrenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
+
+/** 存储 recurrence（对齐 daemon ScheduleRecurrence）：at=HH:mm，weekdays=ISO 星期（1=周一..7=周日），
+ *  dayOfMonth/month(1-12)/day=各周期锚点字段——cycle.ts 的 recurrenceOf/cycleOf 双映射单点 */
+export interface ScheduleRecurrence {
+  unit: ScheduleRecurrenceUnit;
+  every: number;
+  at?: string;
+  weekdays?: number[];
+  dayOfMonth?: number;
+  month?: number;
+  day?: number;
+}
+
+/** 运行档位（与会话 mode 同集，去 plan——定时任务不落 plan 态） */
+export type ScheduleMode = 'read-only' | 'acceptEdits' | 'full-access';
+/** 运行终态五值+运行中（对齐 daemon ScheduleRunStatus） */
+export type ScheduleRunStatus = 'running' | 'succeeded' | 'failed' | 'stopped' | 'skipped' | 'interrupted';
+/** 触发来源：定时/错过的补跑/手动立即运行 */
+export type ScheduleRunTrigger = 'schedule' | 'catch-up' | 'manual';
+
+/** 单次运行行（对齐 daemon ScheduleRunView）：sessionId/journalId 可跳转会话，seconds=时长 */
+export interface ScheduleRunView {
+  id: string;
+  trigger: ScheduleRunTrigger;
+  scheduledAt?: number;
+  startedAt: number;
+  endedAt?: number;
+  status: ScheduleRunStatus;
+  sessionId?: string;
+  journalId?: string;
+  root: string;
+  error?: string;
+  seconds?: number;
+}
+
+/** GET /schedules 任务行（对齐 daemon ScheduleJobView）：nextRunAt=null 表示已结束/无后续；
+ *  lastRun=最近一次运行（含状态徽标数据源） */
+export interface ScheduleJobView {
+  id: string;
+  name: string;
+  prompt: string;
+  root: string;
+  effort: string;
+  mode: ScheduleMode;
+  recurrence: ScheduleRecurrence;
+  startAt: number;
+  until?: number;
+  enabled: boolean;
+  ended?: boolean;
+  createdAt: number;
+  updatedAt: number;
+  nextRunAt: number | null;
+  runCount: number;
+  lastRun?: ScheduleRunView;
+}
+
+/** 创建/更新请求体（对齐 daemon ScheduleDraft）：GUI 编辑表单直发 */
+export interface ScheduleDraft {
+  name: string;
+  prompt: string;
+  root: string;
+  effort: string;
+  mode: ScheduleMode;
+  recurrence: ScheduleRecurrence;
+  startAt: number;
+  until?: number;
+}
+
+/** GET /schedules 载荷：now=daemon 时钟（相对时间渲染基准），defaultModel=新建表单缺省模型 */
+export interface SchedulesView {
+  now: number;
+  defaultModel: string;
+  jobs: ScheduleJobView[];
+}
+
 /** 连接状态机：启动 connecting；建立 open；掉线 reconnecting；显式 close 恒 closed */
 export type ConnectionState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
