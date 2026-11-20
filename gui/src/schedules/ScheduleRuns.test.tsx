@@ -111,6 +111,18 @@ describe('ScheduleRuns', () => {
     expect(cells[cells.length - 1]!.textContent).toBe('—');
   });
 
+  it('耗时按时分秒显示：222 秒→3 分 42 秒，整时带时，不足分钟只出秒', async () => {
+    const { conn } = makeConn([
+      makeRun({ seconds: 222 }),
+      makeRun({ seconds: 3725 }),
+      makeRun({ seconds: 3 }),
+    ]);
+    render(<ScheduleRuns conn={conn} job={job} onOpenSession={vi.fn()} />);
+    expect(await screen.findByText(bi('3 min 42 s', '3 分 42 秒'))).toBeDefined();
+    expect(screen.getByText(bi('1 h 2 min 5 s', '1 时 2 分 5 秒'))).toBeDefined();
+    expect(screen.getByText(bi('3 s', '3 秒'))).toBeDefined();
+  });
+
   it('补跑延迟 >60s 显示灰色延迟注记,未延迟不显示', async () => {
     const scheduledAt = 1_700_000_000_000;
     const rows = [

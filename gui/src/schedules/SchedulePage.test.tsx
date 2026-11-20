@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { SchedulePage } from './SchedulePage';
 import type { Connection, ScheduleJobView } from '../connection';
 
@@ -338,5 +338,26 @@ describe('SchedulePage 列表', () => {
     expect(toggle).not.toBeNull();
     fireEvent.click(toggle!);
     expect(onToggleMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it('刷新钮：点击后转圈并禁用，拉取完成（含最短 420ms）后停', async () => {
+    const { conn, schedules } = makeConn([job()]);
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    expect(await screen.findByText('仓库巡检')).toBeDefined();
+    let release!: (v: { now: number; defaultModel: string; jobs: ScheduleJobView[] }) => void;
+    schedules.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    const btn = screen.getByRole('button', { name: bi('Refresh', '刷新') }) as HTMLButtonElement;
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-busy')).toBe('true');
+    expect(btn.className).toContain('is-spinning');
+    expect(btn.disabled).toBe(true);
+    expect(schedules).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      release({ now: Date.now(), defaultModel: 'DeepSeek', jobs: [job()] });
+    });
+    await waitFor(() => expect(btn.getAttribute('aria-busy')).not.toBe('true'), { timeout: 2000 });
+    expect(btn.className).not.toContain('is-spinning');
+    expect(btn.disabled).toBe(false);
   });
 });

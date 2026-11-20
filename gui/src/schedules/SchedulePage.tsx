@@ -72,6 +72,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
   const [filter, setFilter] = useState<Filter>('all');
   const [createOpen, setCreateOpen] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [menuId, setMenuId] = useState('');
   const [confirmId, setConfirmId] = useState('');
@@ -81,11 +82,30 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
   const pageRef = useRef<HTMLDivElement | null>(null);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshStarted = useRef<number | null>(null);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
   const reload = useCallback(() => setRefresh((v) => v + 1), []);
+  // 2026-11-21 用户实测「点刷新不转圈」：手动刷新给转圈反馈，快速返回也至少转 420ms；
+  // 轮询/自动刷新走 reload，不转圈；在途时按钮禁用，忽略连点。
+  const manualReload = useCallback(() => {
+    if (refreshStarted.current !== null) return;
+    refreshStarted.current = Date.now();
+    setRefreshing(true);
+    setRefresh((v) => v + 1);
+  }, []);
 
   useEffect(() => {
     let alive = true;
+    const settleRefresh = (): void => {
+      if (refreshStarted.current === null) return;
+      const wait = Math.max(0, 420 - (Date.now() - refreshStarted.current));
+      if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => {
+        refreshStarted.current = null;
+        setRefreshing(false);
+      }, wait);
+    };
     conn.schedules().then(
       (r) => {
         if (alive) {
@@ -93,6 +113,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
           setDefaultModel(r.defaultModel);
           setError('');
           setLoadFailed(false);
+          settleRefresh();
         }
       },
       (e: unknown) => {
@@ -100,6 +121,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
           // 首拉失败不得永挂「加载中…」：失败旗 + 错误条，列表体不渲染；后续轮询成功自愈
           setError(errText(e));
           setLoadFailed(true);
+          settleRefresh();
         }
       },
     );
@@ -151,6 +173,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
     () => () => {
       if (confirmTimer.current !== null) clearTimeout(confirmTimer.current);
       if (runReloadTimer.current !== null) clearTimeout(runReloadTimer.current);
+      if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
     },
     [],
   );
@@ -298,7 +321,14 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
                   ))}
                 </div>
                 <div className="sx-schedule-tools">
-                  <button type="button" className="sx-iconbtn" aria-label={t('Refresh', '刷新')} onClick={reload}>
+                  <button
+                    type="button"
+                    className={`sx-iconbtn${refreshing ? ' is-spinning' : ''}`}
+                    aria-label={t('Refresh', '刷新')}
+                    aria-busy={refreshing}
+                    disabled={refreshing}
+                    onClick={manualReload}
+                  >
                     <RefreshCw size={16} strokeWidth={1.75} />
                   </button>
                   <div className="sx-schedule-create">

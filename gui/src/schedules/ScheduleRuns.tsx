@@ -59,6 +59,18 @@ function timeLabel(ts: number | undefined): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** 耗时 → 时/分/秒（2026-11-21 用户裁定「这个显示应该是时分秒」）：不足 1 分只显示秒，
+ *  不足 1 时显示分+秒，≥1 时显示时+分+秒；原始秒数四舍五入为整数。 */
+function durationLabel(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return t(`${h} h ${m} min ${s} s`, `${h} 时 ${m} 分 ${s} 秒`);
+  if (m > 0) return t(`${m} min ${s} s`, `${m} 分 ${s} 秒`);
+  return t(`${s} s`, `${s} 秒`);
+}
+
 export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsProps): JSX.Element {
   const [state, setState] = useState<{ runs: ScheduleRunView[] | null; error: string }>({ runs: null, error: '' });
   /** 已取数任务 id:仅任务切换才清行回加载态;同任务 tick/重挂静默刷新保留旧行 */
@@ -114,7 +126,7 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
                     <div className={run.status === 'failed' ? 'sx-schedule-err' : 'sx-schedule-note'}>{run.error}</div>
                   ) : null}
                 </td>
-                <td className="num">{run.seconds !== undefined ? `${run.seconds} ${t('s', '秒')}` : '—'}</td>
+                <td className="num">{run.seconds !== undefined ? durationLabel(run.seconds) : '—'}</td>
                 <td>{run.journalId !== undefined ? (
                   <button type="button" className="sx-schedule-open" onClick={() => onOpenSession(run.journalId!, run.root)}>
                     {t('Open session', '打开会话')} <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />

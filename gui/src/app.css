@@ -4564,7 +4564,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-deadline-day:disabled { color: var(--fg-tertiary); opacity: 0.45; }
 .sx-deadline-day.is-blank { visibility: hidden; }
 .sx-deadline-time-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; padding-left: 10px; border-left: 1px solid var(--border-subtle); }
-.sx-deadline-time-label { color: var(--fg-tertiary); font-size: var(--sx-font); }
+/* 2026-11-21 用户实测「时间和周几对不上一行」：星期行有 6px 上边距，这里补同值，两栏表头同基线 */
+.sx-deadline-time-label { margin-top: 6px; color: var(--fg-tertiary); font-size: var(--sx-font); }
 /* 滚轮：可视 5 行(28px/行)，上下各留 2 行做淡出；中间高亮带即当前值 */
 .sx-wheel-pair { position: relative; display: flex; align-items: center; gap: 2px; }
 .sx-wheel-pair::before { content: ''; position: absolute; left: 0; right: 0; top: 56px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); pointer-events: none; }
@@ -4625,6 +4626,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-filter:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg); }
 .sx-schedule-filter.is-active { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); font-weight: 500; }
 .sx-schedule-tools { display: inline-flex; align-items: center; gap: 6px; }
+/* 刷新钮手动拉取时转圈（2026-11-21 用户实测「点击后不转圈」）：在途禁用防连点，轮询不转 */
+.sx-schedule-tools .sx-iconbtn.is-spinning svg { animation: sx-spin 0.9s linear infinite; }
+.sx-schedule-tools .sx-iconbtn:disabled { opacity: 0.6; cursor: default; }
+.sx-schedule-tools .sx-iconbtn:disabled:hover { background: transparent; color: var(--fg-icon); }
 /* 创建主钮 + 下拉箭头同壳（设置页添加钮同色语言；箭头只开「在会话中创建」） */
 .sx-schedule-create { position: relative; display: inline-flex; align-items: stretch; height: 30px; border: none; border-radius: var(--radius-md); background: color-mix(in srgb, var(--fg) 4%, transparent); }
 .sx-schedule-create-main { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: none; border-radius: var(--radius-md) 0 0 var(--radius-md); background: transparent; color: var(--fg); font: calc(13px * var(--fz)) var(--font-ui); }
