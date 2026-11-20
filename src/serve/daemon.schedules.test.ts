@@ -5,8 +5,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
-import { readSessionMeta, sessionsDir } from '../tui/session-journal';
+import type { ModelAdapter } from '../model/adapter';
+import { parseJournalFile, readSessionMeta, sessionsDir } from '../tui/session-journal';
 import { resolveDataDir } from '../config/data-dir';
+import type { ScheduleStore } from './schedules/store';
 
 const AUTH = { authorization: 'Bearer t', 'content-type': 'application/json' };
 
@@ -16,10 +18,12 @@ interface Ctx {
   daemon: GuiDaemon;
 }
 
-/** 装配样板（同 brief；seed 在 GuiDaemon 构造前调用——store 构造期即读 schedules.json，boot 补跑靠此播种） */
+/** 装配样板（同 brief；seed 在 GuiDaemon 构造前调用——store 构造期即读 schedules.json，boot 补跑靠此播种）。
+ *  schedulesFile 显式注入临时档（终审 finding 7）：裸跑不依赖 SUNSHINEX_DATA_DIR 回落的真实用户档 */
 async function withSchedulesDaemon(
   fn: (ctx: Ctx) => Promise<void>,
   seed?: (dataDir: string, tmp: string) => void,
+  model?: ModelAdapter,
 ): Promise<void> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'schedules-daemon-'));
   const dataDir = path.join(tmp, 'data');
@@ -30,8 +34,9 @@ async function withSchedulesDaemon(
   seed?.(dataDir, tmp);
   try {
     const daemon = new GuiDaemon({
-      model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
+      model: model ?? new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
       staticRoot: path.join(tmp, 'dist-gui-absent'),
+      schedulesFile: path.join(tmp, 'schedules.json'),
     });
     const s = await daemon.start({ port: 0, token: 't' });
     try {
@@ -195,7 +200,7 @@ test('boot catch-up：start 补跑一次逾期任务并落会话/标题', async 
       nextRunAt: now - 3_600_000,
       runs: [],
     };
-    fs.writeFileSync(path.join(dataDir, 'schedules.json'), JSON.stringify({ version: 1, jobs: [job] }), 'utf8');
+    fs.writeFileSync(path.join(tmp, 'schedules.json'), JSON.stringify({ version: 1, jobs: [job] }), 'utf8');
   };
   await withSchedulesDaemon(async ({ base, tmp, daemon }) => {
     const runs = await waitRuns(base, 'sch-catchup', (rs) => rs.length > 0 && rs[0]!.status !== 'running');
@@ -278,6 +283,114 @@ test('DELETE /schedules/:id 回收最近 run 的会话运行时，journal/meta �
     const jobs = (await (await fetch(`${base}/schedules`, { headers: AUTH })).json()) as { jobs: unknown[] };
     assert.deepEqual(jobs.jobs, []);
   });
+});
+
+test('GET /schedules 对逾期 nextRunAt 只读重算到未来（不落盘）', async () => {
+  await withSchedulesDaemon(async ({ base, tmp, daemon }) => {
+    const job = await createJob(base, createDraft(tmp, { startAt: Date.now() + 3_600_000 }));
+    // 模拟引擎停摆/定时器在途窗:存量 nextRunAt 落到过去（store 是引擎唯一写者,此处直改内存）
+    const store = (daemon as unknown as { scheduleStore: ScheduleStore }).scheduleStore;
+    const stale = Date.now() - 60_000;
+    store.patch(job.id, { nextRunAt: stale });
+
+    const list = (await (await fetch(`${base}/schedules`, { headers: AUTH })).json()) as { jobs: JobView[]; now: number };
+    const view = list.jobs.find((j) => j.id === job.id)!;
+    assert.ok(view.nextRunAt !== null, '重算后仍有下一次');
+    assert.ok(view.nextRunAt! > Date.now(), `读面应展示未来时刻,实际 ${view.nextRunAt}`);
+    assert.equal(store.get(job.id)!.nextRunAt, stale, 'GET 不得改写存储（引擎单写者）');
+    // 盘面同证:GET 后档内仍是 stale
+    const onDisk = JSON.parse(fs.readFileSync(path.join(tmp, 'schedules.json'), 'utf8')) as { jobs: Array<{ id: string; nextRunAt: number }> };
+    assert.equal(onDisk.jobs.find((j) => j.id === job.id)!.nextRunAt, stale, 'GET 不落盘');
+  });
+});
+
+test('DELETE /schedules/:id 回收最新一条带 sessionId 的 run（更新的失败记录无会话不挡回收）', async () => {
+  await withSchedulesDaemon(async ({ base, tmp, daemon }) => {
+    const job = await createJob(base, createDraft(tmp));
+    const first = await runToCompletion(base, job.id);
+    const sid = first.sessionId!;
+    assert.ok(daemon.get(sid) !== undefined);
+
+    // 更新 root 到不存在目录 → 下一次 run 建席失败,落一条无 sessionId 的 failed 记录成为 runs[0]
+    const missing = path.join(tmp, 'missing-root');
+    const upd = await fetch(`${base}/schedules/${job.id}`, {
+      method: 'PUT',
+      headers: AUTH,
+      body: JSON.stringify(createDraft(missing)),
+    });
+    assert.equal(upd.status, 200);
+    const run = await fetch(`${base}/schedules/${job.id}/run`, { method: 'POST', headers: AUTH });
+    assert.equal(run.status, 200);
+    const runs = await waitRuns(base, job.id, (rs) => rs.length >= 2 && rs[0]!.status === 'failed');
+    assert.equal(runs[0]!.sessionId, undefined, '建席失败记录无会话');
+
+    const del = await fetch(`${base}/schedules/${job.id}`, { method: 'DELETE', headers: AUTH });
+    assert.equal(del.status, 200);
+    const deadline = Date.now() + 10_000;
+    while (daemon.get(sid) !== undefined) {
+      if (Date.now() > deadline) throw new Error('应回收最新一条带会话的 run,旧 run 运行时仍在册');
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    assert.ok(fs.existsSync(journalPath(tmp, first.journalId!)), 'journal 留盘');
+  });
+});
+
+test('DELETE /schedules/:id 跳过 active 会话（用户正在看的运行时不得被拆）', async () => {
+  await withSchedulesDaemon(async ({ base, tmp, daemon }) => {
+    const job = await createJob(base, createDraft(tmp));
+    const run = await runToCompletion(base, job.id);
+    const sid = run.sessionId!;
+    // 真流程置 active:新建壳 + attach 同 journal → daemon 收编 run 运行时并置激活
+    const shell = daemon.createSession(tmp);
+    assert.ok(shell.ok, '壳会话创建成功');
+    const attached = daemon.attach(shell.value.sessionId, run.journalId!);
+    assert.ok(attached.ok, 'attach 成功');
+    assert.equal(daemon.activeId(), sid, 'run 会话已激活');
+
+    const del = await fetch(`${base}/schedules/${job.id}`, { method: 'DELETE', headers: AUTH });
+    assert.equal(del.status, 200);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(daemon.get(sid) !== undefined, 'active 运行时不得被回收');
+    assert.equal(daemon.activeId(), sid);
+    assert.ok(fs.existsSync(journalPath(tmp, run.journalId!)), 'journal 留盘');
+  });
+});
+
+test('DELETE /schedules/:id 回收前 deny 未决挂起（pending-resolve denied 落档）', async () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'schedules-pending-out-'));
+  try {
+    const model = new ScriptedAdapter([
+      JSON.stringify({ tool: 'write', input: { path: path.join(out, 'pending.txt'), content: 'x' } }),
+      '{"done":true,"reply":"ok"}',
+    ]);
+    await withSchedulesDaemon(async ({ base, tmp, daemon }) => {
+      const job = await createJob(base, createDraft(tmp, { mode: 'acceptEdits' }));
+      const runRes = await fetch(`${base}/schedules/${job.id}/run`, { method: 'POST', headers: AUTH });
+      assert.equal(runRes.status, 200);
+      const runs = await waitRuns(base, job.id, (rs) => rs.length > 0 && rs[0]!.sessionId !== undefined);
+      const run = runs[0]!;
+      const sid = run.sessionId!;
+      const deadline = Date.now() + 15_000;
+      while ((daemon.get(sid)?.pendingSnapshot().length ?? 0) === 0) {
+        if (Date.now() > deadline) throw new Error('审批挂起未出现（scripted write 未触发 ask）');
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      const del = await fetch(`${base}/schedules/${job.id}`, { method: 'DELETE', headers: AUTH });
+      assert.equal(del.status, 200);
+      const gone = Date.now() + 10_000;
+      while (daemon.get(sid) !== undefined) {
+        if (Date.now() > gone) throw new Error('删除任务后会话运行时未回收');
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      const rows = parseJournalFile(journalPath(tmp, run.journalId!)).events as Array<Record<string, unknown>>;
+      assert.ok(
+        rows.some((r) => r.t === 'pending-resolve' && r.outcome === 'denied'),
+        '回收前应 deny 未决挂起并落 pending-resolve 行',
+      );
+    }, undefined, model);
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
 });
 
 test('POST /schedules 非法 draft 400', async () => {

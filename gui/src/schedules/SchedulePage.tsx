@@ -28,6 +28,7 @@ const FOCUS_MS = 1600;
 
 export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: SchedulePageProps): JSX.Element {
   const [jobs, setJobs] = useState<ScheduleJobView[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [defaultModel, setDefaultModel] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -39,6 +40,8 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
   const [busyId, setBusyId] = useState('');
   const [focusId, setFocusId] = useState('');
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cardRefs = useRef(new Map<string, HTMLDivElement>());
   const reload = useCallback(() => setRefresh((v) => v + 1), []);
 
   useEffect(() => {
@@ -49,10 +52,15 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
           setJobs(r.jobs);
           setDefaultModel(r.defaultModel);
           setError('');
+          setLoadFailed(false);
         }
       },
       (e: unknown) => {
-        if (alive) setError(errText(e));
+        if (alive) {
+          // 首拉失败不得永挂「加载中…」：失败旗 + 错误条，列表体不渲染；后续轮询成功自愈
+          setError(errText(e));
+          setLoadFailed(true);
+        }
       },
     );
     return () => {
@@ -72,6 +80,16 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
     const h = setTimeout(() => setFocusId(''), FOCUS_MS);
     return () => clearTimeout(h);
   }, [focusId]);
+  // 保存/取消回列表后把对应卡滚进视野(spec §9.2；block:'nearest' 已在视野内不动)
+  useEffect(() => {
+    if (focusId === '') return;
+    cardRefs.current.get(focusId)?.scrollIntoView({ block: 'nearest' });
+  }, [focusId]);
+  // 视图切换:上一条视图的错误/提示不带入新视图
+  useEffect(() => {
+    setError('');
+    setNotice('');
+  }, [view]);
   useEffect(() => {
     if (notice === '') return;
     const h = setTimeout(() => setNotice(''), 2200);
@@ -80,22 +98,28 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
   useEffect(
     () => () => {
       if (confirmTimer.current !== null) clearTimeout(confirmTimer.current);
+      if (runReloadTimer.current !== null) clearTimeout(runReloadTimer.current);
     },
     [],
   );
-  usePopOutsideClose(menuId !== '', '.sx-menu-pop', '.sx-schedule-more', () => setMenuId(''));
 
-  const jobOf = (id: string): ScheduleJobView | undefined => (jobs ?? []).find((j) => j.id === id);
-  const backToList = useCallback((focus?: string): void => {
-    if (focus !== undefined && focus !== '') setFocusId(focus);
-    setView({ kind: 'list' });
-  }, []);
   const clearConfirm = useCallback((): void => {
     if (confirmTimer.current !== null) {
       clearTimeout(confirmTimer.current);
       confirmTimer.current = null;
     }
     setConfirmId('');
+  }, []);
+  // 菜单外点关闭:待确认删除态一并清(确认窗不得在菜单已关后残留)
+  usePopOutsideClose(menuId !== '', '.sx-menu-pop', '.sx-schedule-more', () => {
+    setMenuId('');
+    clearConfirm();
+  });
+
+  const jobOf = (id: string): ScheduleJobView | undefined => (jobs ?? []).find((j) => j.id === id);
+  const backToList = useCallback((focus?: string): void => {
+    if (focus !== undefined && focus !== '') setFocusId(focus);
+    setView({ kind: 'list' });
   }, []);
 
   const editing = view.kind === 'config' && view.editingId !== undefined ? jobOf(view.editingId) : undefined;
@@ -141,10 +165,15 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
   };
   const runNow = (job: ScheduleJobView): void => {
     setMenuId('');
+    clearConfirm();
     conn.runScheduleNow(job.id).then(
       () => {
         setNotice(t('Triggered once', '已触发一次执行'));
-        setTimeout(reload, 700);
+        if (runReloadTimer.current !== null) clearTimeout(runReloadTimer.current);
+        runReloadTimer.current = setTimeout(() => {
+          runReloadTimer.current = null;
+          reload();
+        }, 700);
       },
       (e: unknown) => setError(errText(e)),
     );
@@ -229,7 +258,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
       <div className="sx-schedules-scroll">
         <div className="sx-schedules-content">
           {view.kind === 'list' &&
-            (jobs === null ? (
+            (loadFailed && jobs === null ? null : jobs === null ? (
               <p className="sx-schedule-empty">{t('Loading…', '加载中…')}</p>
             ) : jobs.length === 0 ? (
               <p className="sx-schedule-empty">{t('No scheduled tasks yet', '暂无定时任务')}</p>
@@ -240,11 +269,18 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
                     key={job.id}
                     job={job}
                     now={now}
-                    busy={busyId === job.id}
+                    busy={busyId !== ''}
                     menuOpen={menuId === job.id}
                     confirmDelete={confirmId === job.id}
                     focus={focusId === job.id}
-                    onOpen={() => setView({ kind: 'records', jobId: job.id })}
+                    cardRef={(el) => {
+                      if (el !== null) cardRefs.current.set(job.id, el);
+                      else cardRefs.current.delete(job.id);
+                    }}
+                    onOpen={() => {
+                      clearConfirm();
+                      setView({ kind: 'records', jobId: job.id });
+                    }}
                     onToggle={() => toggle(job)}
                     onMenu={() => {
                       clearConfirm();
@@ -253,10 +289,12 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
                     onRun={() => runNow(job)}
                     onRecords={() => {
                       setMenuId('');
+                      clearConfirm();
                       setView({ kind: 'records', jobId: job.id });
                     }}
                     onEdit={() => {
                       setMenuId('');
+                      clearConfirm();
                       setView({ kind: 'config', editingId: job.id });
                     }}
                     onDelete={() => remove(job)}
@@ -268,7 +306,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu }: Sche
             <ScheduleConfig conn={conn} job={editing} defaultModel={defaultModel} onSaved={saved} />
           )}
           {view.kind === 'records' && recordsJob !== undefined && (
-            <ScheduleRuns conn={conn} job={recordsJob} onOpenSession={onOpenSession} />
+            <ScheduleRuns conn={conn} job={recordsJob} onOpenSession={onOpenSession} tick={refresh} />
           )}
         </div>
       </div>

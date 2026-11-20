@@ -16,6 +16,9 @@ class FakeSession {
   attachedJournalId = 'jid1';
   dataDir: string;
   effort = '';
+  effortCalls: string[] = [];
+  /** false=该档位被拒（非 medium）——模拟 setEffort 的非法/不可用返回 */
+  rejectEffort = false;
   submitted: string[] = [];
   submitResult: FakeSubmit = { ok: true };
   mintError: Error | undefined;
@@ -24,6 +27,8 @@ class FakeSession {
     this.dataDir = dataDir;
   }
   setEffort(e: string): boolean {
+    this.effortCalls.push(e);
+    if (this.rejectEffort && e !== 'medium') return false;
     this.effort = e;
     return true;
   }
@@ -182,6 +187,20 @@ test('run：root default 解析 + mode/activate 透传 + setEffort', () => {
   assert.equal(calls.length, 2);
   assert.equal(calls[1]!.root, dir, '非 default 字面 root 原样透传');
   assert.deepEqual(calls[1]!.opts, { mode: 'full-access', activate: false });
+});
+
+test('run：setEffort 拒收 → 回落 medium（spec §6.6 防御）', () => {
+  const dir = tmpData();
+  const store = new ScheduleStore(path.join(dir, 'schedules.json'));
+  const j = job();
+  store.upsert(j);
+  const session = new FakeSession(dir);
+  session.rejectEffort = true;
+  const ex = new ScheduleExecutor({ createSession: () => ({ ok: true, value: { sessionId: 's1' } }), getSession: () => session as never, releaseSession: () => undefined, activeSessionId: () => undefined }, store);
+  ex.run(j, 'manual');
+  assert.deepEqual(session.effortCalls, ['high', 'medium']);
+  assert.equal(session.effort, 'medium');
+  assert.deepEqual(session.submitted, ['检查'], '强度回落不挡提交');
 });
 
 test('run：onRunEnd 映射 done→succeeded / interrupted→stopped / 其它→failed', () => {

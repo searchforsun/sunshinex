@@ -786,6 +786,21 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
     await expect(conn.putPermissionOp({ op: 'add', scope: 'global', list: 'deny', value: '/w' })).rejects.toThrow('/settings/permissions/op -> 404');
   });
 
+  it('⑪d scheduled-tasks putJson/del 失败同走 opError 透出:服务端 {error,hint} 到 GUI,不裸显 path->status', async () => {
+    conn = createConnection({ baseUrl: 'http://127.0.0.1:7788', token: 'tok', onEvent: () => {}, onReset: () => {} });
+    fetchQueue.push({ ok: false, status: 400, json: async () => ({ error: 'name must be 1..80 chars' }) });
+    await expect(conn.updateSchedule('sch 1', {} as never)).rejects.toThrow('name must be 1..80 chars');
+    fetchQueue.push({ ok: false, status: 404, json: async () => ({ error: 'unknown schedule', hint: 'refresh the list' }) });
+    await expect(conn.deleteSchedule('sch-1')).rejects.toThrow('unknown schedule — refresh the list');
+    // 路径编码面一并钉住(与既有 deleteSession 同款)
+    expect(fetchLog.map((f) => f.url)).toEqual([
+      'http://127.0.0.1:7788/schedules/sch%201',
+      'http://127.0.0.1:7788/schedules/sch-1',
+    ]);
+    expect(fetchLog[0]?.init?.method).toBe('PUT');
+    expect(fetchLog[1]?.init?.method).toBe('DELETE');
+  });
+
   it('⑫ G8c mcpProbe 联合应答两态解码:ok:true tools / ok:false error 均 200 正常落定(探测失败是结果非错误码)', async () => {
     conn = createConnection({ baseUrl: 'http://x', token: 't', onEvent: () => {}, onReset: () => {} });
     fetchQueue.push(

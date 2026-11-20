@@ -75,7 +75,7 @@ test('启动补跑一次，不按错过次数补', () => {
   engine.stop();
 });
 
-test('上次运行未结束 → skipped，不并行', () => {
+test('上次运行未结束 → skipped（带灰字原因），不并行', () => {
   const clock = new FakeClock();
   const store = tmpStore();
   const engine = new ScheduleEngine({ store, execute: () => 'run', now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
@@ -83,7 +83,10 @@ test('上次运行未结束 → skipped，不并行', () => {
   const job = engine.create(draft());
   store.addRun(job.id, { id: 'r', trigger: 'schedule', startedAt: clock.now(), status: 'running', root: 'default' });
   clock.advance(60_000);
-  assert.equal(engine.get(job.id)!.runs[0]!.status, 'skipped');
+  const skipped = engine.get(job.id)!.runs[0]!;
+  assert.equal(skipped.status, 'skipped');
+  // spec §9.5:记录表跳过行的灰字 reason 必须有内容
+  assert.equal(skipped.error, 'previous run still running');
   engine.stop();
 });
 
@@ -202,6 +205,20 @@ test('先推进 nextRunAt 再 execute（执行时看到的是下一次）', () =
   clock.advance(60_000);
   assert.deepEqual(seen, [1_120_000]);
   engine.stop();
+});
+
+test('stop 后 create/update 不再布防（请求与 stop 竞态）', () => {
+  const clock = new FakeClock();
+  const store = tmpStore();
+  const engine = new ScheduleEngine({ store, execute: () => 'run', now: clock.now, setTimeoutImpl: clock.setTimeoutImpl, clearTimeoutImpl: clock.clearTimeoutImpl });
+  engine.start();
+  const job = engine.create(draft());
+  engine.stop();
+  assert.equal(clock.pending(), 0);
+  engine.create(draft({ name: '停摆后新建' }));
+  assert.equal(clock.pending(), 0, '停摆后 create 不得重新布防');
+  engine.update(job.id, draft({ recurrence: { unit: 'minute', every: 5 } }));
+  assert.equal(clock.pending(), 0, '停摆后 update 不得重新布防');
 });
 
 test('runNow 不改变 nextRunAt', () => {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
@@ -8,12 +8,15 @@ import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView, S
  * 任务执行记录表(scheduled-tasks Task 9,spec §9.5):
  * 触发方式/计划时间/开始时间/状态/耗时/会话六列;状态只用项目 `.tb-status-dot`(五态点+转圈),
  * 失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链直开 journal 会话。
- * 取数单点 conn.scheduleRuns(job.id),挂载/任务切换重取;空态与取数失败各有独立文案。
+ * 取数单点 conn.scheduleRuns(job.id),挂载/任务切换重取;`tick`(页面轮询计数)变化时静默刷新
+ * (旧行保留,不闪加载态——配合列表 10s 重拉,运行中记录到点转终态);空态与取数失败各有独立文案。
  */
 export interface ScheduleRunsProps {
   readonly conn: Connection;
   readonly job: ScheduleJobView;
   readonly onOpenSession: (journalId: string, root: string) => void;
+  /** 页面轮询计数(SchedulePage 的 refresh):变化即后台重取记录,保留旧行 */
+  readonly tick?: number;
 }
 
 const STATUS_CLASS: Record<ScheduleRunStatus, string> = {
@@ -37,6 +40,16 @@ const TRIGGER_LABEL: Record<ScheduleRunTrigger, { en: string; zh: string }> = {
   'catch-up': { en: 'Catch-up', zh: '补跑' },
   manual: { en: 'Manual', zh: '手动' },
 };
+/** 未知枚举值容错(旧档/前瞻字段):原样显示,状态点走 cancelled 灰,不让一条坏行炸整表 */
+function statusLabel(s: ScheduleRunStatus): { en: string; zh: string } {
+  return STATUS_LABEL[s] ?? { en: String(s), zh: String(s) };
+}
+function statusClass(s: ScheduleRunStatus): string {
+  return STATUS_CLASS[s] ?? 'task-status-cancelled';
+}
+function triggerLabel(tr: ScheduleRunTrigger): { en: string; zh: string } {
+  return TRIGGER_LABEL[tr] ?? { en: String(tr), zh: String(tr) };
+}
 
 /** 时间戳 → 本地 `MM-DD HH:mm`(缺值=—;记录表窄列,不铺年份) */
 function timeLabel(ts: number | undefined): string {
@@ -46,19 +59,26 @@ function timeLabel(ts: number | undefined): string {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function ScheduleRuns({ conn, job, onOpenSession }: ScheduleRunsProps): JSX.Element {
-  const [runs, setRuns] = useState<ScheduleRunView[] | null>(null);
-  const [error, setError] = useState('');
+export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsProps): JSX.Element {
+  const [state, setState] = useState<{ runs: ScheduleRunView[] | null; error: string }>({ runs: null, error: '' });
+  /** 已取数任务 id:仅任务切换才清行回加载态;同任务 tick/重挂静默刷新保留旧行 */
+  const shownId = useRef('');
   useEffect(() => {
     let alive = true;
-    setRuns(null);
-    setError('');
+    if (shownId.current !== job.id) {
+      shownId.current = job.id;
+      setState({ runs: null, error: '' });
+    }
     conn.scheduleRuns(job.id).then(
-      (r) => { if (alive) setRuns(r.runs); },
-      (e: unknown) => { if (alive) setError(errText(e)); },
+      (r) => { if (alive) setState({ runs: r.runs, error: '' }); },
+      (e: unknown) => {
+        // 首拉失败=整表错误态;轮询刷新失败保留旧行静默(网络抖一下不该把记录表打回错误页)
+        if (alive) setState((s) => (s.runs === null ? { runs: null, error: errText(e) } : s));
+      },
     );
     return () => { alive = false; };
-  }, [conn, job.id]);
+  }, [conn, job.id, tick]);
+  const { runs, error } = state;
   return (
     <div className="sx-schedule-records">
       {error !== '' ? (
@@ -82,11 +102,11 @@ export function ScheduleRuns({ conn, job, onOpenSession }: ScheduleRunsProps): J
           <tbody>
             {runs.map((run) => (
               <tr key={run.id}>
-                <td>{t(TRIGGER_LABEL[run.trigger].en, TRIGGER_LABEL[run.trigger].zh)}</td>
+                <td>{t(triggerLabel(run.trigger).en, triggerLabel(run.trigger).zh)}</td>
                 <td className="num">{timeLabel(run.scheduledAt)}</td>
                 <td className="num">{timeLabel(run.startedAt)}</td>
                 <td>
-                  <span className="sx-schedule-status"><span className={`tb-status-dot ${STATUS_CLASS[run.status]}`} />{t(STATUS_LABEL[run.status].en, STATUS_LABEL[run.status].zh)}</span>
+                  <span className="sx-schedule-status"><span className={`tb-status-dot ${statusClass(run.status)}`} aria-hidden="true" />{t(statusLabel(run.status).en, statusLabel(run.status).zh)}</span>
                   {run.status === 'succeeded' && run.scheduledAt !== undefined && run.startedAt - run.scheduledAt > 60_000 ? (
                     <div className="sx-schedule-note">{t('Late', '延迟')} {Math.round((run.startedAt - run.scheduledAt) / 60_000)} {t('min', '分钟')}</div>
                   ) : null}
@@ -97,7 +117,7 @@ export function ScheduleRuns({ conn, job, onOpenSession }: ScheduleRunsProps): J
                 <td className="num">{run.seconds !== undefined ? `${run.seconds} ${t('s', '秒')}` : '—'}</td>
                 <td>{run.journalId !== undefined ? (
                   <button type="button" className="sx-schedule-open" onClick={() => onOpenSession(run.journalId!, run.root)}>
-                    {t('Open session', '打开会话')} <ExternalLink size={12} strokeWidth={1.75} aria-hidden="true" />
+                    {t('Open session', '打开会话')} <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />
                   </button>
                 ) : '—'}</td>
               </tr>

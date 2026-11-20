@@ -14,6 +14,8 @@ export interface ScheduleCardProps {
   readonly menuOpen: boolean;
   readonly confirmDelete: boolean;
   readonly focus: boolean;
+  /** 卡根 ref 回调(SchedulePage 按 id 收表:保存/取消后 scrollIntoView 定位) */
+  readonly cardRef?: (el: HTMLDivElement | null) => void;
   readonly onOpen: () => void;
   readonly onToggle: () => void;
   readonly onMenu: () => void;
@@ -41,6 +43,7 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
   return (
     <div
       className={`sx-schedule-card${job.enabled ? '' : ' is-off'}${focus ? ' is-focus' : ''}`}
+      ref={props.cardRef}
       onClick={props.onOpen}
     >
       <div className="sx-schedule-card-top">
@@ -63,6 +66,8 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
           type="button"
           className="sx-iconbtn sx-schedule-more"
           aria-label={t('More', '更多')}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
           onClick={(e) => {
             e.stopPropagation();
             props.onMenu();

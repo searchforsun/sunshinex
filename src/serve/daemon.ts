@@ -79,6 +79,9 @@ export interface GuiDaemonOpts {
   staticRoot?: string;
   /** providers 装载根（与 assembleGuiModel 装配期同一根；配置热重载按它重读清单）——缺省 process.cwd() */
   providerRoot?: string;
+  /** 定时任务档路径（终审 finding 7）：缺省 schedulesFile()（SUNSHINEX_DATA_DIR / ~/.sunshinex）。
+   *  测试可注入临时文件，避免裸跑时读/补跑真实用户的 schedules.json */
+  schedulesFile?: string;
 }
 
 /** start 入参：port 缺省 0（临时端口，返回实际监听值）；token 缺省随机 24 字节 hex（规格 §4.3） */
@@ -212,7 +215,11 @@ export class GuiDaemon {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
     this.model = opts.model;
     this.providerRoot = opts.providerRoot ?? process.cwd();
-    this.scheduleStore = new ScheduleStore(schedulesFile());
+    // 定时任务档：缺省落 daemon 数据目录（schedulesFile 读 SUNSHINEX_DATA_DIR，未设回落 ~/.sunshinex）。
+    // **裸跑测试警示**：直接 `node --test dist/serve/...` 而未预载 scripts/test-env.cjs 时，
+    // 这里会读真实用户档，且 start() 对逾期任务补跑（真模型、真会话）——裸跑必须
+    // `--require scripts/test-env.cjs`（批量走测试 runner 已自动注入），或用 opts.schedulesFile 注入临时档。
+    this.scheduleStore = new ScheduleStore(opts.schedulesFile ?? schedulesFile());
     this.scheduleExecutor = new ScheduleExecutor({
       createSession: (root, opts) => this.createSession(root, opts),
       getSession: (id) => this.sessions.get(id),
@@ -304,6 +311,9 @@ export class GuiDaemon {
   private releaseSession(id: string): void {
     const session = this.sessions.get(id);
     if (session === undefined) return;
+    // 挂起回填（终审 finding 6：与 session-delete 路径同纪律）：teardown 前先 deny 未决审批/问询，
+    // 不让回收把挂起 promise 悬空（审批流收到 deny 后自行收束）
+    this.denyPendingFor(id);
     void session.teardown().then(
       () => {
         try {
@@ -329,6 +339,7 @@ export class GuiDaemon {
         const m = this.model;
         return m.label ?? m.provider;
       },
+      activeSessionId: () => this.activeId(),
       releaseSession: (id) => this.releaseSession(id),
     };
   }

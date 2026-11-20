@@ -1,6 +1,6 @@
 import type * as http from 'node:http';
 import { jobView, validateDraft } from './model';
-import type { ScheduleJob } from './model';
+import type { ScheduleJob, ScheduleJobView } from './model';
 import { nextRunAt } from './recurrence';
 import type { ScheduleEngine } from './engine';
 
@@ -10,16 +10,29 @@ export interface SchedulesHandlerIo {
   readJson(req: http.IncomingMessage): Promise<{ ok: true; body: unknown } | { ok: false; status: number; error: string }>;
   engine: ScheduleEngine;
   defaultModel(): string;
-  /** 任务删除时回收最近一次 run 的会话运行时（journal/meta 留盘，点记录可重建） */
+  /** 删除回收判据：daemon 当前 active 会话（用户正在看的运行时不得被回收） */
+  activeSessionId(): string | undefined;
+  /** 任务删除时回收最近一条带会话 run 的运行时（journal/meta 留盘，点记录可重建） */
   releaseSession(id: string): void;
 }
 
-function viewOf(job: ScheduleJob) {
+function viewOf(job: ScheduleJob): ScheduleJobView {
   return jobView(job);
 }
 
+/** 列表读口径（spec §8）：enabled 且存量 nextRunAt 已过期时按 now 重算展示值——定时器在途/引擎
+ *  停摆窗内 GET 也给出未来时刻；越过 until 与引擎同口径回 null+ended。只读：不落盘（引擎是
+ *  nextRunAt 唯一写者，GET 不得改写存储）。 */
+function listViewOf(job: ScheduleJob, now: number): ScheduleJobView {
+  const view = viewOf(job);
+  if (!job.enabled || job.nextRunAt === null || job.nextRunAt > now) return view;
+  const next = nextRunAt(job.recurrence, job.startAt, Math.max(now, job.nextRunAt), job.until);
+  return next === null ? { ...view, nextRunAt: null, ended: true } : { ...view, nextRunAt: next };
+}
+
 export function handleSchedulesList(io: SchedulesHandlerIo, res: http.ServerResponse): void {
-  io.send(res, 200, { now: Date.now(), defaultModel: io.defaultModel(), jobs: io.engine.list().map(viewOf) });
+  const now = Date.now();
+  io.send(res, 200, { now, defaultModel: io.defaultModel(), jobs: io.engine.list().map((job) => listViewOf(job, now)) });
 }
 
 export async function handleSchedulesCreate(io: SchedulesHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -43,8 +56,10 @@ export async function handleSchedulesUpdate(io: SchedulesHandlerIo, req: http.In
 export function handleSchedulesDelete(io: SchedulesHandlerIo, res: http.ServerResponse, id: string): void {
   const job = io.engine.get(id);
   if (job === undefined || !io.engine.remove(id)) return io.send(res, 404, { error: 'unknown schedule' });
-  const sessionId = job.runs[0]?.sessionId;
-  if (sessionId !== undefined) {
+  // runs 新→旧：取**最新一条带 sessionId 的 run**（最近记录可能在建席失败时无会话）；若是用户
+  // 正在看的 active 运行时则跳过回收（拆掉观感中的会话不可接受，journal 留盘可重开）
+  const sessionId = job.runs.find((r) => r.sessionId !== undefined)?.sessionId;
+  if (sessionId !== undefined && sessionId !== io.activeSessionId()) {
     try {
       io.releaseSession(sessionId);
     } catch {

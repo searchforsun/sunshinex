@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ScheduleRuns } from './ScheduleRuns';
 import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView } from '../connection';
 
@@ -142,6 +142,40 @@ describe('ScheduleRuns', () => {
     expect(alert.textContent).toBe('boom');
     expect(screen.queryByText(bi('Loading…', '加载中…'))).toBeNull();
     expect(container.querySelector('table')).toBeNull();
+  });
+
+  it('轮询刷新：running 行在后续 tick 转 succeeded，刷新在途保留旧行不闪加载态', async () => {
+    let release!: (v: { runs: ScheduleRunView[] }) => void;
+    const scheduleRuns = vi
+      .fn()
+      .mockResolvedValueOnce({ runs: [makeRun({ status: 'running' })] })
+      .mockImplementationOnce(() => new Promise<{ runs: ScheduleRunView[] }>((r) => { release = r; }));
+    const conn = { scheduleRuns } as unknown as Connection;
+    const { rerender } = render(<ScheduleRuns conn={conn} job={job} onOpenSession={vi.fn()} tick={0} />);
+    expect(await screen.findByText(bi('Running', '运行中'))).toBeDefined();
+
+    rerender(<ScheduleRuns conn={conn} job={job} onOpenSession={vi.fn()} tick={1} />);
+    expect(screen.getByText(bi('Running', '运行中'))).toBeDefined(); // 旧行保留
+    expect(screen.queryByText(bi('Loading…', '加载中…'))).toBeNull();
+    expect(scheduleRuns).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      release({ runs: [makeRun({ status: 'succeeded' })] });
+    });
+    expect(await screen.findByText(bi('Succeeded', '成功'))).toBeDefined();
+    expect(screen.queryByText(bi('Running', '运行中'))).toBeNull();
+  });
+
+  it('未知状态/触发值：原样标签 + 灰点，不崩', async () => {
+    const rows = [makeRun({ status: 'future-state' as ScheduleRunStatus, trigger: 'weird' as ScheduleRunView['trigger'] })];
+    const { conn } = makeConn(rows);
+    const { container } = render(<ScheduleRuns conn={conn} job={job} onOpenSession={vi.fn()} />);
+    await waitFor(() => expect(container.querySelectorAll('.tb-status-dot')).toHaveLength(1));
+    const dot = container.querySelector('.tb-status-dot')!;
+    expect(dot.className).toContain('task-status-cancelled');
+    expect(dot.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByText('future-state')).toBeDefined();
+    expect(screen.getByText('weird')).toBeDefined();
   });
 
   it('打开钮按行传 journalId + root', async () => {

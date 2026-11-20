@@ -625,7 +625,7 @@ function AppShell(): JSX.Element {
   /** kind 透传(2026-11-17 用户实测「加载会话时的占位是普通欢迎页」):侧栏 attach 链带回的会话形态
    *  在此曾丢失(只转 3 参)——Sunx 会话加载期落普通欢迎面;补齐第 5 参 */
   const openSessionFromMenu = useStableCallback((sessionId: string, root: string, journalId?: string, kind?: string): void => { closeMenuDrawer(); openSession(sessionId, root, journalId, false, kind); });
-  const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
+  const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); setSchedulesMain(false); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效;终审:层在时点看板=退层开页签(不能在层后开)
   const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
   const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
   /** 定时任务层开合(2026-11-20):侧栏入口开(抽屉态自动收),页内返回/Esc 关 */
@@ -987,6 +987,11 @@ function AppShell(): JSX.Element {
     openProjectDirectory, openDirectoryPath, openFileTab, openFileFromTree, openSunxInstance,
     bgFocus, openTaskFocus, setMenuDir,
   } = useAppLinks({ connInstance, connRef, openRoot, openSessionId, openSession, openTabInSession, openBoardTab, setTaskFocus, setMenuClosed, showOpError });
+  /** 文件树点开(2026-11-20 终审 minor):关定时任务层——层内无文件树,但层在时点击不应在层后开页签 */
+  const openFileFromTreeStable = useStableCallback((filePath: string, root: string): void => {
+    setSchedulesMain(false);
+    openFileFromTree(filePath, root);
+  });
   /** 标签体服务面+页签元数据回写+板刷新+side 快照并入+派生值面收口 use-app-services(D62 批H) */
   const { onActivateTab, onTabMeta, services, bgRunningCount, projectNameOfOpenRoot } = useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, onLocateTodo, openLeaderBubble, refreshFromSnapshot });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
@@ -1096,7 +1101,7 @@ function AppShell(): JSX.Element {
               onOpenSunxBoard={openSunxBoardFromMenu}
               dirView={menuDir}
               onCloseDirView={closeDirViewStable}
-              onOpenFileFromTree={openFileFromTree}
+              onOpenFileFromTree={openFileFromTreeStable}
               onOpenSettings={openSettingsFromMenu}
               onOpenSchedules={openSchedulesFromMenu}
               onNewChat={newChatFromMenu}
@@ -1117,8 +1122,10 @@ function AppShell(): JSX.Element {
             data-tip={t('Drag to resize', '拖动调整宽度')}
             onMouseDown={startMenuResize}
           />
-          {/* 中栏:Chat 恒挂(无会话=欢迎空态);归档视图已内驻左栏 ArchiveSection(2026-10-21 裁定) */}
-          <main className="sx-main" ref={mainRef}>
+          {/* 中栏:Chat 恒挂(无会话=欢迎空态);归档视图已内驻左栏 ArchiveSection(2026-10-21 裁定)。
+              定时任务层在场时整栏 inert+aria-hidden(终审 finding 8):Chat 保持挂载不重播种,
+              但焦点/读屏不得逃进层后的隐藏会话面 */}
+          <main className="sx-main" ref={mainRef} {...(schedulesMain ? { inert: '' as unknown as boolean, 'aria-hidden': 'true' } : {})}>
             {page === 'chat' && connInstance !== null ? (
               <>
               {/* 2026-11-18 热切换 keep-alive 座位(单数组渲染):前台座+驻留座必须在**同一个 keyed

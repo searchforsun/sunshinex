@@ -168,6 +168,22 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved }: ScheduleCon
     );
   };
 
+  // Esc 层级（终审 minor）：配置页内先收弹层（工作区/强度/权限/DirPicker），不连带退页。
+  // capture 阶段消费——页面级 Esc（bubble）收不到，弹层开着时一次 Esc 不再退两层
+  useEffect(() => {
+    if (!projOpen && !modelOpen && !modeOpen && !dirOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setProjOpen(false);
+      setModelOpen(false);
+      setModeOpen(false);
+      setDirOpen(false);
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [projOpen, modelOpen, modeOpen, dirOpen]);
+
   const nextLabel = nextPreview !== null ? new Date(nextPreview).toLocaleString() : '—';
 
   return (

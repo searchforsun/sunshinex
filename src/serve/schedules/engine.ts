@@ -147,6 +147,9 @@ export class ScheduleEngine {
   }
 
   private arm(job: ScheduleJob): void {
+    // 停摆竞态（终审 minor）：stop() 之后到达的 create/update/setEnabled 请求不得再布防——
+    // started 是引擎生命周期唯一闸，重启由下次 start() 统一补布防
+    if (!this.started) return;
     this.clear(job.id);
     if (!job.enabled || job.ended || job.nextRunAt === null) return;
     const delay = Math.max(0, job.nextRunAt - this.now());
@@ -178,7 +181,8 @@ export class ScheduleEngine {
     this.store.patch(id, { nextRunAt: next, ...(next === null ? { ended: true, enabled: false } : {}) });
     const latest = this.store.get(id)!;
     if (latest.runs.some((r) => r.status === 'running')) {
-      this.store.addRun(id, { id: `run-${randomBytes(4).toString('hex')}`, trigger: 'schedule', scheduledAt: planned, startedAt: now, endedAt: now, status: 'skipped', root: job.root });
+      // 跳过原因（spec §9.5）：记录表灰字 reason 非空——不填则 GUI 只能显示空注记
+      this.store.addRun(id, { id: `run-${randomBytes(4).toString('hex')}`, trigger: 'schedule', scheduledAt: planned, startedAt: now, endedAt: now, status: 'skipped', root: job.root, error: 'previous run still running' });
     } else {
       this.execute(latest, 'schedule', planned);
     }

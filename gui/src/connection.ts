@@ -149,21 +149,23 @@ export function createConnection(opts: ConnectionOpts): Connection {
     return (await res.json()) as T;
   }
 
-  /** PUT 带 JSON 应答（scheduled-tasks Task 7:POST 同款形——schedule 更新回任务行） */
+  /** PUT 带 JSON 应答（scheduled-tasks Task 7:POST 同款形——schedule 更新回任务行）。
+   *  失败读应答体 error/hint（终审 minor:与 op 族同纪律,服务端真因直达 GUI 错误条） */
   async function putJson<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(`${base}${path}`, {
       method: 'PUT',
       headers: { ...authHeaders, 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    if (!res.ok) throw await opError(path, res);
     return (await res.json()) as T;
   }
 
-  /** DELETE 无应答体（scheduled-tasks Task 7:schedule 删除,成功 200 {ok:true} 只作成功信号） */
+  /** DELETE 无应答体（scheduled-tasks Task 7:schedule 删除,成功 200 {ok:true} 只作成功信号；
+   *  失败同 putJson 走 opError 透出服务端 error/hint） */
   async function del(path: string): Promise<void> {
     const res = await fetch(`${base}${path}`, { method: 'DELETE', headers: authHeaders });
-    if (!res.ok) throw new Error(`${path} -> ${res.status}`);
+    if (!res.ok) throw await opError(path, res);
   }
 
   /** sessionSnapshot 单点：GET + 代次守卫下的基线抬高（慢到应答不污新连接的全量重放窗）。

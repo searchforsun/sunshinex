@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { SchedulePage } from './SchedulePage';
 import type { Connection, ScheduleJobView } from '../connection';
@@ -56,6 +56,16 @@ function makeConn(jobs: ScheduleJobView[]) {
 }
 
 describe('SchedulePage 列表', () => {
+  /** jsdom 无 scrollIntoView：全 describe 挂 spy（保存/取消定位断言用），逐例清理 */
+  const scrollSpy = vi.fn();
+  beforeEach(() => {
+    (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView = scrollSpy;
+  });
+  afterEach(() => {
+    scrollSpy.mockClear();
+    delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
   it('两列三行卡片：名称/内容/倒计时 + 首行开关；开关调 enabled', async () => {
     const { conn, setScheduleEnabled, scheduleRuns } = makeConn([
       job(),
@@ -141,6 +151,8 @@ describe('SchedulePage 列表', () => {
     await waitFor(() => expect(updateSchedule).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(container.querySelector('.sx-schedule-card.is-focus')).not.toBeNull());
     expect(screen.getByText('仓库巡检')).toBeDefined();
+    // spec §9.2：保存回列表后聚焦卡滚进视野
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' }));
   });
 
   it('取消(配置页返回)后回到列表并高亮对应卡片(is-focus)', async () => {
@@ -154,6 +166,8 @@ describe('SchedulePage 列表', () => {
     fireEvent.click(screen.getByRole('button', { name: /Back|返回/ }));
     await waitFor(() => expect(container.querySelector('.sx-schedule-card.is-focus')).not.toBeNull());
     expect(updateSchedule).not.toHaveBeenCalled();
+    // spec §9.2：取消回列表同样定位
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalledWith({ block: 'nearest' }));
   });
 
   it('Esc 层级：配置/记录 → 列表；列表 → onExit', async () => {
@@ -189,6 +203,39 @@ describe('SchedulePage 列表', () => {
     expect(onExit).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(onExit).toHaveBeenCalledTimes(2);
+  });
+
+  it('配置页 Esc 先收打开的下拉弹层，不连带退页；再 Esc 才回列表', async () => {
+    const { conn } = makeConn([job()]);
+    const onExit = vi.fn();
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={onExit} />);
+    await screen.findByText('仓库巡检');
+    fireEvent.click(screen.getByRole('button', { name: bi('New task', '新建任务') }));
+    await screen.findByText(bi('New scheduled task', '新建定时任务'));
+
+    const modelPill = document.querySelector('.sx-schedule-model-pill')!;
+    fireEvent.click(modelPill);
+    expect(document.querySelector('.sx-schedule-effort-pop')).not.toBeNull();
+    // 弹层开着时 Esc 的目标在页内元素（真键盘事件形态）:capture 层消费,页面级不再收到
+    fireEvent.keyDown(modelPill, { key: 'Escape' });
+    expect(document.querySelector('.sx-schedule-effort-pop')).toBeNull();
+    expect(screen.getByText(bi('New scheduled task', '新建定时任务'))).toBeDefined();
+    expect(onExit).not.toHaveBeenCalled();
+    // 弹层已收:Esc 回列表
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(screen.getByRole('button', { name: bi('New task', '新建任务') })).toBeDefined());
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it('首拉失败:错误条呈现且不永挂「加载中…」', async () => {
+    const schedules = vi.fn(async () => {
+      throw new Error('daemon down');
+    });
+    const conn = { schedules } as unknown as Connection;
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    expect((await screen.findByRole('alert')).textContent).toBe('daemon down');
+    expect(screen.queryByText(bi('Loading…', '加载中…'))).toBeNull();
+    expect(screen.queryByText(bi('No scheduled tasks yet', '暂无定时任务'))).toBeNull();
   });
 
   it('倒计时行：停用=已暂停、ended=已结束；启用任务显示相对倒计时', async () => {

@@ -2166,11 +2166,17 @@ describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿
     expect(conn.schedulesCalls).toBeGreaterThan(0);
     expect(document.querySelector('.sx-sidebar')).toBeNull();
     expect(screen.getByRole('navigation', { name: 'projects' })).toBeDefined();
+    // 终审 finding 8:层在场时中栏整栏 inert+aria-hidden(Chat 保持挂载但焦点/读屏不逃入)
+    const main = document.querySelector('main.sx-main')!;
+    expect(main.getAttribute('inert')).toBe('');
+    expect(main.getAttribute('aria-hidden')).toBe('true');
 
     // 侧栏 New chat 退层(回欢迎页)
     fireEvent.click(screen.getByRole('button', { name: 'new chat' }));
     await waitFor(() => expect(document.querySelector('.sx-schedules-layer')).toBeNull());
     expect(screen.getByLabelText('welcome')).toBeDefined();
+    expect(main.hasAttribute('inert')).toBe(false);
+    expect(main.hasAttribute('aria-hidden')).toBe(false);
 
     // 再开层 → 卡片进执行记录 → 打开会话:newSession+attach+openSession 链,层关闭落 chat
     fireEvent.click(screen.getByRole('button', { name: 'scheduled tasks' }));

@@ -71,7 +71,9 @@ export class ScheduleExecutor {
         this.addFailed(id, job, trigger, plannedAt, startedAt, root, 'session not found after create');
         return id;
       }
-      session.setEffort(job.effort);
+      // 强度边界（spec §6.6 防御）：非法/不可用档位 setEffort 返回 false——回落 medium，仍失败则
+      // 保持会话缺省（提交链不因强度设置失败中断）
+      if (!session.setEffort(job.effort)) session.setEffort('medium');
       session.ensureJournalMinted();
       journalId = session.attachedJournalId;
       if (journalId !== undefined) writeSessionMeta(session.dataDir, journalId, { title: `${job.name} · ${stamp(startedAt)}` });
