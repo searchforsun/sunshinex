@@ -3216,17 +3216,15 @@ input.sx-setting-input { width: 100%; }
    三块此前均条件渲染(开=挂载/关=立即卸载),过渡无从跑起:宿主改用 useCollapseTransition——
    收起时保留挂载 200ms 并给根节点挂 .sx-closing,打开时根节点自带入场 keyframe。transition 只写在
    closing 类里:常态零过渡,拖宽手柄逐帧跟手不受累。
-   2026-11-19 侧栏卡顿轮(用户实测「展开折叠这个非常卡」):右栏旧动画改的是 width——0.22s 内
-   主对话每帧按新宽度重排整段正文(大块表格/代码逐帧 layout,帧线 20-30ms×十几帧)。宽度改为
-   即时到位(整段正文只重排一次),面板本体用 transform 滑入/滑出(transform 不参与布局,滚动区
-   全程零重排)。左菜单同款处理(滑动方向相反);sx-panel-in 宽度 keyframe 保留作兜底。 */
+   2026-11-21 宽度跟随轮(用户实测「左右打开关闭侧栏和菜单,好像只是侧栏和菜单在平滑,正文宽度只是
+   在最后一下变换宽度,不丝滑」):2026-11-19 曾把宽度收放改成立即到位+transform 滑出(省每帧重排),
+   但那样正文宽度只能在卸载瞬间跳变。现改回 width 过渡——面板宽度逐帧变化,主对话(flex:1)同步
+   连续重排,正文宽度与面板同拍丝滑;时长压到 0.2s 减少重排总开销,opacity 同步淡出。 */
 @keyframes sx-panel-in { from { width: 0; min-width: 0; opacity: 0; } }
-@keyframes sx-panel-in-right { from { transform: translateX(100%); opacity: 0; } }
-@keyframes sx-panel-in-left { from { transform: translateX(-100%); opacity: 0; } }
-.sx-menu { animation: sx-panel-in-left 0.22s var(--ease-enter); }
-.sx-menu.sx-closing { transform: translateX(-100%); opacity: 0; transition: transform 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
-.sx-sidebar { animation: sx-panel-in-right 0.22s var(--ease-enter); }
-.sx-sidebar.sx-closing { transform: translateX(100%); opacity: 0; transition: transform 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
+.sx-menu { animation: sx-panel-in 0.22s var(--ease-enter); }
+.sx-menu.sx-closing { width: 0 !important; min-width: 0 !important; opacity: 0; overflow: hidden; border-right-width: 0; transition: width 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
+.sx-sidebar { animation: sx-panel-in 0.22s var(--ease-enter); }
+.sx-sidebar.sx-closing { width: 0 !important; min-width: 0 !important; opacity: 0; overflow: hidden; border-left-width: 0; transition: width 0.2s var(--ease-enter), opacity 0.2s var(--ease-enter); }
 
 /* 运行转圈统一 12px(正文 run-spinner);done/failed/stopped 仍为 6px 小圆点 */
 .tb-status-dot.bg-running {
@@ -4365,21 +4363,25 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-dialog { width: min(640px, 100%); display: flex; flex-direction: column; gap: 12px; }
 .sx-sunx-field { display: flex; flex-direction: column; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
 .sx-sunx-field > span:first-child { font-size: calc(14px * var(--fz)); }
-.sx-sunx-field input, .sx-sunx-field select, .sx-sunx-field textarea { background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
-.sx-sunx-field input:focus-visible, .sx-sunx-field select:focus-visible, .sx-sunx-field textarea:focus-visible { border-color: var(--border-strong); outline: none; }
+/* 表单控件=项目无边框软底语言（2026-11-21 用户裁定「新建 Sunx 弹窗也违反不要边框线 hover」）：
+   surface-soft 填充、零边框，focus 只留光标不再变边框；直接子代限定，避免渗进工作目录弹层
+   的筛选输入（此前 proj-pop input 被这条规则套上了 1px 边框） */
+.sx-sunx-field > input, .sx-sunx-field > select, .sx-sunx-field > textarea { background: var(--surface-soft); color: var(--fg); border: none; border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
+.sx-sunx-field > input:focus-visible, .sx-sunx-field > select:focus-visible, .sx-sunx-field > textarea:focus-visible { border: none; outline: none; }
 .sx-sunx-field textarea { resize: vertical; min-height: 140px; line-height: 1.5; }
 /* 工作目录选择条(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):choose-project-bar 同款
    选择条(样式对齐欢迎页)+anchor 相对容器使 proj-pop 向下展开(dialog 无 welcome-dock 锚);
    hover 面补 welcome-dock 作用域外的同款(选择条是可点面,非纯文字行) */
 .sx-sunx-ws-anchor { position: relative; }
-.sx-sunx-ws-bar { width: 100%; display: inline-flex; align-items: center; gap: 8px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); font-size: calc(14px * var(--fz)); }
-.sx-sunx-ws-bar:hover { border-color: var(--border-strong); }
+.sx-sunx-ws-bar { width: 100%; display: inline-flex; align-items: center; gap: 8px; background: var(--surface-soft); border: none; border-radius: var(--radius-md); padding: 6px 10px; color: var(--fg); font-size: calc(14px * var(--fz)); }
+/* hover 只用底色提亮，不加/不变边框线（2026-11-21 用户裁定） */
+.sx-sunx-ws-bar:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 6%, var(--surface-soft)); }
 /* 编辑 Sunx 模式禁用态(2026-11-15 用户裁定「复用创建的弹窗,禁用工作区」):出生根只读展示,
-   弱化文字+禁 hover 边框变化+default 光标(creation-bound 不可改语义的视觉承载) */
+   弱化文字+禁 hover 变化+default 光标(creation-bound 不可改语义的视觉承载) */
 .sx-sunx-ws-bar:disabled { color: var(--fg-tertiary); cursor: default; }
-.sx-sunx-ws-bar:disabled:hover { border-color: var(--border); background: var(--surface-soft); }
+.sx-sunx-ws-bar:disabled:hover { background: var(--surface-soft); }
 .sx-sunx-ws-anchor .choose-project-bar { width: 100%; text-align: left; }
-.sx-sunx-ws-anchor .choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }
+.sx-sunx-ws-anchor .choose-project-bar:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }
 .sx-sunx-ws-anchor .proj-pop { bottom: auto; top: calc(100% + 6px); left: 0; right: 0; width: auto; }
 /* 侧栏会话行 kind 徽标(标题旁小 chip):文字 14px(界面文字铁律),accent 描边降存在感;
    flex:none 不挤标题省略/悬浮卡;行 hover 时段 meta 隐而徽标恒显(归属辨识常驻) */
