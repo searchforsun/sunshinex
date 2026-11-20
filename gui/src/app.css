@@ -4484,3 +4484,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    surface-elevated=#fff 在近白页面上几乎无面,补同款亮色覆写;暗色保持 elevated(#212121)不变 */
 [data-theme='light'] .sx-sunxboard-card { background: color-mix(in srgb, var(--fg) 4%, transparent); }
 [data-theme='light'] .sx-sunxboard-card:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+/* $/# 面板行(2026-11-20 用户裁定「显示名称不是标识」):名称主显(fg),id 降为行尾弱色小字
+   (hover title 仍可查 id)——原 id 等宽 500 字重居首、名称 tertiary 暗淡,读者先撞标识 */
+.ref-palette-name { color: var(--fg); font-size: calc(14px * var(--fz)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-palette-id.ref-palette-id-dim { margin-left: auto; font-family: var(--font-mono); font-weight: 400; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); opacity: .75; flex: none; }

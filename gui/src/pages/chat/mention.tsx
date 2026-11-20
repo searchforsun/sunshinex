@@ -149,8 +149,12 @@ export function RefPalette({
               <span className={`ref-palette-sym ref-palette-sym-${item.sym === '$' ? 'agent' : 'team'}`} aria-hidden="true">
                 {item.sym}
               </span>
-              <span className="ref-palette-id">{item.id}</span>
-              <span className="ref-palette-name">{item.name}</span>
+              {/* 2026-11-20 用户裁定「符号面板显示名称不是标识,用户不感知标识」:名称主显,
+                  标识仅作无名条目的兜底(名称缺省/同 id 时)——id 留给模型契约与 tooltip */}
+              <span className="ref-palette-name">{item.name !== '' && item.name !== item.id ? item.name : item.id}</span>
+              {item.name !== '' && item.name !== item.id && (
+                <span className="ref-palette-id ref-palette-id-dim" title={item.id}>{item.id}</span>
+              )}
             </button>
           </Fragment>
         );

@@ -68,7 +68,19 @@ const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
  *  清单（todo_write）/技能（skill）/产物（report_artifacts）/板监视（get_agent_team_board——板通道的监视
  *  伴面，随板通道一起进面）/定时调度（schedule_wakeup·schedule_task——到点唤醒/派发，宿主 TimerController
  *  承载）十件；standard 会话零消费（主链 face 基线不变量） */
-export const SUNX_FACE_TOOLS: readonly string[] = ['dispatch_task', 'task_status', 'task_stop', 'ask_question', 'todo_write', 'skill', 'report_artifacts', 'get_agent_team_board', 'schedule_wakeup', 'schedule_task'];
+export const SUNX_FACE_TOOLS: readonly string[] = [
+  'dispatch_task', 'task_status', 'task_stop',
+  'ask_question', 'todo_write', 'skill', 'report_artifacts',
+  // 智能体团队控制面(2026-11-20 用户裁定「sunx 现在不支持随意控制智能体团队吗」):编排者要能
+  // 读章程卡/建队建单/指派改单/取消/给成员发消息——此前只有 get_agent_team_board 窥视,且系统
+  // 提示教它 #team-id 时调 load_agent_teams 而该工具不在白名单(口径裂缝)。全部为编排动作,
+  // 不违反「不亲做」;fork 子面仍经 FORK_EXCLUDED_TOOLS 剔除(子生孙依旧禁止)
+  'load_agent_teams', 'get_agent_team_board',
+  'create_agent_team', 'create_agent_teammate', 'create_agent_team_task',
+  'update_agent_team_task', // assign|depend 两 action 合一(旧 assign/set_dependency 工具名已退役)
+  'agent_team_task_stop', 'send_agent_team_message',
+  'schedule_wakeup', 'schedule_task',
+];
 
 /** 会话形态装配档案（D74 收敛,2026-11-16）：kind→主链 face 白名单+专属工具注册钩键控映射——
  *  新增会话类=types 联合扩值+本表加一条；装配注册（Harness 构造期末段查表调钩）与内核 face
