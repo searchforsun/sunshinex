@@ -67,6 +67,9 @@ const OFFICE_STANDALONE = new Set([
   'get_agent_team_board', 'agent_team_task_wait',
   'task_stop', 'agent_team_task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task',
   'exit_plan', 'todo_write', 'ask_question',
+  // sunx 编排件(2026-11-21 用户实测「办公模式下没有显示这个超链接,分派任务漏了」):分派行带任务名
+  // 蓝链(后台任务定位)、台账窥视行带任务名——都属「行内有跳转链接」,办公模式保留完整折叠行
+  'dispatch_task', 'task_status',
 ]);
 
 export function isOfficeStandaloneTool(name: string | undefined): boolean {

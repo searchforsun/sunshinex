@@ -128,3 +128,18 @@ describe('后台 exec 任务名解析(purpose 优先,2026-11-07)', () => {
     expect(ref('slp-2')).toBeUndefined();
   });
 });
+
+describe('sunx 分派行(2026-11-21 用户实测「分派任务漏了,办公模式也没有这个超链接」)', () => {
+  const dispatchEntry = (): ChatEntry =>
+    ({ key: 'd1', kind: 'tool', md: '', name: 'dispatch_task', input: { label: 'fork-s2', spec: 'brief' }, result: { ok: true, text: 'task subagent-1 started (output: /tmp/x.log)' } }) as unknown as ChatEntry;
+
+  it('办公模式保留完整折叠行:任务名蓝链在场(dom 层 .tool-agent-link)', () => {
+    act(() => applyUiMode('office'));
+    const onOpenTask = vi.fn();
+    const r = render(<ToolEntryView entry={dispatchEntry()} conn={conn} sessionId="s" onOpenTask={onOpenTask} />);
+    const link = r.container.querySelector('.tool-agent-link');
+    expect(link?.textContent).toContain('fork-s2');
+    fireEvent.click(link!);
+    expect(onOpenTask).toHaveBeenCalledWith('bg:subagent-1');
+  });
+});
