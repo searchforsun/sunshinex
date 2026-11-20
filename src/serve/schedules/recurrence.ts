@@ -74,7 +74,7 @@ export function nextRunAt(rec: Recurrence, startAt: number, after: number, until
     const startWeek = dayNumber(start) - (isoWeekday(start) - 1);
     const wds = new Set(rec.weekdays ?? []);
     const from = new Date(Math.max(startAt, after + 1));
-    const cap = rec.every * 7 + 21;
+    const cap = Math.min(rec.every * 7 + 21, MAX_ITER);
     for (let i = 0; i < cap; i++) {
       const d = localDate(from.getFullYear(), from.getMonth(), from.getDate() + i, h, m);
       const t = d.getTime();
