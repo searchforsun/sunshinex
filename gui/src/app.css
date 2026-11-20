@@ -4514,8 +4514,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-save:disabled { opacity: 0.45; cursor: default; }
 .sx-schedule-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .sx-schedule-field-label { color: var(--fg-secondary); font-size: calc(13px * var(--fz)); font-weight: 500; }
-.sx-schedule-name-input { width: 100%; height: 36px; padding: 0 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); font: calc(14px * var(--fz)) var(--font-ui); outline: none; }
-.sx-schedule-name-input:focus { border-color: var(--border-strong); }
+/* 任务标题=纯文本标题（2026-11-20 用户裁定「不要用线 hover，就显示标题」）：无底无边，
+   只在聚焦时保留光标；上方小标签负责说明这是可编辑的任务标题 */
+.sx-schedule-name-input { width: 100%; height: 30px; padding: 0; background: transparent; border: none; border-radius: 0; color: var(--fg); font: 600 calc(15px * var(--fz))/1.4 var(--font-ui); outline: none; }
+.sx-schedule-name-input:hover, .sx-schedule-name-input:focus { border: none; background: transparent; outline: none; }
 .sx-schedule-when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 30px; }
 .sx-schedule-dd { flex: none; }
 .sx-schedule-when .sx-dd-trigger { height: 30px; padding: 0 10px; font-size: calc(13px * var(--fz)); border-radius: var(--radius-md); background: var(--surface-soft); }
@@ -4556,7 +4558,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; width: min(320px, calc(100vw - 32px)); }
 /* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
    失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链(无按钮边框) ===== */
-.sx-schedule-records { background: var(--surface-elevated); border-radius: var(--radius-lg); padding: 2px 18px 6px; overflow-x: auto; }
+/* 记录列表面=产物卡同色（亮色 fg 4% / 暗色 bubble-user），不另加边框 */
+.sx-schedule-records { background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-lg); padding: 2px 18px 6px; overflow-x: auto; }
+[data-theme='dark'] .sx-schedule-records { background: var(--bubble-user); }
 .sx-schedule-table { width: 100%; border-collapse: collapse; font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-table th { padding: 11px 10px 9px; text-align: left; font-weight: 500; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .sx-schedule-table td { padding: 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--fg-secondary); }
@@ -4593,15 +4597,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .sx-schedule-filters { display: inline-flex; align-items: center; gap: 2px; }
 .sx-schedule-filter { height: 28px; padding: 0 10px; border: none; border-radius: var(--radius-row); background: transparent; color: var(--fg-secondary); font: calc(13px * var(--fz)) var(--font-ui); }
-.sx-schedule-filter:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
-.sx-schedule-filter.is-active { background: color-mix(in srgb, var(--fg) 9%, transparent); color: var(--fg); font-weight: 500; }
+.sx-schedule-filter:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg); }
+.sx-schedule-filter.is-active { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); font-weight: 500; }
 .sx-schedule-tools { display: inline-flex; align-items: center; gap: 6px; }
 /* 创建主钮 + 下拉箭头同壳（设置页添加钮同色语言；箭头只开「在会话中创建」） */
-.sx-schedule-create { position: relative; display: inline-flex; align-items: stretch; height: 30px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-soft); }
+.sx-schedule-create { position: relative; display: inline-flex; align-items: stretch; height: 30px; border: none; border-radius: var(--radius-md); background: color-mix(in srgb, var(--fg) 4%, transparent); }
 .sx-schedule-create-main { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: none; border-radius: var(--radius-md) 0 0 var(--radius-md); background: transparent; color: var(--fg); font: calc(13px * var(--fz)) var(--font-ui); }
-.sx-schedule-create-main:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
-.sx-schedule-create-caret { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; border: none; border-left: 1px solid var(--border); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: transparent; color: var(--fg-secondary); }
-.sx-schedule-create-caret:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-schedule-create-main:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.sx-schedule-create-caret { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; border: none; border-left: 1px solid var(--border-subtle); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: transparent; color: var(--fg-secondary); }
+.sx-schedule-create-caret:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
 .sx-schedule-create-menu { top: calc(100% + 6px); right: 0; left: auto; }
 [data-theme='light'] .sx-schedule-error, [data-theme='light'] .sx-schedule-err { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 [data-theme='light'] .sx-schedules-content > .sx-schedule-error { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
@@ -4610,9 +4614,13 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */
-.sx-schedule-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), box-shadow var(--dur-basic) var(--ease-enter); }
-.sx-schedule-card:hover { background: color-mix(in srgb, var(--fg) 5%, var(--surface-elevated)); }
-.sx-schedule-card.is-focus { background: color-mix(in srgb, var(--fg) 8%, var(--surface-elevated)); box-shadow: none; }
+/* 卡面颜色=侧栏产物卡同源（.sx-artifacts-card: fg 4% 叠层；dark=bubble-user）；不用边框线 */
+.sx-schedule-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border: none; border-radius: var(--radius-md); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), box-shadow var(--dur-basic) var(--ease-enter); }
+[data-theme='dark'] .sx-schedule-card { background: var(--bubble-user); }
+.sx-schedule-card:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+[data-theme='dark'] .sx-schedule-card:hover { background: color-mix(in srgb, var(--fg) 5%, var(--bubble-user)); }
+.sx-schedule-card.is-focus { background: color-mix(in srgb, var(--fg) 8%, transparent); box-shadow: none; }
+[data-theme='dark'] .sx-schedule-card.is-focus { background: color-mix(in srgb, var(--fg) 8%, var(--bubble-user)); }
 .sx-schedule-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sx-schedule-card-top .sx-switch { margin-left: 0; }
 .sx-schedule-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); font-weight: 600; }
