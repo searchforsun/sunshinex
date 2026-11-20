@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>定时任务 · 界面示意图</title>
+<!--
+  定时任务 GUI 示意图（2026-11-20 极简版）
+  - 静态 mockup，不接真实数据；用于确认布局与交互形态。
+  - 复用 gui/src/app.css 的主题令牌与既有组件类（composer / switch / status dot / menu pop）。
+  - 打开方式：保持文件在仓库内，直接双击（file://）即可。
+-->
+<style>
+  :root {
+    color-scheme: dark;
+    --surface: #181818; --surface-under: #131313; --surface-elevated: #212121; --surface-soft: #303030;
+    --fg: #dfdfdf; --fg-secondary: rgba(223,223,223,.7); --fg-tertiary: rgba(223,223,223,.5); --fg-icon: rgba(223,223,223,.85);
+    --border: rgba(223,223,223,.08); --border-subtle: rgba(223,223,223,.05); --border-strong: rgba(223,223,223,.16);
+    --accent: #339cff; --ok: #40c977; --warn: #ff8549; --err: #ff6764;
+    --radius-sm: 22px; --radius-md: 22px; --radius-lg: 22px; --radius-row: 9999px; --radius-composer: 22px;
+    --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, menlo, consolas, 'Microsoft YaHei', monospace;
+    --fz: 1; --row-h: 29px; --elev-prominent: 0 3px 7.5px rgba(0,0,0,.18); --elev-composer: 0 0 0 1px rgba(0,0,0,.04), 0 2px 8px rgba(0,0,0,.04);
+  }
+  [data-theme='light'] {
+    color-scheme: light;
+    --surface: #fdfdfd; --surface-under: #f9f9f9; --surface-elevated: #fff; --surface-soft: #ececec;
+    --fg: #1a1c1f; --fg-secondary: rgba(26,28,31,.7); --fg-tertiary: rgba(26,28,31,.5); --fg-icon: rgba(26,28,31,.85);
+    --border: rgba(26,28,31,.14); --border-subtle: rgba(26,28,31,.08); --border-strong: rgba(26,28,31,.24);
+    --ok: #00a240; --warn: #e25507; --err: #e02e2a; --accent: #1f6feb;
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--surface-under); color: var(--fg); font: 14px/1.5 var(--font-ui); }
+</style>
+<link rel="stylesheet" href="../../../gui/src/app.css" />
+<style>
+  .ico { width: 16px; height: 16px; flex: none; }
+  .ico-sm { width: 14px; height: 14px; flex: none; }
+  [hidden] { display: none !important; }
+
+  /* 左菜单（保持原样，只是入口不再带计数） */
+  .sxs-side-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0 10px; }
+  .sxs-entry-active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+  .sxs-entry-active:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 11%, transparent); }
+  .sxs-row { position: relative; display: flex; align-items: center; gap: 6px; }
+  .sxs-row-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sxs-row-time { flex: none; font-size: 11.5px; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+  .sxs-sunx-ico { color: var(--fg-secondary); }
+  .sxs-head-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); font-size: 11px; color: var(--fg-secondary); letter-spacing: 0; }
+  .sxs-foot-note { margin-right: auto; color: var(--fg-tertiary); font-size: 11.5px; }
+  .sxs-conn-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); margin-right: 5px; display: inline-block; }
+
+  /* 主区 */
+  .sxs-main { position: relative; }
+  .sxs-main .chat-topbar { padding-right: 126px; }
+  .sxs-top-spacer { flex: 1; }
+  .sxs-viewport { flex: 1; min-height: 0; overflow-y: auto; }
+  .sxs-content { max-width: 980px; margin: 0 auto; padding: 18px 24px 60px; }
+
+  /* 列表：两列、三行卡 */
+  .sxs-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 760px) { .sxs-grid2 { grid-template-columns: 1fr; } }
+  .sxs-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: var(--surface-elevated); border-radius: var(--radius-md); cursor: pointer; }
+  .sxs-card:hover { background: color-mix(in srgb, var(--surface-elevated) 94%, var(--fg) 6%); }
+  .sxs-card.sxs-focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+  .sxs-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sxs-card-top .sx-switch { margin-left: 0; }
+  .sxs-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
+  .sxs-prompt { margin: 0; min-height: 39px; color: var(--fg-secondary); font-size: 12.5px; line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sxs-next { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--fg-tertiary); font-size: 12px; }
+  .sxs-next .count { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+  .sxs-next .count.off { color: var(--fg-tertiary); }
+  .sxs-card.is-off .sxs-name { color: var(--fg-secondary); }
+  .sxs-card.is-off .sxs-prompt { color: var(--fg-tertiary); }
+  .sxs-card .sx-menu-pop { top: 34px; right: 8px; }
+  .sxs-danger, .sx-menu-pop .sx-menuitem.sxs-danger { color: var(--err); }
+  .sxs-empty { padding: 48px 0; text-align: center; color: var(--fg-tertiary); font-size: 13px; }
+
+  /* 配置：三行 */
+  .sxs-cfg { display: flex; flex-direction: column; gap: 18px; }
+  .sxs-cfg-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .sxs-cfg-label { padding-top: 8px; color: var(--fg-tertiary); font-size: 13px; }
+  .sxs-input { width: 100%; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; color: var(--fg); font: 13px/1.4 var(--font-ui); outline: none; }
+  .sxs-input:focus { border-color: var(--border-strong); }
+  .sxs-schedule { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sxs-select { width: 132px; }
+  .sxs-datetime { width: 190px; }
+  .sxs-inline { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: 12.5px; }
+  .sxs-inline .sxs-input { width: 190px; }
+  .sxs-nocut { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: 12.5px; }
+  .sxs-nocut input { accent-color: var(--accent); }
+  .sxs-sched-hint { margin-top: 7px; color: var(--fg-tertiary); font-size: 11.5px; }
+  .sxs-task-composer { width: 100%; }
+  .sxs-task-input { min-height: 96px; }
+
+  /* 记录表：状态点全部用项目 .tb-status-dot */
+  .sxs-record-wrap { background: var(--surface-elevated); border-radius: var(--radius-lg); padding: 2px 18px 6px; }
+  .sxs-record-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .sxs-record-table th { padding: 11px 10px 9px; text-align: left; font-weight: 500; color: var(--fg-tertiary); font-size: 11.5px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .sxs-record-table td { padding: 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--fg-secondary); }
+  .sxs-record-table tr:last-child td { border-bottom: none; }
+  .sxs-record-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sxs-status { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); white-space: nowrap; }
+  .sxs-status .tb-status-dot { flex: none; }
+  .sxs-err { margin-top: 3px; color: var(--err); font-size: 11.5px; }
+  .sxs-note { margin-top: 3px; color: var(--fg-tertiary); font-size: 11.5px; }
+  .sxs-open { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 12px; white-space: nowrap; }
+  .sxs-open:hover { text-decoration: underline; }
+
+  /* 窗控 / toast */
+  .sxs-close:hover { background: #c42b1c; color: #fff; }
+  .sxs-toast { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 200; padding: 8px 16px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-elevated); color: var(--fg); font-size: 12.5px; box-shadow: var(--elev-prominent); }
+  .sxs-toast[hidden] { display: none; }
+  .sxs-theme .i-sun { display: none; }
+  .sxs-theme.light .i-moon { display: none; }
+  .sxs-theme.light .i-sun { display: block; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></symbol>
+  <symbol id="i-sunx" viewBox="0 0 24 24"><path d="M11 3.5l1.7 4.6 4.6 1.7-4.6 1.7L11 16.1 9.3 11.5 4.7 9.8l4.6-1.7Z"/><path d="M18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8Z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M8 2.5v4M16 2.5v4M3 9.5h18"/><circle cx="16.2" cy="15.4" r="3.3"/><path d="M16.2 13.9v1.7l1.1 1"/></symbol>
+  <symbol id="i-time" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.7-4.4"/><path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.7 4.4"/><path d="M21 3v6h-6"/><path d="M3 21v-6h6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5Z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-open" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6Z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+</svg>
+
+<div class="sx-shell sx-desktop" style="--menu-w:260px; --menu-occ:260px; --sidebar-w:0px;">
+  <!-- ===== 左侧菜单（保持原样） ===== -->
+  <nav class="sx-menu" aria-label="projects">
+    <header class="sx-menu-head">
+      <span class="sx-brand">Sunshinex</span>
+      <div class="sx-menu-head-drag"></div>
+      <button class="sx-winbtn" type="button" aria-label="收起菜单" title="收起菜单"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-panel"/></svg></button>
+    </header>
+
+    <button class="sx-new-chat" type="button" aria-label="new chat"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"/></svg><span>新对话</span></button>
+    <button class="sx-new-chat" type="button" aria-label="new sunx"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sunx"/></svg><span>新建 Sunx</span></button>
+    <button class="sx-new-chat sxs-entry-active" type="button" aria-label="scheduled tasks" aria-current="page"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-clock"/></svg><span>定时任务</span></button>
+    <button class="sx-new-chat" type="button" aria-label="search"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-search"/></svg><span>搜索</span></button>
+
+    <div class="sxs-side-scroll">
+      <div class="sx-side-head sx-side-head-row">
+        <span>SUNX</span>
+        <span class="sx-side-head-actions"><span class="sxs-head-count">2</span></span>
+      </div>
+      <ul class="recent-list" aria-label="sunx sessions">
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><svg class="ico-sm sxs-sunx-ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sunx"/></svg></span><span class="sxs-row-label">仓库管家</span><span class="sxs-row-time">12:04</span></button></li>
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><svg class="ico-sm sxs-sunx-ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sunx"/></svg></span><span class="sxs-row-label">PR 守夜</span><span class="sxs-row-time">昨天</span></button></li>
+      </ul>
+
+      <div class="sx-side-head sx-side-head-row">
+        <span>项目</span>
+        <span class="sx-side-head-actions"><span class="sxs-head-count">3</span></span>
+      </div>
+      <ul class="recent-list" aria-label="project sessions">
+        <li><button class="sx-session-row sxs-row" type="button" style="padding-left:14px;"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-d"/></svg><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg><span class="sxs-row-label" style="font-weight:600;">sunshinex</span><span class="sxs-row-time">3</span></button></li>
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><span class="tb-status-dot"></span></span><span class="sxs-row-label">仓库巡检 · 11-20 09:00</span><span class="sxs-row-time">09:03</span></button></li>
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><span class="tb-status-dot"></span></span><span class="sxs-row-label">每日依赖升级 · 11-20 03:00</span><span class="sxs-row-time">03:01</span></button></li>
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><span class="tb-status-dot"></span></span><span class="sxs-row-label">周会准备</span><span class="sxs-row-time">11-19</span></button></li>
+      </ul>
+
+      <div class="sx-side-head sx-side-head-row"><span>最近</span></div>
+      <ul class="recent-list" aria-label="recent sessions">
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><span class="tb-status-dot"></span></span><span class="sxs-row-label">周一发布说明 · 11-17 09:00</span><span class="sxs-row-time">09:02</span></button></li>
+        <li><button class="sx-session-row sxs-row" type="button"><span class="sx-session-dot"><span class="tb-status-dot"></span></span><span class="sxs-row-label">夜间清理 · 11-18 23:00</span><span class="sxs-row-time">11-18</span></button></li>
+      </ul>
+    </div>
+
+    <footer class="sx-menu-foot">
+      <span class="sxs-foot-note"><span class="sxs-conn-dot"></span>已连接</span>
+      <button class="sx-iconbtn sxs-theme" type="button" id="themeBtn" aria-label="切换亮/暗" title="切换亮/暗">
+        <svg class="ico i-moon" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-moon"/></svg>
+        <svg class="ico i-sun" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-sun"/></svg>
+      </button>
+      <button class="sx-iconbtn" type="button" aria-label="设置" title="设置"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-gear"/></svg></button>
+    </footer>
+  </nav>
+
+  <!-- ===== 主区 ===== -->
+  <main class="sx-main sxs-main">
+    <header class="chat-topbar">
+      <button class="back" type="button" id="backBtn" hidden><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-arrow-l"/></svg>返回</button>
+      <span class="chat-title" id="pageTitle">定时任务</span>
+      <span class="sxs-top-spacer"></span>
+      <button class="sx-iconbtn" type="button" id="refreshBtn" aria-label="刷新" title="刷新"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-refresh"/></svg></button>
+      <button class="sx-iconbtn" type="button" id="newBtn" aria-label="新建任务" title="新建任务"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg></button>
+    </header>
+
+    <div class="sxs-viewport">
+      <!-- ===== 列表（两列、三行卡） ===== -->
+      <section class="sxs-content" id="view-list">
+        <div class="sxs-grid2" id="cardGrid">
+          <!-- 卡 1 -->
+          <div class="sxs-card" data-card data-name="仓库巡检" data-target-offset="134">
+            <div class="sxs-card-top">
+              <button class="sx-switch on" type="button" role="switch" aria-checked="true" aria-label="启用 仓库巡检"><span class="knob"></span></button>
+              <span class="sxs-name">仓库巡检</span>
+              <button class="sx-iconbtn sxs-more" type="button" aria-label="更多" title="更多"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-more"/></svg></button>
+              <div class="sx-menu-pop" role="menu" hidden>
+                <button class="sx-menuitem" type="button" data-act="run"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-play"/></svg>立即执行</button>
+                <button class="sx-menuitem" type="button" data-act="records"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg>执行记录</button>
+                <button class="sx-menuitem" type="button" data-act="edit"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"/></svg>编辑</button>
+                <button class="sx-menuitem sxs-danger" type="button" data-act="delete"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg>删除</button>
+              </div>
+            </div>
+            <p class="sxs-prompt">检查昨天以来的提交、CI 与未关闭 issue，输出中文摘要；发现阻塞项时在仓库里创建 TODO。</p>
+            <div class="sxs-next"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-time"/></svg><span>下次</span><span class="count" data-target-offset="134">2 小时 14 分后</span></div>
+          </div>
+
+          <!-- 卡 2 -->
+          <div class="sxs-card" data-card data-name="每日依赖升级" data-target-offset="365">
+            <div class="sxs-card-top">
+              <button class="sx-switch on" type="button" role="switch" aria-checked="true" aria-label="启用 每日依赖升级"><span class="knob"></span></button>
+              <span class="sxs-name">每日依赖升级</span>
+              <button class="sx-iconbtn sxs-more" type="button" aria-label="更多" title="更多"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-more"/></svg></button>
+              <div class="sx-menu-pop" role="menu" hidden>
+                <button class="sx-menuitem" type="button" data-act="run"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-play"/></svg>立即执行</button>
+                <button class="sx-menuitem" type="button" data-act="records"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg>执行记录</button>
+                <button class="sx-menuitem" type="button" data-act="edit"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"/></svg>编辑</button>
+                <button class="sx-menuitem sxs-danger" type="button" data-act="delete"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg>删除</button>
+              </div>
+            </div>
+            <p class="sxs-prompt">升级 lockfile 中可安全更新的依赖，跑测试；失败则回滚并记录原因。</p>
+            <div class="sxs-next"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-time"/></svg><span>下次</span><span class="count" data-target-offset="365">6 小时 5 分后</span></div>
+          </div>
+
+          <!-- 卡 3：暂停 -->
+          <div class="sxs-card is-off" data-card data-name="周一发布说明">
+            <div class="sxs-card-top">
+              <button class="sx-switch" type="button" role="switch" aria-checked="false" aria-label="启用 周一发布说明"><span class="knob"></span></button>
+              <span class="sxs-name">周一发布说明</span>
+              <button class="sx-iconbtn sxs-more" type="button" aria-label="更多" title="更多"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-more"/></svg></button>
+              <div class="sx-menu-pop" role="menu" hidden>
+                <button class="sx-menuitem" type="button" data-act="run"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-play"/></svg>立即执行</button>
+                <button class="sx-menuitem" type="button" data-act="records"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg>执行记录</button>
+                <button class="sx-menuitem" type="button" data-act="edit"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"/></svg>编辑</button>
+                <button class="sx-menuitem sxs-danger" type="button" data-act="delete"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg>删除</button>
+              </div>
+            </div>
+            <p class="sxs-prompt">汇总上周合并的 PR，按模块生成发布说明草稿并保存到 docs/releases。</p>
+            <div class="sxs-next"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-time"/></svg><span>下次</span><span class="count off">已暂停</span></div>
+          </div>
+
+          <!-- 卡 4：已结束 -->
+          <div class="sxs-card is-off" data-card data-name="夜间清理" data-ended="1">
+            <div class="sxs-card-top">
+              <button class="sx-switch" type="button" role="switch" aria-checked="false" aria-label="启用 夜间清理"><span class="knob"></span></button>
+              <span class="sxs-name">夜间清理</span>
+              <button class="sx-iconbtn sxs-more" type="button" aria-label="更多" title="更多"><svg class="ico" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-more"/></svg></button>
+              <div class="sx-menu-pop" role="menu" hidden>
+                <button class="sx-menuitem" type="button" data-act="run"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-play"/></svg>立即执行</button>
+                <button class="sx-menuitem" type="button" data-act="records"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-history"/></svg>执行记录</button>
+                <button class="sx-menuitem" type="button" data-act="edit"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-pen"/></svg>编辑</button>
+                <button class="sx-menuitem sxs-danger" type="button" data-act="delete"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-trash"/></svg>删除</button>
+              </div>
+            </div>
+            <p class="sxs-prompt">清理工作区里超过 30 天的临时构建产物。</p>
+            <div class="sxs-next"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-time"/></svg><span>下次</span><span class="count off">已结束</span></div>
+          </div>
+        </div>
+        <div class="sxs-empty" id="emptyState" hidden>暂无定时任务</div>
+      </section>
+
+      <!-- ===== 配置（三行：名称 / 调度 / 任务） ===== -->
+      <section class="sxs-content" id="view-config" hidden>
+        <div class="sxs-cfg">
+          <div class="sxs-cfg-row">
+            <label class="sxs-cfg-label" for="fName">名称</label>
+            <input id="fName" class="sxs-input" maxlength="80" value="仓库巡检" autocomplete="off" />
+          </div>
+
+          <div class="sxs-cfg-row">
+            <label class="sxs-cfg-label" for="fCycle">调度</label>
+            <div>
+              <div class="sxs-schedule">
+                <select id="fCycle" class="sxs-input sxs-select" aria-label="周期">
+                  <option>每 15 分钟</option>
+                  <option>每小时</option>
+                  <option selected>每天</option>
+                  <option>工作日</option>
+                  <option>每周</option>
+                  <option>每月</option>
+                  <option>每年</option>
+                </select>
+                <label class="sxs-inline"><span>开始</span><input id="fStart" type="datetime-local" class="sxs-input sxs-datetime" value="2026-11-20T09:00" aria-label="开始时间" /></label>
+                <label class="sxs-nocut"><input id="fNoUntil" type="checkbox" checked /> 无截止</label>
+                <input id="fUntil" type="datetime-local" class="sxs-input sxs-datetime" disabled aria-label="截止时间" />
+              </div>
+              <div class="sxs-sched-hint" id="schedHint">周期以开始时间为锚点 · 接下来 明天 09:00</div>
+            </div>
+          </div>
+
+          <div class="sxs-cfg-row">
+            <label class="sxs-cfg-label" for="fTask">任务</label>
+            <div class="sx-composer sxs-task-composer">
+              <textarea id="fTask" class="sx-composer-input sxs-task-input" aria-label="任务" placeholder="写清背景、目标、验收标准；每个新会话从零开始">检查昨天以来的提交、CI 与未关闭 issue，输出中文摘要；发现阻塞项时在仓库里创建 TODO。</textarea>
+              <div class="sx-composer-foot">
+                <div class="sx-composer-foot-left">
+                  <button class="composer-pill" type="button" id="wsPill" title="选择工作目录"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-folder"/></svg><span class="pill-label">sunshinex</span><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-d"/></svg></button>
+                  <button class="composer-pill composer-plus-btn" type="button" id="wsAdd" title="新增工作目录" aria-label="新增工作目录"><svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-plus"/></svg></button>
+                  <button class="composer-pill model-pill" type="button" id="modelPill" title="模型与思考强度"><span class="pill-label">DeepSeek</span><span class="model-effort-chip" id="effortChip">高</span><svg class="ico-sm pill-chevron" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-d"/></svg></button>
+                  <button class="composer-pill mode-pill-warn" type="button" id="modePill" title="无人值守：运行中不会弹审批">完全访问</button>
+                </div>
+                <div class="sx-composer-foot-right">
+                  <button class="send" type="button" id="saveBtn" aria-label="保存" title="保存"><svg class="ico" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-check"/></svg></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 执行记录 ===== -->
+      <section class="sxs-content" id="view-records" hidden>
+        <div class="sxs-record-wrap">
+          <table class="sxs-record-table">
+            <thead>
+              <tr><th>触发方式</th><th>计划时间</th><th>开始时间</th><th>状态</th><th>耗时</th><th>会话</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>定时</td>
+                <td class="num">今天 09:00</td>
+                <td class="num">09:00</td>
+                <td><span class="sxs-status"><span class="tb-status-dot task-status-success"></span>成功</span></td>
+                <td class="num">3 分 12 秒</td>
+                <td><button class="sxs-open" type="button" data-open>打开会话 <svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-open"/></svg></button></td>
+              </tr>
+              <tr>
+                <td>补跑</td>
+                <td class="num">昨天 09:00</td>
+                <td class="num">10:41</td>
+                <td><span class="sxs-status"><span class="tb-status-dot task-status-success"></span>成功</span><div class="sxs-note">延迟 1 小时 41 分（daemon 启动补跑）</div></td>
+                <td class="num">2 分 48 秒</td>
+                <td><button class="sxs-open" type="button" data-open>打开会话 <svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-open"/></svg></button></td>
+              </tr>
+              <tr>
+                <td>手动</td>
+                <td class="num">—</td>
+                <td class="num">11-18 16:20</td>
+                <td><span class="sxs-status"><span class="tb-status-dot task-status-success"></span>成功</span></td>
+                <td class="num">4 分 05 秒</td>
+                <td><button class="sxs-open" type="button" data-open>打开会话 <svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-open"/></svg></button></td>
+              </tr>
+              <tr>
+                <td>定时</td>
+                <td class="num">11-18 09:00</td>
+                <td class="num">09:00</td>
+                <td><span class="sxs-status"><span class="tb-status-dot task-status-cancelled"></span>跳过</span><div class="sxs-note">上一次运行尚未结束</div></td>
+                <td class="num">—</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>定时</td>
+                <td class="num">11-17 09:00</td>
+                <td class="num">09:00</td>
+                <td><span class="sxs-status"><span class="tb-status-dot task-status-failed"></span>失败</span><div class="sxs-err">模型请求失败：429 Too Many Requests</div></td>
+                <td class="num">12 秒</td>
+                <td><button class="sxs-open" type="button" data-open>打开会话 <svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-open"/></svg></button></td>
+              </tr>
+              <tr>
+                <td>定时</td>
+                <td class="num">11-16 09:00</td>
+                <td class="num">09:00</td>
+                <td><span class="sxs-status"><span class="tb-status-dot task-status-cancelled"></span>已中断</span><div class="sxs-note">daemon 重启，运行未完成</div></td>
+                <td class="num">—</td>
+                <td><button class="sxs-open" type="button" data-open>打开会话 <svg class="ico-sm" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><use href="#i-open"/></svg></button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- 窗控（示意） -->
+<div class="sx-wincontrols" aria-hidden="true">
+  <button class="sx-winbtn" type="button">–</button>
+  <button class="sx-winbtn" type="button">□</button>
+  <button class="sx-winbtn sxs-close" type="button">✕</button>
+</div>
+
+<div id="toast" class="sxs-toast" hidden></div>
+
+<script>
+(function () {
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+  const state = { view: 'list', editing: null, lastFocus: null };
+  const loadAt = Date.now();
+
+  const JOBS = {
+    '仓库巡检': '检查昨天以来的提交、CI 与未关闭 issue，输出中文摘要；发现阻塞项时在仓库里创建 TODO。',
+    '每日依赖升级': '升级 lockfile 中可安全更新的依赖，跑测试；失败则回滚并记录原因。',
+    '周一发布说明': '汇总上周合并的 PR，按模块生成发布说明草稿并保存到 docs/releases。',
+    '夜间清理': '清理工作区里超过 30 天的临时构建产物。'
+  };
+
+  const pad = (n) => String(n).padStart(2, '0');
+  function human(ms) {
+    if (ms <= 0) return '已到期';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + ' 秒后';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' 分后';
+    const h = Math.floor(m / 60), rm = m % 60;
+    if (h < 24) return h + ' 小时' + (rm > 0 ? ' ' + rm + ' 分' : '') + '后';
+    return Math.floor(h / 24) + ' 天 ' + (h % 24) + ' 小时后';
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.hidden = true; }, 2200);
+  }
+
+  function closeMenus(except) {
+    $$('.sx-menu-pop').forEach((p) => { if (p !== except) p.hidden = true; });
+  }
+
+  function focusCard(name) {
+    if (!name) return;
+    const card = $$('[data-card]').find((c) => c.dataset.name === name);
+    if (!card) return;
+    card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    card.classList.add('sxs-focus');
+    setTimeout(() => card.classList.remove('sxs-focus'), 1600);
+  }
+
+  function updateEmpty() {
+    $('#emptyState').hidden = $$('[data-card]').length > 0;
+  }
+
+  function show(view, opts) {
+    opts = opts || {};
+    state.view = view;
+    ['list', 'config', 'records'].forEach((v) => { $('#view-' + v).hidden = v !== view; });
+    const back = $('#backBtn');
+    const refresh = $('#refreshBtn');
+    const neu = $('#newBtn');
+    if (view === 'list') {
+      $('#pageTitle').textContent = '定时任务';
+      back.hidden = true;
+      refresh.hidden = false;
+      neu.hidden = false;
+      if (opts.focus) focusCard(opts.focus);
+    } else if (view === 'config') {
+      const editing = opts.editing || null;
+      state.editing = editing;
+      $('#pageTitle').textContent = editing ? '编辑定时任务' : '新建定时任务';
+      back.hidden = false;
+      refresh.hidden = true;
+      neu.hidden = true;
+      $('#fName').value = editing || '';
+      $('#fTask').value = editing ? (JOBS[editing] || '') : '';
+      $('#fCycle').value = '每天';
+      $('#schedHint').textContent = '周期以开始时间为锚点 · 接下来 明天 09:00';
+      $('#fNoUntil').checked = true;
+      $('#fUntil').disabled = true;
+      $('#fUntil').value = '';
+      if (!editing) $('#fName').focus();
+    } else {
+      const name = opts.name || state.lastFocus || '仓库巡检';
+      state.lastFocus = name;
+      $('#pageTitle').textContent = name + ' · 执行记录';
+      back.hidden = false;
+      refresh.hidden = true;
+      neu.hidden = true;
+    }
+    closeMenus();
+    $('.sxs-viewport').scrollTop = 0;
+  }
+
+  function backToList(focus) {
+    show('list', { focus: focus || state.editing || state.lastFocus });
+  }
+
+  // 列表：卡片点击 / 开关 / 「…」菜单（事件委托，新建卡也能用）
+  const grid = $('#cardGrid');
+  grid.addEventListener('click', (e) => {
+    const card = e.target.closest('[data-card]');
+    if (!card) return;
+    const more = e.target.closest('.sxs-more');
+    if (more) {
+      e.stopPropagation();
+      const pop = card.querySelector('.sx-menu-pop');
+      const willOpen = pop.hidden;
+      closeMenus(pop);
+      pop.hidden = !willOpen;
+      return;
+    }
+    if (e.target.closest('.sx-menu-pop')) {
+      e.stopPropagation();
+      const btn = e.target.closest('[data-act]');
+      if (!btn) return;
+      const act = btn.dataset.act;
+      const pop = card.querySelector('.sx-menu-pop');
+      if (act === 'run') { pop.hidden = true; toast('已触发一次执行：新会话会出现在项目下'); return; }
+      if (act === 'records') { pop.hidden = true; show('records', { name: card.dataset.name }); return; }
+      if (act === 'edit') { pop.hidden = true; show('config', { editing: card.dataset.name }); return; }
+      if (act === 'delete') {
+        if (btn.dataset.armed !== '1') {
+          btn.dataset.armed = '1';
+          btn.dataset.label = btn.textContent;
+          btn.textContent = '确认删除';
+          setTimeout(() => { if (btn.isConnected) { btn.dataset.armed = ''; btn.textContent = btn.dataset.label; } }, 2600);
+          return;
+        }
+        card.remove();
+        toast('已删除任务（既有会话保留在项目下）');
+        updateEmpty();
+        return;
+      }
+      return;
+    }
+    if (e.target.closest('.sx-switch')) {
+      e.stopPropagation();
+      const sw = card.querySelector('.sx-switch');
+      const on = !sw.classList.contains('on');
+      sw.classList.toggle('on', on);
+      sw.setAttribute('aria-checked', on ? 'true' : 'false');
+      card.classList.toggle('is-off', !on);
+      if (on && !card.dataset.target) card.dataset.target = String(Date.now() + 3600e3);
+      tick();
+      toast(on ? '已启用' : '已暂停');
+      return;
+    }
+    show('records', { name: card.dataset.name });
+  });
+  document.addEventListener('click', () => closeMenus());
+
+  // 倒计时：开=走时；关=已暂停/已结束
+  function tick() {
+    const now = Date.now();
+    $$('[data-card]').forEach((card) => {
+      const sw = card.querySelector('.sx-switch');
+      const count = card.querySelector('.count');
+      if (!sw || !count) return;
+      if (!sw.classList.contains('on')) {
+        count.textContent = card.dataset.ended === '1' ? '已结束' : '已暂停';
+        count.classList.add('off');
+        return;
+      }
+      if (!card.dataset.target) {
+        const min = Number(card.dataset.targetOffset || '60');
+        card.dataset.target = String(loadAt + min * 60 * 1000);
+      }
+      count.textContent = human(Number(card.dataset.target) - now);
+      count.classList.remove('off');
+    });
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // 配置页：周期 / 截止 / 强度 / 权限 / 保存
+  const NEXT = {
+    '每 15 分钟': '15 分钟后',
+    '每小时': '1 小时后',
+    '每天': '明天 09:00',
+    '工作日': '周一 09:00',
+    '每周': '周五 09:00',
+    '每月': '12-20 09:00',
+    '每年': '2027-11-20 09:00'
+  };
+  $('#fCycle').addEventListener('change', (e) => {
+    $('#schedHint').textContent = '周期以开始时间为锚点 · 接下来 ' + (NEXT[e.target.value] || '—');
+  });
+  $('#fNoUntil').addEventListener('change', (e) => {
+    const no = e.target.checked;
+    $('#fUntil').disabled = no;
+    if (!no && $('#fUntil').value === '') $('#fUntil').value = '2027-01-31T23:59';
+  });
+  const EFFORTS = ['极简', '低', '中', '高', '超高', '最大'];
+  let effort = 3;
+  $('#modelPill').addEventListener('click', () => {
+    effort = (effort + 1) % EFFORTS.length;
+    $('#effortChip').textContent = EFFORTS[effort];
+  });
+  const MODES = ['只读', '自动编辑', '完全访问'];
+  let mode = 2;
+  $('#modePill').addEventListener('click', () => {
+    mode = (mode + 1) % MODES.length;
+    const p = $('#modePill');
+    p.textContent = MODES[mode];
+    p.classList.toggle('mode-pill-warn', MODES[mode] === '完全访问');
+    p.title = MODES[mode] === '完全访问' ? '无人值守：运行中不会弹审批，会直接修改工作目录' : '无人值守：自动编辑可能停在审批卡；只读最安全';
+  });
+  $('#wsPill').addEventListener('click', () => toast('（示意）选择已登记工作目录'));
+  $('#wsAdd').addEventListener('click', () => toast('（示意）浏览并登记新工作目录'));
+
+  $('#saveBtn').addEventListener('click', () => {
+    const name = ($('#fName').value || '').trim() || '未命名任务';
+    const prompt = ($('#fTask').value || '').trim();
+    const old = state.editing;
+    if (old) {
+      const card = $$('[data-card]').find((c) => c.dataset.name === old);
+      if (card) {
+        card.dataset.name = name;
+        card.querySelector('.sxs-name').textContent = name;
+        if (prompt !== '') card.querySelector('.sxs-prompt').textContent = prompt;
+      }
+    } else {
+      const src = $('[data-card]');
+      if (src) {
+        const card = src.cloneNode(true);
+        card.dataset.name = name;
+        card.dataset.targetOffset = '60';
+        card.dataset.target = String(Date.now() + 60 * 60e3);
+        card.classList.remove('is-off', 'sxs-focus');
+        delete card.dataset.ended;
+        card.querySelector('.sxs-name').textContent = name;
+        card.querySelector('.sxs-prompt').textContent = prompt || '（未填写任务内容）';
+        const sw = card.querySelector('.sx-switch');
+        sw.classList.add('on');
+        sw.setAttribute('aria-checked', 'true');
+        const pop = card.querySelector('.sx-menu-pop');
+        if (pop) pop.hidden = true;
+        grid.appendChild(card);
+        updateEmpty();
+      }
+    }
+    toast('已保存：' + name);
+    show('list', { focus: name });
+  });
+
+  // 顶栏
+  $('#backBtn').addEventListener('click', () => {
+    if (state.view === 'list') return;
+    backToList();
+  });
+  $('#refreshBtn').addEventListener('click', () => toast('已刷新'));
+  $('#newBtn').addEventListener('click', () => show('config', { editing: null }));
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('[data-open]')) toast('（示意图）打开这条执行对应的会话');
+  });
+
+  // 主题
+  const themeBtn = $('#themeBtn');
+  themeBtn.addEventListener('click', () => {
+    const root = document.documentElement;
+    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    themeBtn.classList.toggle('light', next === 'light');
+  });
+
+  // Esc：配置/记录 → 列表；列表 → 返回会话
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (state.view !== 'list') backToList();
+    else toast('（示意图）返回会话');
+  });
+
+  updateEmpty();
+})();
+</script>
+</body>
+</html>
