@@ -106,6 +106,22 @@ export function ChatRail(props: {
   const keyIdx = useMemo(() => new Map(rows.map((r, i) => [r.key, i])), [rows]);
   /** hover/focus 的刻度序(-1=无):预览串按需只为这一枚计算 */
   const [hover, setHover] = useState(-1);
+  /** 预览卡锚点(2026-11-20 刻度条内滚轮滚动):预览移出滚动列表 DOM,按悬停刻度实测位置在
+   *  inner 坐标系(视觉 /zoomScale)定位——列表 overflow 裁切不再波及预览卡 */
+  const [hoverPos, setHoverPos] = useState<{ left: number; top: number } | null>(null);
+  const hoverAt = (i: number, el: HTMLElement): void => {
+    setHover(i);
+    const inner = innerRef.current;
+    if (inner === null) return;
+    const z = zoomScale() || 1;
+    const tr = el.getBoundingClientRect();
+    const ir = inner.getBoundingClientRect();
+    setHoverPos({ left: (tr.right - ir.left) / z + 10, top: (tr.top + tr.height / 2 - ir.top) / z });
+  };
+  const hoverClear = (i: number): void => {
+    setHover((h) => (h === i ? -1 : h));
+    setHoverPos(null);
+  };
   const hoverPreview = useMemo(() => {
     const r = hover >= 0 ? rows[hover] : undefined;
     if (r === undefined) return null;
@@ -213,7 +229,11 @@ export function ChatRail(props: {
     if (prev !== undefined && prev !== null) prev.classList.remove('active');
     activeRef.current = idx;
     const next = tickRefs.current[idx];
-    if (next !== undefined && next !== null) next.classList.add('active');
+    if (next !== undefined && next !== null) {
+      next.classList.add('active');
+      // 刻度过多条内滚动时,让当前刻度始终保持在条可见区(2026-11-20;nearest 只滚本容器)
+      next.scrollIntoView({ block: 'nearest' });
+    }
   }, []);
   // rows 更替(或刻度条重挂)后新按钮无 active 类:按仍有效的旧序号补回(超界归 -1)
   useLayoutEffect(() => {
@@ -378,25 +398,23 @@ export function ChatRail(props: {
               className="sx-rail-tick"
               aria-label={t(`Message ${i + 1}`, `第 ${i + 1} 条消息`)}
               onClick={() => jump(i)}
-              onMouseEnter={() => setHover(i)}
-              onMouseLeave={() => setHover((h) => (h === i ? -1 : h))}
-              onFocus={() => setHover(i)}
-              onBlur={() => setHover((h) => (h === i ? -1 : h))}
+              onMouseEnter={(e) => hoverAt(i, e.currentTarget)}
+              onMouseLeave={() => hoverClear(i)}
+              onFocus={(e) => hoverAt(i, e.currentTarget)}
+              onBlur={() => hoverClear(i)}
             >
-              {/* hover 预览卡内容(2026-10-31 用户裁定改版:仅 hover 文字内容变)——前段=用户输入
-                  (亮色,2 行封顶),后段=该轮回复正文(暗色,2 行封顶),各自 line-clamp 多余省略。
-                  2026-11-19:只有 hover/focus 这一枚挂预览,文本也到此刻才算(剥 markdown 正则
-                  是全文扫描,切会话/流式不再为 N 枚常驻付费) */}
-              {hover === i && hoverPreview !== null && (
-                <span className="sx-rail-preview">
-                  <span className="sx-rail-pv-user">{hoverPreview.pv}</span>
-                  {hoverPreview.reply !== undefined && <span className="sx-rail-pv-reply">{hoverPreview.reply}</span>}
-                </span>
-              )}
               <span className="sx-rail-bar" />
             </button>
           ))}
         </div>
+        {/* 预览卡(2026-10-31 改版文案;2026-11-20 移出滚动列表):前段=用户输入(2 行封顶),
+            后段=该轮回复正文(2 行封顶),line-clamp 省略;仅 hover/focus 一枚挂载 */}
+        {hover !== -1 && hoverPreview !== null && hoverPos !== null && (
+          <span className="sx-rail-preview" style={{ left: hoverPos.left, top: hoverPos.top }}>
+            <span className="sx-rail-pv-user">{hoverPreview.pv}</span>
+            {hoverPreview.reply !== undefined && <span className="sx-rail-pv-reply">{hoverPreview.reply}</span>}
+          </span>
+        )}
       </div>
     </div>
   );

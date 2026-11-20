@@ -68,11 +68,12 @@ describe('ChatRail 滚动定位(大会话 CPU 轮)', () => {
     expect(document.querySelectorAll('.sx-rail-preview').length).toBe(0);
     // 预览串来自封存行(回复预览取末条 assistant),只在 hover 那一枚算/挂
     fireEvent.mouseEnter(ticks[0]!);
-    expect(ticks[0]!.querySelector('.sx-rail-pv-user')!.textContent).toBe('m1');
+    // 2026-11-20 预览移出刻度按钮(列表内滚不裁预览):全局单卡查询
+    expect(document.querySelector('.sx-rail-preview .sx-rail-pv-user')!.textContent).toBe('m1');
     expect(document.querySelectorAll('.sx-rail-preview').length).toBe(1);
     fireEvent.mouseLeave(ticks[0]!);
     fireEvent.mouseEnter(ticks[3]!);
-    expect(ticks[3]!.querySelector('.sx-rail-pv-reply')!.textContent).toBe('reply-4');
+    expect(document.querySelector('.sx-rail-preview .sx-rail-pv-reply')!.textContent).toBe('reply-4');
     view.unmount();
   });
 });

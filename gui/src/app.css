@@ -2902,7 +2902,11 @@ input.sx-setting-input { width: 100%; }
   transform: translateY(-50%);
   overflow: visible; pointer-events: none;
 }
-.sx-rail-list { display: flex; flex-direction: column; gap: 1px; } /* 十二轮半:间距实砍——上轮仅 gap 4→2,但条到条视觉节距=盒高(12)+gap+条高(1.5)≈14px 主导,用户看不出;盒高 12→8+gap→1,节距≈9px */
+/* 刻度列表限高内滚(2026-11-20 用户裁定「刻度不要超过上下视口,并留有一定距离,过多就上下滚动,
+   像齿轮一样」):中线锚定下给上下各留 12vh 呼吸位,超出的刻度在条内滚轮滚动——overscroll
+   contain 阻断滚动链(滚到头不再带动聊天正文),滚动条隐去保持细线观感 */
+.sx-rail-list { display: flex; flex-direction: column; gap: 1px; max-height: 76vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.sx-rail-list::-webkit-scrollbar { width: 0; height: 0; } /* 十二轮半:间距实砍——上轮仅 gap 4→2,但条到条视觉节距=盒高(12)+gap+条高(1.5)≈14px 主导,用户看不出;盒高 12→8+gap→1,节距≈9px */
 .sx-rail-tick {
   pointer-events: auto; position: relative; display: flex; align-items: center;
   height: 8px; padding: 0; border: none; background: transparent; cursor: pointer; flex: none;
@@ -2920,7 +2924,9 @@ input.sx-setting-input { width: 100%; }
 .sx-rail-tick:has(+ .sx-rail-tick:hover) .sx-rail-bar { width: 18px; height: 2px; }
 /* 右侧固定宽预览卡:视觉对齐全局 data-tip 卡(elev-prominent 阴影/lg 圆角/无边框/次级字色) */
 .sx-rail-preview {
-  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  /* 2026-11-20:改由组件按悬停刻度实测位置内联定位(left/top)——预览移出滚动列表,列表
+     overflow 裁切不再波及;top 为刻度视觉中线,translateY(-50%) 保持垂直居中 */
+  position: absolute; transform: translateY(-50%);
   width: 280px; padding: 6px 10px; border-radius: var(--radius-lg);
   background: var(--surface-elevated); box-shadow: var(--elev-prominent);
   color: var(--fg-secondary); font-size: calc(14px * var(--fz)); line-height: 1.4; text-align: left;
@@ -2930,6 +2936,7 @@ input.sx-setting-input { width: 100%; }
   word-break: break-word; white-space: pre-line;
 }
 .sx-rail-tick:hover .sx-rail-preview, .sx-rail-tick:focus-visible .sx-rail-preview { opacity: 1; }
+.sx-rail-inner > .sx-rail-preview { opacity: 1; } /* 2026-11-20 预览移出刻度按钮后,常显由挂载决定 */
 
 /* 2026-10-26 性能轮:离屏条目跳过渲染排布(CSS 原生虚拟化,Chromium 引擎)——长会话数百行
    代码块/表格离屏不再参与 layout/paint;contain-intrinsic-size auto 先用估算高、渲染过一次
