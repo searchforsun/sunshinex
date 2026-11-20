@@ -1,5 +1,5 @@
 // sunx 工具面（2026-11-15 sunx P1 Task 3；P2 Task 2 增板监视面）：dispatch_task / task_status 注册 +
-// SUNX_FACE_TOOLS 白名单装配 + get_agent_team_board 随板通道进面（dispatch target='team' 的监视伴面）。
+// SUNX_FACE_TOOLS 白名单装配 + get_agent_team_board 随团队工具进面（2026-11-21 起 dispatch_task 只走子智能体通道）。
 // 四面覆盖（brief Step 1）：①sunx 装配注册分派/窥视/板监视三件、白名单 derive 精确集合=常量（单点产出）；
 // ②standard 装配基线不含两件（主链 face 零变化；板监视面 standard 原有注册不属白名单收窄面）；③内核
 // 运行时（createKernelRuntime）sunx face=白名单（模型 wire 工具恰八件 + 呈现表随 effective face）；

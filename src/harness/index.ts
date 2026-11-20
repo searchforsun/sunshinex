@@ -64,7 +64,7 @@ const headlessAskStub: AskUserSeam = async () => ({ type: 'dismissed' });
 /** sunx 会话主链工具面白名单（2026-11-15 sunx P1 Task 3；P2 Task 2 增板监视面；P2 Task 3 增定时调度两件）：
  *  常量单点——装配注册（kind==='sunx' 分叉）、内核运行时 face 派生（session/runtime createKernelRuntime
  *  的 derive({only})）与测试三方同源。编排器不做执行（身份行即「never do the work yourself」）：只持分派
- *  （dispatch_task，双通道 target='fork'|'team'）/台账窥视与停止（task_status/task_stop）/问询（ask_question）/
+ *  （dispatch_task，只分派一次性子智能体）/台账窥视与停止（task_status/task_stop）/问询（ask_question）/
  *  清单（todo_write）/技能（skill）/产物（report_artifacts）/板监视（get_agent_team_board——板通道的监视
  *  伴面，随板通道一起进面）/定时调度（schedule_wakeup·schedule_task——到点唤醒/派发，宿主 TimerController
  *  承载）十件；standard 会话零消费（主链 face 基线不变量） */
@@ -171,8 +171,6 @@ export class Harness {
   private readonly stableOutputStyle?: OutputStyle;
   /** 稳定段 kind 装配口径（2026-11-15 sunx 提示词面,构造期缓存——run 级常量）：'sunx' = 身份槽替换 + 编排章程行 */
   private readonly stableKind?: SessionKind;
-  /** 事件发射缝镜像（registerOrchestrationTools 装配钩消费——钩方法读不到构造闭包 opts） */
-  private readonly onEventOpt?: (e: SessionEvent) => void;
   /** 定时调度 arm 缝镜像（同上；缺席=调度两件执行期 NOT_SUPPORTED 确定降级） */
   private readonly scheduleArmOpt?: { arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string } };
   readonly skills: SkillsFacade;
@@ -248,7 +246,6 @@ export class Harness {
 
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
-    this.onEventOpt = opts.onEvent;
     this.scheduleArmOpt = opts.schedule;
     // 持久化域单点（2026-11-15 sunx P3 Task 1 装配单点化）：构造期一次推导，下方全部持久化数据面消费点
     // 同源取本变量；缺席=resolveDataDir(base) 既有推导（零变化）。base 保持工作树共享面锚（sandbox/safePath/
@@ -654,10 +651,9 @@ export class Harness {
     // sunx 工具面（2026-11-15 sunx P1 Task 3；P2 Task 2 增板通道接缝）随会话形态档案表注册（D74）：
     // 构造期查 SESSION_FACE_PROFILES 调 register 钩——sunx=编排四件（分派/窥视/定时调度两件）；
     // standard=空档案零注册（不变量：非 sunx 装配注册表不含 dispatch_task/task_status）。
-    // dispatch_task=分派即返回两段式；target='team' 板通道接缝在此注入（R6 能力自举：无既有团队 →
-    // 建队+按 agent_id 实例化 teammate；team-created/teammate-created 复用既有事件形——GUI 队卡/
-    // 成员栏直播同源；标准会话的八件套/板行为零变化——本缝不进 standard 装配）。task_status=恒窥视
-    // 台账查询（窥视即消费）。白名单派生消费面在 createKernelRuntime（SESSION_FACE_PROFILES 单点）
+    // dispatch_task=分派即返回两段式（只分派一次性子智能体；团队工作走八件套——2026-11-21 用户裁定
+    // 删 target/team 通道）。task_status=恒窥视台账查询（窥视即消费）。白名单派生消费面在
+    // createKernelRuntime（SESSION_FACE_PROFILES 单点）
     SESSION_FACE_PROFILES[opts.kind ?? 'standard'].register?.(this);
     // 智能体团队八件套：agentTeams 关则不注入模型面（板协调器仍构造，盘数据不删）
     if (agentTeamsEnabled(base)) {
@@ -780,42 +776,12 @@ export class Harness {
   }
 
   /** sunx 编排专属工具面注册钩（SESSION_FACE_PROFILES.sunx.register 消费,构造期末段调用）：
-   *  dispatch_task（target='fork'|'team' 双通道,team 缝=board/tasks/自举建队/成员实例化）+
-   *  task_status 恒窥视 + 定时调度两件（宿主 TimerController arm 缝注入,接缝缺省（测试直构）
-   *  执行期 NOT_SUPPORTED 确定降级）。仅 sunx 档案消费——standard 装配零注册（face 基线不变） */
+   *  dispatch_task（只分派一次性子智能体；2026-11-21 用户裁定「删掉 target 参数与 team 通道」——
+   *  团队工作走 team 工具）+ task_status 恒窥视 + 定时调度两件（宿主 TimerController arm 缝注入，
+   *  接缝缺省（测试直构）执行期 NOT_SUPPORTED 确定降级）。仅 sunx 档案消费——standard 装配零注册 */
   registerOrchestrationTools(): void {
     this.tools.register({
-      ...makeDispatchTool(this.runner, {
-        team: {
-          board: this.taskboard,
-          tasks: this.tasks,
-          existingTeamId: () => this.agentTeams.list()[0]?.teamId,
-          // 自举建队：slug 源=传入名（label 或 'sunx'），teamId 方言 team-<slug>-<4rand>；既有 team-created
-          // 事件形随行（create_agent_team 同形载荷——GUI 队卡直播同源，非 team 分支新事件）
-          createTeam: (name) => {
-            const r = this.agentTeams.create(name);
-            if (r.ok) {
-              this.onEventOpt?.({ type: 'team-created', payload: { teamId: r.value.teamId, name: r.value.name, createdAt: r.value.createdAt }, ts: Date.now() });
-            }
-            return r;
-          },
-          // 成员实例化：teamAdapter.spawn 同缝（agent_id 解析角色框定 + mountTeammate 全链——路由 ask/
-          // kind 随装配透传）；既有 teammate-created 事件形随行（create_agent_teammate 同形载荷）
-          spawnMember: (input, tid) => {
-            const r = this.teamAdapter.spawn(input, tid);
-            if (r.ok) {
-              const tm = this.team.get(r.value.name);
-              this.onEventOpt?.({
-                type: 'teammate-created',
-                payload: { name: r.value.name, teamId: tid, createdAt: tm?.createdAt ?? Date.now(), busy: tm?.isBusy() ?? false },
-                ts: Date.now(),
-              });
-            }
-            return r;
-          },
-          aliveNames: (tid) => this.team.aliveNames(tid),
-        },
-      }),
+      ...makeDispatchTool(this.runner),
       display: { verb: 'DISPATCH' },
     });
     this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
