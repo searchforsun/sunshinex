@@ -251,6 +251,7 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 ~/.sunshinex/
 ├── settings.json               # 全局配置（第二节；含 providers / plugins / mcpApprovals / mcpDenied）
 ├── mcp.json                    # 全局 MCP 服务器登记（被项目级 .sunshinex/mcp.json 同名遮蔽；不过批准阀）
+├── schedules.json              # 定时任务定义与执行记录（GUI「定时任务」页；daemon 级，跨工作区）
 ├── plugins/<id>/               # 用户级插件（plugin.json + 资源；同 id 遮蔽内置，见 6.4）
 ├── agents/<id>/agent.md        # 全局子智能体（frontmatter 可选 enabled，缺省开；见 5.3）
 ├── teams/<id>/team.md          # 全局预定义团队（frontmatter name/description/members/lead/enabled，正文=章程；项目级同名遮蔽，见 5.6）
@@ -271,7 +272,9 @@ MCP 服务器登记在项目级 `.sunshinex/mcp.json` 与全局级 `~/.sunshinex
 
 `projects/` 这一层不限家目录所在盘：`projectsDir` 指到哪，各工作区的数据就落哪（如 `"projectsDir": "D:\\sunshinex-projects"`），逐工作区分目录的隔离与防撞名语义不变——家目录分区吃紧或想把运行数据放独立盘时用。留空即缺省形态（`~/.sunshinex/projects`）。
 
-> `SUNSHINEX_DATA_DIR` 是**开发与测试专用**的环境变量重定向口，用户配置面以 `projectsDir` 为准（换盘、分区都走它）。
+> `SUNSHINEX_DATA_DIR` 是**开发与测试专用**的环境变量重定向口，用户配置面以 `projectsDir` 为准（换盘、分区都走它）。定时任务档 `schedules.json` 同源：缺省落 `userConfigDir()`，该变量在场时落其下（隔离开发/测试，绝不读写真实调度档）。
+
+> 定时任务（daemon 级调度器）只在 GUI / `sunshinex serve` 里运行与管理：到点用既有建会话单点新建普通会话并发送任务，CLI / TUI 进程本身既不触发也不提供管理面；详细用法见 [MANUAL-GUI.md](MANUAL-GUI.md) 的「定时任务」一节。
 
 **项目级 `<项目>/`**
 
