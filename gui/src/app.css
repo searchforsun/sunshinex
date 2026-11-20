@@ -4509,11 +4509,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-editor-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sx-schedule-editor-sub .sx-schedule-back { margin-left: -8px; }
 .sx-schedule-editor-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.sx-schedule-save { height: 32px; padding: 0 18px; border: none; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); font: var(--sx-font) var(--font-ui); font-weight: 600; }
+/* 2026-11-21 用户裁定「创建/保存钮太大，和页面和谐一点」：与页内输入/下拉同高 30px，
+   左右内距收到 14px、字重 500，不再压过标题行 */
+.sx-schedule-save { height: 30px; padding: 0 14px; border: none; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); font: 500 var(--sx-font) var(--font-ui); }
 .sx-schedule-save:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
 .sx-schedule-save:disabled { opacity: 0.45; cursor: default; }
 .sx-schedule-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.sx-schedule-field-label { color: var(--fg-secondary); font-size: var(--sx-label-font); font-weight: 500; }
+/* 2026-11-21 用户裁定「标题/调度/指令 有点大，和左侧菜单栏标题一致」：字号回到界面字号本身
+   （侧栏菜单行同为 14px×--fz，随界面字号设置联动），不再 +1px */
+.sx-schedule-field-label { color: var(--fg-secondary); font-size: var(--sx-font); font-weight: 500; }
 /* 任务标题=纯文本标题（2026-11-20 用户裁定「不要用线 hover，就显示标题」）：无底无边，
    只在聚焦时保留光标；上方小标签负责说明这是可编辑的任务标题 */
 /* 标题输入框=与日期选择控件同一底色/圆角/高度（2026-11-21 用户裁定「和日期选择一样的背景色」）：
@@ -4586,8 +4590,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* ===== 定时任务页(scheduled-tasks Task 10,spec §9.4;2026-11-20 设置页式布局):页顶空白拖拽条 + 内容区标题/筛选/操作 ===== */
 .sx-schedules-layer { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; flex-direction: column; }
 .sx-schedule-page { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0;
-  /* 2026-11-21 用户裁定：配置页文字受系统字号控制且不低于 14px;标签（标题/调度/指令）再大一档 */
-  --sx-font: max(var(--f-base-size, 14px), 14px); --sx-label-font: calc(var(--sx-font) + 1px); }
+  /* 2026-11-21 用户裁定：配置页文字受系统字号控制且不低于 14px；标签与侧栏菜单同字号 */
+  --sx-font: max(var(--f-base-size, 14px), 14px); }
 /* 左菜单收起时的重开钮：与欢迎页同款浮动左上角（2026-11-20 用户裁定） */
 .sx-schedule-nav { position: absolute; top: 10px; left: 10px; z-index: 65; display: flex; align-items: center; }
 /* 与 .sx-settings-topbar 同构：40px 空带只承载窗控(−□× 是全局 fixed 簇)+ 底部分割线；数据拖拽带 */
