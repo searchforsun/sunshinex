@@ -57,7 +57,7 @@ export interface RefItem extends RefEntry {
  *  注：任务面给的正则 /([$#])([a-z][a-z0-9-]*)$/ 是词法核，词边界与空 query 两条件
  *  （测试规格 a$b 不触发 / 刚敲 $ 触发）由 (^|\s) 前导 + 可选 query 组补齐。 */
 export function refTokenAt(text: string, caret: number): RefPal | null {
-  const m = /(^|\s)([$#])([a-z][a-z0-9-]*)?$/.exec(text.slice(0, Math.max(0, caret)));
+  const m = /(^|\s)([$#])([a-z][a-zA-Z0-9-]*)?$/.exec(text.slice(0, Math.max(0, caret)));
   if (m === null) return null;
   const from = (m.index ?? 0) + (m[1]?.length ?? 0);
   return { query: m[3] ?? '', from, sym: m[2] === '#' ? '#' : '$' };

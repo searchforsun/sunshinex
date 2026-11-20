@@ -131,7 +131,7 @@ describe('后台 exec 任务名解析(purpose 优先,2026-11-07)', () => {
 
 describe('sunx 分派行(2026-11-21 用户实测「分派任务漏了,办公模式也没有这个超链接」)', () => {
   const dispatchEntry = (): ChatEntry =>
-    ({ key: 'd1', kind: 'tool', md: '', name: 'dispatch_task', input: { label: 'fork-s2', spec: 'brief' }, result: { ok: true, text: 'task subagent-1 started (output: /tmp/x.log)' } }) as unknown as ChatEntry;
+    ({ key: 'd1', kind: 'tool', md: '', name: 'dispatch_task', input: { label: 'fork-s2', spec: 'brief' }, result: { ok: true, text: 'subagent-1 started in background — fork-s2 (output: /tmp/x.log)' } }) as unknown as ChatEntry;
 
   it('办公模式保留完整折叠行:任务名蓝链在场(dom 层 .tool-agent-link)', () => {
     act(() => applyUiMode('office'));
@@ -141,5 +141,17 @@ describe('sunx 分派行(2026-11-21 用户实测「分派任务漏了,办公模�
     expect(link?.textContent).toContain('fork-s2');
     fireEvent.click(link!);
     expect(onOpenTask).toHaveBeenCalledWith('bg:subagent-1');
+  });
+});
+
+describe('分派行 team 通道回执(2026-11-21)', () => {
+  it('board task <id> created 形态同样出蓝链', () => {
+    const entry = { key: 'd2', kind: 'tool', md: '', name: 'dispatch_task', input: { label: 'team-pA', target: 'team', spec: 'brief' }, result: { ok: true, text: 'board task task-x created (team t-1)' } } as unknown as ChatEntry;
+    const onOpenTask = vi.fn();
+    const r = render(<ToolEntryView entry={entry} conn={conn} sessionId="s" onOpenTask={onOpenTask} />);
+    const link = r.container.querySelector('.tool-agent-link');
+    expect(link?.textContent).toContain('team-pA');
+    fireEvent.click(link!);
+    expect(onOpenTask).toHaveBeenCalledWith('bg:task-x');
   });
 });

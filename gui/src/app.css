@@ -519,6 +519,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font-size: calc(14px * var(--fz));
   color: var(--fg-secondary);
   white-space: nowrap;
+}
+/* 定时任务执行会话：相对时间左侧钟面小图标（2026-11-21 用户裁定），与「定时任务」入口同件 */
+.sx-session-row .session-sched-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  color: var(--fg-tertiary);
+  vertical-align: -2px;
 }.sx-session-row .attach {
   font-size: calc(14px * var(--fz));
   padding: 1px 8px;
@@ -1157,7 +1165,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 
 /* ===== G10-C5 设置页 Codex 同构(居中窄列/行式=标题+描述+右控件/分组 nav) ===== */.sx-settings-body { max-width: var(--chat-max, 720px); margin: 0 auto; width: 100%; } /* 2026-11-17 用户裁定「设置内容宽度像正文输入框一样动态调最大宽」:复用 .sx-main 的 --chat-max 阶梯限宽(同源同变量,随窗口/拖宽即时跟) */.sx-settings-group { padding: 10px 12px 2px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-settings-group-items { list-style: none; margin: 0; padding: 0; }.sx-setting-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; }.sx-setting-row + .sx-setting-row { border-top: 1px solid var(--border-subtle); }.sx-setting-main { min-width: 0; }.sx-setting-title { display: flex; align-items: center; gap: 6px; }.sx-setting-desc { margin: 2px 0 0; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }.sx-setting-input { width: 240px; flex: none; }select.sx-setting-select { width: 240px; }
 
-/* ===== G10-C6 右栏三面板(上下文/后台任务/记忆) ===== */.insight-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 4px; overflow: auto; } /* 2026-11-10 用户裁定:左右 12→4 增大使用面积,左对齐页签条图标、右对称(终端/浏览器/文件/辅助对话不入此容器) */ /* 2026-10-31 用户裁定「边距拓展」:水平 10→12px 与 todo-cards 原边距同宽 */.insight-tab > .todo-cards { padding: 0 4px; height: auto; flex: 1 1 auto; min-height: 0; gap: 8px; } /* 2026-11-11 用户裁定:有边框卡片两侧各收 4px,刷新条不收 */ /* 消双层边距(insight-tab 内卡片流让 insight-tab 统一供 12px,滚动也归 tab) */.insight-tab > .taskboard-cards { padding: 0 4px; height: auto; flex: 1 1 auto; min-height: 0; } /* 任务板刷新钮轮(2026-10-31):同 todo-cards 消双层边距 */.tb-board-bar { margin-bottom: -2px; }.insight-bar { display: flex; gap: 6px; flex: none; } /* 刷新点击反馈(2026-10-31 用户裁定「点击后转一下圈」):拉取在途图标自转,落定即停 */.sx-changes-act .sx-fetching { animation: sx-spin 0.9s linear infinite; }.insight-summary { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.ctx-parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }.ctx-part { display: flex; align-items: center; gap: 8px; font-size: calc(14px * var(--fz)); }.ctx-part-id { width: 90px; flex: none; color: var(--fg-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.ctx-part-bar { flex: 1; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, transparent); overflow: hidden; }.ctx-part-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }.ctx-part-num { width: 64px; flex: none; text-align: right; color: var(--fg-tertiary); font-family: var(--font-mono); font-size: calc(14px * var(--fz)); }.bgtask-list, .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.bgtask-row, .mem-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.bgtask-row:hover, .mem-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.bgtask-label, .mem-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.bgtask-status { flex: none; }.bgtask-running .bgtask-status { color: var(--fg); }.bgtask-done .bgtask-status { color: var(--ok); }.bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }.mem-date { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; } /* 2026-11-04 时标图标按 todo-card-time 配方(gap4 垂直居中) */
+/* ===== G10-C6 右栏两面板(后台任务/记忆) ===== */.insight-tab { display: flex; flex-direction: column; gap: 8px; height: 100%; padding: 8px 4px; overflow: auto; } /* 2026-11-10 用户裁定:左右 12→4 增大使用面积,左对齐页签条图标、右对称(终端/浏览器/文件/辅助对话不入此容器) */ /* 2026-10-31 用户裁定「边距拓展」:水平 10→12px 与 todo-cards 原边距同宽 */.insight-tab > .todo-cards { padding: 0 4px; height: auto; flex: 1 1 auto; min-height: 0; gap: 8px; } /* 2026-11-11 用户裁定:有边框卡片两侧各收 4px,刷新条不收 */ /* 消双层边距(insight-tab 内卡片流让 insight-tab 统一供 12px,滚动也归 tab) */.insight-tab > .taskboard-cards { padding: 0 4px; height: auto; flex: 1 1 auto; min-height: 0; } /* 任务板刷新钮轮(2026-10-31):同 todo-cards 消双层边距 */.tb-board-bar { margin-bottom: -2px; }.insight-bar { display: flex; gap: 6px; flex: none; } /* 刷新点击反馈(2026-10-31 用户裁定「点击后转一下圈」):拉取在途图标自转,落定即停 */.sx-changes-act .sx-fetching { animation: sx-spin 0.9s linear infinite; }.bgtask-list, .mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }.bgtask-row, .mem-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }.bgtask-row:hover, .mem-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.bgtask-label, .mem-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.bgtask-status { flex: none; }.bgtask-running .bgtask-status { color: var(--fg); }.bgtask-done .bgtask-status { color: var(--ok); }.bgtask-failed .bgtask-status, .bgtask-stopped .bgtask-status { color: var(--err); }.mem-date { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--fg-tertiary); font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; } /* 2026-11-04 时标图标按 todo-card-time 配方(gap4 垂直居中) */
 
 /* ===== G10 欢迎页项目 pill(select 叠透明层,Codex 下拉形) ===== */.welcome-project { position: relative; cursor: pointer; }.welcome-project-select {
   position: absolute; inset: 0; width: 100%; height: 100%;
@@ -1329,7 +1337,7 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   flex: none; width: 100%; background: var(--surface-soft); color: var(--fg);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   padding: 8px 12px; font-size: calc(14px * var(--fz)); outline: none;
-}.sx-search-modal input:focus { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }.sx-search-modal-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }.sx-search-sec { font-size: calc(14px * var(--fz)); letter-spacing: 0.5px; text-transform: uppercase; color: var(--fg-tertiary); padding: 8px 8px 2px; }.sx-search-row {
+}.sx-search-modal input:focus { border-color: var(--border); } /* 2026-11-21 用户裁定「去掉这个蓝色的选中边框」:搜索框聚焦不换 accent 描边,恒普通边框 */.sx-search-modal-list { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }.sx-search-sec { font-size: calc(14px * var(--fz)); letter-spacing: 0.5px; text-transform: uppercase; color: var(--fg-tertiary); padding: 8px 8px 2px; }.sx-search-row {
   display: flex; align-items: center; gap: 8px; padding: 6px 8px;
   border-radius: var(--radius-sm); color: var(--fg); text-align: left;
 }.sx-search-row:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }.sx-search-row .sx-search-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); }.sx-search-row .sx-search-meta { flex: none; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }.sx-search-empty { padding: 6px 8px; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
@@ -4678,3 +4686,77 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 页面级错误/notice 只作用于页根直子(配置/记录内部自带的 .sx-schedule-error 不被撑边距) */
 .sx-schedule-page > .sx-schedule-error { margin: 8px 24px 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-page > .sx-schedule-notice { margin: 8px 24px 0; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+
+/* ===== 2026-11-21 搜索面统一(用户裁定「各个类型的所有搜索框下边可以置顶分类,搜索出来内容
+   可以进行合理跳转,搜索框宽度可以和主会话一样随宽度变化」):分类条=搜索框下常驻;分组头
+   在结果滚动面内吸顶;键盘选中行共享一套高亮。侧栏聚合/标签页/目录树三面同源 ===== */
+.sx-search-cats {
+  flex: none; display: flex; align-items: center; gap: 6px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.sx-search-cats::-webkit-scrollbar { display: none; }
+.sx-search-cat {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 10px; border-radius: var(--radius-row);
+  background: var(--surface-soft); color: var(--fg-secondary);
+  font-size: calc(14px * var(--fz)); white-space: nowrap;
+  transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter);
+}
+.sx-search-cat:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, var(--surface-soft)); }
+.sx-search-cat.active { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
+.sx-search-cat-count { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.sx-search-cat.active .sx-search-cat-count { color: var(--fg-secondary); }
+
+/* 分组头吸顶:列表滚动时分类保持可见(modal/tab 弹层同为 surface-elevated 面) */
+.sx-search-sec {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--surface-elevated);
+}
+.sx-search-sec-count { font-weight: 400; letter-spacing: 0; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+
+/* 键盘选中行(↑↓ 移动):hover 底色同档,三面共用 */
+.sx-search-row.sx-kbd-active,
+.sx-tabsearch-row.sx-kbd-active,
+.sx-tree-row.sx-kbd-active { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
+
+/* 侧栏聚合搜索:宽度随主会话列宽(--chat-max 由 App RO 透传到壳根),窄窗钳视口 */
+.sx-search-modal { width: min(calc(100vw - 64px), calc(var(--chat-max, 750px) + 32px)); }
+.sx-search-modal .sx-search-cats { margin: 0 2px; }
+
+/* 标签页搜索:分类条与搜索头同面,浮层随视口收放 */
+.sx-tabsearch { width: min(360px, calc(100vw - var(--menu-occ, 0px) - 24px)); }
+.sx-tabsearch .sx-search-cats { padding: 8px 10px 2px; }
+
+/* 目录树搜索:搜索框+分类条整条吸顶,树从下方滚过 */
+.sx-tree-searchhead { position: sticky; top: 0; z-index: 2; background: var(--surface-under); padding-top: 2px; }
+.sx-tree-searchhead .sx-search-cats { padding: 0 8px 6px; }
+
+/* 设置页分组头吸顶 + 条数(分类置顶;设置面滚动容器=全宽 .sx-settings-main) */
+.sx-settings-sec {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 4px 0 0; padding: 6px 0;
+  background: var(--surface); color: var(--fg-secondary);
+  font-size: calc(14px * var(--fz)); font-weight: 600;
+}
+.sx-settings-sec-count { font-size: calc(14px * var(--fz)); font-weight: 400; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
+.sx-skill-section-head {
+  position: sticky; top: 0; z-index: 2;
+  box-sizing: border-box; padding: 6px 0; margin: 0 0 8px;
+  background: var(--surface);
+}
+.sx-settings-card > .sx-card-head {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--surface-elevated);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+/* 设置面筛选框(非资源工具栏那枚)随内容列宽伸缩——与主会话输入卡同宽令 */
+.sx-settings-form > .sx-search-bar { max-width: none; width: 100%; }
+/* 标签页搜索:头(输入)+分类条常驻,只让结果体滚动——分类不被列表带走 */
+.sx-tabsearch { display: flex; flex-direction: column; overflow: hidden; }
+.sx-tabsearch-body { flex: 1; min-height: 0; overflow-y: auto; }
+/* $/# 引用 token 在输入框可点跳转(2026-11-21 用户实测「输入框中也可以点击跳转到页签」):
+   高亮层整体 pointer-events:none(保打字穿透),此前仅 ⟦⟧ chip 放开;ref token 同样放开并给手型,
+   mousedown preventDefault 在组件侧保 textarea 焦点。id 中段大写(如 #team-pA)也已随词法修复 */
+.sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { pointer-events: auto; cursor: pointer; }
