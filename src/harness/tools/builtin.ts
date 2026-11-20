@@ -985,7 +985,7 @@ export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: im
     },
     name: 'load_agent_teams',
     description:
-      "Load a team's charter card by id when the user references a team like \"#team-id\" or the task matches an entry in the available agent teams list; use only ids from the list — never invent one; the charter is returned verbatim and never truncated. Teams are live: one you create (or one announced by a later [teams] notice) is usable by its id immediately. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
+      "Load a CATALOG team's charter card by id (predefined teams from the available agent teams list). Call it only when the referenced id appears in that catalog list. A team you created in this session, or one announced by a [teams] notice, is ALREADY loaded — its charter is in this conversation already; do not call this tool for it, and do not retry if an id is not in the catalog (it is either already loaded or unknown — retrying cannot succeed). The charter is returned verbatim and never truncated. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
     category: 'read' as const,
     fullObservation: true,
     executor: async (input: ToolInput) => {
@@ -1022,7 +1022,7 @@ export function makeAgentTool(agents: { get(id: string): { id: string; name: str
     },
     name: 'load_subagent',
     description:
-      "Load an agent's card (role framing) by id when the user references an agent like \"$agent-id\" or the task matches an entry in the available agents list; use only ids from the list — never invent one. Then delegate the task via spawn with that agent_id — do not absorb the role yourself. The agents list is a session snapshot: an agent added later is announced by an [agents] notice and becomes usable in a new session (the registry is frozen for the current session)",
+      "Load a REGISTERED agent's card (role framing) by id — only ids listed in the available agents catalog; never invent one. Then delegate via spawn with that agent_id — do not absorb the role yourself. The registry is frozen for this session: an agent added later is announced by an [agents] notice but is usable only in a NEW session — in this session the load will fail, so do not retry. A live teammate created by create_agent_teammate is not a spawn target here either; do not call this tool for it",
     category: 'read' as const,
     fullObservation: true,
     executor: async (input: ToolInput) => {
