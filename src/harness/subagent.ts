@@ -19,7 +19,7 @@ import type { MemoryScope } from './memory/paths';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { RunLedger } from './ledger';
 import { TaskRegistry, WAKE_HINT, wakeHintGate, wakeHintSuffix } from './tasks';
-import { FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS } from './tools/taskboard-tools';
+import { FORK_CATALOG_LOAD_EXCLUDED, FORK_EXCLUDED_TOOLS, SUNX_ORCHESTRATION_TOOLS } from './tools/taskboard-tools';
 import { hasCycle } from '../taskboard/model';
 import type { TaskBoardState } from '../taskboard/model';
 import type { TaskBoard } from '../taskboard/board';
@@ -402,7 +402,7 @@ export class SubagentRunner {
     // 子面=父全量 − 剔除族,恒定收窄(2026-11-14 用户裁定「主 agent 分派子智能体怎么能指定工具?
     // 不是事先规定吗?这个口不应该漏」:spawn 模型面 tools 参数封闭,工具面事先规定不可指定——
     // 旧「显式清单按名取交集」支路随 schema 撤参一并退役,子面口径单一不成分叉)
-    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...SUNX_ORCHESTRATION_TOOLS, ...FORK_EXCLUDED_TOOLS] });
+    const child = this.deps.registry.derive({ exclude: [SPAWN_TOOL_NAME, TODO_TOOL_NAME, 'ask_question', 'worktree', 'exit_plan', ...SUNX_ORCHESTRATION_TOOLS, ...FORK_CATALOG_LOAD_EXCLUDED, ...FORK_EXCLUDED_TOOLS] });
     routeAsk(child, askedBy);
     return bindExecWait(child);
   }

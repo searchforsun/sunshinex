@@ -30,6 +30,12 @@ export const FORK_EXCLUDED_TOOLS = [
  *  语义对偶：SUNX_FACE_TOOLS=主链准入面，本清单=子面必剔面 */
 export const SUNX_ORCHESTRATION_TOOLS = ['dispatch_task', 'task_status', 'schedule_wakeup', 'schedule_task'] as const;
 
+/** 目录加载件在子面是死路（2026-11-20 用户问询「load_subagent/load_agent_teams 这个需要吗」）：
+ *  两个工具的价值都是「加载 → 再委派/建队」——load_subagent 后要 spawn、load_agent_teams 后要
+ *  create_agent_team，而子面这两件都被剔除（防子生孙/板权归 leader），加载出来的章程无处可用。
+ *  三处 fork 派生点（subagent/loop/graph）同点同源消费；主链（standard/sunx）不受影响 */
+export const FORK_CATALOG_LOAD_EXCLUDED = ['load_subagent', 'load_agent_teams'] as const;
+
 function boardTail(board: TaskBoard): string {
   const lines = board.summaryLines();
   return lines.length === 0 ? '(task board empty)' : ['board:', ...lines].join('\n');
