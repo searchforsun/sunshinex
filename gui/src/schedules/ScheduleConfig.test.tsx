@@ -272,6 +272,36 @@ describe('ScheduleConfig 上下三段', () => {
     await waitFor(() => expect(previewSchedule).toHaveBeenLastCalledWith(expect.objectContaining({ until: expected })));
   });
 
+  it('截止时间：时分在右侧滚轮（非下拉），点选后改写 until', async () => {
+    const { conn, createSchedule } = makeConn();
+    render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
+    await screen.findByText(bi('Title', '标题'));
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '检查仓库' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Deadline', '截止时间') }));
+
+    // 右侧时/分两枚滚轮（日历栏之后），默认 23:59 高亮
+    const body = document.querySelector('.sx-deadline-cal + .sx-deadline-time-col')!;
+    expect(body.querySelectorAll('.sx-wheel').length).toBe(2);
+    const hourWheel = screen.getByRole('group', { name: bi('Deadline hour', '截止小时') });
+    const minuteWheel = screen.getByRole('group', { name: bi('Deadline minute', '截止分钟') });
+    expect(hourWheel.querySelector('.is-active')?.textContent).toBe('23');
+    expect(minuteWheel.querySelector('.is-active')?.textContent).toBe('59');
+
+    const now = new Date();
+    const y = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const m = now.getMonth() === 11 ? 1 : now.getMonth() + 2;
+    fireEvent.click(screen.getByRole('button', { name: bi('Next month', '下个月') }));
+    fireEvent.click(screen.getByRole('button', { name: `${y}-${String(m).padStart(2, '0')}-05` }));
+    fireEvent.click(hourWheel.querySelectorAll('.sx-wheel-item')[8]!);
+    fireEvent.click(minuteWheel.querySelectorAll('.sx-wheel-item')[30]!);
+    expect(hourWheel.querySelector('.is-active')?.textContent).toBe('08');
+    expect(minuteWheel.querySelector('.is-active')?.textContent).toBe('30');
+
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
+    expect(createSchedule.mock.calls[0]![0].until).toBe(new Date(y, m - 1, 5, 8, 30, 0, 0).getTime());
+  });
+
   it('预览：250ms 防抖、返回时刻入 hint；改时/分后重算', async () => {
     const ts = new Date(2026, 10, 21, 10, 0, 0, 0).getTime();
     const { conn, previewSchedule } = makeConn(ts);

@@ -37,6 +37,10 @@ export interface ScheduleConfigProps {
 const HOUR_OPTIONS: SelectOption[] = Array.from({ length: 24 }, (_, i) => ({ v: pad2(i), l: pad2(i) }));
 const MINUTE_OPTIONS: SelectOption[] = Array.from({ length: 60 }, (_, i) => ({ v: pad2(i), l: pad2(i) }));
 const DAY_OPTIONS: SelectOption[] = Array.from({ length: 31 }, (_, i) => ({ v: String(i + 1), l: String(i + 1) }));
+const HOUR_VALUES = Array.from({ length: 24 }, (_, i) => i);
+const MINUTE_VALUES = Array.from({ length: 60 }, (_, i) => i);
+/** 滚轮行高（与 app.css .sx-wheel-item 同值；居中偏移=可视区 5 行，上下各留 2 行） */
+const WHEEL_ROW = 28;
 
 /** 时/分两枚自绘下拉（项目 sx-dd 语言）；hourly 只用分钟，daily/weekly/monthly 用两枚 */
 function TimeSelects({
@@ -136,9 +140,90 @@ function WeekdaySelect({ value, onChange }: { value: number[]; onChange: (days: 
 }
 
 
+/** 时分滚轮（2026-11-21 用户裁定「时分应该显示在右侧，就是滚轮」）：自绘纵向滚轮，
+ *  项目自绘控件语言——非原生 select/input。滚动吸附到 28px 行，停稳后回写；点行直接选中；
+ *  键盘 ↑/↓ 走一格。上下各留两行淡出，中间高亮带即当前值。 */
+function TimeWheel({
+  values,
+  value,
+  ariaLabel,
+  onChange,
+}: {
+  readonly values: readonly number[];
+  readonly value: number;
+  readonly ariaLabel: string;
+  readonly onChange: (v: number) => void;
+}): JSX.Element {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const scrollToRow = (top: number): void => {
+    const el = ref.current;
+    if (el === null) return;
+    if (typeof el.scrollTo === 'function') el.scrollTo({ top, behavior: 'smooth' });
+    else el.scrollTop = top; // jsdom 无 scrollTo
+  };
+  // 弹层每次打开都是新挂载：直接滚到当前值，不做后续跟随（避免与手势抢滚动位置）
+  useEffect(() => {
+    const el = ref.current;
+    if (el === null) return;
+    el.scrollTop = Math.max(0, values.indexOf(value)) * WHEEL_ROW;
+    return () => window.clearTimeout(timer.current);
+  }, []);
+  const settle = (): void => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      const el = ref.current;
+      if (el === null) return;
+      const idx = Math.min(values.length - 1, Math.max(0, Math.round(el.scrollTop / WHEEL_ROW)));
+      const target = idx * WHEEL_ROW;
+      if (Math.abs(el.scrollTop - target) > 1) scrollToRow(target);
+      const v = values[idx]!;
+      if (v !== valueRef.current) onChange(v);
+    }, 120);
+  };
+  const step = (dir: number): void => {
+    const idx = Math.max(0, Math.min(values.length - 1, values.indexOf(value) + dir));
+    scrollToRow(idx * WHEEL_ROW);
+    onChange(values[idx]!);
+  };
+  return (
+    <div
+      className="sx-wheel"
+      role="group"
+      aria-label={ariaLabel}
+      tabIndex={0}
+      ref={ref}
+      onScroll={settle}
+      onKeyDown={(e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        step(e.key === 'ArrowUp' ? -1 : 1);
+      }}
+    >
+      {values.map((v) => (
+        <button
+          key={v}
+          type="button"
+          className={`sx-wheel-item${v === value ? ' is-active' : ''}`}
+          aria-pressed={v === value}
+          onClick={() => {
+            scrollToRow(values.indexOf(v) * WHEEL_ROW);
+            onChange(v);
+          }}
+        >
+          {pad2(v)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** 截止时间选择（2026-11-20 用户裁定「调度行右侧加上截止时间；日期选择用本项目格式，不用原生」）：
- *  自绘月历 + 时/分下拉；trigger 恒在调度行右端（margin-left:auto）。无值=「无截止」，
- *  选日/改时刻即时回写 until；清空回 undefined。过去日期禁用，今天可选（时刻合法性由保存面兜底）。 */
+ *  自绘月历 + 右侧时/分滚轮（2026-11-21 用户裁定）；trigger 恒在调度行右端（margin-left:auto）。
+ *  无值=「无截止」，选日/改时刻即时回写 until；清空回 undefined。过去日期禁用，今天可选
+ *  （时刻合法性由保存面兜底）。 */
 function DeadlinePicker({ value, onChange }: { value: number | undefined; onChange: (v: number | undefined) => void }): JSX.Element {
   const initial = value !== undefined ? new Date(value) : new Date();
   const [open, setOpen] = useState(false);
@@ -222,37 +307,43 @@ function DeadlinePicker({ value, onChange }: { value: number | undefined; onChan
               {t('No deadline', '无截止')}
             </button>
           </div>
-          <div className="sx-deadline-week">
-            {[1, 2, 3, 4, 5, 6, 7].map((d) => {
-              const lab = weekdayLabel(d);
-              return <span key={d}>{t(lab.en, lab.zh)}</span>;
-            })}
-          </div>
-          <div className="sx-deadline-grid">
-            {cells.map((day, i) => {
-              if (day === null) return <span key={`b${i}`} className="sx-deadline-day is-blank" />;
-              const key = `${view.y}-${pad2(view.m + 1)}-${pad2(day)}`;
-              const isSel = selected !== undefined && selected.getFullYear() === view.y && selected.getMonth() === view.m && selected.getDate() === day;
-              const isPast = new Date(view.y, view.m, day).getTime() < new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className={`sx-deadline-day${isSel ? ' is-selected' : ''}${key === todayKey ? ' is-today' : ''}`}
-                  aria-label={key}
-                  disabled={isPast}
-                  onClick={() => onChange(new Date(view.y, view.m, day, hour, minute, 0, 0).getTime())}
-                >
-                  {day}
-                </button>
-              );
-            })}
-          </div>
-          <div className="sx-deadline-time">
-            <span className="sx-schedule-when-inline">{t('Time', '时间')}</span>
-            <Select className="sx-schedule-dd sx-schedule-dd-num" value={pad2(hour)} options={HOUR_OPTIONS} ariaLabel={t('Deadline hour', '截止小时')} onChange={(v) => setTime(Number(v), minute)} />
-            <span className="sx-schedule-time-colon" aria-hidden="true">:</span>
-            <Select className="sx-schedule-dd sx-schedule-dd-num" value={pad2(minute)} options={MINUTE_OPTIONS} ariaLabel={t('Deadline minute', '截止分钟')} onChange={(v) => setTime(hour, Number(v))} />
+          <div className="sx-deadline-body">
+            <div className="sx-deadline-cal">
+              <div className="sx-deadline-week">
+                {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+                  const lab = weekdayLabel(d);
+                  return <span key={d}>{t(lab.en, lab.zh)}</span>;
+                })}
+              </div>
+              <div className="sx-deadline-grid">
+                {cells.map((day, i) => {
+                  if (day === null) return <span key={`b${i}`} className="sx-deadline-day is-blank" />;
+                  const key = `${view.y}-${pad2(view.m + 1)}-${pad2(day)}`;
+                  const isSel = selected !== undefined && selected.getFullYear() === view.y && selected.getMonth() === view.m && selected.getDate() === day;
+                  const isPast = new Date(view.y, view.m, day).getTime() < new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={`sx-deadline-day${isSel ? ' is-selected' : ''}${key === todayKey ? ' is-today' : ''}`}
+                      aria-label={key}
+                      disabled={isPast}
+                      onClick={() => onChange(new Date(view.y, view.m, day, hour, minute, 0, 0).getTime())}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="sx-deadline-time-col">
+              <span className="sx-deadline-time-label">{t('Time', '时间')}</span>
+              <div className="sx-wheel-pair">
+                <TimeWheel values={HOUR_VALUES} value={hour} ariaLabel={t('Deadline hour', '截止小时')} onChange={(h) => setTime(h, minute)} />
+                <span className="sx-schedule-time-colon" aria-hidden="true">:</span>
+                <TimeWheel values={MINUTE_VALUES} value={minute} ariaLabel={t('Deadline minute', '截止分钟')} onChange={(m) => setTime(hour, m)} />
+              </div>
+            </div>
           </div>
         </div>
       )}

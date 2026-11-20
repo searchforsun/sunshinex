@@ -4542,16 +4542,19 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-instruction .sx-composer-input { min-height: 112px; font-size: var(--sx-font); line-height: calc(var(--sx-font) * var(--f-base-lh, 1.6)); }
 .sx-schedule-instruction .composer-pill, .sx-schedule-instruction .model-effort-chip, .sx-schedule-instruction .effort-scale, .sx-schedule-instruction .mode-item-name, .sx-schedule-instruction .mode-item-desc, .sx-schedule-instruction .sx-menu-pop .sx-menuitem { font-size: var(--sx-font); }
 .sx-schedule-editor .proj-pop, .sx-schedule-editor .proj-pop .sx-menuitem { font-size: var(--sx-font); }
-/* 截止时间：调度行右端（自绘月历 + 时/分下拉；不用原生日期控件） */
+/* 截止时间：调度行右端（自绘月历 + 右侧时/分滚轮；不用原生日期/时间控件）
+   2026-11-21 用户裁定「时分应该显示在右侧，就是滚轮」：弹层加宽为 日历 | 时分轮 两栏 */
 .sx-schedule-deadline-anchor { position: relative; margin-left: auto; }
 .sx-schedule-deadline-pill { max-width: 220px; font-size: var(--sx-font); }
 .sx-schedule-deadline-pill .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-schedule-deadline-pop { position: absolute; top: calc(100% + 6px); right: 0; left: auto; z-index: 30; width: 280px; padding: 8px; }
+.sx-schedule-deadline-pop { position: absolute; top: calc(100% + 6px); right: 0; left: auto; z-index: 30; width: min(384px, calc(100vw - 40px)); padding: 8px 10px 10px; }
 .sx-deadline-head { display: flex; align-items: center; gap: 6px; }
 .sx-deadline-month { flex: 1; text-align: center; color: var(--fg); font-size: var(--sx-font); font-weight: 500; }
 .sx-deadline-clear { margin-left: auto; padding: 2px 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: var(--sx-font); }
 .sx-deadline-clear:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-deadline-clear.is-active { color: var(--accent); }
+.sx-deadline-body { display: flex; gap: 10px; margin-top: 4px; }
+.sx-deadline-cal { flex: 1; min-width: 0; }
 .sx-deadline-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; color: var(--fg-tertiary); font-size: var(--sx-font); text-align: center; }
 .sx-deadline-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 2px; }
 .sx-deadline-day { height: 28px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font-size: var(--sx-font); }
@@ -4560,11 +4563,20 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-deadline-day.is-selected { background: var(--fg); color: var(--fg-on-solid); }
 .sx-deadline-day:disabled { color: var(--fg-tertiary); opacity: 0.45; }
 .sx-deadline-day.is-blank { visibility: hidden; }
-.sx-deadline-time { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
-.sx-deadline-time .sx-dd { flex: none; }
-.sx-deadline-time .sx-dd-trigger { height: 28px; padding: 0 8px; font-size: var(--sx-font); }
-.sx-deadline-time .sx-dd-pop { min-width: 84px; }
-.sx-schedule-deadline-pop .sx-dd-opt { font-size: var(--sx-font); }
+.sx-deadline-time-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; padding-left: 10px; border-left: 1px solid var(--border-subtle); }
+.sx-deadline-time-label { color: var(--fg-tertiary); font-size: var(--sx-font); }
+/* 滚轮：可视 5 行(28px/行)，上下各留 2 行做淡出；中间高亮带即当前值 */
+.sx-wheel-pair { position: relative; display: flex; align-items: center; gap: 2px; }
+.sx-wheel-pair::before { content: ''; position: absolute; left: 0; right: 0; top: 56px; height: 28px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); pointer-events: none; }
+.sx-wheel-pair:focus-within::before { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.sx-wheel { position: relative; z-index: 1; width: 34px; height: 140px; overflow-y: auto; overflow-x: hidden; scroll-snap-type: y mandatory; overscroll-behavior: contain; scrollbar-width: none; outline: none;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 24%, #000 76%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 24%, #000 76%, transparent 100%); }
+.sx-wheel::-webkit-scrollbar { width: 0; height: 0; }
+.sx-wheel::before, .sx-wheel::after { content: ''; display: block; height: 56px; }
+.sx-wheel-item { display: flex; align-items: center; justify-content: center; width: 100%; height: 28px; padding: 0; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-tertiary); font: 400 var(--sx-font) var(--font-ui); font-variant-numeric: tabular-nums; scroll-snap-align: center; }
+.sx-wheel-item:hover { color: var(--fg); }
+.sx-wheel-item.is-active { color: var(--fg); font-weight: 600; }
 .sx-schedule-error { margin: 0; color: var(--err); font-size: var(--sx-font); }
 .sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; width: min(320px, calc(100vw - 32px)); }
 /* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
