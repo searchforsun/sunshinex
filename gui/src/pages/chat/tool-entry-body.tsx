@@ -166,7 +166,9 @@ export function ToolEntryBody({
       <div className="tool-md ask-record">
         <div className="ask-q">{askQ.question}</div>
         <div className={`ask-answer kind-${answerRow.kind}`}>
-          {answerRow.kind === 'waiting' && <span className="run-spinner" aria-hidden="true" />}
+          {/* 2026-11-21 用户实测「等待回答前面是什么东西,去掉」:等待态不挂转圈——提问行本身
+              「正在等待回答」已是进行态语义,再叠 spinner 是重复噪声(且任务被停/重启后该行会
+              永久停在等待态,转圈更误导) */}
           <span className="ask-answer-text">{answerRow.text}</span>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act, fireEvent, render } from '@testing-library/react';
 import { ToolEntryView } from './ToolEntry';
 import { ChatEntryView } from './EntryViews';

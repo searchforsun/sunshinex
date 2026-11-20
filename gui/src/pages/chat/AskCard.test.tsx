@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { vi } from 'vitest';
 import { AskCard } from './PendingCards';
 import type { AskPick } from './PendingCards';
 import type { GuiAskReq } from '../../connection';
@@ -49,7 +48,7 @@ describe('ask 路由归因(2026-11-21 用户实测「等待回答没有透传到
     const onOpenAgent = vi.fn();
     render(
       <AskCard
-        req={{ question: '确认写入 p-q.md?', options: [{ label: '是', description: null }, { label: '否', description: null }], askedBy: { label: 'fork-ask', taskId: 'task-1' } }}
+        req={{ question: '确认写入 p-q.md?', options: [{ label: '是' }, { label: '否' }], askedBy: { label: 'fork-ask', taskId: 'task-1' } }}
         pick={{ labels: [], custom: '' }}
         onPick={() => undefined}
         onOpenAgent={onOpenAgent}
