@@ -39,7 +39,7 @@ import { useChatImages } from './chat/use-chat-images';
 import { useChatSeenArchive } from './chat/use-chat-seen-archive';
 import { useChatTerminalDock } from './chat/use-chat-terminal-dock';
 import { useCollapseTransition } from '../use-collapse-transition';
-import { expandFileRefs, expandRefContents, hasMentionTokens, renderMentionSpans, setRefLabels, setRefOpenHandler, slashTokenAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, hasMentionTokens, refKindOf, renderMentionSpans, setRefLabels, setRefOpenHandler, slashTokenAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, hasMentionTokens, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
@@ -49,7 +49,7 @@ export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } fr
 import { useWorkspaceFiles } from './chat/use-workspace-files';
 import type { AskPick } from './chat/PendingCards';
 import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
-import { flatRefItems, unknownRefTokens } from './chat/ref-palette';
+import { refPanelItems as buildRefPanelItems, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { ChatComposerDock } from './chat/chat-composer-dock';
@@ -180,6 +180,18 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
    *  R5:未知引用提示只认这份缓存,从未拉过=跳过检查,不为提示补拉) */
   const [refPal, setRefPal] = useState<RefPal | null>(null);
   const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
+  /** 本会话实时团队/任务(2026-11-20 用户裁定「$/# 出来当前会话正在运行的或存在的团队及任务,
+   *  不含临时 spawn 子智能体」):teams=投影队卡;任务=板开放态(pending/running)——spawn 在账本
+   *  不在板,天然排除;与目录合并后的单点供面板/注册表/发送展开三面共用 */
+  const liveRefEntries = useMemo<RefEntries>(() => {
+    const liveTeams = (teams ?? []).map((t) => ({ id: t.teamId, name: t.name }));
+    const liveTasks = board !== undefined
+      ? Object.values(board.tasks)
+          .filter((t) => t.status === 'pending' || t.status === 'running')
+          .map((t) => ({ id: t.id, title: t.title, status: t.status }))
+      : [];
+    return { ...refEntries, ...(liveTeams.length > 0 ? { liveTeams } : {}), ...(liveTasks.length > 0 ? { liveTasks } : {}) };
+  }, [refEntries, teams, board]);
   const [refActive, setRefActive] = useState(0);
   const refEntriesLoadedRef = useRef(false);
   // G14.211 @ 面板点外即收:收口此前只有 Esc/改写输入两条路,焦点离开输入框后 Esc 不可达、
@@ -206,11 +218,11 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
    *  与页面蓝色超链接一致」):目录装载后写入模块级注册表——气泡/输入框按名显示、按 id 跳转;
    *  跳转路由=团队卡(`team:<id>`)/成员转录(onOpenAgent) */
   useEffect(() => {
-    setRefLabels(refEntries.agents, refEntries.teams);
-  }, [refEntries]);
+    setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? []);
+  }, [liveRefEntries]);
   useEffect(() => {
     setRefOpenHandler((sym, id) => {
-      if (sym === '#') onOpenTask?.(`team:${id}`);
+      if (sym === '#') onOpenTask?.(refKindOf('#' + id) === 'task' ? id : `team:${id}`);
       else onOpenAgent?.(id, id);
     });
     return () => setRefOpenHandler(null);
@@ -467,7 +479,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     root,
     resolveFileRef,
     refContents: refContentsRef.current,
-    refEntries, // 2026-11-20 名称→id 发送期展开($名称/#名称 按目录还原)
+    refEntries: liveRefEntries, // 2026-11-20 名称→id 发送期展开(目录+本会话实时同源)
     cmdData,
     setChat,
     onSideChat,
@@ -500,8 +512,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     // (评审 2026-11-04:失败静默空列若照检,每条含 $/# 消息都会吃到假「未匹配」提示)。
     // 未命中者聚合一条 transient 提示(imgHint 同款 role="status" 自隐行),原文照发——
     // 不拦截、不改写
-    if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
-      const unknown = unknownRefTokens(input, refEntries);
+    if (refEntriesLoadedRef.current && (liveRefEntries.agents.length > 0 || liveRefEntries.teams.length > 0)) {
+      const unknown = unknownRefTokens(input, liveRefEntries);
       if (unknown.length > 0) {
         const list = unknown.join(' ');
         showImgHint(t(`No registered match for ${list} — sent as-is`, `${list} 未匹配到在册条目——已按原文发送`));
@@ -509,7 +521,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     }
     jumpToBottom();
     sendRaw();
-  }, [jumpToBottom, sendRaw, input, refEntries, showImgHint]);
+  }, [jumpToBottom, sendRaw, input, liveRefEntries, showImgHint]);
   const { onInputClick } = useChatComposerSide({
     pickRelRef,
     refContents: refContentsRef,
@@ -540,7 +552,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     pickRelRef,
     refPal,
     setRefPal,
-    refEntries,
+    refEntries: liveRefEntries, // 键盘 ↑↓/Enter 与渲染面同源(含本会话实时团队/任务)
     refActive,
     setRefActive,
     loadRefEntries,
@@ -574,7 +586,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     if (input[refPal.from] !== '$' && input[refPal.from] !== '#') return null;
     // 空命中也返回 [](面板照开 + 空态引导,不再静默隐藏——用户实测:零目录时 $/# 弹了等于没弹;
     // 池空指路设置面,有池无匹配报无匹配)。$/# 拆开各自单域(2026-11-05 用户裁定)
-    return flatRefItems(refEntries, refPal.query, refPal.sym);
+    return buildRefPanelItems(liveRefEntries, refPal.query, refPal.sym);
   })();
 
   /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本;

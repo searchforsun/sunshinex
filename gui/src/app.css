@@ -4493,3 +4493,6 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    pointer 指针(颜色不动,保留域分色语义) */
 .hn-ref-link { cursor: pointer; }
 .hn-ref-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* $/# 面板实时段注记(2026-11-20):任务行尾状态小字(运行中/等待),颜色走三段弱色 */
+.ref-palette-note { flex: none; margin-left: auto; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
+.ref-palette-row .ref-palette-id.ref-palette-id-dim { margin-left: 6px; }

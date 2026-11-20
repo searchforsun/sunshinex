@@ -130,13 +130,24 @@ export function RefPalette({
   }, [active, items]);
   return (
     <div className="ref-palette" role="listbox" aria-label={t('Sub-agents and agent teams', '子智能体与智能体团队')}>
-      {items.length > 0 && <div className="sx-plus-sec">{items[0].sym === '#' ? t('Agent teams', '智能体团队') : t('Sub-agents', '子智能体')}</div>}
+      {/* 组头(2026-11-20 实时实体入池):$ 域守恒旧单头;# 域按 item.section 分段(本会话团队/
+          本会话任务/目录团队),实时段在场才加段——实时全空=旧形无头零回归 */}
+      {items.length > 0 && items[0].section === undefined && (
+        <div className="sx-plus-sec">{items[0].sym === '#' ? t('Agent teams', '智能体团队') : t('Sub-agents', '子智能体')}</div>
+      )}
       {items.length === 0 && emptyHint !== undefined && <div className="ref-palette-empty">{emptyHint}</div>}
       {items.map((item, i) => {
         // 组头文字退役(2026-11-05 用户裁定:#$ 面板不显示「智能体」等文字头——行首符号着色已
         // 自明,$/# 又拆开各自单域,头部再标域属冗余)
+        const secLabel = item.section !== undefined
+          ? item.section === 'Live teams' ? t('In this session: teams', '本会话团队')
+            : item.section === 'Live tasks' ? t('In this session: tasks', '本会话任务')
+              : t('Catalog teams', '目录团队')
+          : undefined;
+        const showSec = secLabel !== undefined && (i === 0 || items[i - 1]!.section !== item.section);
         return (
-          <Fragment key={`${item.sym}${item.id}`}>
+          <Fragment key={`${item.sym}${item.section ?? ''}${item.id}`}>
+            {showSec && <div className="ref-palette-head">{secLabel}</div>}
             <button
               ref={i === active ? activeRef : undefined}
               type="button"
@@ -152,6 +163,11 @@ export function RefPalette({
               {/* 2026-11-20 用户裁定「符号面板显示名称不是标识,用户不感知标识」:名称主显,
                   标识仅作无名条目的兜底(名称缺省/同 id 时)——id 留给模型契约与 tooltip */}
               <span className="ref-palette-name">{item.name !== '' && item.name !== item.id ? item.name : item.id}</span>
+              {item.note !== undefined && (
+                <span className="ref-palette-note">
+                  {item.note === 'running' ? t('running', '运行中') : t('waiting', '等待')}
+                </span>
+              )}
               {item.name !== '' && item.name !== item.id && (
                 <span className="ref-palette-id ref-palette-id-dim" title={item.id}>{item.id}</span>
               )}
@@ -168,15 +184,33 @@ export function RefPalette({
  *  (Chat)在目录装载后写入;模块级=refContentRegistry 同款先例,免穿 EntryViews 深层 props。 */
 const refLabels = new Map<string, string>();
 const refIds = new Map<string, string>();
-export function setRefLabels(agents: ReadonlyArray<{ id: string; name: string }>, teams: ReadonlyArray<{ id: string; name: string }>): void {
+/** 引用种类(2026-11-20 实时任务入池):`#t3` 是板任务(`team:` 前缀路由不适用),`#slug` 是团队 */
+const refKinds = new Map<string, 'team' | 'task'>();
+export function refKindOf(token: string): 'team' | 'task' | undefined {
+  return refKinds.get(token);
+}
+export function setRefLabels(
+  agents: ReadonlyArray<{ id: string; name: string }>,
+  teams: ReadonlyArray<{ id: string; name: string }>,
+  liveTeams: ReadonlyArray<{ id: string; name: string }> = [],
+  liveTasks: ReadonlyArray<{ id: string; title: string }> = [],
+): void {
   refLabels.clear();
   refIds.clear();
-  for (const [sym, list] of [['$', agents], ['#', teams]] as const) {
+  refKinds.clear();
+  for (const [sym, list] of [['$', agents], ['#', teams], ['#', liveTeams]] as const) {
     for (const e of list) {
       const label = e.name !== '' ? e.name : e.id;
       refLabels.set(`${sym}${e.id}`, label);
       refIds.set(`${sym}${label}`, e.id);
+      if (sym === '#') refKinds.set(`#${e.id}`, 'team');
     }
+  }
+  for (const t of liveTasks) {
+    const label = t.title !== '' ? t.title : t.id;
+    refLabels.set(`#${t.id}`, label);
+    refIds.set(`#${label}`, t.id);
+    refKinds.set(`#${t.id}`, 'task');
   }
 }
 /** 点击跳转句柄(2026-11-20 用户裁定「点击能跳转到指定团队/成员,和页面蓝色超链接一致」):

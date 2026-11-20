@@ -4,7 +4,7 @@ import type { CmdItem } from '../../CommandPalette';
 import { pathBasename } from '../../ui-util';
 import { atomicRange, rankFileHits, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './mention';
 import type { RefEntries, RefPal } from './ref-palette';
-import { flatRefItems, refPickLabel, refTokenAt } from './ref-palette';
+import { refPanelItems, refPickLabel, refTokenAt } from './ref-palette';
 import { slashItemsFor } from './use-command-palette';
 
 /**
@@ -157,7 +157,7 @@ export function useComposerKeys(deps: {
     const effRefPal = refTok ?? refPal;
     if (effRefPal !== null && (refTok !== null || input[effRefPal.from] === '$' || input[effRefPal.from] === '#')) {
       // $/# 拆开各自单域(2026-11-05 用户裁定)——与渲染面 slashPanelItems/refPanelItems 同源防漂移
-      const items = flatRefItems(refEntries, effRefPal.query, effRefPal.sym);
+      const items = refPanelItems(refEntries, effRefPal.query, effRefPal.sym);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         if (items.length > 0) {

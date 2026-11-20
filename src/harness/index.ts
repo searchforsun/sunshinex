@@ -75,7 +75,7 @@ export const SUNX_FACE_TOOLS: readonly string[] = [
   // 读章程卡/建队建单/指派改单/取消/给成员发消息——此前只有 get_agent_team_board 窥视,且系统
   // 提示教它 #team-id 时调 load_agent_teams 而该工具不在白名单(口径裂缝)。全部为编排动作,
   // 不违反「不亲做」;fork 子面仍经 FORK_EXCLUDED_TOOLS 剔除(子生孙依旧禁止)
-  'load_agent_teams', 'get_agent_team_board',
+  'load_agent_teams', 'load_subagent', 'get_agent_team_board', // 子智能体章程卡(sunx 委派前读卡)
   'create_agent_team', 'create_agent_teammate', 'create_agent_team_task',
   'update_agent_team_task', // assign|depend 两 action 合一(旧 assign/set_dependency 工具名已退役)
   'agent_team_task_stop', 'send_agent_team_message',

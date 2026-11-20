@@ -14,10 +14,22 @@ export interface RefEntry {
   name: string;
 }
 
-/** 两目录缓存（Chat useState 真值；首触懒拉前为空列——面板照开仅无项=不渲染） */
+/** 会话任务板任务（2026-11-20 用户裁定「$/# 出来当前会话正在运行的或存在的团队及任务,不含
+ *  临时 spawn 子智能体」）：任务板上的开放任务（pending/running）——spawn 子智能体在账本不在板，
+ *  天然不入列 */
+export interface RefTask {
+  id: string;
+  title: string;
+  status: string;
+}
+
+/** 两目录缓存+本会话实时实体（2026-11-20）：agents/teams=目录（惰拉一次）；liveTeams/liveTasks=
+ *  当前会话实时（Chat 由投影 teams/board 派生，随快照更新）——实时项置顶，目录项在后 */
 export interface RefEntries {
   agents: RefEntry[];
   teams: RefEntry[];
+  liveTeams?: RefEntry[];
+  liveTasks?: RefTask[];
 }
 
 /** palette 触发态（use-composer-keys 键面与 Chat 渲染面共享形态） */
@@ -27,9 +39,12 @@ export interface RefPal {
   sym: '$' | '#';
 }
 
-/** 带符号的扁平行（键盘游标/onPick 载荷；sym 决定插入文本前缀） */
+/** 带符号的扁平行（键盘游标/onPick 载荷；sym 决定插入文本前缀）。
+ *  section=分组头（相邻同值只渲染一次；undefined=无组头，$ 域守恒旧）；note=行尾状态注解（任务态） */
 export interface RefItem extends RefEntry {
   sym: '$' | '#';
+  section?: string;
+  note?: string;
 }
 
 /** caret 前 $/# 触发令牌：命中返回 { query, from(符号下标), sym }；不命中 null。
@@ -66,6 +81,15 @@ export function expandRefNames(text: string, entries: RefEntries): string {
     const label = refPickLabel(t);
     if (label !== t.id) pairs.push({ from: `#${label}`, to: `#${t.id}` });
   }
+  // 本会话实时团队/任务(2026-11-20):名称/标题插入 → 发送期还原 id(任务 id=t<seq>,模型按板 id 用)
+  for (const t of entries.liveTeams ?? []) {
+    const label = refPickLabel(t);
+    if (label !== t.id) pairs.push({ from: `#${label}`, to: `#${t.id}` });
+  }
+  for (const t of entries.liveTasks ?? []) {
+    const label = t.title !== '' ? t.title : t.id;
+    if (!/\s/.test(label) && label !== t.id) pairs.push({ from: `#${label}`, to: `#${t.id}` });
+  }
   pairs.sort((x, y) => y.from.length - x.from.length);
   let out = text;
   for (const p2 of pairs) out = out.split(p2.from).join(p2.to);
@@ -87,15 +111,39 @@ export function flatRefItems(entries: RefEntries, query: string, sym: '$' | '#')
   return hit.map((e) => ({ ...e, sym }));
 }
 
+/** 面板行单点（渲染/键盘共用）：$=目录子智能体（无组头，旧形）；#=本会话团队 → 本会话任务 →
+ *  目录团队三段（2026-11-20 用户裁定「直接 $ # 出来当前会话正在运行的或存在的团队及任务」）。
+ *  实时段任一在场时目录段补「目录团队」组头以示来源；实时全空=旧形单段无组头（零回归）。 */
+export function refPanelItems(entries: RefEntries, query: string, sym: '$' | '#'): RefItem[] {
+  if (sym === '$') return flatRefItems(entries, query, '$');
+  const q = query.toLowerCase();
+  const hit = (id: string, name: string): boolean => q === '' || id.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+  const liveTeams = (entries.liveTeams ?? []).filter((e) => hit(e.id, e.name)).map((e) => ({ ...e, sym: '#' as const, section: 'Live teams' }));
+  const liveTasks = (entries.liveTasks ?? []).filter((e) => hit(e.id, e.title)).map((e) => ({ id: e.id, name: e.title, sym: '#' as const, section: 'Live tasks', note: e.status }));
+  const catalog = filterRefEntries(entries, query).teams.map((e) => ({
+    ...e,
+    sym: '#' as const,
+    ...(liveTeams.length > 0 || liveTasks.length > 0 ? { section: 'Catalog teams' } : {}),
+  }));
+  return [...liveTeams, ...liveTasks, ...catalog];
+}
+
 /** R5 未知引用聚合（发送前只读检查）：消息里全部 $/# token（与 token 解析面同词法：
  *  (^|\s) 起手 + 小写首字符），未命中缓存 entries id 集者原样收集（含符号）；同 token
  *  去重保序。调用方约定：entries 从未拉过（palette 未开过）跳过整个检查——不为提示补拉。 */
 export function unknownRefTokens(text: string, entries: RefEntries): string[] {
-  const ids = new Set([...entries.agents, ...entries.teams].map((e) => e.id));
+  const ids = new Set([
+    ...[...entries.agents, ...entries.teams].map((e) => e.id),
+    ...(entries.liveTeams ?? []).map((e) => e.id),
+    ...(entries.liveTasks ?? []).map((e) => e.id),
+  ]);
   // 名称形态也算已匹配（2026-11-20 名称插入口径：插入的是名称，未匹配提示不得因此误报）
   const names = new Set<string>();
-  for (const e of [...entries.agents, ...entries.teams]) {
+  for (const e of [...entries.agents, ...entries.teams, ...(entries.liveTeams ?? [])]) {
     if (e.name !== '' && e.name !== e.id && !/\s/.test(e.name)) names.add(e.name);
+  }
+  for (const t of entries.liveTasks ?? []) {
+    if (t.title !== '' && t.title !== t.id && !/\s/.test(t.title)) names.add(t.title);
   }
   const out: string[] = [];
   for (const m of text.matchAll(/(^|\s)([$#][a-z][a-z0-9-]*)/g)) {

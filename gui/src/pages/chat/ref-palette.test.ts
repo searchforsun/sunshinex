@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandRefNames, filterRefEntries, flatRefItems, refPickLabel, refTokenAt, unknownRefTokens } from './ref-palette';
+import { expandRefNames, filterRefEntries, flatRefItems, refPanelItems, refPickLabel, refTokenAt, unknownRefTokens } from './ref-palette';
 import type { RefEntries } from './ref-palette';
 
 /** agents-teams P1 Task 4(spec 2026-11-04 §3.1/§3.2 GUI):$ / # 软引用 palette 纯函数面——
@@ -131,5 +131,43 @@ describe('名称插入口径(2026-11-20 用户裁定「# $ 后面只跟上名称
 
   it('unknownRefTokens:名称形态不误报', () => {
     expect(unknownRefTokens('$规划师 #核心团队', entries)).toEqual([]);
+  });
+});
+
+describe('本会话实时团队/任务入池(2026-11-20 用户裁定「$/# 出来当前会话正在运行的或存在的团队及任务,不含临时 spawn 子智能体」)', () => {
+  const entries: RefEntries = {
+    agents: [],
+    teams: [{ id: 'catalog-team', name: '目录团队A' }],
+    liveTeams: [{ id: 'team-x', name: '交付流水线' }],
+    liveTasks: [{ id: 't3', title: '质量评估', status: 'running' }, { id: 't4', title: '架构评审', status: 'pending' }],
+  };
+
+  it('# 面板三段:本会话团队 → 本会话任务(带状态注记) → 目录团队', () => {
+    const rows = refPanelItems(entries, '', '#');
+    expect(rows.map((r) => `${r.section ?? ''}|${r.id}`)).toEqual([
+      'Live teams|team-x',
+      'Live tasks|t3',
+      'Live tasks|t4',
+      'Catalog teams|catalog-team',
+    ]);
+    expect(rows[1]!.note).toBe('running');
+    expect(rows[2]!.note).toBe('pending');
+  });
+
+  it('实时全空=旧形单段(无组头、零回归)', () => {
+    const rows = refPanelItems({ agents: [], teams: entries.teams }, '', '#');
+    expect(rows.map((r) => r.id)).toEqual(['catalog-team']);
+    expect(rows[0]!.section).toBeUndefined();
+  });
+
+  it('任务标题插入→发送期还原板 id;实时团队名同款', () => {
+    expect(expandRefNames('把 #质量评估 重新分派,#交付流水线 跟进', entries)).toBe('把 #t3 重新分派,#team-x 跟进');
+    expect(unknownRefTokens('#质量评估 #交付流水线', entries)).toEqual([]);
+  });
+
+  it('$ 域保持目录子智能体单段(实时实体只进 # 域)', () => {
+    const rows = refPanelItems({ ...entries, agents: [{ id: 'dev', name: '开发' }] }, '', '$');
+    expect(rows.map((r) => r.id)).toEqual(['dev']);
+    expect(rows[0]!.section).toBeUndefined();
   });
 });
