@@ -97,6 +97,13 @@ describe('SunxSection(侧栏 SUNX 过滤组;2026-11-15 平铺改版)', () => {
     expect(screen.queryByRole('button', { name: 'sunx board' })).toBeNull();
   });
 
+  it('排序钮 tooltip 走 i18n(2026-11-20 用户实测「排序不是 i18n」):data-tip=Sunx 排序,aria-label 留英文测试钩子', () => {
+    const { container } = renderSection([sunxRow('j1', 'D:/w/alpha', 'alpha')]);
+    const btn = container.querySelector('button[aria-label="sort sunx"]') as HTMLButtonElement;
+    expect(btn).not.toBeNull();
+    expect(btn.getAttribute('data-tip')).toBe('Sunx 排序');
+  });
+
   it('组头可折叠:点击组头 aria-expanded 翻转(同 PROJECTS/RECENTS 分区头语言)', () => {
     renderSection([sunxRow('j1', 'D:/w/alpha', 'alpha')]);
     const head = screen.getByText('SUNX').closest('.sx-side-head') as HTMLElement;
