@@ -3,91 +3,25 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { mergeRunArtifacts, scanArtifactsJsonl, scanDeliverableFiles } from './artifacts-handlers';
+import { mergeRunArtifacts, scanArtifactsJsonl } from './artifacts-handlers';
 import type { Artifact } from '../types';
-import type { ChangeFile } from '../types';
 
-/** 产物并入面(2026-11-12 spec §3.4-3.5):声明∪bash 兜底(差集中白名单新建),声明优先去重,64 帽 */
+/** 产物并入面(2026-11-20 收敛):唯一来源=report_artifacts 声明;三条自动网(write/edit 写盘钩/
+ *  轮末 git 差集/mtime 扫描)按用户裁定退役。mergeRunArtifacts=声明去重(artifactKey 保序)+64 帽 */
 
-test('mergeRunArtifacts:声明∪bash 新建,声明优先去重,64 帽声明集在先', () => {
+test('mergeRunArtifacts:声明按 artifactKey 去重保序,64 帽截断', () => {
   const declared: Artifact[] = [
-    { kind: 'file', path: 'docs/a.md', source: 'write', callId: 'c1' },
-    { kind: 'file', path: 'shot.png', source: 'edit' },
-  ];
-  const gitExtra: ChangeFile[] = [
-    { path: 'docs/a.md', status: 'untracked', added: 1, deleted: null }, // 声明已有 → 覆弃
-    { path: 'out\\csv\\data.csv', status: 'added', added: 9, deleted: null }, // bash 兜底收(反斜杠归一)
-    { path: 'src/gen.ts', status: 'untracked', added: 2, deleted: null }, // 白名单外不收
-    { path: 'docs/b.md', status: 'modified', added: 1, deleted: 1 }, // 修改类不经差集网(spec §3.4)
-  ];
-  assert.deepEqual(mergeRunArtifacts(declared, gitExtra), [
-    { kind: 'file', path: 'docs/a.md', source: 'write', callId: 'c1' },
-    { kind: 'file', path: 'shot.png', source: 'edit' },
-    { kind: 'file', path: 'out/csv/data.csv', source: 'bash' },
-  ]);
-  const flood: Artifact[] = Array.from({ length: 64 }, (_, i) => ({ kind: 'file' as const, path: `f${String(i).padStart(2, '0')}.md`, source: 'write' as const }));
-  const merged = mergeRunArtifacts(flood, [{ path: 'extra.md', status: 'added', added: 1, deleted: null }]);
-  assert.equal(merged.length, 64); // 帽截断:声明集在先,兜底被挤出
-  assert.equal(merged.some((a) => a.kind === 'file' && a.path === 'extra.md'), false);
-});
-
-test('mergeRunArtifacts:双空面=空', () => {
-  assert.deepEqual(mergeRunArtifacts([], []), []);
-});
-
-test('mergeRunArtifacts:声明面 65 条溢出→64 帽截断,全为声明条', () => {
-  const flood: Artifact[] = Array.from({ length: 65 }, (_, i) => ({ kind: 'file' as const, path: `d${String(i).padStart(2, '0')}.md`, source: 'write' as const }));
-  const merged = mergeRunArtifacts(flood, []);
-  assert.equal(merged.length, 64); // 声明侧溢出同样截断至 64
-  assert.ok(merged.every((a) => a.kind === 'file' && a.source === 'write' && a.path.startsWith('d')));
-});
-
-test('mergeRunArtifacts:三参扫描网——差集>扫描去重,非白名单/已声明不收;声明 url/command 键独立', () => {
-  const declared: Artifact[] = [
-    { kind: 'file', path: 'declared.md', source: 'write' },
+    { kind: 'file', path: 'docs/a.md', source: 'tool', title: 'v1' },
     { kind: 'url', url: 'http://localhost:7788', source: 'tool', title: '在线试玩' },
+    { kind: 'file', path: 'docs/a.md', source: 'tool', title: 'v2' }, // 同键 → 弃
   ];
-  const gitExtra: ChangeFile[] = [
-    { path: 'git-new.md', status: 'untracked', added: 1, deleted: null },
-  ];
-  const scanBash: ChangeFile[] = [
-    { path: 'git-new.md', status: 'added', added: null, deleted: null }, // 同路径 → 差集优先,不双记
-    { path: 'scan-only.md', status: 'added', added: null, deleted: null }, // 扫描网独有 → 收
-    { path: 'declared.md', status: 'added', added: null, deleted: null }, // 已声明(file 键) → 不收
-    { path: 'code.ts', status: 'added', added: null, deleted: null }, // 白名单外 → 不收
-  ];
-  assert.deepEqual(mergeRunArtifacts(declared, gitExtra, scanBash), [
-    { kind: 'file', path: 'declared.md', source: 'write' },
+  assert.deepEqual(mergeRunArtifacts(declared), [
+    { kind: 'file', path: 'docs/a.md', source: 'tool', title: 'v1' },
     { kind: 'url', url: 'http://localhost:7788', source: 'tool', title: '在线试玩' },
-    { kind: 'file', path: 'git-new.md', source: 'bash' },
-    { kind: 'file', path: 'scan-only.md', source: 'bash' },
   ]);
-});
-
-test('scanDeliverableFiles:轮窗 mtime 过滤+跳点目录/node_modules+白名单外不收', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-artscan-'));
-  fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
-  fs.mkdirSync(path.join(dir, 'node_modules', 'x'), { recursive: true });
-  fs.mkdirSync(path.join(dir, '.hiddir'), { recursive: true });
-  const winStart = Date.now() - 30000;
-  const winEnd = Date.now();
-  const mk = (rel: string, mtimeMs: number): void => {
-    fs.writeFileSync(path.join(dir, rel), 'x');
-    fs.utimesSync(path.join(dir, rel), new Date(mtimeMs), new Date(mtimeMs));
-  };
-  mk('a.md', winEnd - 1000); // 窗内 → 收
-  mk('sub/b.pdf', winEnd - 2000); // 窗内子目录 → 收
-  mk('node_modules/x/c.md', winEnd - 1000); // node_modules 跳过 → 不收
-  mk('.hiddir/d.md', winEnd - 1000); // 点目录跳过 → 不收
-  mk('old.png', winStart - 10000); // 窗外 → 不收
-  mk('code.ts', winEnd - 1000); // 白名单外 → 不收
-  const out = scanDeliverableFiles(dir, winStart, winEnd);
-  assert.deepEqual(
-    out.map((e) => e.path).sort(),
-    ['a.md', 'sub/b.pdf'],
-  );
-  assert.ok(out.every((e) => e.status === 'added' && e.added === null && e.deleted === null));
-  fs.rmSync(dir, { recursive: true, force: true });
+  const flood: Artifact[] = Array.from({ length: 65 }, (_, i) => ({ kind: 'file' as const, path: `f${String(i).padStart(2, '0')}.md`, source: 'tool' as const }));
+  assert.equal(mergeRunArtifacts(flood).length, 64);
+  assert.deepEqual(mergeRunArtifacts([]), []);
 });
 
 /** 产物库聚合扫描(2026-11-12 spec §6.2):run-open 开轮记 seq,runmeta 绑轮,跨 run 去重保最新;
@@ -113,7 +47,7 @@ test('scanArtifactsJsonl:空文本/无 run-open 前缀的 runmeta 不认', () =>
   assert.deepEqual(scanArtifactsJsonl(JSON.stringify({ t: 'runmeta', artifacts: [{ path: 'x.md', source: 'write' }] })), []);
 });
 
-test('全链复现(2026-11-16 用户实测同文件声明卡+自动卡并存):write 落盘+显式声明同文件,drain→merge 全链单卡且声明版胜', async () => {
+test('全链(2026-11-20 收敛):write 落盘不再自动登记产物,仅 report_artifacts 声明入卡', async () => {
   const { builtinTools } = await import('../harness/tools/builtin');
   const { SafetyChain } = await import('../harness/security/chain');
   const { SecurityGuard } = await import('../harness/security/guard');
@@ -126,14 +60,11 @@ test('全链复现(2026-11-16 用户实测同文件声明卡+自动卡并存):wr
   const tools = builtinTools(safety, root, { artifacts: collector });
   const write = tools.find((t) => t.name === 'write')!;
   const report = tools.find((t) => t.name === 'report_artifacts')!;
-  await write.executor({ path: '01-structure-techstack.md', content: '# report\n' }); // record 进 pending
-  await report.executor({ artifacts: [{ kind: 'file', path: '01-structure-techstack.md', title: '分析报告', desc: '只读分析报告。' }] }); // declare 同文件
-  const declared = collector.drain();
-  const scan = scanDeliverableFiles(root, Date.now() - 60000, Date.now() + 60000);
-  const merged = mergeRunArtifacts(declared, [], scan);
-  const cards = merged.filter((a) => a.kind === 'file' && a.path.endsWith('01-structure-techstack.md'));
-  assert.equal(cards.length, 1, `同文件全链必须单卡,实测 ${cards.length} 条: ${JSON.stringify(merged)}`);
-  assert.equal(cards[0]!.source, 'tool', '胜出者=显式声明(模型意图优先)');
-  assert.equal((cards[0] as { desc?: string }).desc, '只读分析报告。', '声明 desc 在场');
+  await write.executor({ path: 'a.md', content: '# hi\n' });
+  await write.executor({ path: 'b.xml', content: '<x/>\n' });
+  assert.deepEqual(collector.drain(), [], '写盘不再自动产生产物(自动网退役)');
+  await report.executor({ artifacts: [{ kind: 'file', path: 'a.md', title: '分析报告', desc: '只读分析报告。' }] });
+  const merged = mergeRunArtifacts(collector.drain());
+  assert.deepEqual(merged, [{ kind: 'file', path: 'a.md', source: 'tool', title: '分析报告', desc: '只读分析报告。' }]);
   fs.rmSync(root, { recursive: true, force: true });
 });

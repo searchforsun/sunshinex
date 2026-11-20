@@ -114,7 +114,7 @@ export function builtinTools(
     /** 产物接缝（2026-11-12 spec §3.3;2026-11-14 kind 化）：record=write/edit 落盘自动声明（白名单门,
      *  commitFileWrite 单点调钩）;declare=report_artifacts 模型显式声明（任意 kind 不限白名单）。
      *  缺省不注入＝无产物、零工具面变化 */
-    artifacts?: { record(relPosix: string, source: 'write' | 'edit'): void; declare(entries: Artifact[]): void };
+    artifacts?: { declare(entries: Artifact[]): void }; // 2026-11-20 起只留声明面(report_artifacts)
     activeRoot?: () => string | null;
     todos?: { set(items: { text: string; status: TodoStatus }[]): void };
     tasks?: TaskRegistry;
@@ -170,13 +170,9 @@ export function builtinTools(
     // 写入的新内容——/diff 查询面读冻结前后像 blob（before→after），不再读现盘（多刀写同文件
     // 时逐刀快照互不漂移）
     writeSnapshot?.captureAfter(target, finalContent);
-    // 产物声明钩（2026-11-12 spec §3.3）：落盘成功后白名单命中即记；relPosix 归一（canonical，
-    // tagCall 侧同归一比对）；callId 由 serve 泵在 tool-result 回执时回标（ArtifactCollector.tagCall）。
-    // 根外写入（worktree 专属树/附加根）不记——非项目根产物（2026-11-14 终审 Important#2：rel 以
-    // '..' 开头或绝对 = 落点在装配根之外，卡区目录显示/侧栏预览/bash 差集去重均锚项目根相对语义）；
-    // 旁证：fork 隔离子链写盘 safePath 锚专属树，同样经此守卫跳过（不误记 '..' 前缀路径）
-    const relPosix = path.relative(root, target).replaceAll('\\', '/');
-    if (!relPosix.startsWith('..') && !path.isAbsolute(relPosix)) artifacts?.record(relPosix, verb === 'written' ? 'write' : 'edit');
+    // 产物只认模型显式声明（2026-11-20 用户裁定「完全去掉自己去解析,交给 agent 自己判断哪些是产物」）：
+    // write/edit 落盘不再自动登记产物——三条自动网（写盘钩/轮末 git 差集/mtime 扫描）全部退役，
+    // 产物面唯一来源=report_artifacts（artifacts.declare）；此处零产物副作用
     // diff stat（G14 工具行改版）：统计随结果串同源下发——GUI 折叠行与 TUI ⎿ 行同一 `+A -D`，无 second fetch
     const stat = writeDiffStat(pre, finalContent);
     const receipt = stat !== undefined ? `${verb} ${stat}` : verb;

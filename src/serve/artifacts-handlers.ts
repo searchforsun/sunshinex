@@ -1,70 +1,25 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import type { Artifact, ChangeFile } from '../types';
-import { artifactKey, isDeliverablePath } from '../types';
+import type { Artifact } from '../types';
+import { artifactKey } from '../types';
 import { sanitizeArtifacts } from '../session/entry';
 
-/** 轮次产物并入（2026-11-12 spec §3.4-3.5；2026-11-14 口径放宽,用户实测 copy.png 缺卡补）：
- *  声明面（report_artifacts,任意 kind）∪ bash 兜底两网（只产 file 类且限白名单）——①git 收尾
- *  差集中白名单**新建**（git 项目可见面）②mtime 轮窗有界扫描（非 git 项目/ignored/未跟踪修改
- *  对差集不可见,默认工作区即非 git）;按 artifactKey 去重声明 > 差集 > 扫描,64 帽（声明集在先,
- *  溢出静默截断） */
+/** 轮次产物并入（2026-11-12 spec §3.4；2026-11-20 收敛）：唯一来源=report_artifacts 声明面
+ *  （任意 kind）。三条自动网（write/edit 写盘钩、轮末 git 新建差集、mtime 轮窗扫描）已按用户
+ *  裁定全部退役——此前一次分析任务动辄列出几十个 xml/jar 自动卡；现由 agent 自己判断交付物。
+ *  本函数=声明按 artifactKey 去重保序+64 帽单点 */
 export const ARTIFACTS_CAP = 64;
 
-export function mergeRunArtifacts(declared: Artifact[], gitExtra: ChangeFile[], scanBash: ChangeFile[] = []): Artifact[] {
-  const seen = new Set(declared.map(artifactKey));
-  const pick = (list: ChangeFile[]): Artifact[] =>
-    list
-      .filter((c) => c.status === 'added' || c.status === 'untracked')
-      .map((c) => c.path.replaceAll('\\', '/'))
-      .filter((p) => isDeliverablePath(p) && !seen.has(`f:${p}`))
-      .map((p) => {
-        seen.add(`f:${p}`);
-        return { kind: 'file' as const, path: p, source: 'bash' as const };
-      });
-  return [...declared, ...pick(gitExtra), ...pick(scanBash)].slice(0, ARTIFACTS_CAP);
-}
-
-const SCAN_SKIP_DIRS = new Set(['node_modules']);
-const SCAN_MAX_DEPTH = 6;
-const SCAN_MAX_ENTRIES = 20000;
-
-/** bash 兜底 mtime 扫描网（2026-11-14 用户实测:默认工作区非 git,git 差集面为空,bash 产件
- *  全漏）：有界遍历项目根,白名单扩展名 + mtime 落 [startedAtMs, endedAtMs] 轮窗即候选;
- *  跳过 node_modules 与点目录,深 6 层/2 万条目封顶;git 项目作差集的并集网（覆盖 ignored/
- *  未跟踪修改——差集对二类不可见）。stat/readdir 失败静默收窄（竞态删除不阻断收尾） */
-export function scanDeliverableFiles(rootAbs: string, startedAtMs: number, endedAtMs: number): ChangeFile[] {
-  const out: ChangeFile[] = [];
-  let visited = 0;
-  const walk = (dir: string, depth: number): void => {
-    if (depth > SCAN_MAX_DEPTH || visited > SCAN_MAX_ENTRIES) return;
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const ent of entries) {
-      if (visited > SCAN_MAX_ENTRIES) return;
-      visited += 1;
-      const abs = path.join(dir, ent.name);
-      if (ent.isDirectory()) {
-        if (ent.name.startsWith('.') || SCAN_SKIP_DIRS.has(ent.name)) continue;
-        walk(abs, depth + 1);
-        continue;
-      }
-      if (!ent.isFile() || !isDeliverablePath(ent.name)) continue;
-      try {
-        const m = fs.statSync(abs).mtimeMs;
-        if (m >= startedAtMs && m <= endedAtMs) {
-          out.push({ path: path.relative(rootAbs, abs).replaceAll('\\', '/'), status: 'added', added: null, deleted: null });
-        }
-      } catch {
-        // stat 失败（竞态删除）:跳过
-      }
-    }
-  };
-  walk(rootAbs, 0);
+export function mergeRunArtifacts(declared: Artifact[]): Artifact[] {
+  // 2026-11-20 用户裁定「完全去掉自己去解析,交给 agent 自己判断哪些是产物」:自动网全部退役,
+  // 本函数只剩声明去重(artifactKey 保序)+ 64 帽单点
+  const seen = new Set<string>();
+  const out: Artifact[] = [];
+  for (const a of declared) {
+    const key = artifactKey(a);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+    if (out.length >= ARTIFACTS_CAP) break;
+  }
   return out;
 }
 

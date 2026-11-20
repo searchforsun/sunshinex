@@ -36,7 +36,7 @@ import { writePlanDoc } from '../tui/session-journal';
 import { listChanges, diffChangeSets } from './session-changes';
 import { lineDiffCounts } from '../harness/tools/write-diffstat';
 import type { Artifact, ChangeFile, TurnFileChange } from '../types';
-import { mergeRunArtifacts, scanArtifactsJsonl, scanDeliverableFiles, mergeAggregated, type AggregatedArtifact } from './artifacts-handlers';
+import { mergeRunArtifacts, scanArtifactsJsonl, mergeAggregated, type AggregatedArtifact } from './artifacts-handlers';
 import type { ApprovalFrame, AskFrame, DaemonFrame, PlanApprovalFrame } from './daemon-wire';
 /** RunMeta 本体上收内核条目模型(src/session/entry,内核单点)——此处 type re-export 供既有消费方 */
 export type { RunMeta } from '../session/entry';
@@ -1345,7 +1345,6 @@ ${this.sessionCharter ?? ''}` }
           this.callPaths.delete(callId);
           if (rel !== undefined && p?.ok === true) {
             this.runtimeImpl.harness.writeSnapshot.tagCall(rel, callId);
-            this.runtimeImpl.harness.artifacts.tagCall(rel, callId); // 产物回标(2026-11-12 spec §3.3,同守卫同位)
           }
         }
       }
@@ -1549,11 +1548,11 @@ ${this.sessionCharter ?? ''}` }
           turn.push({ path: relPosix, after, ...(afterDeleted !== undefined ? { afterDeleted } : {}) });
         }
         if (runSeq >= 0 && turn.length > 0) this.turnChanges.set(runSeq, turn);
-        // 产物并入（2026-11-12 spec §3.4-3.5）：声明∪bash 兜底两网（mergeRunArtifacts 纯函数,单测在案）
+        // 产物=模型声明唯一网（2026-11-20 用户裁定「完全去掉自己去解析,交给 agent 自己判断哪些是
+        // 产物」）：三条自动网（写盘钩/git 差集/mtime 扫描）退役，只剩 report_artifacts 声明；
+        // mergeRunArtifacts 保留作声明去重+64 帽单点（自动网入参空）
         const declared = this.runtimeImpl.harness.artifacts.drain();
-        // 二网=mtime 轮窗扫描（2026-11-14 用户实测:默认工作区非 git,差集面为空 copy.png 缺卡补）
-        const scanBash = scanDeliverableFiles(this.root, startedAt - 2000, Date.now() + 2000);
-        const artifacts = mergeRunArtifacts(declared, gitExtra, scanBash);
+        const artifacts = mergeRunArtifacts(declared);
         if (runSeq >= 0 && artifacts.length > 0) this.runArtifacts.set(runSeq, artifacts);
         // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
         const endedTs = Date.now();

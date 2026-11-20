@@ -356,7 +356,7 @@ export class Harness {
       },
       ask: opts.ask ?? headlessAskStub,
       writeSnapshot: this.writeSnapshot,
-      artifacts: this.artifacts, // 产物声明接缝(2026-11-12 spec §3.3):commitFileWrite 单点调钩,serve 侧轮末 drain
+      artifacts: this.artifacts, // 产物声明接缝(2026-11-20 收敛):唯一来源=report_artifacts 声明,serve 侧轮末 drain
       activeRoot: () => this.safety.activeRoot,
       todos: opts.todos ?? { set: () => {} },
       tasks: this.tasks,
