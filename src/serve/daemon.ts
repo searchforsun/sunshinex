@@ -44,6 +44,11 @@ import type { PtyHandlerIo } from './pty-handlers';
 import type { FileHandlerIo } from './file-handlers';
 import * as lifecycle from './session-lifecycle';
 import type { CreateSessionOpts, SessionLifecycleIo } from './session-lifecycle';
+import { ScheduleStore, schedulesFile } from './schedules/store';
+import { ScheduleEngine } from './schedules/engine';
+import { ScheduleExecutor } from './schedules/executor';
+import * as scheduleHandlers from './schedules/handlers';
+import type { SchedulesHandlerIo } from './schedules/handlers';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
 import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
@@ -198,11 +203,26 @@ export class GuiDaemon {
   private builtinFacade: { facade: import('./cdp-facade').BuiltinFacade; ws: string } | undefined;
   private builtinMetaTimer: ReturnType<typeof setInterval> | undefined;
   private readonly providerRoot: string;
+  /** 定时任务（2026-11-20）：store/engine/executor 单例；引擎 start/stop 随 daemon 生命周期 */
+  private readonly scheduleStore: ScheduleStore;
+  private readonly scheduleExecutor: ScheduleExecutor;
+  private readonly scheduleEngine: ScheduleEngine;
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
     this.model = opts.model;
     this.providerRoot = opts.providerRoot ?? process.cwd();
+    this.scheduleStore = new ScheduleStore(schedulesFile());
+    this.scheduleExecutor = new ScheduleExecutor({
+      createSession: (root, opts) => this.createSession(root, opts),
+      getSession: (id) => this.sessions.get(id),
+      releaseSession: (id) => this.releaseSession(id),
+      activeSessionId: () => this.activeId(),
+    }, this.scheduleStore);
+    this.scheduleEngine = new ScheduleEngine({
+      store: this.scheduleStore,
+      execute: (job, trigger, plannedAt) => this.scheduleExecutor.run(job, trigger, plannedAt),
+    });
   }
 
   /**
@@ -277,6 +297,40 @@ export class GuiDaemon {
   /** 激活会话 id（无会话时 undefined——裸端点 409 的判据） */
   activeId(): string | undefined {
     return this.active;
+  }
+
+  /** 定时任务/超限回收：teardown+出注册表+拆项目监听+杀 pty；journal 留盘，点记录可重建。
+   *  永不抛（回收触点异常不得击穿 executor 的 run 契约）；teardown 异步收口后统一摘除 */
+  private releaseSession(id: string): void {
+    const session = this.sessions.get(id);
+    if (session === undefined) return;
+    void session.teardown().then(
+      () => {
+        try {
+          this.sessions.delete(id);
+          this.unwatchProjectRoot(session.root);
+          this.sealAndKillPtyFor(id, session.attachedJournalId);
+          if (this.active === id) this.active = undefined;
+        } catch {
+          /* 尽力释放：摘除面异常不改变已 teardown 事实，journal 不受影响 */
+        }
+      },
+      () => undefined,
+    );
+  }
+
+  /** 定时任务 handlers 触点面（send/readJson 复用 daemon 单点；defaultModel 给 GUI 模型 pill） */
+  private get scheduleHandlerIo(): SchedulesHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+      engine: this.scheduleEngine,
+      defaultModel: () => {
+        const m = this.model;
+        return m.label ?? m.provider;
+      },
+      releaseSession: (id) => this.releaseSession(id),
+    };
   }
 
   /** 会话维挂起回填（G4 裁定 3：interrupt/reset=deny 回填）：P6 §4 表在会话——薄委托 denyPending
@@ -397,6 +451,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 退出路径(未走 close 的 process.exit/未捕获异常等)也收割——exit 钩子只跑同步码,spawnSync
     // 合法;强杀(TerminateProcess)不触发属物理极限。幂等:二次收割杀已死 pid 无害
     process.once('exit', () => this.reapBuiltinBrowsers());
+    // 定时任务布防：监听已就绪后再补跑/布防，catch-up 建的会话走完整 HTTP/会话栈
+    this.scheduleEngine.start();
     return { port: addr.port, token, close: () => this.close() };
   }
 
@@ -411,6 +467,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
    *  网络面先行关闭——不再接受新请求/新连接、在跑 run 中止后再动运行时内脏（逐会话收口序在会话维
    *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
+    this.scheduleEngine.stop();
     // -2) M2 融合面收口:meta 周期写停 + facade ws 停(先于收割——收割删壳 kind 指针档防死端口误导)
     if (this.builtinMetaTimer !== undefined) clearInterval(this.builtinMetaTimer);
     this.builtinFacade?.facade.stop();
@@ -529,6 +586,15 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 已读档(2026-10-23):userConfigDir/gui/seen.json,机器级 id→最近已读 updatedAt(已读/未读态落底层)
     { method: 'GET', path: '/app/seen', auth: true, run: async (_req, res) => sessionHandlers.handleAppSeenGet(this.sessionIo, res) },
     { method: 'PUT', path: '/app/seen', auth: true, run: async (req, res) => sessionHandlers.handleAppSeenPut(this.sessionIo, req, res) },
+    // 定时任务面（2026-11-20，spec §12）：CRUD/预览/启停/手动触发/记录；handler 薄层经 scheduleHandlerIo 取 engine
+    { method: 'GET', path: '/schedules', auth: true, run: async (_req, res) => scheduleHandlers.handleSchedulesList(this.scheduleHandlerIo, res) },
+    { method: 'POST', path: '/schedules', auth: true, run: async (req, res) => scheduleHandlers.handleSchedulesCreate(this.scheduleHandlerIo, req, res) },
+    { method: 'POST', path: '/schedules/preview', auth: true, run: async (req, res) => scheduleHandlers.handleSchedulesPreview(this.scheduleHandlerIo, req, res) },
+    { method: 'PUT', path: '/schedules/:id', auth: true, run: async (req, res, p) => scheduleHandlers.handleSchedulesUpdate(this.scheduleHandlerIo, req, res, p.id) },
+    { method: 'DELETE', path: '/schedules/:id', auth: true, run: async (_req, res, p) => scheduleHandlers.handleSchedulesDelete(this.scheduleHandlerIo, res, p.id) },
+    { method: 'POST', path: '/schedules/:id/run', auth: true, run: async (_req, res, p) => scheduleHandlers.handleSchedulesRun(this.scheduleHandlerIo, res, p.id) },
+    { method: 'POST', path: '/schedules/:id/enabled', auth: true, run: async (req, res, p) => scheduleHandlers.handleSchedulesEnabled(this.scheduleHandlerIo, req, res, p.id) },
+    { method: 'GET', path: '/schedules/:id/runs', auth: true, run: async (req, res, p) => scheduleHandlers.handleSchedulesRuns(this.scheduleHandlerIo, req, res, p.id) },
     // 外部打开应用族(2026-10-27 顶栏「打开」分体钮):预设应用安装态探测 + 以指定应用打开路径
     { method: 'GET', path: '/app/editors', auth: true, run: async (_req, res) => editorsHandlers.handleEditorsGet(this.sessionIo, res) },
     { method: 'POST', path: '/app/open', auth: true, run: async (req, res) => editorsHandlers.handleEditorsOpen(this.sessionIo, req, res) },
