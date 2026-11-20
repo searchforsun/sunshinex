@@ -1,4 +1,4 @@
-import { AlarmClock, AppWindow, BookOpen, Bot, Brain, CalendarClock, ClipboardCheck, ClipboardList, FilePenLine, FileText, FolderSearch, GitBranch, GitMerge, Globe, Hourglass, Kanban, ListChecks, ListPlus, ListTodo, MessageCircleQuestion, NotebookPen, MousePointerClick, Package, PenLine, Puzzle, Radar, Search, Send, Sparkles, Square, SquareTerminal, Telescope, UserPlus, UsersRound, Wrench, type LucideIcon } from 'lucide-react';
+import { AlarmClock, AppWindow, BookOpen, Bot, Brain, CalendarClock, ClipboardCheck, ClipboardList, Clock, FilePenLine, FileText, FolderSearch, GitBranch, GitMerge, Globe, Hourglass, Kanban, ListChecks, ListPlus, ListTodo, MessageCircleQuestion, NotebookPen, MousePointerClick, Package, PenLine, Puzzle, Radar, Search, Send, Sparkles, Square, SquareTerminal, Telescope, UserPlus, UsersRound, Wrench, type LucideIcon } from 'lucide-react';
 import { COMPUTER_USE_PREFIX } from './computer-use-contract';
 import { mcpToolParts } from './tool-entry-data';
 
@@ -21,6 +21,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   // dispatch_task=Send(派发语义,与 send_agent_team_message 同族);task_status=ClipboardCheck
   // (台账窥视,与 get_task 的 ClipboardList 区分);定时族=闹钟/日历钟
   dispatch_task: Send, task_status: ClipboardCheck, schedule_wakeup: AlarmClock, schedule_task: CalendarClock,
+  create_scheduled_task: Clock, // 定时任务(daemon 级周期任务):简单钟面,与侧栏入口同件
   send_agent_team_message: Send,
   get_task: ClipboardList,
 };

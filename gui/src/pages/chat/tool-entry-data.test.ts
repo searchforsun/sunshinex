@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { fileLabelOf, taskOpNameOf } from './tool-entry-data';
+import { fileLabelOf, taskOpNameOf, toolTargetOf, zhToolName } from './tool-entry-data';
 
 /** task_stop 折叠行任务名解析（2026-11-17 用户实测「停止行显示命令原文,不是后台任务名称」+
  *  「taskid 不对(带 task 前缀)」三修回归）：人名(purpose/转录映射)优先→回执 label 兜底;
@@ -61,5 +61,18 @@ describe('fileLabelOf 根相对化', () => {
 
   test('根外路径保持原样(不误剥)', () => {
     expect(fileLabelOf('E:/other/x.md', 'D:/repo')).toEqual({ base: 'x.md', dir: 'E:/other/' });
+  });
+});
+
+
+/** create_scheduled_task（2026-11-21 用户实测「工具没有特殊图标和 i18n」）：工具行双语名 +
+ *  目标取入参 name（任务名），不再露原始 snake_case 名；图标映射在 tool-entry-icon（Clock） */
+describe('create_scheduled_task 工具行', () => {
+  test('zhToolName 双语化（不再是原始工具名）；target=任务名', () => {
+    const label = zhToolName('create_scheduled_task');
+    expect(label).not.toBe('create_scheduled_task');
+    expect(label).toMatch(/^(Create scheduled task|创建定时任务)$/);
+    expect(toolTargetOf('create_scheduled_task', { name: '晨间巡检' })).toBe('晨间巡检');
+    expect(toolTargetOf('create_scheduled_task', {})).toBeUndefined();
   });
 });

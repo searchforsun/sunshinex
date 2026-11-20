@@ -82,6 +82,7 @@ const TOOL_VERBS: Record<string, { en: string; zh: string }> = {
   // 图标都要这个问题,补上」——四件双语名,折叠行不再露原始工具名)
   dispatch_task: { en: 'Dispatch task', zh: '分派任务' }, task_status: { en: 'Task status', zh: '任务状态' },
   schedule_wakeup: { en: 'Schedule wake-up', zh: '定时唤醒' }, schedule_task: { en: 'Schedule task', zh: '定时分派' },
+  create_scheduled_task: { en: 'Create scheduled task', zh: '创建定时任务' }, // daemon 级周期任务(2026-11-21 用户实测「工具没有特殊图标和 i18n」)
 };
 
 /** 中文工具名映射(2026-10-30 用户裁定「操作电脑和浏览器的工具行显中文工具名」):电脑操作
@@ -154,6 +155,11 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
     const flat = JSON.stringify(shown);
     if (flat.length <= 72) return flat;
     return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
+  }
+  if (name === 'create_scheduled_task') {
+    const v = input.name;
+    if (typeof v !== 'string' || v === '') return undefined;
+    return v.length <= 72 ? v : `${v.slice(0, 48)}…`;
   }
   if (name === 'exit_plan') {
     const v = input.name;

@@ -4516,10 +4516,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-field-label { color: var(--fg-secondary); font-size: calc(13px * var(--fz)); font-weight: 500; }
 /* 任务标题=纯文本标题（2026-11-20 用户裁定「不要用线 hover，就显示标题」）：无底无边，
    只在聚焦时保留光标；上方小标签负责说明这是可编辑的任务标题 */
-.sx-schedule-name-input { width: 100%; height: 30px; padding: 0; background: transparent; border: none; border-radius: 0; color: var(--fg-tertiary); font: 400 calc(15px * var(--fz))/1.4 var(--font-ui); outline: none; }
-/* 标题行整行与下方日期说明同色（2026-11-20 用户裁定）：标签与值都走 fg-tertiary */
-.sx-schedule-title-field .sx-schedule-field-label, .sx-schedule-title-field .sx-schedule-name-input { color: var(--fg-tertiary); font-weight: 400; }
-.sx-schedule-name-input:hover, .sx-schedule-name-input:focus { border: none; background: transparent; outline: none; }
+/* 标题输入框=与日期选择控件同一底色/圆角/高度（2026-11-21 用户裁定「和日期选择一样的背景色」）：
+   surface-soft 填充、无边框线、常规字重，值用正文色可读 */
+.sx-schedule-name-input { width: 100%; height: 30px; padding: 0 10px; background: var(--surface-soft); border: none; border-radius: var(--radius-md); color: var(--fg); font: 400 calc(13px * var(--fz))/1.4 var(--font-ui); outline: none; }
+.sx-schedule-name-input:hover, .sx-schedule-name-input:focus { border: none; background: var(--surface-soft); outline: none; }
 .sx-schedule-when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 30px; }
 .sx-schedule-dd { flex: none; }
 .sx-schedule-when .sx-dd-trigger { height: 30px; padding: 0 10px; font-size: calc(13px * var(--fz)); border-radius: var(--radius-md); background: var(--surface-soft); }
