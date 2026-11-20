@@ -135,6 +135,15 @@ export type SessionSubmitResult = { ok: true } | { ok: false; status: 409; error
 /** interrupt 结果：ok=true 已发中止信号；ok=false 无在跑 run（409 面） */
 export type SessionInterruptResult = { ok: true } | { ok: false; error: string };
 
+/** 一轮收尾信息（定时任务执行记录回填）：stopReason=done/interrupted/其它；一次性观察者。
+ *  endedAt=收尾时刻（epoch ms）；seconds=轮计算秒数（与 runmeta 同源）；tokens=本轮 tokensUsed（在场才给） */
+export interface RunEndInfo {
+  stopReason?: string;
+  endedAt: number;
+  seconds: number;
+  tokens?: number;
+}
+
 /** 单 run 锁的在场票据：abort 句柄持有即「运行中」，run 收束（含中断/失败）即清位；done 为 run promise
  *  本体——teardown/reset 的有界等待锚点（被中止 run 的 settle 收口等待经它观测） */
 interface CurrentRun {
@@ -243,6 +252,8 @@ export class SessionRuntime {
   /** 会话运行时本体（reset 时整体换新——软重置等价 /new：换 Harness 即换上下文链/沉淀管线/steering） */
   private runtimeImpl: KernelRuntime;
   private current?: CurrentRun;
+  /** 轮收尾观察者（一次性；run finally 清空——定时任务执行记录）。finally 内 current 清位后同步回调 */
+  private readonly runEndListeners = new Set<(info: RunEndInfo) => void>();
   /** 唤醒控制器（bg-wake spec §3）：登记/合批/续发单点；receipted 查 harness live 面（换铸后新实例同账本对象） */
   private readonly wake = new WakeController({
     busy: () => this.current !== undefined,
@@ -1372,6 +1383,15 @@ ${this.sessionCharter ?? ''}` }
     return this.current ? 'running' : 'idle';
   }
 
+  /** 轮收尾观察者（一次性）：下一次 run 收尾时回调并清空观察者集合；返回注销函数。
+   *  定时任务执行记录回填用——回调错误吞掉（观察者失败不影响收尾） */
+  onRunEnd(cb: (info: RunEndInfo) => void): () => void {
+    this.runEndListeners.add(cb);
+    return () => {
+      this.runEndListeners.delete(cb);
+    };
+  }
+
   /** 提交任务（每会话 run 串行，spec §7）：单 run 锁在先（409 拒二次提交），受理后 202 即回——run
    *  异步走主链入口 runTask（同 TUI /goal 路径），失败吞错转 stderr 日志行（daemon 不因单 run 失败
    *  倒面），finally 清锁。user 条入转录在锁检查之后——409 拒绝的提交不留痕。任务文本经链尾指令行
@@ -1448,6 +1468,10 @@ ${this.sessionCharter ?? ''}` }
       this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
     }
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
+    // 轮收尾观察面本地记账（2026-11-20 定时任务 Task 4）：收尾在 then 计算、finally 回调；
+    // 异常路径（runTask 拒绝）then 可能没算出——finally 回退到 startedAt 兜底有限值
+    let runEndedAt = 0;
+    let runSeconds = 0;
     const p: Promise<void> = this.runtimeImpl
       .runTask(goal, {
         signal: abort.signal,
@@ -1533,7 +1557,9 @@ ${this.sessionCharter ?? ''}` }
         if (runSeq >= 0 && artifacts.length > 0) this.runArtifacts.set(runSeq, artifacts);
         // G14.15 run 收尾元数据落 journal:GUI 回放恢复 Worked 行时长与步数/tokens 统计
         const endedTs = Date.now();
+        runEndedAt = endedTs; // 轮收尾观察面（Task 4）：与 runmeta endedTs 同源
         const seconds = Math.max(1, Math.round((endedTs - startedAt) / 1000));
+        runSeconds = seconds; // 轮收尾观察面（Task 4）：与 runmeta seconds 同源
         this.journal?.log({
           t: 'runmeta',
           // G14.210 停止态入档:中断/失败收口(非 done)→GUI 回放运行条显「已停止」
@@ -1590,6 +1616,25 @@ ${this.sessionCharter ?? ''}` }
       })
       .finally(() => {
         this.current = undefined;
+        // 轮收尾观察面（2026-11-20 定时任务 Task 4，spec §12）：current 清位后一次性回调并清空观察者
+        // 集合——执行记录回填看见的收尾态与 status()=idle 同拍。then 未算出的异常路径回退 startedAt
+        // 兜底，保证 endedAt/seconds 恒为有限值；回调失败吞掉，不影响收尾后续（续发/唤醒/定时）
+        const endedAt = runEndedAt > 0 ? runEndedAt : Date.now();
+        const info: RunEndInfo = {
+          stopReason: runOutcome?.stopReason,
+          endedAt,
+          seconds: runSeconds > 0 ? runSeconds : Math.max(0, Math.round((endedAt - startedAt) / 1000)),
+          ...(runOutcome?.tokensUsed !== undefined ? { tokens: runOutcome.tokensUsed } : {}),
+        };
+        const listeners = [...this.runEndListeners];
+        this.runEndListeners.clear();
+        for (const cb of listeners) {
+          try {
+            cb(info);
+          } catch {
+            /* 观察者失败不影响收尾 */
+          }
+        }
         // 计划模式收尾(2026-11-03 无感化):run 结束时 read-only 覆盖仍在座(未批准即结束——放弃放弃/
         // 中断/异常)→退出覆盖(批准路径已在落档钩退出,此处幂等);退出计划工具武装随 currentMode
         if (this.runtimeImpl.harness.security.overrideActive) this.runtimeImpl.harness.security.exitModeOverride();

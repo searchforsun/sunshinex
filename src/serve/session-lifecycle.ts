@@ -69,7 +69,11 @@ export function mintSessionId(sessions: Map<string, SessionRuntime>, root: strin
  *  纪律）且不铸新档不落出生行（领养既有 journal）。HTTP /session/new 面不透传本键（wire 白名单面,
  *  直调方自律） */
 export interface CreateSessionOpts {
-  mode?: 'full-access' | 'acceptEdits';
+  /** 三档全收（internal read-only 扩面，2026-11-20 定时任务 Task 4——HTTP /session/new 仍只收
+   *  acceptEdits/full-access，直调方自律） */
+  mode?: 'read-only' | 'acceptEdits' | 'full-access';
+  /** false=后台建会话不抢 daemon active（定时任务用）；缺省/true=既有行为 */
+  activate?: boolean;
   /** 会话形态：'sunx'=编排会话（稳定段章程/工具白名单/fork kind 继承,出生 meta 落 kind/title/charterRev:1） */
   kind?: 'sunx';
   /** 自定义会话名：出生 meta 落 title（G14.16 显示链） */
@@ -163,7 +167,9 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);
-  io.setActive(id);
+  // 激活位（2026-11-20 定时任务 Task 4）：activate:false=后台建会话不抢 daemon active（定时任务用）；
+  // 缺省/true 沿既有置激活行为逐字节不变
+  if (opts?.activate !== false) io.setActive(id);
   // T2 出生 journal:挂载即接 onContextChange 续写链。standard=惰性建档（首实质事件才落盘——幽灵
   // 会话语义原样）;sunx=出生即铸档（startWithId 以预铸 id 落 header+ensureSunxBirth 补出生行——
   // 持久化实体语义:出生即存在）
