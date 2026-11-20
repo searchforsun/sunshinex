@@ -28,7 +28,7 @@ export const FORK_EXCLUDED_TOOLS = [
  *  落位本叶模块（而非 index.ts 与 SUNX_FACE_TOOLS 同文件）：三派生点皆已引本模块；若落 index.ts
  *  则 subagent.ts 须反向 import './index' 成环（harness index → subagent → index 的 CJS 循环）。
  *  语义对偶：SUNX_FACE_TOOLS=主链准入面，本清单=子面必剔面 */
-export const SUNX_ORCHESTRATION_TOOLS = ['dispatch_task', 'task_status'] as const;
+export const SUNX_ORCHESTRATION_TOOLS = ['dispatch_task', 'task_status', 'schedule_wakeup', 'schedule_task'] as const;
 
 function boardTail(board: TaskBoard): string {
   const lines = board.summaryLines();
