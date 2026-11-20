@@ -18,7 +18,7 @@ import { CADENCE_OPTIONS, buildWhen, formatStamp, pad2, weekdayLabel, weekdayLis
 import type { ScheduleCadence, ScheduleWhen } from './cycle';
 
 /**
- * 定时任务配置页（2026-11-20 用户裁定第二版）：上下布局三段——任务标题 / 调度一行 / 指令。
+ * 定时任务配置页（2026-11-20 用户裁定第二版）：上下布局三段——标题 / 调度一行 / 指令。
  * - 调度不再有开始时间：周期下拉（每小时/每天/每周/每月）+ 该周期自己的时间控件
  *   （小时=分钟选择、天/周/月=时:分；周=星期多选；月=日选择），下拉/多选全部项目自绘
  *   （settings Select + sx-dd 弹层语言），不用原生 select/date 控件。
@@ -354,7 +354,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     if (busy) return;
     const built = buildWhen(when, Date.now(), customSrc);
     if (name.trim() === '') {
-      setError(t('Task title is required', '任务标题必填'));
+      setError(t('Title is required', '标题必填'));
       return;
     }
     if (prompt.trim() === '') {
@@ -434,9 +434,9 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
         </p>
       )}
 
-      <div className="sx-schedule-field">
+      <div className="sx-schedule-field sx-schedule-title-field">
         <label className="sx-schedule-field-label" htmlFor="sx-schedule-name">
-          {t('Task title', '任务标题')}
+          {t('Title', '标题')}
         </label>
         <input
           id="sx-schedule-name"
