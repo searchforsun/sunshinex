@@ -16,7 +16,7 @@ export class ScheduleStore {
     this.data = this.load();
   }
 
-  /** 坏档改名落点：`schedules.json` → `schedules.corrupt-<ts>.json`（spec §5.6；同目录，尽力而为） */
+  /** 坏档改名落点：`schedules.json` → `schedules.corrupt-<ts>.json`（spec §4.2；同目录，尽力而为） */
   private corruptFile(): string {
     const base = path.basename(this.file);
     const stem = base.endsWith('.json') ? base.slice(0, -'.json'.length) : base;
@@ -39,7 +39,14 @@ export class ScheduleStore {
       if (raw === null || typeof raw !== 'object' || (raw as StoreFile).version !== 1 || !Array.isArray((raw as StoreFile).jobs)) {
         throw new Error('unsupported schedules file');
       }
-      const jobs = (raw as StoreFile).jobs.map((j) => ({ ...j, runs: Array.isArray(j.runs) ? j.runs.slice(0, SCHEDULE_RUN_LIMIT) : [] }));
+      const jobs = (raw as StoreFile).jobs
+        .filter((j) => j !== null && typeof j === 'object' && !Array.isArray(j))
+        .map((j) => ({
+          ...j,
+          runs: (Array.isArray(j.runs) ? j.runs : [])
+            .filter((r) => r !== null && typeof r === 'object' && !Array.isArray(r) && typeof (r as RunRecord).status === 'string')
+            .slice(0, SCHEDULE_RUN_LIMIT),
+        }));
       return { version: 1, jobs };
     } catch (e) {
       console.warn('[schedules] corrupt store, starting empty:', e instanceof Error ? e.message : String(e));

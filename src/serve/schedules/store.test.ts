@@ -17,6 +17,19 @@ function job(id: string): ScheduleJob {
     createdAt: 1, updatedAt: 1, nextRunAt: 2, runs: [],
   };
 }
+/** 捕获 warn（保持测试输出干净），无论回调是否抛错都在 finally 还原 console.warn */
+function captureWarn<T>(fn: () => T): { value: T; warnings: string[] } {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(' '));
+  };
+  try {
+    return { value: fn(), warnings };
+  } finally {
+    console.warn = original;
+  }
+}
 
 test('落盘-重读往返 + 原子文件', () => {
   const file = tmpFile();
@@ -29,9 +42,11 @@ test('落盘-重读往返 + 原子文件', () => {
 test('坏档改名降级为空库', () => {
   const file = tmpFile();
   fs.writeFileSync(file, 'not-json', 'utf8');
-  const s = new ScheduleStore(file);
+  const { value: s, warnings } = captureWarn(() => new ScheduleStore(file));
   assert.deepEqual(s.list(), []);
   assert.equal(fs.readdirSync(path.dirname(file)).some((n) => n.startsWith('schedules.corrupt-')), true);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /corrupt store|unreadable store/);
 });
 
 test('记录最多 100 条且新→旧', () => {
@@ -79,20 +94,48 @@ test('schedulesFile：SUNSHINEX_DATA_DIR 优先，否则 userConfigDir', () => {
 test('不支持版本同样改名降级为空库', () => {
   const file = tmpFile();
   fs.writeFileSync(file, JSON.stringify({ version: 2, jobs: [] }), 'utf8');
-  const s = new ScheduleStore(file);
+  const { value: s, warnings } = captureWarn(() => new ScheduleStore(file));
   assert.deepEqual(s.list(), []);
   const corrupt = fs.readdirSync(path.dirname(file)).filter((n) => n.startsWith('schedules.corrupt-'));
   assert.equal(corrupt.length, 1);
   assert.equal(corrupt[0]!.endsWith('.json'), true);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /corrupt store|unreadable store/);
+});
+
+test('非对象 jobs 项被过滤（不生成幻影任务）', () => {
+  const file = tmpFile();
+  fs.writeFileSync(file, JSON.stringify({ version: 1, jobs: [42] }), 'utf8');
+  const s = new ScheduleStore(file);
+  assert.deepEqual(s.list(), []);
+});
+
+test('坏 runs 项被过滤且 markInterrupted 不崩', () => {
+  const file = tmpFile();
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      version: 1,
+      jobs: [{ ...job('a'), runs: [null, { id: 'r', trigger: 'schedule', startedAt: 1, status: 'running', root: 'default' }] }],
+    }),
+    'utf8',
+  );
+  const s = new ScheduleStore(file);
+  assert.equal(s.get('a')!.runs.length, 1);
+  assert.equal(s.get('a')!.runs[0]!.id, 'r');
+  assert.doesNotThrow(() => s.markInterrupted(99));
+  assert.equal(s.get('a')!.runs[0]!.status, 'interrupted');
 });
 
 test('不可读档（EISDIR）改名降级为空库', () => {
   const file = tmpFile();
   fs.mkdirSync(file);
-  const s = new ScheduleStore(file);
+  const { value: s, warnings } = captureWarn(() => new ScheduleStore(file));
   assert.deepEqual(s.list(), []);
   assert.equal(fs.existsSync(file), false);
   assert.equal(fs.readdirSync(path.dirname(file)).some((n) => n.startsWith('schedules.corrupt-')), true);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /corrupt store|unreadable store/);
 });
 
 test('patch/patchRun/remove 落盘', () => {
