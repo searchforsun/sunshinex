@@ -4603,23 +4603,25 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-create-caret { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; border: none; border-left: 1px solid var(--border); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: transparent; color: var(--fg-secondary); }
 .sx-schedule-create-caret:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-schedule-create-menu { top: calc(100% + 6px); right: 0; left: auto; }
+[data-theme='light'] .sx-schedule-error, [data-theme='light'] .sx-schedule-err { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
+[data-theme='light'] .sx-schedules-content > .sx-schedule-error { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 .sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: calc(12.5px * var(--fz)); }
 .sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */
-.sx-schedule-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: var(--surface-elevated); border-radius: var(--radius-md); cursor: pointer; }
-.sx-schedule-card:hover { background: color-mix(in srgb, var(--surface-elevated) 94%, var(--fg) 6%); }
-.sx-schedule-card.is-focus { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+.sx-schedule-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: var(--surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), box-shadow var(--dur-basic) var(--ease-enter); }
+.sx-schedule-card:hover { background: color-mix(in srgb, var(--fg) 5%, var(--surface-elevated)); }
+.sx-schedule-card.is-focus { background: color-mix(in srgb, var(--fg) 8%, var(--surface-elevated)); box-shadow: none; }
 .sx-schedule-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sx-schedule-card-top .sx-switch { margin-left: 0; }
 .sx-schedule-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); font-weight: 600; }
 .sx-schedule-prompt { margin: 0; min-height: 39px; color: var(--fg-secondary); font-size: calc(12.5px * var(--fz)); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .sx-schedule-next { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
 .sx-schedule-next .count { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
-.sx-schedule-next .count.off { color: var(--fg-tertiary); }
+.sx-schedule-next .count.off { color: var(--fg-secondary); }
 .sx-schedule-card.is-off .sx-schedule-name { color: var(--fg-secondary); }
-.sx-schedule-card.is-off .sx-schedule-prompt { color: var(--fg-tertiary); }
+.sx-schedule-card.is-off .sx-schedule-prompt { color: var(--fg-secondary); }
 .sx-schedule-card .sx-menu-pop { top: 34px; right: 8px; }
 .sx-schedule-danger, .sx-menu-pop .sx-menuitem.sx-schedule-danger { color: var(--err); }
 /* 页面级空/加载态(无任务/加载中):大留白居中;记录页的紧凑空态由 .sx-schedule-records 覆写 */
