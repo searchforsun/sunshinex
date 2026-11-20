@@ -1369,7 +1369,7 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     }
   });
 
-  it('G14.2xx 贴底归底收进 rAF:同帧多次渲染只调度一次,flush 前不赋值', async () => {
+  it('G14.2xx 内容帧贴底在提交后/绘制前同步落底(2026-11-20 流式尾段跳动根修);rAF 兜底同帧只调度一次', async () => {
     const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
     Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 500 });
     Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 2000 });
@@ -1378,17 +1378,20 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
       mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
       await flushed();
       const el = document.querySelector('.chat') as HTMLElement;
+      raf.drain(); // 排掉挂载期一次性归底(清在途槽),后续才能量到兜底调度
       raf.reset(); // 挂载期一次性 rAF(ChatRail settle/滚动条等)已入队,计数清零只量贴底调度
-      // 同帧三次渲染(三次 act,均先于帧回调排水):在途守卫令调度恒 1 次
+      // 同帧三次内容渲染(三次 act,均先于帧回调排水):内容帧 layout 贴底已同步生效——
+      // 旧实现在 rAF flush 前恒 0,绘制帧里流式尾段留在视口外(用户实测长代码块末段上下跳)
       fire({ type: 'token', text: '一', ts: Date.now() });
       await flushed();
+      expect(el.scrollTop).toBe(2000);
       fire({ type: 'token', text: '二', ts: Date.now() });
       await flushed();
+      expect(el.scrollTop).toBe(2000);
       fire({ type: 'token', text: '三', ts: Date.now() });
       await flushed();
-      expect(raf.count()).toBe(0); // 在途守卫:挂载期贴底调度未 flush 仍占槽,三次渲染零新增
-      // flush 前不赋值(同步归底已退役)——贴底态高度读取推迟到动画帧
-      expect(el.scrollTop).toBe(0);
+      expect(el.scrollTop).toBe(2000);
+      // 兜底 rAF 路径仍在(非内容增高面),排水后贴底位不回退
       raf.drain();
       expect(el.scrollTop).toBe(2000);
     } finally {

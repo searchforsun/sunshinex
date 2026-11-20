@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { zoomScale } from '../../ui-zoom';
 import type { MutableRefObject } from 'react';
 
@@ -34,6 +34,9 @@ export function useChatScroll(deps: {
   readonly scrollRestoreRef: MutableRefObject<number | null>;
   readonly seeding: boolean;
   readonly entriesLen: number;
+  /** 内容引用桥(2026-11-20 长代码流末段跳动):流式每批换新、打字等纯 UI 重渲不变——
+   *  layout 贴底只随内容跑(见下方 layout effect 注) */
+  readonly entries?: readonly unknown[];
   /** 前台态(2026-11-18 keep-alive):隐藏期间 composer/顶栏不渲染、容器零尺寸——切回时须
    *  ①重测 dock 高写 padding-bottom(否则正文尾行/运行行被输入卡盖住,滚不到底)
    *  ②恢复隐藏前滚动位(display:none 期间 scrollTop 被浏览器钳位) */
@@ -52,10 +55,26 @@ export function useChatScroll(deps: {
    *  距底反推对总高变化敏感(实测顶部切回偏 1520px),锚式由 MessageList 按块坐标落) */
   readonly lastAnchorRef?: MutableRefObject<{ key: string; off: number } | undefined>;
 }): { dockRef: MutableRefObject<HTMLDivElement | null> } {
-  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, active = true, skipRestore = false, stickSuppressRef, lastDistRef, lastAnchorRef } = deps;
+  const { chatScrollRef, chatStickRef, scrollRestoreRef, seeding, entriesLen, entries, active = true, skipRestore = false, stickSuppressRef, lastDistRef, lastAnchorRef } = deps;
   /** 在途归底调度(P1 Task 4):非 null=本动画帧已有待执行回调——后续渲染的 effect 直接跳过,
    *  同帧 N 次渲染只调度一次;回调内先清槽再判态(stick/锚旗读 flush 时值,滚轮放手即时生效) */
   const bottomRafRef = useRef<number | null>(null);
+/** 流区贴底跟随·内容帧同步位(2026-11-20 用户实测「长代码块输出时最后部分上下跳动」):
+ *  旧路径=passive useEffect 里 rAF 归底——React 18 的 passive effect 在绘制之后才跑,于是每个
+ *  流式批次都是「内容先长出一截(尾部新行在视口外,画面里最后一行被切)→ 下一帧才 scrollTop
+ *  归底并整段上跳」;32ms 合批后一批可达上百 px,长代码块尾部即锯齿状上下跳。
+ *  本 layout effect 在提交后、绘制前同步落底:内容帧画出来就是底。依赖只挂 entries 引用——
+ *  打字/纯 UI 重渲 entries 不变,不进本 effect(不付每次按键的同步 layout 读)。
+ *  下方 passive+rAF 路径保留:兜底不随 entries 变的增高面(dock padding/mermaid 落定等)。 */
+useLayoutEffect(() => {
+  if (stickSuppressRef?.current === true) return;
+  const el = chatScrollRef.current;
+  if (el === null || !chatStickRef.current || el.dataset.groupAnchor === '1') return;
+  syncOverflowAnchor(el, true);
+  el.scrollTop = el.scrollHeight;
+  markProgBottom(el);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 内容引用是唯一触发面(见上注)
+}, [entries]);
 /** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;离开底缘即放手
  *  (Chat onScroll:仅距底 <4 重贴,避免旧 80px 磁区在上滑后被 scroll 抢回)。useEffect 无依赖面
  *  =每渲染后跑;wheel 上翻与 stick ref 互补。P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop

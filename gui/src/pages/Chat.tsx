@@ -331,6 +331,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     scrollRestoreRef,
     seeding,
     entriesLen: chat.entries.length,
+    entries: chat.entries,
     active,
     skipRestore: scrollRestoreAnchorRef.current !== null,
     stickSuppressRef,
