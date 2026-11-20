@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { nextRunAt } from './recurrence';
 import { validateRecurrence } from './model';
 import type { Recurrence } from './model';
@@ -49,4 +50,52 @@ test('validateRecurrence：合法/非法', () => {
   ]) {
     assert.equal(validateRecurrence(bad).ok, false, JSON.stringify(bad));
   }
+});
+
+test('week：一周多星期连发（周一 → 周三）', () => {
+  const rec: Recurrence = { unit: 'week', every: 1, weekdays: [1, 3], at: '09:00' };
+  const start = at(2026, 11, 20, 9, 0);
+  const first = nextRunAt(rec, start, start);
+  assert.notEqual(first, null);
+  assert.deepEqual(local(first), [2026, 11, 23, 9, 0]);
+  assert.deepEqual(local(nextRunAt(rec, start, first as number)), [2026, 11, 25, 9, 0]);
+});
+
+test('week：every=2 以开始周为第 0 周，隔周周五', () => {
+  const rec: Recurrence = { unit: 'week', every: 2, weekdays: [5], at: '09:00' };
+  const start = at(2026, 11, 20, 9, 0);
+  assert.deepEqual(local(nextRunAt(rec, start, start)), [2026, 12, 4, 9, 0]);
+});
+
+const runInNewYork = (script: string): string =>
+  execFileSync(process.execPath, ['-e', script, require.resolve('./recurrence')], { encoding: 'utf8' });
+
+test('DST 春季缺口：每天 02:30 → 03:30（子进程 TZ=America/New_York）', () => {
+  const script =
+    "process.env.TZ='America/New_York';const {nextRunAt}=require(process.argv[process.argv.length-1]);" +
+    "const at=(y,m,d,h,mi=0)=>new Date(y,m-1,d,h,mi,0,0).getTime();" +
+    "const t=nextRunAt({unit:'day',every:1,at:'02:30'},at(2026,3,7,2,30),at(2026,3,7,2,30));" +
+    'const d=new Date(t);process.stdout.write(JSON.stringify([d.getFullYear(),d.getMonth()+1,d.getDate(),d.getHours(),d.getMinutes()]));';
+  assert.deepEqual(JSON.parse(runInNewYork(script)), [2026, 3, 8, 3, 30]);
+});
+
+test('DST 秋季重复：每天 01:30 取首次出现（子进程 TZ=America/New_York）', () => {
+  const script =
+    "process.env.TZ='America/New_York';const {nextRunAt}=require(process.argv[process.argv.length-1]);" +
+    "const at=(y,m,d,h,mi=0)=>new Date(y,m-1,d,h,mi,0,0).getTime();" +
+    "const t=nextRunAt({unit:'day',every:1,at:'01:30'},at(2026,10,31,1,30),at(2026,10,31,1,30));" +
+    'const d=new Date(t);process.stdout.write(JSON.stringify({local:[d.getFullYear(),d.getMonth()+1,d.getDate(),d.getHours(),d.getMinutes()],next:t,first:new Date(2026,10,1,1,30).getTime()}));';
+  const out = JSON.parse(runInNewYork(script)) as { local: number[]; next: number; first: number };
+  assert.deepEqual(out.local, [2026, 11, 1, 1, 30]);
+  assert.equal(out.next, out.first);
+});
+
+test('数值溢出：day every=1e8 超出 Date 范围 → null', () => {
+  const start = at(2026, 11, 20, 9, 0);
+  assert.equal(nextRunAt({ unit: 'day', every: 1e8, at: '09:00' }, start, start), null);
+});
+
+test('数值溢出：minute every=1e308 使 step=Infinity → null', () => {
+  const start = at(2026, 11, 20, 9, 0);
+  assert.equal(nextRunAt({ unit: 'minute', every: 1e308 }, start, start), null);
 });

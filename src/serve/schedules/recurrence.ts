@@ -124,6 +124,7 @@ export function nextRunAt(rec: Recurrence, startAt: number, after: number, until
     if (candidate === null) return null;
   }
 
+  if (!Number.isFinite(candidate)) return null;
   if (until !== undefined && candidate > until) return null;
   return candidate;
 }
