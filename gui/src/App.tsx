@@ -16,6 +16,7 @@ import type { RewindRequest } from './pages/chat/chat-types';
 import { ProjectMenu } from './sidebar/ProjectMenu';
 import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
+import { SchedulePage } from './schedules/SchedulePage';
 import { TabStrip } from './tabs/TabStrip';
 import { Suspense } from 'react';
 import { WebTabPool, poolKey, seatOfWebContents, seatsOfBrowserKey } from './tabs/WebTabPool';
@@ -267,6 +268,9 @@ function AppShell(): JSX.Element {
    *  上下文(开设置时快照 openRoot,无则 ''=仅全局;无顶部切换面——项目区分下沉到配置项徽标,
    *  项目级行以此为写回锚) */
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** 定时任务主区层(2026-11-20):固定层覆盖主区,左侧菜单保持;Chat 不卸载——点会话/新建/
+   *  记录打开会话即关层,回到既有会话链 */
+  const [schedulesMain, setSchedulesMain] = useState(false);
   /** 设置落点面板请求(托盘「快捷键」直达;关设置即清,侧栏再开仍落「通用」) */
   const [settingsPane, setSettingsPane] = useState<{ readonly id: string } | undefined>(undefined);
   const [settingsRoot, setSettingsRoot] = useState('');
@@ -437,6 +441,7 @@ function AppShell(): JSX.Element {
 
   /** kindHint(2026-11-17):打开链已知会话形态(sunx attach 应答/新建链)——首帧即定格欢迎面,免 title GET 竞态 */
   const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false, kindHint?: string): void => {
+    setSchedulesMain(false); // 任何会话导航都关定时任务层(记录打开会话/侧栏点会话同路)
     // 临时会话思想(2026-10-29 用户设计定版):欢迎页=临时会话,发出去(欢迎页输入建席)时临时座
     // 变真座——草稿整座继承到新会话,欢迎页重获新空临时座;开既有会话不继承(全隔离——8d83fa5
     // 前的泄漏=迁移对开既有会话同样生效,本门即边界:仅 inheritWelcomeDraft 路径放行)
@@ -530,6 +535,7 @@ function AppShell(): JSX.Element {
 
   /** 返回欢迎态的壳层清场(记录面分离:backHome 记史,导航回放经 applyNav 复用本函数) */
   const leaveToWelcome = useStableCallback((): void => {
+    setSchedulesMain(false);
     setCachedSeats([]); // 回欢迎页释放驻留 DOM(内存有界;再开走 chatMem 快路径)
     sessionRef.current = '';
     setOpenSessionId('');
@@ -557,11 +563,12 @@ function AppShell(): JSX.Element {
   /** 应用级导航历史(use-nav-history 单点,2026-10-27 技术债轮 D53 批D 外提):记录/回放/控制面/
    *  Alt+←/→ 键面一条链一个文件(navLock 回放抑制/零过期闭包语义随码);落点动词注入
    *  (welcome=壳层清场,chat=openSession 直达——会话常驻 daemon 零重播链) */
-  const { navControls, recordNav } = useNavHistory({ goWelcome: leaveToWelcome, openSession, settingsOpen });
+  const { navControls, recordNav } = useNavHistory({ goWelcome: leaveToWelcome, openSession, settingsOpen: settingsOpen || schedulesMain });
 
   /** G8c-T8 开设置态:settingsRoot 快照当前 openRoot(无会话=''=仅全局);connInstance 在场才
    *  可达(设置钮只在 ProjectMenu 底栏,其渲染前提即连接装配完成) */
   const openSettings = useCallback((): void => {
+    setSchedulesMain(false); // 设置覆盖层与定时任务层互斥(设置壳整幅覆盖)
     setSettingsRoot(openRoot);
     setSettingsOpen(true);
   }, [openRoot]);
@@ -621,6 +628,24 @@ function AppShell(): JSX.Element {
   const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效
   const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
   const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
+  /** 定时任务层开合(2026-11-20):侧栏入口开(抽屉态自动收),页内返回/Esc 关 */
+  const openSchedulesFromMenu = useStableCallback((): void => {
+    closeMenuDrawer();
+    setSchedulesMain(true);
+  });
+  const closeSchedulesStable = useStableCallback((): void => setSchedulesMain(false));
+  /** 记录 → 会话(定时任务 Task 11):关层 + 既有 newSession+attach 打开链(daemon 在座会收编/复用),
+   *  root 取 attach 应答真根、缺省回退记录行根;失败经 showOpError 上屏 */
+  const openJournalSessionStable = useStableCallback((journalId: string, root: string): void => {
+    setSchedulesMain(false);
+    const conn = connRef.current;
+    if (conn === null) return;
+    void conn
+      .newSession(root)
+      .then(({ sessionId }) => conn.attach(sessionId, journalId))
+      .then((r) => openSession(r.sessionId, r.root || root, journalId))
+      .catch(showOpError);
+  });
   /** 侧栏点会话直达(2026-11-18):在座表命中=直接 openSession 复用运行时(零网络),未命中=false
    *  走既有 newSession+attach 两步链(首次冷开仍需日志装载,不可免) */
   const openLiveSeatStable = useStableCallback((journalId: string): boolean => {
@@ -633,12 +658,14 @@ function AppShell(): JSX.Element {
   });
   const newChatFromMenu = useStableCallback((): void => {
     closeMenuDrawer();
+    setSchedulesMain(false);
     presetCompose(null);
     setPage('welcome');
     recordNav({ k: 'welcome' });
   });
   const composeInFromMenu = useStableCallback((root: string): void => {
     closeMenuDrawer();
+    setSchedulesMain(false);
     presetCompose(root);
     setPage('welcome');
     recordNav({ k: 'welcome' });
@@ -1071,6 +1098,7 @@ function AppShell(): JSX.Element {
               onCloseDirView={closeDirViewStable}
               onOpenFileFromTree={openFileFromTree}
               onOpenSettings={openSettingsFromMenu}
+              onOpenSchedules={openSchedulesFromMenu}
               onNewChat={newChatFromMenu}
               onComposeIn={composeInFromMenu}
               onCollapse={collapseMenuStable}
@@ -1210,8 +1238,20 @@ function AppShell(): JSX.Element {
               <div className="sx-welcome-brand">Sunshinex</div>
             )}
           </main>
+          {/* 定时任务主区层(2026-11-20):固定层覆盖主区,left=菜单实占宽保持左侧菜单可见;
+              右栏同时隐藏(下方 guard)。层内列表/配置/记录三态由 SchedulePage 自管 */}
+          {schedulesMain && connInstance !== null && (
+            <div className="sx-schedules-layer">
+              <SchedulePage
+                conn={connInstance}
+                onOpenSession={openJournalSessionStable}
+                onExit={closeSchedulesStable}
+                onToggleMenu={toggleMenuStable}
+              />
+            </div>
+          )}
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
-          {sidebarAnim.mounted && (
+          {!schedulesMain && sidebarAnim.mounted && (
           <aside className={`sx-sidebar${sidebarAnim.closing ? ' sx-closing' : ''}`} ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
             <TabStripMemo
               tabs={tabState.tabs}

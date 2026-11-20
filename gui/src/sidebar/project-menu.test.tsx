@@ -172,9 +172,10 @@ describe('ProjectMenu G10-C2 侧栏(分区头与 Recents 恒显)', () => {
     expect(await screen.findAllByText('demo goal')).toHaveLength(1); // 唯一会话列表
   });
 
-  it('New chat:回欢迎页开新对话(onNewChat)', () => {
+  it('New chat:回欢迎页开新对话(onNewChat)', async () => {
     const onNewChat = vi.fn();
     renderMenu(makeConn(), { activeRoot: '', onNewChat });
+    await screen.findByText('p1'); // 挂载期异步装载落定(免 act 警告)
     const btn = screen.getAllByRole('button', { name: 'new chat' })[0] as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
@@ -420,5 +421,23 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;20
     await screen.findByText('SUNX');
     expect(screen.queryByRole('button', { name: 'session actions sx-j1' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'session actions sx-j3' })).toBeNull();
+  });
+
+  it('「定时任务」入口在「新建 Sunx」下方,点击回调 onOpenSchedules(scheduled-tasks Task 11)', async () => {
+    const onOpenSchedules = vi.fn();
+    const first = renderMenu(makeConn(), { onOpenSchedules });
+    await first.findByText('demo goal'); // 等挂载期异步装载落定(免 act 警告)
+    const scheduled = screen.getByRole('button', { name: 'scheduled tasks' });
+    // 入口序:「新对话」→「新建 Sunx」→「定时任务」→「搜索」
+    const labels = Array.from(document.querySelectorAll('.sx-new-chat')).map((b) => b.getAttribute('aria-label'));
+    expect(labels.indexOf('scheduled tasks')).toBe(labels.indexOf('new sunx') + 1);
+    expect(labels.indexOf('search')).toBe(labels.indexOf('scheduled tasks') + 1);
+    fireEvent.click(scheduled);
+    expect(onOpenSchedules).toHaveBeenCalledTimes(1);
+    // 未接线不渲染(独立装配面免产死钮)
+    first.unmount();
+    const second = renderMenu(makeConn());
+    await second.findByText('demo goal');
+    expect(second.queryByRole('button', { name: 'scheduled tasks' })).toBeNull();
   });
 });

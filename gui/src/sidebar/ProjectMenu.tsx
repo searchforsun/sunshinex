@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
-import { ArrowLeft, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
+import { ArrowLeft, CalendarClock, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { DirPicker } from '../pages/DirPicker';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
@@ -112,6 +112,8 @@ export interface ProjectMenuProps {
   readonly onOpenLiveSeat?: (journalId: string) => boolean;
   /** G8c-T8 设置钮回调:App 开设置态(可选——未配时钮不渲染,免独立测试装配面死 UI) */
   readonly onOpenSettings?: () => void;
+  /** 定时任务主区页(2026-11-20):入口在「新建 Sunx」下方(可选——未配时钮不渲染) */
+  readonly onOpenSchedules?: () => void;
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
   readonly onNewChat: () => void;
   /** 项目行「+」:回欢迎页并预选该项目(G10-C16;审批模式由欢迎页选择器承载,旧 auto/manual 直进面退役) */
@@ -143,7 +145,7 @@ export interface ProjectMenuProps {
 const EMPTY_RUNNING: ReadonlySet<string> = new Set();
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree, onOpenLiveSeat } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onOpenSchedules, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree, onOpenLiveSeat } = props;
   const recentVersion = props.recentVersion ?? 0;
   const pins = props.pins ?? [];
   const persistPins = props.persistPins ?? ((): void => undefined);
@@ -633,6 +635,18 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <SunxIcon size={16} strokeWidth={1.75} />
         <span>{t('New Sunx', '新建 Sunx')}</span>
       </button>) : null}
+      {/* 定时任务主区页入口(2026-11-20):「新建 Sunx」下方、「搜索」上方;dirView 态随同隐藏 */}
+      {onOpenSchedules !== undefined && (dirView === undefined || dirView === null || onCloseDirView === undefined) ? (
+        <button
+          type="button"
+          className="sx-new-chat"
+          aria-label="scheduled tasks"
+          onClick={onOpenSchedules}
+        >
+          <CalendarClock size={16} strokeWidth={1.75} />
+          <span>{t('Scheduled tasks', '定时任务')}</span>
+        </button>
+      ) : null}
       {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
       {dirView === undefined || dirView === null || onCloseDirView === undefined ? (<button
         type="button"

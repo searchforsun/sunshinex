@@ -23,7 +23,7 @@ import { setLanguage } from './i18n';
 import { emptyBoard, applyBoardEvent } from './projection';
 import { highlightCode } from './highlight';
 import type { SnapshotTranscriptEntry } from './chat-reducer';
-import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp, SettingsView, SettingsKeyRow, ProviderChoice, McpRow, McpRowInput, McpProbeResult, BuiltinRole, AgentsView, SkillsGroup } from './connection';
+import type { ConnectionOpts, ConnectionState, Connection, DiffResp, DirPickerResp, SessionRow, SnapshotResponse, WorkspaceRow, FileResp, TreeResp, SettingsView, SettingsKeyRow, ProviderChoice, McpRow, McpRowInput, McpProbeResult, BuiltinRole, AgentsView, SkillsGroup, ScheduleJobView, ScheduleRunView, SchedulesView } from './connection';
 import type { GuiApprovalReq, GuiAskAnswer, GuiAskReq } from './connection';
 
 /** G10-C3 工具行图标化后的定位器:textContent 含给定文本的折叠行 */
@@ -402,6 +402,19 @@ const h = vi.hoisted(() => {
     async saveAppPins(_pins: Array<{ id: string; root: string; title?: string; updatedAt?: number }>): Promise<void> {}
     archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number }>> {
       return Promise.resolve([]); // 归档清单:测试缺省空
+    }
+    /** 定时任务面(scheduled-tasks Task 11 宿主接线):列表/记录两桩,应答可编程;调用记录供断言 */
+    scheduleJobs: ScheduleJobView[] = [];
+    scheduleRunsResp: ScheduleRunView[] = [];
+    schedulesCalls = 0;
+    scheduleRunsCalls: string[] = [];
+    schedules(): Promise<SchedulesView> {
+      this.schedulesCalls += 1;
+      return Promise.resolve({ now: Date.now(), defaultModel: 'stub-model', jobs: this.scheduleJobs });
+    }
+    scheduleRuns(id: string): Promise<{ runs: ScheduleRunView[] }> {
+      this.scheduleRunsCalls.push(id);
+      return Promise.resolve({ runs: this.scheduleRunsResp });
     }
     /** G14.2xx b 影子水合面:journal 语义——fire 的直播帧同步入档,读档时刻快照;cut 缺省 -1
      *  (测试帧 seq 缺省 0,真 daemon 帧 seq 恒正——cut=0 会把读档后的全部直播帧当「迟到种子帧」丢弃);
@@ -2097,6 +2110,77 @@ describe('热切换 keep-alive 座位(2026-11-18 实测轮:驻留座曾被重挂
     const cache = document.querySelector('.sx-chat-cache')!;
     expect(cache.querySelector('.entry-user')).toBe(node);
     expect(cache.textContent).toContain('s1 目标');
+    unmount();
+  });
+});
+
+describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿主 + 打开会话链)', () => {
+  const job = (over: Partial<ScheduleJobView> = {}): ScheduleJobView => ({
+    id: 'job-1',
+    name: '夜间巡检',
+    prompt: '检查仓库状态并总结',
+    root: '/w/root-a',
+    effort: 'high',
+    mode: 'acceptEdits',
+    recurrence: { unit: 'day', every: 1, at: '02:00' },
+    startAt: 1,
+    enabled: true,
+    createdAt: 1,
+    updatedAt: 1,
+    nextRunAt: Date.now() + 3_600_000,
+    runCount: 1,
+    ...over,
+  });
+
+  it('侧栏入口开层(左菜单保留/右栏隐藏);New chat 退层;记录打开会话=newSession+attach+openSession 链并关层', async () => {
+    const { conn, unmount } = mount();
+    // 先真流程进 chat 并展开右栏——「开层后右栏不在」须归因于层,而非缺省折叠
+    fireEvent.click(await screen.findByRole('button', GROUP_HEAD));
+    await clickSessionRow();
+    await waitFor(() => expect(screen.getByText('s1', { selector: '.chat-title-text' })).toBeDefined());
+    openConn(conn);
+    expandSidebarIfCollapsed();
+    expect(document.querySelector('.sx-sidebar')).not.toBeNull();
+
+    conn.scheduleJobs = [job()];
+    conn.scheduleRunsResp = [
+      {
+        id: 'run-1',
+        trigger: 'schedule',
+        startedAt: Date.now() - 60_000,
+        endedAt: Date.now() - 59_000,
+        status: 'succeeded',
+        journalId: 'sched-journal',
+        root: '/w/root-a',
+        seconds: 1,
+      },
+    ];
+
+    // 入口 → 主区层(list 卡在场);左菜单保持,右栏隐藏
+    fireEvent.click(screen.getByRole('button', { name: 'scheduled tasks' }));
+    await waitFor(() => expect(document.querySelector('.sx-schedules-layer')).not.toBeNull());
+    expect(await screen.findByText('夜间巡检')).toBeDefined();
+    expect(conn.schedulesCalls).toBeGreaterThan(0);
+    expect(document.querySelector('.sx-sidebar')).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'projects' })).toBeDefined();
+
+    // 侧栏 New chat 退层(回欢迎页)
+    fireEvent.click(screen.getByRole('button', { name: 'new chat' }));
+    await waitFor(() => expect(document.querySelector('.sx-schedules-layer')).toBeNull());
+    expect(screen.getByLabelText('welcome')).toBeDefined();
+
+    // 再开层 → 卡片进执行记录 → 打开会话:newSession+attach+openSession 链,层关闭落 chat
+    fireEvent.click(screen.getByRole('button', { name: 'scheduled tasks' }));
+    await screen.findByText('夜间巡检');
+    fireEvent.click(screen.getByText('夜间巡检'));
+    await waitFor(() => expect(conn.scheduleRunsCalls).toContain('job-1'));
+    conn.nextSessionId = 'sched-live';
+    fireEvent.click(await screen.findByRole('button', { name: /open session/i }));
+    await waitFor(() => expect(document.querySelector('.sx-schedules-layer')).toBeNull());
+    expect(conn.newSessionCalls).toContain('/w/root-a');
+    expect(conn.attachCalls).toContainEqual(['sched-live', 'sched-journal']);
+    openConn(conn);
+    await waitFor(() => expect(screen.getByText('sched-live', { selector: '.chat-title-text' })).toBeDefined());
     unmount();
   });
 });
