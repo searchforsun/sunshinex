@@ -64,6 +64,13 @@ export function Select(props: {
   };
 
   const onTriggerKey = (e: React.KeyboardEvent): void => {
+    // Esc 收弹层（2026-11-20）：焦点在 trigger 时 list 的 onKeyDown 收不到，不能让 Esc 冒泡到
+    // 页面级监听（定时任务配置页会误退回列表）
+    if (e.key === 'Escape' && open) {
+      e.stopPropagation();
+      setOpen(false);
+      return;
+    }
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       setOpen(true);

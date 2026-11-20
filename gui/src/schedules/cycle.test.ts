@@ -1,40 +1,57 @@
 import { describe, it, expect } from 'vitest';
-import { CYCLE_OPTIONS, recurrenceOf, cycleOf } from './cycle';
+import { buildWhen, whenOf, whenSummary, weekdayListLabel } from './cycle';
+import type { ScheduleWhen } from './cycle';
 
-const start = new Date(2026, 10, 20, 9, 30, 0, 0).getTime(); // 2026-11-20 周五 09:30
+const hourly = (minute: number): ScheduleWhen => ({ cadence: 'hourly', hour: 0, minute, weekdays: [1], dayOfMonth: 1 });
+const daily = (hour: number, minute: number): ScheduleWhen => ({ cadence: 'daily', hour, minute, weekdays: [1], dayOfMonth: 1 });
 
-describe('cycle ↔ recurrence', () => {
-  it('每天：at 取 startAt 的 HH:mm', () => {
-    expect(recurrenceOf('daily', start)).toEqual({ unit: 'day', every: 1, at: '09:30' });
+describe('调度值映射（周期 → recurrence/锚点）', () => {
+  it('whenOf：新建缺省每天 09:00；四档识别；分钟/年/多倍间隔归 custom', () => {
+    expect(whenOf()).toEqual({ cadence: 'daily', hour: 9, minute: 0, weekdays: [1], dayOfMonth: 1 });
+    const start = new Date(2026, 10, 20, 10, 42, 0, 0).getTime();
+    expect(whenOf({ recurrence: { unit: 'hour', every: 1 }, startAt: start })).toMatchObject({ cadence: 'hourly', minute: 42 });
+    expect(whenOf({ recurrence: { unit: 'day', every: 1, at: '08:15' }, startAt: start })).toMatchObject({ cadence: 'daily', hour: 8, minute: 15 });
+    expect(whenOf({ recurrence: { unit: 'weekday', every: 1, at: '08:15' }, startAt: start })).toMatchObject({ cadence: 'weekly', weekdays: [1, 2, 3, 4, 5] });
+    expect(whenOf({ recurrence: { unit: 'week', every: 1, weekdays: [3, 1], at: '10:30' }, startAt: start })).toMatchObject({ cadence: 'weekly', weekdays: [1, 3], hour: 10, minute: 30 });
+    expect(whenOf({ recurrence: { unit: 'month', every: 1, dayOfMonth: 5, at: '07:00' }, startAt: start })).toMatchObject({ cadence: 'monthly', dayOfMonth: 5 });
+    expect(whenOf({ recurrence: { unit: 'year', every: 1, month: 3, day: 5, at: '09:00' }, startAt: start }).cadence).toBe('custom');
+    expect(whenOf({ recurrence: { unit: 'minute', every: 15 }, startAt: start }).cadence).toBe('custom');
+    expect(whenOf({ recurrence: { unit: 'day', every: 2, at: '09:00' }, startAt: start }).cadence).toBe('custom');
   });
-  it('每周：weekday 取 startAt 的星期（周五=5）', () => {
-    expect(recurrenceOf('weekly', start)).toEqual({ unit: 'week', every: 1, weekdays: [5], at: '09:30' });
+
+  it('hourly：锚点=当前小时+选中分钟（秒/毫秒清零），engine 自行快进到未来', () => {
+    const now = new Date(2026, 10, 20, 10, 40, 12, 345).getTime();
+    const built = buildWhen(hourly(30), now);
+    expect(built.recurrence).toEqual({ unit: 'hour', every: 1 });
+    const anchor = new Date(built.startAt);
+    expect([anchor.getHours(), anchor.getMinutes(), anchor.getSeconds(), anchor.getMilliseconds()]).toEqual([10, 30, 0, 0]);
   });
-  it('每月：dayOfMonth 取 startAt 的日', () => {
-    expect(recurrenceOf('monthly', start)).toEqual({ unit: 'month', every: 1, dayOfMonth: 20, at: '09:30' });
+
+  it('daily/weekly/monthly：startAt=now，at=HH:mm；weekdays 去重排序；custom 原样保留', () => {
+    const now = new Date(2026, 10, 20, 10, 40, 0, 0).getTime();
+    expect(buildWhen(daily(9, 5), now)).toEqual({ recurrence: { unit: 'day', every: 1, at: '09:05' }, startAt: now });
+    expect(
+      buildWhen({ cadence: 'weekly', hour: 10, minute: 30, weekdays: [5, 1, 3, 3], dayOfMonth: 1 }, now),
+    ).toEqual({ recurrence: { unit: 'week', every: 1, weekdays: [1, 3, 5], at: '10:30' }, startAt: now });
+    expect(
+      buildWhen({ cadence: 'monthly', hour: 7, minute: 0, weekdays: [1], dayOfMonth: 15 }, now),
+    ).toEqual({ recurrence: { unit: 'month', every: 1, dayOfMonth: 15, at: '07:00' }, startAt: now });
+    const custom = { recurrence: { unit: 'year' as const, every: 1, month: 3, day: 5, at: '09:00' }, startAt: 123 };
+    expect(buildWhen({ cadence: 'custom', hour: 9, minute: 0, weekdays: [1], dayOfMonth: 1 }, now, custom)).toEqual(custom);
   });
-  it('每年：month/day 取 startAt 的月日', () => {
-    expect(recurrenceOf('yearly', start)).toEqual({ unit: 'year', every: 1, month: 11, day: 20, at: '09:30' });
-  });
-  it('反查：预设 → 原 cycle', () => {
-    expect(cycleOf(recurrenceOf('every15m', start))).toBe('every15m');
-    expect(cycleOf(recurrenceOf('hourly', start))).toBe('hourly');
-    expect(cycleOf(recurrenceOf('daily', start))).toBe('daily');
-    expect(cycleOf(recurrenceOf('weekdays', start))).toBe('weekdays');
-    expect(cycleOf(recurrenceOf('weekly', start))).toBe('weekly');
-    expect(cycleOf(recurrenceOf('monthly', start))).toBe('monthly');
-    expect(cycleOf(recurrenceOf('yearly', start))).toBe('yearly');
-  });
-  it('反查：非预设回 daily（防御）', () => {
-    expect(cycleOf({ unit: 'minute', every: 7 })).toBe('daily');
-  });
-  it('下拉七项全量在场（顺序固定）', () => {
-    expect(CYCLE_OPTIONS.map((o) => o.id)).toEqual([
-      'every15m', 'hourly', 'daily', 'weekdays', 'weekly', 'monthly', 'yearly',
-    ]);
-    for (const o of CYCLE_OPTIONS) {
-      expect(o.label.en.length).toBeGreaterThan(0);
-      expect(o.label.zh.length).toBeGreaterThan(0);
-    }
+
+  it('人话说明/星期标签：不同周期不同文案；每 + 周一、周三 不叠「周周」', () => {
+    expect(whenSummary({ cadence: 'hourly', hour: 0, minute: 30, weekdays: [1], dayOfMonth: 1 })).toEqual({
+      en: 'Hourly at :30',
+      zh: '每小时第 30 分钟',
+    });
+    expect(whenSummary(daily(9, 0)).zh).toBe('每天 09:00');
+    expect(whenSummary({ cadence: 'weekly', hour: 9, minute: 0, weekdays: [1, 3], dayOfMonth: 1 })).toEqual({
+      en: 'Weekly on Mon, Wed at 09:00',
+      zh: '每周一、周三 09:00',
+    });
+    expect(whenSummary({ cadence: 'monthly', hour: 9, minute: 0, weekdays: [1], dayOfMonth: 15 }).zh).toBe('每月 15 日 09:00');
+    expect(whenSummary({ cadence: 'custom', hour: 9, minute: 0, weekdays: [1], dayOfMonth: 1 }).zh).toBe('沿用原有自定义周期');
+    expect(weekdayListLabel([5, 1, 3, 3])).toEqual({ en: 'Mon, Wed, Fri', zh: '周一、周三、周五' });
   });
 });

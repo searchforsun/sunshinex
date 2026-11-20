@@ -94,6 +94,11 @@ export class SecurityGuard {
     // exit_plan（2026-11-04 泛化为通用提案工具）：guard 恒放行——审批面=计划卡本体（宿主弹卡,
     // 按钮集按当前档自适应）
     if (tool === 'exit_plan') return { allowed: true };
+    // create_scheduled_task（2026-11-20 用户裁定「在会话中创建」）：定时任务定义面=零直接 IO
+    // （只落 schedules.json 配置）；任务执行权限由当前输入框 mode 继承（工具面无 root/effort/mode
+    // 参数，只降不升）。三档放行——否则 read-only 被只读闸门拒、acceptEdits 挂审批卡，无法配置
+    // 一条与输入框同档的任务。deny 规则与破坏性硬底线仍先行。
+    if (tool === 'create_scheduled_task') return { allowed: true };
     // worktree 工具（规格 D7）：deny 规则仍先行；单发独占由 reactor 并行闸门承载；
     // 免审批对标 spawn 先例（建树/切换活动根产物全在数据目录，非破坏性副作用）；read-only 闸门：
     // create/exit 拦截（写语义：建树+切换活动根），list 只读放行（与 Read/Grep/Glob 同列白名单语义）

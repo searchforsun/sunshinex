@@ -110,7 +110,7 @@ describe('SchedulePage 列表', () => {
     fireEvent.click(more);
     fireEvent.click(screen.getByRole('button', { name: bi('Edit', '编辑') }));
     // waitFor 吞掉打开配置页时 workspaces 两路回源的异步 setState(避免裸 getByText 后的 act 警告)
-    await waitFor(() => expect(screen.getByText(bi('Name', '名称'))).toBeDefined());
+    await waitFor(() => expect(screen.getByText(bi('Task title', '任务标题'))).toBeDefined());
   });
 
   it('删除两步确认：首点改文案不发请求，确认后才 deleteSchedule 并移除卡片', async () => {
@@ -149,7 +149,7 @@ describe('SchedulePage 列表', () => {
     await screen.findByText('仓库巡检');
     fireEvent.click(screen.getByRole('button', { name: bi('More', '更多') }));
     fireEvent.click(screen.getByRole('button', { name: bi('Edit', '编辑') }));
-    await screen.findByText(bi('Name', '名称'));
+    await screen.findByText(bi('Task title', '任务标题'));
 
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
     await waitFor(() => expect(updateSchedule).toHaveBeenCalledTimes(1));
@@ -165,7 +165,7 @@ describe('SchedulePage 列表', () => {
     await screen.findByText('仓库巡检');
     fireEvent.click(screen.getByRole('button', { name: bi('More', '更多') }));
     fireEvent.click(screen.getByRole('button', { name: bi('Edit', '编辑') }));
-    await screen.findByText(bi('Name', '名称'));
+    await screen.findByText(bi('Task title', '任务标题'));
 
     fireEvent.click(screen.getByRole('button', { name: /Back|返回/ }));
     await waitFor(() => expect(container.querySelector('.sx-schedule-card.is-focus')).not.toBeNull());
@@ -217,11 +217,11 @@ describe('SchedulePage 列表', () => {
     fireEvent.click(screen.getByRole('button', { name: bi('Create scheduled task', '创建定时任务') }));
     await screen.findByText(bi('New scheduled task', '新建定时任务'));
 
-    const modelPill = document.querySelector('.sx-schedule-model-pill')!;
-    fireEvent.click(modelPill);
+    const effortPill = document.querySelector('.sx-schedule-effort-pill')!;
+    fireEvent.click(effortPill);
     expect(document.querySelector('.sx-schedule-effort-pop')).not.toBeNull();
     // 弹层开着时 Esc 的目标在页内元素（真键盘事件形态）:capture 层消费,页面级不再收到
-    fireEvent.keyDown(modelPill, { key: 'Escape' });
+    fireEvent.keyDown(effortPill, { key: 'Escape' });
     expect(document.querySelector('.sx-schedule-effort-pop')).toBeNull();
     expect(screen.getByText(bi('New scheduled task', '新建定时任务'))).toBeDefined();
     expect(onExit).not.toHaveBeenCalled();

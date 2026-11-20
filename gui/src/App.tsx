@@ -128,12 +128,12 @@ export function App(): JSX.Element {
   return <AppShell />;
 }
 
-/** 定时任务「在会话中创建」示例提示词（点击时按当前语言求值）：预填进欢迎页输入框，
- *  用户可改后发送；agent 经 create_scheduled_task 工具落档（自然语言创建）。 */
+/** 定时任务「在会话中创建」示例提示词（点击时按当前语言求值）：只说时间 + 要做什么，
+ *  名称由 agent 自动起；工作区/权限/强度全部沿用当前输入框（工具缺省随会话活值）。 */
 function scheduleCreateExample(): string {
   return t(
-    'Create a scheduled task for me: every day at 9:00, review the code changes in this project since yesterday and give a short report with risks. Use the current workspace.',
-    '帮我创建一个定时任务：每天 9:00 检查当前项目自昨天以来的代码变更，给出简要报告和风险提示，工作目录用当前项目。',
+    'Create a daily 9:00 scheduled task: review project changes and flag risks.',
+    '帮我创建一个每天 9:00 的定时任务：检查项目代码变更并给出风险提示。',
   );
 }
 

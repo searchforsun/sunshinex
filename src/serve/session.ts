@@ -811,6 +811,7 @@ ${this.sessionCharter ?? ''}` }
       // 定时任务创建工具接缝（2026-11-20）：宿主 daemon 的 ScheduleEngine 出口——接缝在场即注册
       // create_scheduled_task（标准/sunx 会话同源；CLI/TUI 不注入=工具缺席）
       ...(this.opts.scheduleCreate !== undefined ? { scheduleCreate: this.opts.scheduleCreate } : {}),
+      ...(this.opts.scheduleCreate !== undefined ? { scheduleCreateDefaults: () => this.scheduleCreateDefaults() } : {}),
       // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;
@@ -1769,6 +1770,16 @@ ${this.sessionCharter ?? ''}` }
   /** 档位/思考强度（G10-C2b 可变面）：per-run 注入 runTask opts,下一轮生效 */
   private tier?: SessionTier;
   private effort?: ReasoningEffort;
+
+  /** create_scheduled_task 缺省配置（2026-11-20 用户裁定「各种配置复用当前输入框的」）：
+   *  取本会话此刻的强度/权限档——工具在模型省参数时落这两个值；plan 映射 acceptEdits
+   *  （无人值守任务不能挂计划确认）。工作区由工具默认根兜底，模型全局共享不固定。 */
+  private scheduleCreateDefaults(): { effort?: ReasoningEffort; mode: 'read-only' | 'acceptEdits' | 'full-access' } {
+    return {
+      ...(this.effort !== undefined ? { effort: this.effort } : {}),
+      mode: this.currentMode === 'plan' ? 'acceptEdits' : this.currentMode,
+    };
+  }
 
   setTier(tier: string): boolean {
     const v = parseTier(tier);

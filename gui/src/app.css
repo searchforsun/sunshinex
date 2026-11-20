@@ -4503,25 +4503,34 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* $/# 面板实时段注记(2026-11-20):任务行尾状态小字(运行中/等待),颜色走三段弱色 */
 .ref-palette-note { flex: none; margin-left: auto; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
 .ref-palette-row .ref-palette-id.ref-palette-id-dim { margin-left: 6px; }
-/* ===== 定时任务三行配置页(scheduled-tasks Task 8,spec §12):名称/调度/任务 ===== */
-.sx-schedule-cfg { display: flex; flex-direction: column; gap: 18px; }
-.sx-schedule-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: start; }
-.sx-schedule-label { padding-top: 8px; color: var(--fg-tertiary); font-size: calc(13px * var(--fz)); }
-.sx-schedule-input { width: 100%; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; color: var(--fg); font: calc(13px * var(--fz))/1.4 var(--font-ui); outline: none; }
-.sx-schedule-input:focus { border-color: var(--border-strong); }
-.sx-schedule-schedule { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.sx-schedule-select { width: 132px; }
-.sx-schedule-datetime { width: 190px; }
-.sx-schedule-inline { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: calc(12.5px * var(--fz)); }
-.sx-schedule-inline .sx-schedule-input { width: 190px; }
-.sx-schedule-nocut { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: calc(12.5px * var(--fz)); }
-.sx-schedule-nocut input { accent-color: var(--accent); }
-.sx-schedule-hint { margin-top: 7px; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); }
+/* ===== 定时任务配置页(2026-11-20 第二版):上下三段 + 单行调度 + 自绘下拉/多选 ===== */
+.sx-schedule-editor { display: flex; flex-direction: column; gap: 18px; }
+.sx-schedule-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 2px; }
+.sx-schedule-editor-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.sx-schedule-save { height: 32px; padding: 0 18px; border: none; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); font: calc(13px * var(--fz)) var(--font-ui); font-weight: 600; }
+.sx-schedule-save:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
+.sx-schedule-save:disabled { opacity: 0.45; cursor: default; }
+.sx-schedule-field { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.sx-schedule-field-label { color: var(--fg-secondary); font-size: calc(13px * var(--fz)); font-weight: 500; }
+.sx-schedule-name-input { width: 100%; height: 36px; padding: 0 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); font: calc(14px * var(--fz)) var(--font-ui); outline: none; }
+.sx-schedule-name-input:focus { border-color: var(--border-strong); }
+.sx-schedule-when { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 30px; }
+.sx-schedule-dd { flex: none; }
+.sx-schedule-when .sx-dd-trigger { height: 30px; padding: 0 10px; font-size: calc(13px * var(--fz)); border-radius: var(--radius-md); background: var(--surface-soft); }
+.sx-schedule-dd-unit { width: 96px; }
+.sx-schedule-dd-num { width: 62px; }
+.sx-schedule-dd-day { width: 74px; }
+.sx-schedule-weekdays { width: 150px; }
+.sx-schedule-weekday-pop, .sx-schedule-time .sx-dd-pop { min-width: 84px; }
+.sx-schedule-time { display: inline-flex; align-items: center; gap: 4px; }
+.sx-schedule-time-colon { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+.sx-schedule-when-inline { color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-hint { margin: 0; color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
+.sx-schedule-instruction { width: 100%; }
+.sx-schedule-instruction .sx-composer-input { min-height: 112px; }
+.sx-schedule-model-static { cursor: default; color: var(--fg-secondary); }
+.sx-schedule-effort-pop { padding: 6px; min-width: 220px; }
 .sx-schedule-error { margin: 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
-.sx-schedule-task-composer { width: 100%; }
-.sx-schedule-task-composer .sx-composer-input { min-height: 96px; }
-.sx-schedule-effort-pop { top: auto; bottom: calc(100% + 6px); right: 0; padding: 6px; }
-.sx-schedule-mode-pop { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; min-width: 150px; }
 .sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; width: min(320px, calc(100vw - 32px)); }
 /* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
    失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链(无按钮边框) ===== */

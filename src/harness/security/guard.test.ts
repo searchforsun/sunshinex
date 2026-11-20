@@ -66,6 +66,17 @@ test('read-only 模式下写工具被拒', () => {
   assert.equal(r.allowed, false);
 });
 
+test('create_scheduled_task 三档放行（配置面零 IO；执行权限继承输入框，工具面无覆盖参数）', () => {
+  for (const mode of ['acceptEdits', 'read-only', 'full-access'] as const) {
+    const g = new SecurityGuard(new PolicyEngine(), mode);
+    assert.equal(g.preToolUse('create_scheduled_task', { name: '巡检' }).allowed, true, mode);
+  }
+  // deny 规则仍先行
+  const p = new PolicyEngine();
+  p.add('deny', 'create_scheduled_task');
+  assert.equal(new SecurityGuard(p, 'full-access').preToolUse('create_scheduled_task', {}).allowed, false);
+});
+
 test('破坏性底线：三模式下递归删除被拦截', () => {
   for (const mode of ['acceptEdits', 'read-only', 'full-access'] as const) {
     const g = new SecurityGuard(new PolicyEngine(), mode);

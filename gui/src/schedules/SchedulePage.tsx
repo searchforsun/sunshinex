@@ -328,21 +328,17 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
                 </div>
               </div>
             </div>
-          ) : (
+          ) : view.kind === 'records' ? (
             <div className="sx-schedule-head">
               <div className="sx-schedule-heading">
-                <button
-                  type="button"
-                  className="sx-schedule-back"
-                  onClick={() => backToList(view.kind === 'config' ? editing?.id : recordsJob?.id)}
-                >
+                <button type="button" className="sx-schedule-back" onClick={() => backToList(recordsJob?.id)}>
                   <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
                   {t('Back', '返回')}
                 </button>
                 <h1 className="sx-schedule-title">{title}</h1>
               </div>
             </div>
-          )}
+          ) : null}
           {error !== '' && (
             <p className="sx-schedule-error" role="alert">
               {error}
@@ -399,7 +395,13 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
               </div>
             ))}
           {view.kind === 'config' && (
-            <ScheduleConfig conn={conn} job={editing} defaultModel={defaultModel} onSaved={saved} />
+            <ScheduleConfig
+              conn={conn}
+              job={editing}
+              defaultModel={defaultModel}
+              onSaved={saved}
+              onBack={() => backToList(editing?.id)}
+            />
           )}
           {view.kind === 'records' && recordsJob !== undefined && (
             <ScheduleRuns conn={conn} job={recordsJob} onOpenSession={onOpenSession} tick={refresh} />

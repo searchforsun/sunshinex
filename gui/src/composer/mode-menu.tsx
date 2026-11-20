@@ -20,11 +20,16 @@ type ModeMenuRow = { separator: true } | { m: SessionMode; label: string; desc: 
 /** 权限菜单（spec §3.4 四项两段单点——会话内 ComposerPills 与欢迎页 WelcomeComposer 两 pill 同源，
  *  此前两份逐字复制且 plan 图标已漂移[欢迎页 ListTodo 与 pill ModeIcon 的 NotebookPen 同屏不一致]）：
  *  plan 置顶（阶段三 plan-arm 接通正式开放）+分组线+三权限档；图标+双行（名称+解释）；disabled 行置灰
- *  不可选（data-tip=即将可用）。选中派发经 onPick 回调，弹层关闭归调用方（两面关闭时机语义不同）。 */
-export function ModeMenu({ mode, ariaLabel, onPick }: { mode: SessionMode; ariaLabel: string; onPick: (m: SessionMode) => void }): JSX.Element {
+ *  不可选（data-tip=即将可用）。选中派发经 onPick 回调，弹层关闭归调用方（两面关闭时机语义不同）。
+ *  allowPlan=false（2026-11-20 定时任务配置）只显三权限档——定时触发无人值守，plan 会挂确认。 */
+export function ModeMenu({ mode, ariaLabel, onPick, allowPlan = true }: { mode: SessionMode; ariaLabel: string; onPick: (m: SessionMode) => void; allowPlan?: boolean }): JSX.Element {
   const modeRows: ModeMenuRow[] = [
-    { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <NotebookPen size={15} strokeWidth={1.75} aria-hidden="true" /> },
-    { separator: true },
+    ...(allowPlan
+      ? ([
+          { m: 'plan' as const, label: t('Plan mode', '计划模式'), desc: t('Plan first, execute on approval', '先规划，批准后执行'), icon: <NotebookPen size={15} strokeWidth={1.75} aria-hidden="true" /> },
+          { separator: true },
+        ] as ModeMenuRow[])
+      : []),
     { m: 'read-only' as const, label: t('Read-only', '只读模式'), desc: t('Read-only analysis, no changes', '只读分析，不改文件'), icon: <Eye size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { m: 'acceptEdits' as const, label: t('Workspace edits', '工作区编辑'), desc: t('Direct edits in-workspace, asks outside', '工作区内直接改，域外需确认'), icon: <ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" /> },
     { m: 'full-access' as const, label: t('Full access', '完全访问'), desc: t('Fully automatic, blocks destructive commands', '全自动执行，仅拦破坏性命令'), icon: <Unlock size={15} strokeWidth={1.75} aria-hidden="true" /> },

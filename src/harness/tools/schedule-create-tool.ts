@@ -41,8 +41,14 @@ export interface ScheduleCreateSeam {
   create(draft: ScheduleCreateDraft): { ok: true; value: ScheduleCreateResult } | { ok: false; code: string; message: string };
 }
 
-const EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-const MODES: readonly ScheduleCreateMode[] = ['read-only', 'acceptEdits', 'full-access'];
+/** 工具缺省配置（2026-11-20 用户裁定「各种配置复用当前输入框的」）：工作区/权限/强度**始终**取自
+ *  当前会话输入框（SessionRuntime 提供活值函数），模型面不再暴露可覆盖参数——避免在只读输入框里
+ *  造出一条 full-access 任务（权限只降不升）。 */
+export interface ScheduleCreateDefaults {
+  effort?: ReasoningEffort;
+  mode?: ScheduleCreateMode;
+}
+
 const UNITS: readonly ScheduleCadenceUnit[] = ['minute', 'hour', 'day', 'weekday', 'week', 'month', 'year'];
 
 /** 缺席判定：null/"null"/"undefined"/空串 + **undefined**。执行边界 stripNullInputArgs 会把
@@ -106,7 +112,12 @@ function cadenceText(rec: ScheduleCreateDraft['recurrence']): string {
  * create_scheduled_task 工具工厂。defaultRoot=当前会话工作区（root 传 null 时兜底）；now 可注入供测试。
  * 只做入参整形与回执，校验/落档/布防全在宿主接缝（单点，防工具面与 HTTP 面两套规则漂移）。
  */
-export function makeCreateScheduledTaskTool(seam?: ScheduleCreateSeam, defaultRoot?: string, now: () => number = Date.now): RegisteredTool {
+export function makeCreateScheduledTaskTool(
+  seam?: ScheduleCreateSeam,
+  defaultRoot?: string,
+  now: () => number = Date.now,
+  defaults?: () => ScheduleCreateDefaults,
+): RegisteredTool {
   return {
     name: 'create_scheduled_task',
     description:
@@ -118,13 +129,13 @@ export function makeCreateScheduledTaskTool(seam?: ScheduleCreateSeam, defaultRo
       '- week: weekdays=[1..7] (1=Mon..7=Sun) + at="HH:mm"\n' +
       '- month: day_of_month=1..31 + at="HH:mm"\n' +
       '- year: month=1..12 + day + at="HH:mm"\n' +
-      'All wall-clock times are the user’s local time. start_at (ISO-8601) is both the first allowed run and the recurrence anchor; JSON null = now. until (ISO-8601) is an inclusive deadline; JSON null = no deadline. root defaults to the current workspace; null is recommended. effort defaults to medium; mode (permission) defaults to full-access. name must be 1..80 chars. Examples: 每天 9:00 → {unit:"day",every:1,at:"09:00"}; 每 30 分钟 → {unit:"minute",every:30}; 每周一三五 10:30 → {unit:"week",every:1,weekdays:[1,3,5],at:"10:30"}; 每月 1 号 9:00 → {unit:"month",every:1,dayOfMonth:1,at:"09:00"}. Use this when the user asks to create a recurring unattended task; for a single future wake-up inside this session use schedule_wakeup/schedule_task instead.',
+      'All wall-clock times are the user’s local time. start_at (ISO-8601) is both the first allowed run and the recurrence anchor; JSON null = now. until (ISO-8601) is an inclusive deadline; JSON null = no deadline. name must be 1..80 chars. Workspace, permission mode, and thinking effort are inherited from the current input box and are NOT parameters of this tool — do not try to set them. Examples: 每天 9:00 → {unit:"day",every:1,at:"09:00"}; 每 30 分钟 → {unit:"minute",every:30}; 每周一三五 10:30 → {unit:"week",every:1,weekdays:[1,3,5],at:"10:30"}; 每月 1 号 9:00 → {unit:"month",every:1,dayOfMonth:1,at:"09:00"}. Use this when the user asks to create a recurring unattended task; for a single future wake-up inside this session use schedule_wakeup/schedule_task instead.',
     category: 'task',
     display: { verb: 'SCHEDULE', targetFields: ['name'] },
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['name', 'prompt', 'recurrence', 'start_at', 'until', 'root', 'effort', 'mode'],
+      required: ['name', 'prompt', 'recurrence', 'start_at', 'until'],
       properties: {
         name: { type: 'string', description: 'Short task name shown on the card (1..80 chars)' },
         prompt: { type: 'string', description: 'The full task prompt sent as the user message at every trigger; self-contained (goal, paths, constraints, acceptance criteria)' },
@@ -152,17 +163,6 @@ export function makeCreateScheduledTaskTool(seam?: ScheduleCreateSeam, defaultRo
         },
         start_at: { type: ['string', 'null'], description: 'ISO-8601 first allowed run / recurrence anchor; JSON null = now' },
         until: { type: ['string', 'null'], description: 'ISO-8601 inclusive deadline; JSON null = no deadline' },
-        root: { type: ['string', 'null'], description: 'Absolute workspace directory; JSON null = current workspace' },
-        effort: {
-          type: ['string', 'null'],
-          enum: [...EFFORTS, null],
-          description: 'Thinking effort for every run; JSON null = medium',
-        },
-        mode: {
-          type: ['string', 'null'],
-          enum: [...MODES, null],
-          description: 'Permission mode for every run (read-only | acceptEdits | full-access); JSON null = full-access',
-        },
       },
     },
     executor: async (input) => {
@@ -188,10 +188,11 @@ export function makeCreateScheduledTaskTool(seam?: ScheduleCreateSeam, defaultRo
         ...(optNumber(r.month) !== undefined ? { month: optNumber(r.month) } : {}),
         ...(optNumber(r.day) !== undefined ? { day: optNumber(r.day) } : {}),
       };
-      const rootRaw = optString(raw.root);
-      const root = rootRaw ?? defaultRoot ?? process.cwd();
-      const effort = (optString(raw.effort) ?? 'medium') as ReasoningEffort;
-      const mode = (optString(raw.mode) ?? 'full-access') as ScheduleCreateMode;
+      // 工作区/权限/强度只从当前输入框继承（模型面没有对应参数，旧模型多发同名键也一律忽略）
+      const root = defaultRoot ?? process.cwd();
+      const inherited = defaults?.() ?? {};
+      const effort = inherited.effort ?? 'medium';
+      const mode = inherited.mode ?? 'full-access';
       const startAt = absent(raw.start_at, true) ? now() : parseIso(raw.start_at, 'start_at');
       const until = absent(raw.until, true) ? undefined : parseIso(raw.until, 'until');
       if (until !== undefined && until <= startAt) {

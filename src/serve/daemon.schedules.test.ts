@@ -406,7 +406,7 @@ test('POST /schedules 非法 draft 400', async () => {
   });
 });
 
-test('create_scheduled_task 工具：模型自然语言创建走同一 engine（GET /schedules 可见）', async () => {
+test('create_scheduled_task 工具：模型自然语言创建走同一 engine；effort/mode 继承当前会话输入框', async () => {
   const model = new ScriptedAdapter([
     {
       toolCalls: [
@@ -419,8 +419,8 @@ test('create_scheduled_task 工具：模型自然语言创建走同一 engine（
             start_at: null,
             until: null,
             root: null,
-            effort: 'high',
-            mode: 'acceptEdits',
+            effort: null,
+            mode: null,
           },
         },
       ],
@@ -431,6 +431,9 @@ test('create_scheduled_task 工具：模型自然语言创建走同一 engine（
     const created = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
     assert.equal(created.status, 200);
     const { sessionId } = (await created.json()) as { sessionId: string };
+    // 会话输入框当前选择：高强度 + 只读——工具省参时必须落这两个值（guard 对配置面三档放行，不挂审批）
+    assert.equal((await fetch(`${base}/session/${sessionId}/effort`, { method: 'POST', headers: AUTH, body: JSON.stringify({ effort: 'high' }) })).status, 200);
+    assert.equal((await fetch(`${base}/session/${sessionId}/mode`, { method: 'POST', headers: AUTH, body: JSON.stringify({ mode: 'read-only' }) })).status, 200);
     const sub = await fetch(`${base}/session/${sessionId}/submit`, {
       method: 'POST',
       headers: AUTH,
@@ -451,7 +454,7 @@ test('create_scheduled_task 工具：模型自然语言创建走同一 engine（
     assert.equal(jobs[0]!.prompt, '总结昨天以来的提交并给出风险提示');
     assert.equal(jobs[0]!.root, tmp, 'root 缺省=当前会话工作区');
     assert.deepEqual(jobs[0]!.recurrence, { unit: 'day', every: 1, at: '09:00' });
-    assert.equal(jobs[0]!.effort, 'high');
-    assert.equal(jobs[0]!.mode, 'acceptEdits');
+    assert.equal(jobs[0]!.effort, 'high', 'effort 缺省继承当前输入框');
+    assert.equal(jobs[0]!.mode, 'read-only', 'mode 缺省继承当前输入框');
   }, undefined, model);
 });

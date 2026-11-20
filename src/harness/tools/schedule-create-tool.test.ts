@@ -30,9 +30,6 @@ function input(over: Record<string, unknown> = {}): Record<string, unknown> {
     recurrence: { unit: 'day', every: 1, at: '09:00', weekdays: null, day_of_month: null, month: null, day: null },
     start_at: null,
     until: null,
-    root: null,
-    effort: null,
-    mode: null,
     ...over,
   };
 }
@@ -60,9 +57,9 @@ describe('create_scheduled_task', () => {
     assert.match(r.stdout, /cadence: every 1 day\(s\) at 09:00/);
   });
 
-  test('显式参数：绝对 root/effort/mode/ISO start_at/until/weekdays 原样落草稿', async () => {
+  test('显式时间参数：ISO start_at/until/weekdays 原样落草稿；root/effort/mode 同名键一律忽略', async () => {
     const { seam, calls } = seamStub();
-    const exec = execOf(makeCreateScheduledTaskTool(seam, '/ignored', () => 0));
+    const exec = execOf(makeCreateScheduledTaskTool(seam, '/w/session-root', () => 0));
     const start = '2026-11-21T10:30:00+08:00';
     const until = '2026-12-01T00:00:00+08:00';
     const r = await exec(
@@ -70,6 +67,7 @@ describe('create_scheduled_task', () => {
         recurrence: { unit: 'week', every: 1, at: '10:30', weekdays: [1, 3, 5], day_of_month: null, month: null, day: null },
         start_at: start,
         until,
+        // 模型旧记忆/幻觉多发这三个键：工具面无权覆盖输入框配置
         root: '/w/other',
         effort: 'high',
         mode: 'acceptEdits',
@@ -79,9 +77,9 @@ describe('create_scheduled_task', () => {
     const d = calls[0]!;
     assert.equal(d.startAt, Date.parse(start));
     assert.equal(d.until, Date.parse(until));
-    assert.equal(d.root, '/w/other');
-    assert.equal(d.effort, 'high');
-    assert.equal(d.mode, 'acceptEdits');
+    assert.equal(d.root, '/w/session-root');
+    assert.equal(d.effort, 'medium');
+    assert.equal(d.mode, 'full-access');
     assert.deepEqual(d.recurrence.weekdays, [1, 3, 5]);
     assert.match(r.stdout, /cadence: every 1 week\(s\) on days 1,3,5/);
   });
@@ -113,6 +111,19 @@ describe('create_scheduled_task', () => {
     assert.equal(d.effort, 'medium');
     assert.equal(d.mode, 'full-access');
     assert.deepEqual(d.recurrence, { unit: 'day', every: 1, at: '09:00' });
+  });
+
+  test('配置继承：始终用当前输入框缺省（活值函数）；raw 同名键不覆盖', async () => {
+    const { seam, calls } = seamStub();
+    const now = 1_700_000_000_000;
+    const exec = execOf(makeCreateScheduledTaskTool(seam, '/w', () => now, () => ({ effort: 'high', mode: 'read-only' })));
+    await exec(input());
+    assert.equal(calls[0]!.effort, 'high');
+    assert.equal(calls[0]!.mode, 'read-only');
+    await exec(input({ effort: 'low', mode: 'acceptEdits', root: '/w/other' }));
+    assert.equal(calls[1]!.effort, 'high');
+    assert.equal(calls[1]!.mode, 'read-only');
+    assert.equal(calls[1]!.root, '/w');
   });
 
   test('入参拒绝：空 name/prompt、缺 recurrence、坏 ISO、until<=start_at', async () => {
