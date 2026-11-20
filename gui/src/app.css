@@ -4496,3 +4496,23 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* $/# 面板实时段注记(2026-11-20):任务行尾状态小字(运行中/等待),颜色走三段弱色 */
 .ref-palette-note { flex: none; margin-left: auto; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); }
 .ref-palette-row .ref-palette-id.ref-palette-id-dim { margin-left: 6px; }
+/* ===== 定时任务三行配置页(scheduled-tasks Task 8,spec §12):名称/调度/任务 ===== */
+.sx-schedule-cfg { display: flex; flex-direction: column; gap: 18px; }
+.sx-schedule-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: start; }
+.sx-schedule-label { padding-top: 8px; color: var(--fg-tertiary); font-size: calc(13px * var(--fz)); }
+.sx-schedule-input { width: 100%; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; color: var(--fg); font: calc(13px * var(--fz))/1.4 var(--font-ui); outline: none; }
+.sx-schedule-input:focus { border-color: var(--border-strong); }
+.sx-schedule-schedule { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sx-schedule-select { width: 132px; }
+.sx-schedule-datetime { width: 190px; }
+.sx-schedule-inline { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-inline .sx-schedule-input { width: 190px; }
+.sx-schedule-nocut { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-nocut input { accent-color: var(--accent); }
+.sx-schedule-hint { margin-top: 7px; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); }
+.sx-schedule-error { margin: 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-task-composer { width: 100%; }
+.sx-schedule-task-composer .sx-composer-input { min-height: 96px; }
+.sx-schedule-effort-pop { top: auto; bottom: calc(100% + 6px); right: 0; padding: 6px; }
+.sx-schedule-mode-pop { top: auto; bottom: calc(100% + 6px); left: 0; min-width: 150px; }
+.sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; }
