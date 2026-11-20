@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ScheduleConfig } from './ScheduleConfig';
 import { recurrenceOf } from './cycle';
 import { effortLabel } from '../effort-slider';
@@ -266,5 +266,62 @@ describe('ScheduleConfig 三行', () => {
     await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
     const body = createSchedule.mock.calls[0]![0];
     expect('until' in body).toBe(false);
+  });
+
+  it('编辑态根权威:workspaces 清单不含 job.root 时选择不被重置,保存 root 仍是 job.root', async () => {
+    const { conn, workspaces, updateSchedule } = makeConn();
+    const releases: Array<(rows: Array<{ slug: string; root?: string; sessionCount: number }>) => void> = [];
+    workspaces.mockImplementation(
+      () =>
+        new Promise<Array<{ slug: string; root?: string; sessionCount: number }>>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+    const job = makeJob({ root: 'D:/w/ghost' });
+    render(<ScheduleConfig conn={conn} job={job} defaultModel="DeepSeek" onSaved={() => undefined} />);
+    // 编辑态挂载即两路回源(挂载 effect + presetRoot effect),全部挂起
+    await waitFor(() => expect(releases.length).toBeGreaterThan(0));
+    expect(screen.getByText('ghost')).toBeDefined(); // preset 种子(picked=job.root)
+
+    // 回源只回默认行:释放前无 job.root 在册——不带根权威就会被重置回默认锚
+    await act(async () => {
+      let resolve: ((rows: Array<{ slug: string; root?: string; sessionCount: number }>) => void) | undefined;
+      while ((resolve = releases.shift()) !== undefined) {
+        resolve([{ slug: 'default', root: 'default', sessionCount: 0 }]);
+      }
+    });
+    expect(screen.getByText('ghost')).toBeDefined(); // 回源后仍保持
+
+    fireEvent.change(screen.getByLabelText(bi('Name', '名称')), { target: { value: '巡检二' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(updateSchedule).toHaveBeenCalledTimes(1));
+    const [, body] = updateSchedule.mock.calls[0]!;
+    expect(body.root).toBe('D:/w/ghost');
+  });
+
+  it('保存失败:createSchedule 拒绝 → 行内 alert 显示错误文本,busy 释放可重试', async () => {
+    const { conn, createSchedule } = makeConn();
+    let rejectSave!: (e: unknown) => void;
+    createSchedule.mockImplementation(
+      () =>
+        new Promise<ScheduleJobView>((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={() => undefined} />);
+    await screen.findByText(bi('Name', '名称'));
+    fireEvent.change(screen.getByLabelText(bi('Name', '名称')), { target: { value: '巡检' } });
+    fireEvent.change(screen.getByLabelText(bi('Task', '任务')), { target: { value: '检查仓库' } });
+    const save = screen.getByRole('button', { name: bi('Save', '保存') }) as HTMLButtonElement;
+    fireEvent.click(save);
+    await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
+    expect(save.disabled).toBe(true); // busy 期禁点
+
+    await act(async () => {
+      rejectSave(new Error('daemon down'));
+    });
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe('daemon down');
+    await waitFor(() => expect(save.disabled).toBe(false)); // busy 释放,可重试
   });
 });

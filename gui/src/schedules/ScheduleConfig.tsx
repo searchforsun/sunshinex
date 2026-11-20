@@ -64,7 +64,23 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved }: ScheduleCon
   const [error, setError] = useState('');
   const [nextPreview, setNextPreview] = useState<number | null>(null);
   const projRef = useRef<HTMLDivElement>(null);
-  const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(conn, job?.root, 0, {
+  /** 编辑态根权威(review round 1):workspaces 清单可能不含任务原 root——useWelcomeWorkspaces
+   *  回源时会把 picked 重置回默认锚,只改名的保存就会把任务悄悄挪到 default。把 job.root 合成
+   *  可用行喂给 hook:选择在用户显式改选工作区前恒保持 job.root,rename-only 不改落点 */
+  const wsConn = useMemo(() => {
+    const heldRoot = job?.root;
+    if (heldRoot === undefined || heldRoot === '') return conn;
+    return {
+      workspaces: async (): Promise<Array<{ slug: string; root?: string; sessionCount: number }>> => {
+        const list = await conn.workspaces();
+        return list.some((r) => r.root === heldRoot) ? list : [...list, { slug: heldRoot, root: heldRoot, sessionCount: 0 }];
+      },
+      createWorkspace: conn.createWorkspace,
+      locateWorkspace: conn.locateWorkspace,
+      onConfigChanged: conn.onConfigChanged,
+    };
+  }, [conn, job?.root]);
+  const { rows, browseFolder, registerFolder } = useWelcomeWorkspaces(wsConn, job?.root, 0, {
     setPicked,
     setProjOpen,
     setHint,
