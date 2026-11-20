@@ -4,7 +4,7 @@ import type { CmdItem } from '../../CommandPalette';
 import { pathBasename } from '../../ui-util';
 import { atomicRange, rankFileHits, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './mention';
 import type { RefEntries, RefPal } from './ref-palette';
-import { flatRefItems, refTokenAt } from './ref-palette';
+import { flatRefItems, refPickLabel, refTokenAt } from './ref-palette';
 import { slashItemsFor } from './use-command-palette';
 
 /**
@@ -177,7 +177,8 @@ export function useComposerKeys(deps: {
         const item = items[Math.min(refActive, items.length - 1)];
         const from = effRefPal.from;
         const end = from + 1 + effRefPal.query.length;
-        setInput((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
+        // 名称插入(2026-11-20 用户裁定「# $ 后面只跟上名称」):发送期 expandRefNames 还原 id
+        setInput((prev) => prev.slice(0, from) + `${item.sym}${refPickLabel(item)} ` + prev.slice(Math.max(end, from)));
         setRefPal(null);
         return;
       }

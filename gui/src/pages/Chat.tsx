@@ -39,7 +39,7 @@ import { useChatImages } from './chat/use-chat-images';
 import { useChatSeenArchive } from './chat/use-chat-seen-archive';
 import { useChatTerminalDock } from './chat/use-chat-terminal-dock';
 import { useCollapseTransition } from '../use-collapse-transition';
-import { expandFileRefs, expandRefContents, hasMentionTokens, renderMentionSpans, slashTokenAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, hasMentionTokens, renderMentionSpans, setRefLabels, setRefOpenHandler, slashTokenAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, hasMentionTokens, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
@@ -202,6 +202,19 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
   const { resolveFileRef, loadWorkspaceFiles, filesVer } = useWorkspaceFiles(conn, sessionId, root, pickRelRef);
+  /** $/# 名称注册表 + 点击跳转(2026-11-20 用户裁定「名称不是标识」「点击跳转到指定团队/成员,
+   *  与页面蓝色超链接一致」):目录装载后写入模块级注册表——气泡/输入框按名显示、按 id 跳转;
+   *  跳转路由=团队卡(`team:<id>`)/成员转录(onOpenAgent) */
+  useEffect(() => {
+    setRefLabels(refEntries.agents, refEntries.teams);
+  }, [refEntries]);
+  useEffect(() => {
+    setRefOpenHandler((sym, id) => {
+      if (sym === '#') onOpenTask?.(`team:${id}`);
+      else onOpenAgent?.(id, id);
+    });
+    return () => setRefOpenHandler(null);
+  }, [onOpenTask, onOpenAgent]);
   /** agents-teams P1 §3.2 引用目录懒加载:并行 agentsView+teamsView(root 同口径守卫——缺省/
    *  空串/'default' 走全局清单),结果投影 id+name(shadowed 行剔除——同 id 两级行只留生效者),
    *  缓存于 ref(首次命中后零网络);失败静默空列——面板照开仅无项(R5 不为提示补拉) */
@@ -454,6 +467,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     root,
     resolveFileRef,
     refContents: refContentsRef.current,
+    refEntries, // 2026-11-20 名称→id 发送期展开($名称/#名称 按目录还原)
     cmdData,
     setChat,
     onSideChat,

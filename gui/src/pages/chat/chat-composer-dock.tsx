@@ -11,7 +11,7 @@ import { ApprovalCard } from './PendingCards';
 import type { AskPick } from './PendingCards';
 import { PlanCard } from './PlanCard';
 import { fileHit, FilePalette, rankFileHits, RefPalette, slashTokenAt } from './mention';
-import { refTokenAt } from './ref-palette';
+import { refPickLabel, refTokenAt } from './ref-palette';
 import type { RefEntries, RefPal } from './ref-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './ComposerPills';
 import { useComposerKeys } from './use-composer-keys';
@@ -271,14 +271,16 @@ export function ChatComposerDock(props: {
                   setInput((prev) => {
                     const head = prev.slice(0, from);
                     const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
-                    return head + sep + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from));
+                    // 插入名称而非标识(2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」):
+                    // 发送期由 expandRefNames 按目录还原成 id;含空白名称回落 id(refPickLabel 单点)
+                    return head + sep + `${item.sym}${refPickLabel(item)} ` + prev.slice(Math.max(end, from));
                   });
                   setRefPal(null);
                   inputRef.current?.focus();
                   requestAnimationFrame(() => {
                     const ta = inputRef.current;
                     if (ta === null) return;
-                    const to = Math.min(from + item.id.length + 2, ta.value.length);
+                    const to = Math.min(from + refPickLabel(item).length + 2, ta.value.length);
                     ta.setSelectionRange(to, to);
                   });
                 }}

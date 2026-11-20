@@ -45,6 +45,33 @@ export function refTokenAt(text: string, caret: number): RefPal | null {
   return { query: m[3] ?? '', from, sym: m[2] === '#' ? '#' : '$' };
 }
 
+/** 条目展示名/插入名（2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」）：名称优先，
+ *  无名/与 id 同形回落 id；**含空白字符的名称回落 id**（token 词法以空白为界，名称带空格会
+ *  被截断成半个 token——宁可让这条显 id 也不产坏引用） */
+export function refPickLabel(e: RefEntry): string {
+  const name = e.name !== '' ? e.name : e.id;
+  return /\s/.test(name) ? e.id : name;
+}
+
+/** 名称→id 发送期展开（2026-11-20 用户裁定「发送给 agent 时再拼上 id」）：草稿里插入的是名称，
+ *  发送前按目录把 `#名称`/`$名称` 还原成 `#id`/`$id`（模型契约不变）。长名先换（防前缀吞并：
+ *  「数据」不会吃掉「数据平台专家」的头部）；已在册的 id 形态原样保留（幂等） */
+export function expandRefNames(text: string, entries: RefEntries): string {
+  const pairs: Array<{ from: string; to: string }> = [];
+  for (const a of entries.agents) {
+    const label = refPickLabel(a);
+    if (label !== a.id) pairs.push({ from: `$${label}`, to: `$${a.id}` });
+  }
+  for (const t of entries.teams) {
+    const label = refPickLabel(t);
+    if (label !== t.id) pairs.push({ from: `#${label}`, to: `#${t.id}` });
+  }
+  pairs.sort((x, y) => y.from.length - x.from.length);
+  let out = text;
+  for (const p2 of pairs) out = out.split(p2.from).join(p2.to);
+  return out;
+}
+
 /** id 前缀过滤（大小写不敏感——catalog id 词法允许大写而触发令牌恒小写，宽进窄出）；
  *  两组各自过滤保原序，空 query 全量保留 */
 export function filterRefEntries(entries: RefEntries, query: string): RefEntries {
@@ -65,10 +92,15 @@ export function flatRefItems(entries: RefEntries, query: string, sym: '$' | '#')
  *  去重保序。调用方约定：entries 从未拉过（palette 未开过）跳过整个检查——不为提示补拉。 */
 export function unknownRefTokens(text: string, entries: RefEntries): string[] {
   const ids = new Set([...entries.agents, ...entries.teams].map((e) => e.id));
+  // 名称形态也算已匹配（2026-11-20 名称插入口径：插入的是名称，未匹配提示不得因此误报）
+  const names = new Set<string>();
+  for (const e of [...entries.agents, ...entries.teams]) {
+    if (e.name !== '' && e.name !== e.id && !/\s/.test(e.name)) names.add(e.name);
+  }
   const out: string[] = [];
   for (const m of text.matchAll(/(^|\s)([$#][a-z][a-z0-9-]*)/g)) {
     const tok = m[2] ?? '';
-    if (ids.has(tok.slice(1))) continue;
+    if (ids.has(tok.slice(1)) || names.has(tok.slice(1))) continue;
     if (!out.includes(tok)) out.push(tok);
   }
   return out;

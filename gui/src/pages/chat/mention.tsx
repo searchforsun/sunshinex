@@ -163,6 +163,29 @@ export function RefPalette({
   );
 }
 
+/** 引用名注册表(2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」):`sym+id` → 显示名,
+ *  反向 `sym+名称` → id。气泡渲染面按名显示(hover 仍可查原文 id),点击按 id 跳转。宿主
+ *  (Chat)在目录装载后写入;模块级=refContentRegistry 同款先例,免穿 EntryViews 深层 props。 */
+const refLabels = new Map<string, string>();
+const refIds = new Map<string, string>();
+export function setRefLabels(agents: ReadonlyArray<{ id: string; name: string }>, teams: ReadonlyArray<{ id: string; name: string }>): void {
+  refLabels.clear();
+  refIds.clear();
+  for (const [sym, list] of [['$', agents], ['#', teams]] as const) {
+    for (const e of list) {
+      const label = e.name !== '' ? e.name : e.id;
+      refLabels.set(`${sym}${e.id}`, label);
+      refIds.set(`${sym}${label}`, e.id);
+    }
+  }
+}
+/** 点击跳转句柄(2026-11-20 用户裁定「点击能跳转到指定团队/成员,和页面蓝色超链接一致」):
+ *  宿主注入;未注入=普通文本(欢迎页等无跳转面) */
+let refOpenHandler: ((sym: '$' | '#', id: string) => void) | null = null;
+export function setRefOpenHandler(fn: ((sym: '$' | '#', id: string) => void) | null): void {
+  refOpenHandler = fn;
+}
+
 /** G14.85 工具体用无链接版(输出面不需要文件交互) */
 /** G14.95 token 提取:@路径=文件引用;/词(行首/空白后)=命令或技能引用;2026-11-04 §3.1 扩
  *  $智能体/#团队 软引用(词边界起手+小写首字符:#L30/#Title/词中 $var 天然不命中)。
@@ -180,16 +203,10 @@ let splitCacheOut: MentionToken[] = [];
 
 export function splitMentionTokens(text: string): MentionToken[] {
   if (text === splitCacheText) return splitCacheOut;
-  // G14.121 @ 分支扩 `:\\`:绝对路径 token(D:/ws/a.ts、D:\ws\a.ts)整体着色
-  // 2026-11-04 ref 分支:⟦…⟧ 元素/终端片段引用(选取面插入,发送期 expandRefContents 展开全量)
-  // 2026-11-04 §3.1 加 $/# 软引用支:词边界组+小写首字符(小写限定即测试语义——
-  // #L30 行锚/#Title/词中 $var 均不误伤)。原 /gi 的 i 对 @、/ 两支只有 [a-z] 一处生效,
-  // 改显式 [a-zA-Z] 后两支逐字节不变;保 i 则 #Title 反而命中,故全局旗降为 /g
-  // 2026-11-04 md 链接支(首支,无捕获组不位移):发送期展开落档的文件引用形态
-  // `[名 L19-L22](路径#L19-L22)` 整体成原子 token——编辑回填/气泡/队列按文件芯片渲染
-  // 2026-11-05 续:/$# 支边界扩 ⟧】(定界符右沿=芯片后手打 /cmd|$agent 也成芯片;此前
-  // /命令面板贴芯片落选时 (^|\s) 不认 ⟧=「文本后面的技能无法识别成蓝色」根因之一)
-  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s|(?<=[⟧】]))(\/[a-zA-Z][\w-]*)|(^|\s|(?<=[⟧】]))([$#][a-z][a-z0-9-]*)/g;
+  // 2026-11-20 名称支(用户裁定「# $ 后面只跟上名称」):`#`/`$` + 中文起手名(群 5/6)——名称插入后
+  // 在输入框/气泡里同样是整枚 token(高亮/整删/跳转);英文小写名已被既有 id 支覆盖,大写/含空格名
+  // 插入侧回退 id(refPickLabel),故此处不放大写臂(#Title 行锚仍不误伤)
+  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s|(?<=[⟧】]))(\/[a-zA-Z][\w-]*)|(^|\s|(?<=[⟧】]))([$#][a-z][a-z0-9-]*)|(^|\s|(?<=[⟧】]))([$#][\u4e00-\u9fa5][^\s#@/⟦⟧]{0,40})/g;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
@@ -207,6 +224,12 @@ export function splitMentionTokens(text: string): MentionToken[] {
       // 2026-11-05 用户二次裁定:行中 /word 保 skill 芯片照亮(视觉),「普通文本」仅指派发语义
       //(整条照发、模型软加载,无徽标不碍加载的反面——无芯片才碍用户识别);行首 /词 = cmd
       out.push({ text: word, kind: atLineStart ? 'cmd' : 'skill' });
+    } else if (m[6] !== undefined && m[6] !== '') {
+      // 名称支($/# + 中文起手名,2026-11-20 名称插入口径):lead 记 plain,名称按 $→agent、#→team
+      const lead = m[5] ?? '';
+      if (lead !== '') out.push({ text: lead, kind: 'plain' });
+      const word = m[6];
+      out.push({ text: word, kind: word.startsWith('$') ? 'agent' : 'team' });
     } else {
       // $/# 软引用:lead(行首为空串/空白)记 plain,token 按 $→agent、#→team
       const lead = m[3] ?? '';
@@ -427,6 +450,27 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
         : inner);
       const content = refContents?.get(tk.text) ?? refContentRegistry.get(tk.text) ?? '';
       return <RefTokenChip key={i} inner={inner} isTerm={isTerm} content={content} composer={composer === true} />;
+    }
+    if (tk.kind === 'agent' || tk.kind === 'team') {
+      const sym = tk.text[0] as '$' | '#';
+      const body = tk.text.slice(1);
+      // 草稿里是名称、气泡里是 id——两侧都归一成 id 供跳转/查名
+      const id = refIds.get(`${sym}${body}`) ?? body;
+      const label = refLabels.get(`${sym}${id}`);
+      const display = label !== undefined ? `${sym}${label}` : tk.text;
+      const open = refOpenHandler;
+      return (
+        <span
+          key={i}
+          className={`hn hn-${tk.kind}${open !== null ? ' hn-ref-link' : ''}`}
+          title={label !== undefined ? tk.text : undefined}
+          onClick={open !== null ? () => open(sym, id) : undefined}
+          onMouseDown={open !== null ? (e) => e.preventDefault() : undefined}
+          style={open !== null ? { cursor: 'pointer' } : undefined}
+        >
+          {display}
+        </span>
+      );
     }
     return <span key={i} className={`hn hn-${tk.kind}`}>{tk.text}</span>;
   });

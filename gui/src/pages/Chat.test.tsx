@@ -2217,7 +2217,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     fireEvent.keyDown(ta, { key: 'ArrowUp' });
     expect(activeId()).toBe('planner'); // 回退可逆
     fireEvent.keyDown(ta, { key: 'Enter' });
-    expect(ta.value).toBe('$planner '); // 插入所选(尾随空格)
+    expect(ta.value).toBe('$Planner '); // 名称插入口径(2026-11-20;发送期还原 $planner)
     expect(document.querySelector('.ref-palette')).toBeNull();
   });
 
@@ -2232,11 +2232,12 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     expect([...document.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['core-team']); // devx 不混列
     expect(document.querySelectorAll('.ref-palette-row')[0]?.textContent).toContain('#'); // 符号着色行自明(无组头文字)
     fireEvent.keyDown(ta, { key: 'Enter' });
-    expect(ta.value).toBe('#core-team ');
+    // 2026-11-20 名称插入口径:插入名称(Core),发送期再还原 id
+    expect(ta.value).toBe('#Core ');
     expect(document.querySelector('.ref-palette')).toBeNull();
   });
 
-  it('点击面板行插入对应 token($id 尾随空格)并收面板', async () => {
+  it('点击面板行插入名称 token(发送期还原 id)并收面板', async () => {
     setLanguage('zh');
     const conn = connOf([]);
     withCatalog(conn, [{ id: 'devx', name: 'Dev X' }, { id: 'planner', name: 'Planner' }], []);
@@ -2246,7 +2247,7 @@ describe('$/# 引用面板(agents-teams P1 Task 4,spec §3.2)', () => {
     await screen.findByRole('listbox', { name: '子智能体与智能体团队' });
     const rows = [...document.querySelectorAll('.ref-palette-row')];
     fireEvent.click(rows[1]!); // 第二行 planner
-    expect(ta.value).toBe('$planner ');
+    expect(ta.value).toBe('$Planner '); // 名称插入(2026-11-20 口径)
     expect(document.querySelector('.ref-palette')).toBeNull();
   });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterRefEntries, flatRefItems, refTokenAt, unknownRefTokens } from './ref-palette';
+import { expandRefNames, filterRefEntries, flatRefItems, refPickLabel, refTokenAt, unknownRefTokens } from './ref-palette';
 import type { RefEntries } from './ref-palette';
 
 /** agents-teams P1 Task 4(spec 2026-11-04 §3.1/§3.2 GUI):$ / # 软引用 palette 纯函数面——
@@ -108,5 +108,28 @@ describe('unknownRefTokens(R5 未知引用聚合,只读对照缓存)', () => {
   });
   it('entries 空(从未拉到)=全部视为未知', () => {
     expect(unknownRefTokens('$devx', { agents: [], teams: [] })).toEqual(['$devx']);
+  });
+});
+
+describe('名称插入口径(2026-11-20 用户裁定「# $ 后面只跟上名称,发送给 agent 时再拼 id」)', () => {
+  const entries: RefEntries = {
+    agents: [{ id: 'planner', name: '规划师' }, { id: 'dev', name: 'dev' }],
+    teams: [{ id: 'core-team', name: '核心团队' }, { id: 'full', name: 'Full Team' }],
+  };
+
+  it('refPickLabel:id 与名称同形/含空白 → 回退 id;否则取名称', () => {
+    expect(refPickLabel(entries.agents[0]!)).toBe('规划师');
+    expect(refPickLabel(entries.agents[1]!)).toBe('dev');
+    expect(refPickLabel(entries.teams[0]!)).toBe('核心团队');
+    expect(refPickLabel(entries.teams[1]!)).toBe('full'); // 含空白 → 回退 id(token 词法以空白为界)
+  });
+
+  it('expandRefNames:名称 token 还原成 id(长名先换,幂等)', () => {
+    expect(expandRefNames('把 $规划师 和 #核心团队 拉起来', entries)).toBe('把 $planner 和 #core-team 拉起来');
+    expect(expandRefNames('$planner #core-team 已是 id', entries)).toBe('$planner #core-team 已是 id');
+  });
+
+  it('unknownRefTokens:名称形态不误报', () => {
+    expect(unknownRefTokens('$规划师 #核心团队', entries)).toEqual([]);
   });
 });

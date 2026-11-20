@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import { applyChatEvent, appendUserMessage } from '../../chat-reducer';
 import { expandFileRefs, expandRefContents } from './mention';
+import { expandRefNames, type RefEntries } from './ref-palette';
 
 /** §7 提交路径单点(D32 第六批批F-7a 自 Chat.tsx 平移):idle→submit/running→steer;
  *  /btw /side 拦截/命令通道 supported 白名单/失败倒 error 条再 rethrow(编辑卡保卡
@@ -22,6 +23,8 @@ export function useChatSubmit(deps: {
   readonly resolveFileRef: (name: string) => string | undefined;
   /** 2026-11-04 元素/终端片段引用账本(token→全量内容,发送期展开) */
   readonly refContents: ReadonlyMap<string, string>;
+  /** $/# 引用目录(2026-11-20 名称插入口径):草稿插的是名称,发送期按目录还原成 id */
+  readonly refEntries?: RefEntries;
   readonly cmdData: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null;
   readonly setChat: Dispatch<SetStateAction<import('../../chat-reducer').ChatState>>;
   readonly onSideChat?: () => void;
@@ -44,7 +47,7 @@ export function useChatSubmit(deps: {
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged } = deps;
 /** §7 提交路径单点(idle→submit/running→steer):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
  *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
@@ -52,7 +55,10 @@ const submitText = useCallback(
   (text: string, imgs?: string[]): Promise<void> => {
     const hasImages = imgs !== undefined && imgs.length > 0;
     // G14.124 @短写 → md 绝对链接(模型/正文/气泡统一 md 链接口径);命令面(/开头)不展开
-    const expanded = expandRefContents(expandFileRefs(text, root, resolveFileRef), refContents).trim();
+    // 2026-11-20 名称→id(用户裁定「发送给 agent 时再拼上 id」):$名称/#名称 按目录还原成 id,
+    // 模型契约不变(名称只是输入框的显示层);目录未装载=原样(len 零变化)
+    const named = refEntries !== undefined ? expandRefNames(text, refEntries) : text;
+    const expanded = expandRefContents(expandFileRefs(named, root, resolveFileRef), refContents).trim();
     const trimmed = expanded.trim();
     if (trimmed === '' && !hasImages) return Promise.resolve();
     // G14.29:/btw /side 输入拦截——开辅助对话旁路标签(Codex 同款;不占主链提交面);携图不拦(图片走主链)
