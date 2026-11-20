@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, Folder } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronDown, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
 import { usePopOutsideClose } from '../use-pop-outside-close';
@@ -8,12 +8,13 @@ import { WelcomeProjectPop } from '../welcome/welcome-project-pop';
 import { DirPicker } from '../pages/DirPicker';
 import { baseModelName, ModeIcon } from '../pages/Chat';
 import { ComposerCard } from '../composer/ComposerCard';
-import { EffortChip, EffortSlider, effortLabel } from '../effort-slider';
+import { EffortChip } from '../effort-slider';
+import { WelcomeModelMenu } from '../welcome/welcome-model-menu';
 import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
 import { Select } from '../settings/controls';
 import type { SelectOption } from '../settings/controls';
 import type { Connection, ScheduleDraft, ScheduleJobView, ScheduleMode } from '../connection';
-import { CADENCE_OPTIONS, buildWhen, pad2, weekdayLabel, weekdayListLabel, whenOf, whenSummary } from './cycle';
+import { CADENCE_OPTIONS, buildWhen, formatStamp, pad2, weekdayLabel, weekdayListLabel, whenOf, whenSummary } from './cycle';
 import type { ScheduleCadence, ScheduleWhen } from './cycle';
 
 /**
@@ -134,19 +135,147 @@ function WeekdaySelect({ value, onChange }: { value: number[]; onChange: (days: 
   );
 }
 
+
+/** 截止时间选择（2026-11-20 用户裁定「调度行右侧加上截止时间；日期选择用本项目格式，不用原生」）：
+ *  自绘月历 + 时/分下拉；trigger 恒在调度行右端（margin-left:auto）。无值=「无截止」，
+ *  选日/改时刻即时回写 until；清空回 undefined。过去日期禁用，今天可选（时刻合法性由保存面兜底）。 */
+function DeadlinePicker({ value, onChange }: { value: number | undefined; onChange: (v: number | undefined) => void }): JSX.Element {
+  const initial = value !== undefined ? new Date(value) : new Date();
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<{ y: number; m: number }>({ y: initial.getFullYear(), m: initial.getMonth() });
+  const [hour, setHour] = useState(value !== undefined ? new Date(value).getHours() : 23);
+  const [minute, setMinute] = useState(value !== undefined ? new Date(value).getMinutes() : 59);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent): void => {
+      if (rootRef.current !== null && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey, true);
+    };
+  }, [open]);
+  // 外部值变化（编辑态初值/清空）同步月视图与时刻
+  useEffect(() => {
+    if (value === undefined) return;
+    const d = new Date(value);
+    setHour(d.getHours());
+    setMinute(d.getMinutes());
+    setView({ y: d.getFullYear(), m: d.getMonth() });
+  }, [value]);
+  const setTime = (h: number, m: number): void => {
+    setHour(h);
+    setMinute(m);
+    if (value !== undefined) {
+      const d = new Date(value);
+      d.setHours(h, m, 0, 0);
+      onChange(d.getTime());
+    }
+  };
+  const cells = useMemo(() => {
+    const first = new Date(view.y, view.m, 1);
+    const lead = (first.getDay() + 6) % 7; // 周一为首列
+    const days = new Date(view.y, view.m + 1, 0).getDate();
+    const arr: Array<number | null> = Array.from({ length: lead }, () => null);
+    for (let d = 1; d <= days; d += 1) arr.push(d);
+    while (arr.length % 7 !== 0) arr.push(null);
+    return arr;
+  }, [view]);
+  const selected = value !== undefined ? new Date(value) : undefined;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+  const label = value !== undefined ? `${t('Until', '截至')} ${formatStamp(value)}` : t('No deadline', '无截止');
+  return (
+    <div className="sx-schedule-deadline-anchor" ref={rootRef}>
+      <button
+        type="button"
+        className="composer-pill sx-schedule-deadline-pill"
+        aria-label={t('Deadline', '截止时间')}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        data-tip={label}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Calendar size={14} strokeWidth={1.75} aria-hidden="true" />
+        <span className="pill-label">{label}</span>
+        <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="sx-menu-pop sx-schedule-deadline-pop" role="dialog" aria-label={t('Deadline', '截止时间')}>
+          <div className="sx-deadline-head">
+            <button type="button" className="sx-iconbtn" aria-label={t('Previous month', '上个月')} onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))}>
+              <ChevronLeft size={16} strokeWidth={1.75} />
+            </button>
+            <span className="sx-deadline-month">{t(`${view.y}-${pad2(view.m + 1)}`, `${view.y} 年 ${view.m + 1} 月`)}</span>
+            <button type="button" className="sx-iconbtn" aria-label={t('Next month', '下个月')} onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))}>
+              <ChevronRight size={16} strokeWidth={1.75} />
+            </button>
+            <button type="button" className={`sx-deadline-clear${value === undefined ? ' is-active' : ''}`} onClick={() => onChange(undefined)}>
+              {t('No deadline', '无截止')}
+            </button>
+          </div>
+          <div className="sx-deadline-week">
+            {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+              const lab = weekdayLabel(d);
+              return <span key={d}>{t(lab.en, lab.zh)}</span>;
+            })}
+          </div>
+          <div className="sx-deadline-grid">
+            {cells.map((day, i) => {
+              if (day === null) return <span key={`b${i}`} className="sx-deadline-day is-blank" />;
+              const key = `${view.y}-${pad2(view.m + 1)}-${pad2(day)}`;
+              const isSel = selected !== undefined && selected.getFullYear() === view.y && selected.getMonth() === view.m && selected.getDate() === day;
+              const isPast = new Date(view.y, view.m, day).getTime() < new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`sx-deadline-day${isSel ? ' is-selected' : ''}${key === todayKey ? ' is-today' : ''}`}
+                  aria-label={key}
+                  disabled={isPast}
+                  onClick={() => onChange(new Date(view.y, view.m, day, hour, minute, 0, 0).getTime())}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          <div className="sx-deadline-time">
+            <span className="sx-schedule-when-inline">{t('Time', '时间')}</span>
+            <Select className="sx-schedule-dd sx-schedule-dd-num" value={pad2(hour)} options={HOUR_OPTIONS} ariaLabel={t('Deadline hour', '截止小时')} onChange={(v) => setTime(Number(v), minute)} />
+            <span className="sx-schedule-time-colon" aria-hidden="true">:</span>
+            <Select className="sx-schedule-dd sx-schedule-dd-num" value={pad2(minute)} options={MINUTE_OPTIONS} ariaLabel={t('Deadline minute', '截止分钟')} onChange={(v) => setTime(hour, Number(v))} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: ScheduleConfigProps): JSX.Element {
   const initialWhen = useMemo(() => whenOf(job), [job]);
   const [when, setWhen] = useState<ScheduleWhen>(initialWhen);
+  const [until, setUntil] = useState<number | undefined>(job?.until);
   const [name, setName] = useState(job?.name ?? t('Untitled scheduled task', '未命名定时任务'));
   const [prompt, setPrompt] = useState(job?.prompt ?? '');
   const [effort, setEffort] = useState(job?.effort ?? 'medium');
+  const [model, setModel] = useState<string | undefined>(job?.model);
+  const [modelChoices, setModelChoices] = useState<Array<{ id: string; effort?: string }>>([]);
   const [mode, setMode] = useState<ScheduleMode>(job?.mode ?? 'full-access');
   const [picked, setPicked] = useState(job?.root ?? '');
   const [projOpen, setProjOpen] = useState(false);
   const [projQuery, setProjQuery] = useState('');
   const [hint, setHint] = useState('');
   const [dirOpen, setDirOpen] = useState(false);
-  const [effortOpen, setEffortOpen] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -175,9 +304,17 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     setDirOpen,
   });
   usePopOutsideClose(projOpen, '.proj-pop', '.sx-schedule-ws-anchor', () => setProjOpen(false));
-  usePopOutsideClose(effortOpen, '.sx-schedule-effort-pop', '.sx-schedule-effort-pill', () => setEffortOpen(false));
+  usePopOutsideClose(modelOpen, '.sx-schedule-model-pop', '.sx-schedule-model-pill', () => setModelOpen(false));
   usePopOutsideClose(modeOpen, '.mode-pop', '.sx-schedule-mode-pill', () => setModeOpen(false));
 
+  // 模型清单（与输入框同一个 WelcomeModelMenu 数据源；旧桩无 settings 时留空，pill 回显 defaultModel）
+  useEffect(() => {
+    if (typeof conn.settings !== 'function') return;
+    conn.settings().then(
+      (v) => setModelChoices(v.providers.choices),
+      () => undefined,
+    );
+  }, [conn]);
   const summary = whenSummary(when);
   const wsLabel = useMemo(() => {
     const r = picked.trim();
@@ -193,7 +330,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     let alive = true;
     const timer = setTimeout(() => {
       const built = buildWhen(when, Date.now(), customSrc);
-      conn.previewSchedule({ recurrence: built.recurrence, startAt: built.startAt }).then(
+      conn.previewSchedule({ recurrence: built.recurrence, startAt: built.startAt, ...(until !== undefined ? { until } : {}) }).then(
         (r) => {
           if (alive) setNextPreview(r.next[0] ?? null);
         },
@@ -208,10 +345,14 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     };
     // customSrc 由 job 派生，job 在挂载期内稳定（SchedulePage 按 id 重挂配置页）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn, when]);
+  }, [conn, when, until]);
+
+  // 保存/创建钮仅在两必填项齐备时可点（2026-11-20 用户裁定：指令与调度都填了之后才能保存）
+  const canSave = prompt.trim() !== '' && (when.cadence !== 'weekly' || when.weekdays.length > 0);
 
   const save = (): void => {
     if (busy) return;
+    const built = buildWhen(when, Date.now(), customSrc);
     if (name.trim() === '') {
       setError(t('Task title is required', '任务标题必填'));
       return;
@@ -224,19 +365,22 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
       setError(t('Pick at least one weekday', '至少选择一个星期'));
       return;
     }
+    if (until !== undefined && until <= built.startAt) {
+      setError(t('Deadline must be after the start', '截止时间必须晚于开始'));
+      return;
+    }
     setBusy(true);
     setError('');
-    const built = buildWhen(when, Date.now(), customSrc);
     const body: ScheduleDraft = {
       name: name.trim(),
       prompt: prompt.trim(),
       root: picked.trim() === '' ? 'default' : picked.trim(),
+      ...(model !== undefined ? { model } : {}),
       effort,
       mode,
       recurrence: built.recurrence,
       startAt: built.startAt,
-      // 新 UI 不再暴露截止；custom 编辑保留既有 until（不静默丢）
-      ...(when.cadence === 'custom' && job?.until !== undefined ? { until: job.until } : {}),
+      ...(until !== undefined ? { until } : {}),
     };
     const p = job !== undefined ? conn.updateSchedule(job.id, body) : conn.createSchedule(body);
     p.then(
@@ -253,35 +397,35 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
 
   // Esc 层级：本面弹层（工作区/强度/权限/DirPicker）先收，不连带退页；Select 自己的 Esc 在弹层内收
   useEffect(() => {
-    if (!projOpen && !effortOpen && !modeOpen && !dirOpen) return;
+    if (!projOpen && !modelOpen && !modeOpen && !dirOpen) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
       setProjOpen(false);
-      setEffortOpen(false);
+      setModelOpen(false);
       setModeOpen(false);
       setDirOpen(false);
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [projOpen, effortOpen, modeOpen, dirOpen]);
+  }, [projOpen, modelOpen, modeOpen, dirOpen]);
 
   const nextLabel = nextPreview !== null ? new Date(nextPreview).toLocaleString() : '—';
-  const modelLabel = defaultModel !== '' ? baseModelName(defaultModel) : t('Default model', '默认模型');
 
   return (
     <div className="sx-schedule-editor">
       <div className="sx-schedule-editor-head">
-        <div className="sx-schedule-editor-heading">
+        {/* 大标题独占一行（2026-11-20 用户裁定）：返回与保存/创建在下一行 */}
+        <h1 className="sx-schedule-title">{job !== undefined ? t('Edit scheduled task', '编辑定时任务') : t('New scheduled task', '新建定时任务')}</h1>
+        <div className="sx-schedule-editor-sub">
           <button type="button" className="sx-schedule-back" onClick={onBack}>
             <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
             {t('Back', '返回')}
           </button>
-          <h1 className="sx-schedule-title">{job !== undefined ? t('Edit scheduled task', '编辑定时任务') : t('New scheduled task', '新建定时任务')}</h1>
+          <button type="button" className="sx-schedule-save" disabled={busy || !canSave} onClick={save}>
+            {job !== undefined ? t('Save', '保存') : t('Create', '创建')}
+          </button>
         </div>
-        <button type="button" className="sx-schedule-save" disabled={busy} onClick={save}>
-          {job !== undefined ? t('Save', '保存') : t('Create', '创建')}
-        </button>
       </div>
 
       {error !== '' && (
@@ -368,9 +512,11 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
             </>
           )}
           {when.cadence === 'custom' && <span className="sx-schedule-when-inline">{t('Custom cadence kept', '沿用原有自定义周期')}</span>}
+          <DeadlinePicker value={until} onChange={setUntil} />
         </div>
         <p className="sx-schedule-hint">
           {t(summary.en, summary.zh)} · {t('Next', '接下来')} {nextLabel}
+          {until !== undefined ? ` · ${t('Until', '截至')} ${formatStamp(until)}` : ''}
         </p>
       </div>
 
@@ -455,32 +601,35 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
             </>
           }
           footRight={
-            <>
-              <span
-                className="composer-pill sx-schedule-model-static"
-                data-tip={t('Scheduled runs use the app default model', '定时执行使用应用当前默认模型')}
+            /* 与输入框同一枚模型 pill（模型名 + 强度 chip + 同一 WelcomeModelMenu 弹层）：
+               2026-11-20 用户裁定「模型选择和思考强度完全使用输入框的，不要分开」 */
+            <div className="pill-anchor">
+              <button
+                type="button"
+                className="composer-pill model-pill sx-schedule-model-pill"
+                aria-label="model"
+                aria-expanded={modelOpen}
+                data-tip={model ?? defaultModel ?? modelChoices[0]?.id}
+                onClick={() => setModelOpen((v) => !v)}
               >
-                {modelLabel}
-              </span>
-              <div className="pill-anchor">
-                <button
-                  type="button"
-                  className="composer-pill sx-schedule-effort-pill"
-                  aria-label={t('Effort', '强度')}
-                  aria-expanded={effortOpen}
-                  data-tip={`${t('Thinking effort', '思考强度')}: ${effortLabel(effort)}`}
-                  onClick={() => setEffortOpen((v) => !v)}
-                >
-                  <EffortChip effort={effort} />
-                  <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
-                </button>
-                {effortOpen && (
-                  <div className="sx-menu-pop pill-pop pill-pop-right sx-schedule-effort-pop">
-                    <EffortSlider value={effort} onChange={setEffort} />
-                  </div>
-                )}
-              </div>
-            </>
+                {baseModelName(model ?? defaultModel ?? modelChoices[0]?.id)}
+                <EffortChip effort={effort} />
+                <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+              {modelOpen && (
+                <WelcomeModelMenu
+                  className="sx-schedule-model-pop"
+                  choices={modelChoices}
+                  current={model ?? defaultModel}
+                  effort={effort}
+                  onPick={(id, e) => {
+                    setModel(id);
+                    if (e !== undefined) setEffort(e);
+                  }}
+                  onEffort={setEffort}
+                />
+              )}
+            </div>
           }
         />
       </div>

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, MessageSquarePlus, PanelLeft, Plus, RefreshCw } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import { ArrowLeft, ChevronDown, PanelLeft, Plus, RefreshCw, SquarePen } from 'lucide-react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { usePopOutsideClose } from '../use-pop-outside-close';
+import { chatMaxFor } from '../thread-width';
 import type { Connection, ScheduleJobView } from '../connection';
 import { ScheduleCard } from './ScheduleCard';
 import { ScheduleConfig } from './ScheduleConfig';
@@ -75,6 +77,8 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
   const [confirmId, setConfirmId] = useState('');
   const [busyId, setBusyId] = useState('');
   const [focusId, setFocusId] = useState('');
+  const [chatMax, setChatMax] = useState<number | null>(null);
+  const pageRef = useRef<HTMLDivElement | null>(null);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runReloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
@@ -106,6 +110,17 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
   useEffect(() => {
     const h = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(h);
+  }, []);
+  // 宽度阶梯（2026-11-20 用户裁定「整体宽度参考输入框的宽度，动态阶梯变换」）：与主对话同一
+  // chatMaxFor 策略，盯本层实时宽——输入框/内容列随窗口/菜单收展即时跟宽，不再钉死 980。
+  useEffect(() => {
+    const el = pageRef.current;
+    if (el === null || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setChatMax(chatMaxFor(e.contentRect.width));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
   useEffect(() => {
     const h = setInterval(reload, 10_000);
@@ -162,12 +177,6 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
 
   const editing = view.kind === 'config' && view.editingId !== undefined ? jobOf(view.editingId) : undefined;
   const recordsJob = view.kind === 'records' ? jobOf(view.jobId) : undefined;
-  const title =
-    view.kind === 'config'
-      ? editing !== undefined
-        ? t('Edit scheduled task', '编辑定时任务')
-        : t('New scheduled task', '新建定时任务')
-      : `${recordsJob?.name ?? ''} · ${t('Run history', '执行记录')}`;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -247,26 +256,33 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
   const visibleJobs = (jobs ?? []).filter((j) => matchesFilter(j, filter));
 
   return (
-    <div className="sx-schedule-page">
+    <div
+      className="sx-schedule-page"
+      ref={pageRef}
+      style={{ '--chat-max': `${chatMax !== null && chatMax > 0 ? chatMax : 750}px` } as CSSProperties}
+    >
+      {/* 左菜单收起时的重开钮：与欢迎页同款浮动左上角（2026-11-20 用户裁定「【|】显示在左上角」），
+          不占标题行——大标题恒独占一行 */}
+      {onToggleMenu !== undefined && (
+        <div className="sx-schedule-nav">
+          <button
+            type="button"
+            className="sx-winbtn sx-menu-reopen"
+            aria-label={t('Open menu', '打开菜单')}
+            data-tip={t('Open menu', '打开菜单')}
+            onClick={onToggleMenu}
+          >
+            <PanelLeft size={16} strokeWidth={1.75} />
+          </button>
+        </div>
+      )}
       {/* 设置页同构页顶：空白拖拽条，只有全局窗控 −□×（按钮全部在内容区） */}
       <div className="sx-schedules-topbar" data-drag-band aria-hidden="true" />
       <div className="sx-schedules-scroll">
         <div className="sx-schedules-content">
           {view.kind === 'list' ? (
             <div className="sx-schedule-head">
-              <div className="sx-schedule-heading">
-                {onToggleMenu !== undefined && (
-                  <button
-                    type="button"
-                    className="sx-iconbtn sx-menu-toggle"
-                    aria-label={t('Menu', '菜单')}
-                    onClick={onToggleMenu}
-                  >
-                    <PanelLeft size={16} strokeWidth={1.75} />
-                  </button>
-                )}
-                <h1 className="sx-schedule-title">{t('Scheduled tasks', '定时任务')}</h1>
-              </div>
+              <h1 className="sx-schedule-title">{t('Scheduled tasks', '定时任务')}</h1>
               <div className="sx-schedule-toolbar">
                 <div className="sx-schedule-filters" role="group" aria-label={t('Filter', '筛选')}>
                   {FILTERS.map((f) => (
@@ -317,7 +333,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
                                 onCreateInChat();
                               }}
                             >
-                              <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden="true" />
+                              <SquarePen size={14} strokeWidth={1.75} aria-hidden="true" />
                               {t('Create in chat', '在会话中创建')}
                             </button>
                           </div>
@@ -330,12 +346,14 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
             </div>
           ) : view.kind === 'records' ? (
             <div className="sx-schedule-head">
-              <div className="sx-schedule-heading">
+              {/* 大标题恒独占一行（2026-11-20 用户裁定）；返回与任务名在下一行 */}
+              <h1 className="sx-schedule-title">{t('Run history', '执行记录')}</h1>
+              <div className="sx-schedule-subhead">
                 <button type="button" className="sx-schedule-back" onClick={() => backToList(recordsJob?.id)}>
                   <ArrowLeft size={14} strokeWidth={1.75} aria-hidden="true" />
                   {t('Back', '返回')}
                 </button>
-                <h1 className="sx-schedule-title">{title}</h1>
+                <span className="sx-schedule-subtitle">{recordsJob?.name ?? ''}</span>
               </div>
             </div>
           ) : null}

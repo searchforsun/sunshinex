@@ -4505,7 +4505,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .ref-palette-row .ref-palette-id.ref-palette-id-dim { margin-left: 6px; }
 /* ===== 定时任务配置页(2026-11-20 第二版):上下三段 + 单行调度 + 自绘下拉/多选 ===== */
 .sx-schedule-editor { display: flex; flex-direction: column; gap: 18px; }
-.sx-schedule-editor-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 2px; }
+.sx-schedule-editor-head { display: flex; flex-direction: column; gap: 10px; margin-bottom: 2px; }
+.sx-schedule-editor-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sx-schedule-editor-sub .sx-schedule-back { margin-left: -8px; }
 .sx-schedule-editor-heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sx-schedule-save { height: 32px; padding: 0 18px; border: none; border-radius: var(--radius-md); background: var(--fg); color: var(--fg-on-solid); font: calc(13px * var(--fz)) var(--font-ui); font-weight: 600; }
 .sx-schedule-save:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 90%, var(--surface)); }
@@ -4528,8 +4530,28 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-hint { margin: 0; color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
 .sx-schedule-instruction { width: 100%; }
 .sx-schedule-instruction .sx-composer-input { min-height: 112px; }
-.sx-schedule-model-static { cursor: default; color: var(--fg-secondary); }
-.sx-schedule-effort-pop { padding: 6px; min-width: 220px; }
+/* 截止时间：调度行右端（自绘月历 + 时/分下拉；不用原生日期控件） */
+.sx-schedule-deadline-anchor { position: relative; margin-left: auto; }
+.sx-schedule-deadline-pill { max-width: 220px; }
+.sx-schedule-deadline-pill .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-schedule-deadline-pop { position: absolute; top: calc(100% + 6px); right: 0; left: auto; z-index: 30; width: 280px; padding: 8px; }
+.sx-deadline-head { display: flex; align-items: center; gap: 6px; }
+.sx-deadline-month { flex: 1; text-align: center; color: var(--fg); font-size: calc(13px * var(--fz)); font-weight: 500; }
+.sx-deadline-clear { margin-left: auto; padding: 2px 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: calc(12px * var(--fz)); }
+.sx-deadline-clear:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-deadline-clear.is-active { color: var(--accent); }
+.sx-deadline-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; color: var(--fg-tertiary); font-size: calc(11px * var(--fz)); text-align: center; }
+.sx-deadline-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 2px; }
+.sx-deadline-day { height: 26px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font-size: calc(12.5px * var(--fz)); }
+.sx-deadline-day:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-deadline-day.is-today { box-shadow: inset 0 0 0 1px var(--border-strong); }
+.sx-deadline-day.is-selected { background: var(--fg); color: var(--fg-on-solid); }
+.sx-deadline-day:disabled { color: var(--fg-tertiary); opacity: 0.45; }
+.sx-deadline-day.is-blank { visibility: hidden; }
+.sx-deadline-time { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-subtle); }
+.sx-deadline-time .sx-dd { flex: none; }
+.sx-deadline-time .sx-dd-trigger { height: 26px; padding: 0 8px; font-size: calc(13px * var(--fz)); }
+.sx-deadline-time .sx-dd-pop { min-width: 84px; }
 .sx-schedule-error { margin: 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-ws-anchor .proj-pop { top: auto; bottom: calc(100% + 6px); left: 0; width: min(320px, calc(100vw - 32px)); }
 /* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
@@ -4552,13 +4574,18 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-records > .sx-schedule-error { padding: 14px 10px; }
 /* ===== 定时任务页(scheduled-tasks Task 10,spec §9.4;2026-11-20 设置页式布局):页顶空白拖拽条 + 内容区标题/筛选/操作 ===== */
 .sx-schedules-layer { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; flex-direction: column; }
-.sx-schedule-page { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.sx-schedule-page { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+/* 左菜单收起时的重开钮：与欢迎页同款浮动左上角（2026-11-20 用户裁定） */
+.sx-schedule-nav { position: absolute; top: 10px; left: 10px; z-index: 65; display: flex; align-items: center; }
 /* 与 .sx-settings-topbar 同构：40px 空带只承载窗控(−□× 是全局 fixed 簇)+ 底部分割线；数据拖拽带 */
 .sx-schedules-topbar { flex: none; height: var(--toolbar-h); background: var(--surface); border-bottom: 1px solid var(--border); user-select: none; }
 .sx-schedules-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-.sx-schedules-content { max-width: var(--chat-max, 980px); margin: 0 auto; padding: 24px 28px 60px; }
+/* 内容列=输入框同宽同锚（2026-11-20 用户裁定「整体宽度参考输入框，动态阶梯变换」） */
+.sx-schedules-content { width: min(calc(100% - 32px), calc(var(--chat-max) + 2px)); margin: 0 auto; padding: 24px 0 60px; }
 /* 页头：设置页 h2 档标题 + 一行筛选(左)/刷新+创建(右) */
 .sx-schedule-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+.sx-schedule-subhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sx-schedule-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-heading { display: flex; align-items: center; gap: 6px; min-height: 30px; }
 .sx-schedule-title { margin: 0; color: var(--fg); font-size: calc(20px * var(--fz)); font-weight: 600; letter-spacing: 0.2px; }
 .sx-schedule-back { display: inline-flex; align-items: center; gap: 4px; height: 26px; margin-left: -8px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: calc(13px * var(--fz)); }

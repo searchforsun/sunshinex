@@ -100,6 +100,13 @@ export class ModelSwitcher implements ModelAdapter {
     return this.selectedId;
   }
 
+  /** 指定 id 的已构建适配器（未知/空=undefined；2026-11-20 定时任务按 job.model 起独立会话用）：
+   *  只读暴露，不改全局 selectedId——定时执行不切用户当前模型。适配器本身无会话态，可安全共享。 */
+  adapterFor(id: string | undefined): ModelAdapter | undefined {
+    if (id === undefined || id === '') return undefined;
+    return this.choiceAdapters.get(id);
+  }
+
   /** 切换单点：undefined 回缺省主模型；未知 id 幂等 false 不动现状（恢复档遇配置漂移的防御） */
   switchTo(id: string | undefined): boolean {
     if (id === undefined) {

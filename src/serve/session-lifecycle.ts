@@ -86,6 +86,9 @@ export interface CreateSessionOpts {
   charter?: string;
   /** 域绑定覆写（换座缝,见接口注）：传入=领养既有域目录（不铸档不注册工作区） */
   dataDir?: string;
+  /** 固定模型 id（2026-11-20 定时任务）：装配 per-session 适配器（不切 daemon 全局选择）——
+   *  仅内部调用（定时执行器）；HTTP /session/new 不透传。未知 id 回落全局默认。 */
+  model?: string;
 }
 
 /**
@@ -154,11 +157,14 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
   }
   // P6 §4 挂起表下沉会话:daemon 只注入网络寻址两接缝(mintPid/broadcast)——注册/守卫(ghost 硬化
   // isAborted/manual 档位判定)/组帧/回执全部在 SessionRuntime 挂起面(suspendApproval/suspendAsk)
+  // 定时任务固定模型（2026-11-20）：从 daemon 的 ModelSwitcher 取该 id 的已构建适配器，
+  // 只用于本会话 harness；不注入全局 switcher（避免 setModel 侧切到用户当前模型/全局选择）
+  const fixedModel = opts?.model !== undefined && io.model instanceof ModelSwitcher ? io.model.adapterFor(opts.model) : undefined;
   const session = new SessionRuntime({
     id,
     root: abs,
-    model: io.model,
-    ...(io.model instanceof ModelSwitcher ? { modelSwitcher: io.model } : {}),
+    model: fixedModel ?? io.model,
+    ...(fixedModel === undefined && io.model instanceof ModelSwitcher ? { modelSwitcher: io.model } : {}),
     nextSeq: io.nextSeq,
     broadcast: io.broadcast,
     ...(opts?.mode !== undefined ? { mode: opts.mode } : {}),

@@ -59,7 +59,7 @@ export class ScheduleExecutor {
     try {
       startedAt = this.now();
       root = job.root === 'default' ? defaultScratchRoot() : job.root;
-      const created = this.io.createSession(root, { mode: job.mode, activate: false });
+      const created = this.io.createSession(root, { mode: job.mode, activate: false, ...(job.model !== undefined ? { model: job.model } : {}) });
       if (!created.ok) {
         this.addFailed(id, job, trigger, plannedAt, startedAt, root, created.error.message);
         return id;

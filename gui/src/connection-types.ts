@@ -700,6 +700,7 @@ export interface ScheduleJobView {
   name: string;
   prompt: string;
   root: string;
+  model?: string;
   effort: string;
   mode: ScheduleMode;
   recurrence: ScheduleRecurrence;
@@ -719,6 +720,7 @@ export interface ScheduleDraft {
   name: string;
   prompt: string;
   root: string;
+  model?: string;
   effort: string;
   mode: ScheduleMode;
   recurrence: ScheduleRecurrence;

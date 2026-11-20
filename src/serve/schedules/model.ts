@@ -34,6 +34,9 @@ export interface ScheduleJob {
   name: string;
   prompt: string;
   root: string;
+  /** 固定模型 id（2026-11-20 用户裁定「模型和强度完全用输入框的」）：undefined=执行时用 daemon
+   *  当前默认模型；非 undefined=该任务每轮用此模型（per-session 适配器，不切全局选择） */
+  model?: string;
   effort: ReasoningEffort;
   mode: ScheduleMode;
   recurrence: Recurrence;
@@ -56,6 +59,7 @@ export interface ScheduleDraft {
   name: string;
   prompt: string;
   root: string;
+  model?: string;
   effort: ReasoningEffort;
   mode: ScheduleMode;
   recurrence: Recurrence;
@@ -132,6 +136,9 @@ export function validateDraft(raw: unknown, now: number): { ok: true; value: Sch
   if (prompt === '' || prompt.length > 20_000) return { ok: false, error: 'prompt must be 1..20000 chars' };
   const root = typeof raw.root === 'string' && raw.root.trim() !== '' ? raw.root.trim() : '';
   if (root === '') return { ok: false, error: 'root required' };
+  const modelRaw = typeof raw.model === 'string' ? raw.model.trim() : '';
+  if (modelRaw.length > 200) return { ok: false, error: 'model id too long' };
+  const model = modelRaw === '' ? undefined : modelRaw;
   const effort = typeof raw.effort === 'string' ? (raw.effort.trim() as ReasoningEffort) : undefined;
   if (effort === undefined || !['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
     return { ok: false, error: 'invalid effort' };
@@ -146,7 +153,7 @@ export function validateDraft(raw: unknown, now: number): { ok: true; value: Sch
   void now;
   return {
     ok: true,
-    value: { name, prompt, root, effort, mode: raw.mode as ScheduleMode, recurrence: rec.value, startAt: raw.startAt, ...(until !== undefined ? { until } : {}) },
+    value: { name, prompt, root, ...(model !== undefined ? { model } : {}), effort, mode: raw.mode as ScheduleMode, recurrence: rec.value, startAt: raw.startAt, ...(until !== undefined ? { until } : {}) },
   };
 }
 

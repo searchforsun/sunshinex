@@ -201,3 +201,12 @@ test('choiceAdapterConfig 旋钮穿透钉：defs.timeoutMs 落 LLMConfig.timeout
   assert.equal(choiceAdapterConfig({ ...base }, { timeoutMs: 1500 }).timeoutMs, 1500, '装配级旋钮穿透进 cfg');
   assert.equal(choiceAdapterConfig({ ...base }, {}).timeoutMs, undefined, '未设旋钮不落字段（适配器回内建 600s）');
 });
+
+test('adapterFor：按 id 暴露已构建 choice 适配器（未知/空=undefined；不改全局选中）', () => {
+  const sw = new ModelSwitcher({ choices: CHOICES, default: new StubAdapter() });
+  const a = sw.adapterFor('deepseek/deepseek-chat');
+  assert.ok(a !== undefined, '已知 id 返回适配器');
+  assert.equal(sw.currentId(), undefined, '取适配器不改全局选择');
+  assert.equal(sw.adapterFor('nope/nope'), undefined);
+  assert.equal(sw.adapterFor(undefined), undefined);
+});

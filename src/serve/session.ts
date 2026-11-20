@@ -1774,8 +1774,9 @@ ${this.sessionCharter ?? ''}` }
   /** create_scheduled_task 缺省配置（2026-11-20 用户裁定「各种配置复用当前输入框的」）：
    *  取本会话此刻的强度/权限档——工具在模型省参数时落这两个值；plan 映射 acceptEdits
    *  （无人值守任务不能挂计划确认）。工作区由工具默认根兜底，模型全局共享不固定。 */
-  private scheduleCreateDefaults(): { effort?: ReasoningEffort; mode: 'read-only' | 'acceptEdits' | 'full-access' } {
+  private scheduleCreateDefaults(): { model?: string; effort?: ReasoningEffort; mode: 'read-only' | 'acceptEdits' | 'full-access' } {
     return {
+      ...(this.currentModelId() !== undefined ? { model: this.currentModelId() } : {}),
       ...(this.effort !== undefined ? { effort: this.effort } : {}),
       mode: this.currentMode === 'plan' ? 'acceptEdits' : this.currentMode,
     };

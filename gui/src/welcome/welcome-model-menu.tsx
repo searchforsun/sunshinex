@@ -10,6 +10,7 @@ export function WelcomeModelMenu({
   effort,
   onPick,
   onEffort,
+  className,
 }: {
   choices: Array<{ id: string; effort?: string }>;
   /** 当前生效模型（selModel ?? defaultModel；undefined=全走缺省兜底显示面） */
@@ -17,9 +18,11 @@ export function WelcomeModelMenu({
   effort: string;
   onPick: (id: string, effort?: string) => void;
   onEffort: (e: string) => void;
+  /** 附加类（定时任务配置页用独立选择器做外点收；缺省=欢迎页原样） */
+  className?: string;
 }): JSX.Element {
   return (
-    <div className="sx-menu-pop pill-pop pill-pop-right" role="menu" aria-label="model menu">
+    <div className={`sx-menu-pop pill-pop pill-pop-right${className !== undefined ? ` ${className}` : ''}`} role="menu" aria-label="model menu">
       {choices.map((c) => (
         <button
           key={c.id}

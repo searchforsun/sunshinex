@@ -2166,6 +2166,8 @@ describe('定时任务主区层(scheduled-tasks Task 11:侧栏入口 + 主区宿
     expect(conn.schedulesCalls).toBeGreaterThan(0);
     expect(document.querySelector('.sx-sidebar')).toBeNull();
     expect(screen.getByRole('navigation', { name: 'projects' })).toBeDefined();
+    // 2026-11-20 用户裁定:定时任务页隐藏右侧栏开合钮
+    expect(screen.queryByRole('button', { name: 'toggle side panel' })).toBeNull();
     // 终审 finding 8:层在场时中栏整栏 inert+aria-hidden(Chat 保持挂载但焦点/读屏不逃入)
     const main = document.querySelector('main.sx-main')!;
     expect(main.getAttribute('inert')).toBe('');

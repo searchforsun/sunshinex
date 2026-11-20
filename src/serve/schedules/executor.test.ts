@@ -82,6 +82,29 @@ function jidFiles(dir: string): string[] {
   }
 }
 
+test('run：job.model 透传 createSession（per-session 固定模型，不切全局）', () => {
+  const dir = tmpData();
+  const store = new ScheduleStore(path.join(dir, 'schedules.json'));
+  const j = job({ model: 'glm-4.7' });
+  store.upsert(j);
+  const session = new FakeSession(dir);
+  const calls: Array<{ root: string; opts?: CreateSessionOpts }> = [];
+  const ex = new ScheduleExecutor(
+    {
+      createSession: (root, opts) => {
+        calls.push({ root, opts });
+        return { ok: true, value: { sessionId: 's1' } };
+      },
+      getSession: () => session as never,
+      releaseSession: () => undefined,
+      activeSessionId: () => undefined,
+    },
+    store,
+  );
+  ex.run(j, 'schedule');
+  assert.deepEqual(calls[0]!.opts, { mode: 'full-access', activate: false, model: 'glm-4.7' });
+});
+
 test('run：建会话/设强度/标题/提交/记录成功（done→succeeded）', () => {
   const dir = tmpData();
   const store = new ScheduleStore(path.join(dir, 'schedules.json'));

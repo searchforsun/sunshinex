@@ -1419,7 +1419,7 @@ function AppShell(): JSX.Element {
       )}
       {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
-      <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen} onToggleRightSidebar={() => {
+      <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain} onToggleRightSidebar={() => {
         const opening = tabState.collapsed;
         setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, !opening));
         // 两侧抽屉互斥(2026-10-24 用户裁定):浮窗态开右抽屉即收菜单抽屉

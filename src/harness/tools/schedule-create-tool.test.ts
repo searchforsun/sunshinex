@@ -113,14 +113,18 @@ describe('create_scheduled_task', () => {
     assert.deepEqual(d.recurrence, { unit: 'day', every: 1, at: '09:00' });
   });
 
-  test('配置继承：始终用当前输入框缺省（活值函数）；raw 同名键不覆盖', async () => {
+  test('配置继承：始终用当前输入框缺省（模型/强度/权限活值）；raw 同名键不覆盖', async () => {
     const { seam, calls } = seamStub();
     const now = 1_700_000_000_000;
-    const exec = execOf(makeCreateScheduledTaskTool(seam, '/w', () => now, () => ({ effort: 'high', mode: 'read-only' })));
+    const exec = execOf(
+      makeCreateScheduledTaskTool(seam, '/w', () => now, () => ({ model: 'glm-4.7', effort: 'high', mode: 'read-only' })),
+    );
     await exec(input());
+    assert.equal(calls[0]!.model, 'glm-4.7');
     assert.equal(calls[0]!.effort, 'high');
     assert.equal(calls[0]!.mode, 'read-only');
-    await exec(input({ effort: 'low', mode: 'acceptEdits', root: '/w/other' }));
+    await exec(input({ effort: 'low', mode: 'acceptEdits', root: '/w/other', model: 'other' }));
+    assert.equal(calls[1]!.model, 'glm-4.7');
     assert.equal(calls[1]!.effort, 'high');
     assert.equal(calls[1]!.mode, 'read-only');
     assert.equal(calls[1]!.root, '/w');

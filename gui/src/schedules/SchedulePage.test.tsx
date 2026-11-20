@@ -217,12 +217,12 @@ describe('SchedulePage 列表', () => {
     fireEvent.click(screen.getByRole('button', { name: bi('Create scheduled task', '创建定时任务') }));
     await screen.findByText(bi('New scheduled task', '新建定时任务'));
 
-    const effortPill = document.querySelector('.sx-schedule-effort-pill')!;
-    fireEvent.click(effortPill);
-    expect(document.querySelector('.sx-schedule-effort-pop')).not.toBeNull();
+    const modelPill = document.querySelector('.sx-schedule-model-pill')!;
+    fireEvent.click(modelPill);
+    expect(screen.getByRole('menu', { name: 'model menu' })).toBeDefined();
     // 弹层开着时 Esc 的目标在页内元素（真键盘事件形态）:capture 层消费,页面级不再收到
-    fireEvent.keyDown(effortPill, { key: 'Escape' });
-    expect(document.querySelector('.sx-schedule-effort-pop')).toBeNull();
+    fireEvent.keyDown(modelPill, { key: 'Escape' });
+    expect(screen.queryByRole('menu', { name: 'model menu' })).toBeNull();
     expect(screen.getByText(bi('New scheduled task', '新建定时任务'))).toBeDefined();
     expect(onExit).not.toHaveBeenCalled();
     // 弹层已收:Esc 回列表
@@ -323,18 +323,18 @@ describe('SchedulePage 列表', () => {
     expect(screen.queryByRole('button', { name: bi('More create options', '更多创建方式') })).toBeNull();
   });
 
-  it('可选菜单开关：传入 onToggleMenu 才出左缘菜单钮并回调；顶栏是空拖拽条（只有窗控）', async () => {
+  it('菜单收起态：传入 onToggleMenu 才出左上角浮动菜单钮并回调；顶栏仍是空拖拽条', async () => {
     const { conn } = makeConn([job()]);
     const onToggleMenu = vi.fn();
     const { rerender } = render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
     await screen.findByText('仓库巡检');
-    expect(document.querySelector('.sx-menu-toggle')).toBeNull();
+    expect(document.querySelector('.sx-schedule-nav')).toBeNull();
     expect(document.querySelector('.sx-schedules-topbar[data-drag-band]')).not.toBeNull();
     // 设置页同构：页顶条不得有任何动作钮（−□× 是全局窗控簇，不在本层内）
     expect(document.querySelectorAll('.sx-schedules-topbar button')).toHaveLength(0);
 
     rerender(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} onToggleMenu={onToggleMenu} />);
-    const toggle = document.querySelector('.sx-menu-toggle');
+    const toggle = document.querySelector('.sx-schedule-nav .sx-menu-reopen');
     expect(toggle).not.toBeNull();
     fireEvent.click(toggle!);
     expect(onToggleMenu).toHaveBeenCalledTimes(1);

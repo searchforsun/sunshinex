@@ -57,6 +57,9 @@ function makeConn(
   const locateWorkspace = vi.fn(async (_body: { token: string; roots?: string[] }) => ({ path: null }));
   const dirpicker = vi.fn(async (_path?: string) => ({ path: '', parent: '', dirs: [] as string[] }));
   const onConfigChanged = vi.fn((_cb: (f: unknown) => void) => () => undefined);
+  const settings = vi.fn(async () => ({
+    providers: { choices: [{ id: 'deepseek-flash' }, { id: 'glm-4.7' }] },
+  }));
   const conn = {
     workspaces,
     createSchedule,
@@ -66,6 +69,7 @@ function makeConn(
     locateWorkspace,
     dirpicker,
     onConfigChanged,
+    settings,
   } as unknown as Connection;
   return { conn, workspaces, createSchedule, updateSchedule, previewSchedule };
 }
@@ -174,7 +178,7 @@ describe('ScheduleConfig 上下三段', () => {
     expect(body.recurrence).toEqual({ unit: 'month', every: 1, dayOfMonth: 15, at: '07:00' });
   });
 
-  it('编辑态：全字段预填；保存走 updateSchedule，startAt 改 now、截止不再暴露', async () => {
+  it('编辑态：全字段预填；保存走 updateSchedule，startAt 改 now、截止预填并保留', async () => {
     const { conn, updateSchedule } = makeConn(Date.now() + 60_000, [{ slug: 'proj', root: 'D:/w/proj', sessionCount: 1 }]);
     const job = makeJob();
     const onSaved = vi.fn();
@@ -187,8 +191,9 @@ describe('ScheduleConfig 上下三段', () => {
     expect(screen.getByRole('button', { name: bi('Weekdays', '星期') }).textContent).toMatch(/Mon|周一/);
     expect(screen.getByRole('button', { name: bi('Hour', '小时') }).textContent).toContain('08');
     expect(screen.getByRole('button', { name: bi('Minute', '分钟') }).textContent).toContain('15');
-    expect(screen.getByRole('button', { name: bi('Effort', '强度') }).querySelector('.model-effort-chip')?.textContent).toBe(effortLabel('low'));
+    expect(screen.getByRole('button', { name: 'model' }).querySelector('.model-effort-chip')?.textContent).toBe(effortLabel('low'));
     expect(screen.getByText(bi('Workspace edits', '工作区编辑'))).toBeDefined();
+    expect(screen.getByRole('button', { name: bi('Deadline', '截止时间') }).textContent).toMatch(/2026-12-01 00:00/);
 
     fireEvent.change(screen.getByLabelText(bi('Task title', '任务标题')), { target: { value: '巡检二' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
@@ -203,7 +208,7 @@ describe('ScheduleConfig 上下三段', () => {
     expect(body.mode).toBe('acceptEdits');
     expect(body.recurrence).toEqual(job.recurrence);
     expect(body.startAt).toBeGreaterThan(job.startAt);
-    expect('until' in body).toBe(false);
+    expect(body.until).toBe(JOB_UNTIL);
     await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });
 
@@ -225,19 +230,46 @@ describe('ScheduleConfig 上下三段', () => {
     expect(body.until).toBe(JOB_UNTIL);
   });
 
-  it('校验：任务标题/指令为空 → 行内错误，不发请求', async () => {
+  it('校验：指令空时保存钮禁用；指令填了但标题空 → 行内错误，不发请求', async () => {
     const { conn, createSchedule, updateSchedule } = makeConn();
     render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
     await screen.findByText(bi('Task title', '任务标题'));
+    const create = (): HTMLButtonElement => screen.getByRole('button', { name: bi('Create', '创建') }) as HTMLButtonElement;
+    expect(create().disabled).toBe(true); // 指令未填：不可保存（2026-11-20 用户裁定）
+
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '检查仓库' } });
+    expect(create().disabled).toBe(false);
     fireEvent.change(screen.getByLabelText(bi('Task title', '任务标题')), { target: { value: '' } });
-    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    fireEvent.click(create());
     expect(screen.getByRole('alert').textContent).toBe('Task title is required');
     expect(createSchedule).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText(bi('Task title', '任务标题')), { target: { value: '巡检' } });
-    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
-    expect(screen.getByRole('alert').textContent).toBe('Instruction is required');
     expect(updateSchedule).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '' } });
+    expect(create().disabled).toBe(true);
+  });
+
+  it('截止时间：调度行右端自绘月历；选日写入 until，预览与保存携带', async () => {
+    const { conn, createSchedule, previewSchedule } = makeConn();
+    render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
+    await screen.findByText(bi('Task title', '任务标题'));
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '检查仓库' } });
+
+    fireEvent.click(screen.getByRole('button', { name: bi('Deadline', '截止时间') }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Next month', '下个月') }));
+    const now = new Date();
+    const y = now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    const m = now.getMonth() === 11 ? 1 : now.getMonth() + 2;
+    const key = `${y}-${String(m).padStart(2, '0')}-05`;
+    fireEvent.click(screen.getByRole('button', { name: key }));
+    const expected = new Date(y, m - 1, 5, 23, 59, 0, 0).getTime();
+    expect(screen.getByRole('button', { name: bi('Deadline', '截止时间') }).textContent).toMatch(/2026|2027/);
+
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
+    const body = createSchedule.mock.calls[0]![0];
+    expect(body.until).toBe(expected);
+    await waitFor(() => expect(previewSchedule).toHaveBeenLastCalledWith(expect.objectContaining({ until: expected })));
   });
 
   it('预览：250ms 防抖、返回时刻入 hint；改时/分后重算', async () => {
@@ -257,15 +289,24 @@ describe('ScheduleConfig 上下三段', () => {
     );
   });
 
-  it('底部 dock：工作区 pill（无＋）/权限 pill/模型名（只读）/强度 pill；保存钮不在 dock', async () => {
-    const { conn } = makeConn();
+  it('底部 dock：工作区 pill（无＋）/权限 pill/与输入框同一枚模型 pill（模型菜单+强度滑块）；保存钮不在 dock', async () => {
+    const { conn, createSchedule } = makeConn();
     render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
     expect(await screen.findByText(bi('Default workspace', '默认工作区'))).toBeDefined();
     expect(screen.queryByTitle(bi('Add workspace', '新增工作目录'))).toBeNull();
-    expect(screen.getByText('DeepSeek').className).toContain('sx-schedule-model-static');
-    const effortPill = screen.getByRole('button', { name: bi('Effort', '强度') });
-    expect(effortPill.querySelector('.model-effort-chip')?.textContent).toBe(effortLabel('medium'));
     expect(screen.getByText(bi('Full access', '完全访问'))).toBeDefined();
+    const modelPill = screen.getByRole('button', { name: 'model' });
+    expect(modelPill.textContent).toContain('DeepSeek');
+    expect(modelPill.querySelector('.model-effort-chip')?.textContent).toBe(effortLabel('medium'));
+    fireEvent.click(modelPill);
+    expect(screen.getByRole('menu', { name: 'model menu' })).toBeDefined();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'glm-4.7' }));
+    expect(modelPill.textContent).toContain('glm-4.7');
+
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '检查仓库' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
+    expect(createSchedule.mock.calls[0]![0].model).toBe('glm-4.7');
     expect(document.querySelector('.sx-composer-foot .sx-schedule-mode-pill')).not.toBeNull();
     expect(document.querySelector('.sx-composer-foot .sx-schedule-save')).toBeNull();
     expect(screen.getByRole('button', { name: bi('Create', '创建') })).toBeDefined();

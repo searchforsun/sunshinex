@@ -13,6 +13,8 @@ export interface ScheduleCreateDraft {
   name: string;
   prompt: string;
   root: string;
+  /** 固定模型 id（继承当前输入框；undefined=执行时用 daemon 默认模型） */
+  model?: string;
   effort: ReasoningEffort;
   mode: ScheduleCreateMode;
   recurrence: {
@@ -41,10 +43,11 @@ export interface ScheduleCreateSeam {
   create(draft: ScheduleCreateDraft): { ok: true; value: ScheduleCreateResult } | { ok: false; code: string; message: string };
 }
 
-/** 工具缺省配置（2026-11-20 用户裁定「各种配置复用当前输入框的」）：工作区/权限/强度**始终**取自
+/** 工具缺省配置（2026-11-20 用户裁定「各种配置复用当前输入框的」）：工作区/模型/权限/强度**始终**取自
  *  当前会话输入框（SessionRuntime 提供活值函数），模型面不再暴露可覆盖参数——避免在只读输入框里
  *  造出一条 full-access 任务（权限只降不升）。 */
 export interface ScheduleCreateDefaults {
+  model?: string;
   effort?: ReasoningEffort;
   mode?: ScheduleCreateMode;
 }
@@ -129,7 +132,7 @@ export function makeCreateScheduledTaskTool(
       '- week: weekdays=[1..7] (1=Mon..7=Sun) + at="HH:mm"\n' +
       '- month: day_of_month=1..31 + at="HH:mm"\n' +
       '- year: month=1..12 + day + at="HH:mm"\n' +
-      'All wall-clock times are the user’s local time. start_at (ISO-8601) is both the first allowed run and the recurrence anchor; JSON null = now. until (ISO-8601) is an inclusive deadline; JSON null = no deadline. name must be 1..80 chars. Workspace, permission mode, and thinking effort are inherited from the current input box and are NOT parameters of this tool — do not try to set them. Examples: 每天 9:00 → {unit:"day",every:1,at:"09:00"}; 每 30 分钟 → {unit:"minute",every:30}; 每周一三五 10:30 → {unit:"week",every:1,weekdays:[1,3,5],at:"10:30"}; 每月 1 号 9:00 → {unit:"month",every:1,dayOfMonth:1,at:"09:00"}. Use this when the user asks to create a recurring unattended task; for a single future wake-up inside this session use schedule_wakeup/schedule_task instead.',
+      'All wall-clock times are the user’s local time. start_at (ISO-8601) is both the first allowed run and the recurrence anchor; JSON null = now. until (ISO-8601) is an inclusive deadline; JSON null = no deadline. name must be 1..80 chars. Workspace, model, permission mode, and thinking effort are inherited from the current input box and are NOT parameters of this tool — do not try to set them. Examples: 每天 9:00 → {unit:"day",every:1,at:"09:00"}; 每 30 分钟 → {unit:"minute",every:30}; 每周一三五 10:30 → {unit:"week",every:1,weekdays:[1,3,5],at:"10:30"}; 每月 1 号 9:00 → {unit:"month",every:1,dayOfMonth:1,at:"09:00"}. Use this when the user asks to create a recurring unattended task; for a single future wake-up inside this session use schedule_wakeup/schedule_task instead.',
     category: 'task',
     display: { verb: 'SCHEDULE', targetFields: ['name'] },
     parameters: {
@@ -191,6 +194,7 @@ export function makeCreateScheduledTaskTool(
       // 工作区/权限/强度只从当前输入框继承（模型面没有对应参数，旧模型多发同名键也一律忽略）
       const root = defaultRoot ?? process.cwd();
       const inherited = defaults?.() ?? {};
+      const model = inherited.model;
       const effort = inherited.effort ?? 'medium';
       const mode = inherited.mode ?? 'full-access';
       const startAt = absent(raw.start_at, true) ? now() : parseIso(raw.start_at, 'start_at');
@@ -202,6 +206,7 @@ export function makeCreateScheduledTaskTool(
         name,
         prompt,
         root,
+        ...(model !== undefined ? { model } : {}),
         effort,
         mode,
         recurrence,
@@ -216,8 +221,8 @@ export function makeCreateScheduledTaskTool(
         `created scheduled task "${v.name}" (${v.id})`,
         `next run: ${when}`,
         `workspace: ${root}`,
+        `model: ${model ?? 'app default'}; effort: ${effort}; permission: ${mode}`,
         `cadence: ${cadenceText(recurrence)}`,
-        `effort: ${effort}; permission: ${mode}`,
         'each trigger opens a new session in that workspace and submits the task prompt.',
       ];
       return { exitCode: 0, stdout: lines.join('\n'), stderr: '', timedOut: false };

@@ -3,7 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
-import { ArrowLeft, CalendarClock, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
+import { ArrowLeft, Clock, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { DirPicker } from '../pages/DirPicker';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
@@ -643,7 +643,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           aria-label="scheduled tasks"
           onClick={onOpenSchedules}
         >
-          <CalendarClock size={16} strokeWidth={1.75} />
+          <Clock size={16} strokeWidth={1.75} />
           <span>{t('Scheduled tasks', '定时任务')}</span>
         </button>
       ) : null}

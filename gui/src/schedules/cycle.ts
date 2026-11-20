@@ -36,6 +36,12 @@ export function hhmm(hour: number, minute: number): string {
   return `${pad2(hour)}:${pad2(minute)}`;
 }
 
+/** 本地时间戳 → `YYYY-MM-DD HH:mm`（截止时间展示/测试稳定格式） */
+export function formatStamp(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 export function weekdayLabel(day: number): { en: string; zh: string } {
   return { en: WEEKDAY_EN[day - 1] ?? '', zh: WEEKDAY_ZH[day - 1] ?? '' };
 }
