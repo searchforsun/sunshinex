@@ -4488,3 +4488,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    (hover title 仍可查 id)——原 id 等宽 500 字重居首、名称 tertiary 暗淡,读者先撞标识 */
 .ref-palette-name { color: var(--fg); font-size: calc(14px * var(--fz)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ref-palette-id.ref-palette-id-dim { margin-left: auto; font-family: var(--font-mono); font-weight: 400; font-size: calc(14px * var(--fz)); color: var(--fg-tertiary); opacity: .75; flex: none; }
+/* $/# 引用点击跳转(2026-11-20 用户裁定「点击能跳转到指定团队/成员,和页面蓝色超链接一致」):
+   token 本身已按域着色(#team=warn、$agent=accent);可跳转时补与正文链接同款 hover 下划线 +
+   pointer 指针(颜色不动,保留域分色语义) */
+.hn-ref-link { cursor: pointer; }
+.hn-ref-link:hover { text-decoration: underline; text-underline-offset: 2px; }
