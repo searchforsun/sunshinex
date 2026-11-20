@@ -4548,12 +4548,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-deadline-pill { max-width: 220px; font-size: var(--sx-font); }
 .sx-schedule-deadline-pill .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-schedule-deadline-pop { position: absolute; top: calc(100% + 6px); right: 0; left: auto; z-index: 30; width: min(384px, calc(100vw - 40px)); padding: 8px 10px 10px; }
-.sx-deadline-head { display: flex; align-items: center; gap: 6px; }
+/* 2026-11-21 用户裁定「<> 显示在左边对齐」：月份切换只占左栏（日历）宽，与右栏标题各归各列 */
+.sx-deadline-head { display: flex; align-items: center; gap: 6px; height: 24px; }
 .sx-deadline-month { flex: 1; text-align: center; color: var(--fg); font-size: var(--sx-font); font-weight: 500; }
-.sx-deadline-clear { margin-left: auto; padding: 2px 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: var(--sx-font); }
+/* 「无截止」移到右栏表头、与「时间」同列居中（2026-11-21 用户裁定）；行高收到 22 以贴合 24px 表头行 */
+.sx-deadline-clear { height: 22px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: var(--sx-font); }
 .sx-deadline-clear:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-deadline-clear.is-active { color: var(--accent); }
-.sx-deadline-body { display: flex; gap: 10px; margin-top: 4px; }
+.sx-deadline-body { display: flex; gap: 10px; }
 .sx-deadline-cal { flex: 1; min-width: 0; }
 .sx-deadline-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 6px; color: var(--fg-tertiary); font-size: var(--sx-font); text-align: center; }
 .sx-deadline-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; margin-top: 2px; }
@@ -4564,8 +4566,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-deadline-day:disabled { color: var(--fg-tertiary); opacity: 0.45; }
 .sx-deadline-day.is-blank { visibility: hidden; }
 .sx-deadline-time-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; padding-left: 10px; border-left: 1px solid var(--border-subtle); }
-/* 2026-11-21 用户实测「时间和周几对不上一行」：星期行有 6px 上边距，这里补同值，两栏表头同基线 */
-.sx-deadline-time-label { margin-top: 6px; color: var(--fg-tertiary); font-size: var(--sx-font); }
+.sx-deadline-time-head { display: flex; align-items: center; justify-content: center; height: 24px; }
+/* 与星期行同基线：24px 表头 + 6px 栏间距（日历侧是表头 + 6px 上边距） */
+.sx-deadline-time-label { color: var(--fg-tertiary); font-size: var(--sx-font); }
 /* 滚轮：可视 5 行(28px/行)，上下各留 2 行做淡出；中间高亮带即当前值。
    2026-11-21 用户实测「滑动一下会卡顿」：撤掉 scroll-snap-type:mandatory（滚一格被强制
    吸附=顿挫）与滚动层的 mask-image（每帧重合成），吸附交给 JS 停稳后做；淡出改渐变浮层（合成廉价） */

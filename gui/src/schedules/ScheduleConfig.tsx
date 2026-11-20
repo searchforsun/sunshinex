@@ -295,20 +295,18 @@ function DeadlinePicker({ value, onChange }: { value: number | undefined; onChan
       </button>
       {open && (
         <div className="sx-menu-pop sx-schedule-deadline-pop" role="dialog" aria-label={t('Deadline', '截止时间')}>
-          <div className="sx-deadline-head">
-            <button type="button" className="sx-iconbtn" aria-label={t('Previous month', '上个月')} onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))}>
-              <ChevronLeft size={16} strokeWidth={1.75} />
-            </button>
-            <span className="sx-deadline-month">{t(`${view.y}-${pad2(view.m + 1)}`, `${view.y} 年 ${view.m + 1} 月`)}</span>
-            <button type="button" className="sx-iconbtn" aria-label={t('Next month', '下个月')} onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))}>
-              <ChevronRight size={16} strokeWidth={1.75} />
-            </button>
-            <button type="button" className={`sx-deadline-clear${value === undefined ? ' is-active' : ''}`} onClick={() => onChange(undefined)}>
-              {t('No deadline', '无截止')}
-            </button>
-          </div>
           <div className="sx-deadline-body">
             <div className="sx-deadline-cal">
+              {/* 月份切换收在左栏内（2026-11-21 用户裁定「<> 显示在左边对齐」） */}
+              <div className="sx-deadline-head">
+                <button type="button" className="sx-iconbtn" aria-label={t('Previous month', '上个月')} onClick={() => setView((v) => (v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 }))}>
+                  <ChevronLeft size={16} strokeWidth={1.75} />
+                </button>
+                <span className="sx-deadline-month">{t(`${view.y}-${pad2(view.m + 1)}`, `${view.y} 年 ${view.m + 1} 月`)}</span>
+                <button type="button" className="sx-iconbtn" aria-label={t('Next month', '下个月')} onClick={() => setView((v) => (v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 }))}>
+                  <ChevronRight size={16} strokeWidth={1.75} />
+                </button>
+              </div>
               <div className="sx-deadline-week">
                 {[1, 2, 3, 4, 5, 6, 7].map((d) => {
                   const lab = weekdayLabel(d);
@@ -337,6 +335,12 @@ function DeadlinePicker({ value, onChange }: { value: number | undefined; onChan
               </div>
             </div>
             <div className="sx-deadline-time-col">
+              {/* 「无截止」与「时间」同列居中（2026-11-21 用户裁定）；表头行高对齐月历头 */}
+              <div className="sx-deadline-time-head">
+                <button type="button" className={`sx-deadline-clear${value === undefined ? ' is-active' : ''}`} onClick={() => onChange(undefined)}>
+                  {t('No deadline', '无截止')}
+                </button>
+              </div>
               <span className="sx-deadline-time-label">{t('Time', '时间')}</span>
               <div className="sx-wheel-pair">
                 <TimeWheel values={HOUR_VALUES} value={hour} ariaLabel={t('Deadline hour', '截止小时')} onChange={(h) => setTime(h, minute)} />
