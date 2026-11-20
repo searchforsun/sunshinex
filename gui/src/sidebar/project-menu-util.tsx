@@ -519,7 +519,9 @@ export function SortPop<M extends string>({ open, ariaLabel, buttonLabel, items,
         type="button"
         className="sx-iconbtn"
         aria-label={buttonLabel}
-        data-tip={buttonLabel}
+        // 2026-11-20 用户实测「排序不是 i18n」:buttonLabel 是英文测试钩子(aria 定位用),
+        // 人类可见提示取 ariaLabel(调用点传 t('Sort Sunx','Sunx 排序') 之类)——两者职责分离
+        data-tip={ariaLabel}
         onMouseDown={buttonMouseDown}
         onClick={(e) => {
           e.stopPropagation();
