@@ -207,7 +207,7 @@ export function makeGetBoardTool(board: TaskBoard, description?: string): Regist
     name: 'get_agent_team_board',
     description:
       description ??
-      'Read board task lines: id [status] title (needs deps) team=<teamId> [retryOf=…], plus budget line when capped. Does not list teammates — use names from create_agent_teammate receipts. Authority for planning and agent_team_task_wait board ids.',
+      'Read board task lines: id [status] title (needs deps) team=<teamId> [retryOf=…], plus budget line when capped. Does not list teammates — use names from create_agent_teammate receipts. Authority for planning and agent_team_task_wait board ids. When a user message references a board task as "#<taskId>" (for example "#t3"), it means a task on this board — read it here first, then drive it with update_agent_team_task (assign/depend), agent_team_task_stop, or send_agent_team_message.',
     category: 'task',
     fullObservation: true,
     executor: async () => {
