@@ -286,7 +286,7 @@ export function hasJsonComments(text: string): boolean {
  *  容忍解析 + 根形态 + version 守卫（新档补 version:1）→ 键手术（null=delete）→ 产出目标文件全文
  *  （2-space + 尾换行）。零 IO 零呈现：落盘归调用方（writeJsonAtomic），失败呈现各表其面（HTTP 409
  *  文案 / CLI 双语 error 行），reason 枚举承载分域。 */
-export type SettingsSurgeryResult =
+type SettingsSurgeryResult =
   | { ok: true; text: string }
   | { ok: false; reason: 'comments-unsupported' | 'invalid-json' | 'root-not-object' | 'unsupported-version'; detail?: string };
 

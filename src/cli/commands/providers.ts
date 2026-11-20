@@ -254,7 +254,7 @@ function removeCmd(args: string[]): number {
 }
 
 /** 单块扫描产物：done=false → buf 已累计、echo 为本块回显串；done=true → value=提交值（undefined=中止） */
-export type ScanOutcome = { done: false; buf: string; echo: string } | { done: true; value: string | undefined };
+type ScanOutcome = { done: false; buf: string; echo: string } | { done: true; value: string | undefined };
 
 /**
  * 单块逐字符扫描（纯函数，测试可注入）：raw 模式下 stdin 按块送达——粘贴块会把密钥文本与终止符

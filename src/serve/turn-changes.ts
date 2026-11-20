@@ -10,7 +10,7 @@ import type { TurnFileChange } from '../types';
  * 未暂存改动出现在审查页,两边互不干扰。
  */
 
-export interface TurnRestoreResult {
+interface TurnRestoreResult {
   path: string;
   ok: boolean;
   /** staleness 闸门:当前磁盘内容 ≠ 轮末后像(后续轮次/用户又改过)——拒绝回写防吞改动 */

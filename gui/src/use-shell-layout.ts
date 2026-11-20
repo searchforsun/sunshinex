@@ -27,7 +27,7 @@ export interface ShellLayoutDeps {
   readonly setTabStates: Dispatch<SetStateAction<TabStates>>;
 }
 
-export interface ShellLayout {
+interface ShellLayout {
   startMenuResize: (e: ReactMouseEvent<HTMLDivElement>) => void;
   /** 右栏浮窗(视口 <616):覆盖层不占布局宽 */
   readonly sidebarFloating: boolean;

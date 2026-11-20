@@ -16,7 +16,7 @@ interface ShortcutGroup {
   readonly rows: readonly ShortcutRow[];
 }
 
-const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
+export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   {
     title: { en: 'Global & window', zh: '全局与窗口' },
     rows: [
@@ -80,12 +80,12 @@ export function ShortcutsPane(): JSX.Element {
       <h2>{t('Shortcuts', '快捷键')}</h2>
       <div className="sx-shortcuts-page">
         {/* 2026-11-06 用户裁定:页首说明文字撤下(其他设置页无此形态);分组改深色背景块卡 */}
-        {SHORTCUT_GROUPS.map((g) => (
+        {SHORTCUT_GROUPS.map((g, gi) => (
           <div key={g.title.en} className="sx-shortcuts-group">
             <h3 className="sx-shortcuts-title">{t(g.title.en, g.title.zh)}</h3>
             <div className="sx-shortcuts-rows">
               {g.rows.map((r, i) => (
-                <div key={i} className="sx-shortcut-row">
+                <div key={i} className="sx-shortcut-row" data-setting-key={`shortcut:${gi}:${i}`}>
                   <span className="sx-shortcut-keys">
                     {r.keys.map((k) => (
                       <kbd key={k} className="sx-kbd">

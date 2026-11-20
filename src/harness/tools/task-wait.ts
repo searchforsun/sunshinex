@@ -20,9 +20,9 @@ const WAIT_CLAMP_MAX_SECONDS = 1800;
 const RECEIPT_TAIL_LINES = 200;
 /** 板任务终态：success 完成、failed 执行错误、cancelled 主动停止或重启自愈 */
 
-export type TaskWaitKind = BackgroundTask['kind'];
+type TaskWaitKind = BackgroundTask['kind'];
 
-export interface TaskWaitToolOpts {
+interface TaskWaitToolOpts {
   /** 可等待的台账 kind；缺省 exec+subagent。子面传 ['exec'] 排除板派发台账自等 */
   readonly kinds?: readonly TaskWaitKind[];
 }

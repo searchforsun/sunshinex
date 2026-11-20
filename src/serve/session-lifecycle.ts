@@ -57,7 +57,7 @@ export function defaultScratchRoot(): string {
 /** 会话 id(2026-10-23 用户裁定):sun-{项目摘要12}-{随机8hex}——项目段确定性(会话 id 即可见
  *  项目归属),随机段 4 字节 hex 单进程防撞,撞库重掷(注册表查重)。形态为 validSessionId
  *  ([A-Za-z0-9_-])子集;退役 s<n> 单调草档(重启即重号、跨项目不可归因) */
-export function mintSessionId(sessions: Map<string, SessionRuntime>, root: string): string {
+function mintSessionId(sessions: Map<string, SessionRuntime>, root: string): string {
   const project = projectSlug(root).slice(-12);
   for (;;) {
     const id = `sun-${project}-${crypto.randomBytes(4).toString('hex')}`;

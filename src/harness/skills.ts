@@ -52,7 +52,7 @@ export const PROJECT_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents
 export const USER_SKILL_ROOTS_ASC = ['.cursor', '.codex', '.claude', '.agents'] as const;
 
 /** 用户段目录（优先级降序单点）：原生根恒首位 + HOME 兼容根逆序（.agents>.claude>.codex>.cursor） */
-export function userSkillDirs(): string[] {
+function userSkillDirs(): string[] {
   return [userSkillsDir(), ...USER_SKILL_ROOTS_ASC.map((dot) => path.join(homeDir(), dot, 'skills')).reverse()];
 }
 
@@ -117,7 +117,7 @@ function pluginSkillDirs(root: string): string[] {
  *  区分,需要绝对路径」):settings `disabledSkills` 语义键 → SUNSHINEX_DISABLED_SKILLS 槽,值为逗号
  *  分隔的技能目录**绝对路径**(id 跨项目/跨来源撞名,路径才是唯一落点;Windows 路径含空格合法,
  *  故只按逗号切分)。每次装载现读 env——PUT /settings 链重载改槽,惰性装载立即可见 */
-export function disabledSkillDirs(): ReadonlySet<string> {
+function disabledSkillDirs(): ReadonlySet<string> {
   const raw = process.env.SUNSHINEX_DISABLED_SKILLS ?? '';
   const out = new Set<string>();
   for (const tok of raw.split(',')) {
@@ -352,7 +352,7 @@ export function createSkillsFacade(root: string): SkillsFacade {
 }
 
 /** 解析后的技能：清单 + 占位符已替换的正文（供 Loop 首帧注入） */
-export interface ResolvedSkill {
+interface ResolvedSkill {
   manifest: SkillManifest;
   body: string;
 }

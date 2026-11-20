@@ -152,7 +152,7 @@ function makeProbeTransport(cfg: McpServerConfig): Transport {
   return buildMcpTransport(cfg, { env: probeChildEnv });
 }
 
-export const PROBE_CONNECT_TIMEOUT_MS = 10_000;
+const PROBE_CONNECT_TIMEOUT_MS = 10_000;
 
 /** 单台真探测（POST /settings/mcp/probe 核心）：临时 Client → connect（10s 竞速超时，计时器必清）
  *  → listTools → tools 映射 {name, description?}。失败面全收敛 200 {ok:false, error 截 120}：

@@ -61,7 +61,7 @@ function ConciseIcon(): JSX.Element {
  *  - 等待组 wait=task_wait——「等待了 N 次任务」(不变)
  *  - **执行类 exec(kind='execute'/缺声明)不折叠**:产生副作用的命令影响大,每条独立原生行;
  *    类型由模型在调用时声明(schema kind 枚举),前端零文本猜测 */
-export type ToolGroupKind = 'inspect' | 'websearch' | 'wait';
+type ToolGroupKind = 'inspect' | 'websearch' | 'wait';
 
 /** 聚合面工具清单（查阅/网页搜索/等待三类高频噪声行；spawn、task 系、ask 等语义行与编辑/写入行
  *  （携 diff 统计）与**执行类 exec** 保持独立不聚合） */

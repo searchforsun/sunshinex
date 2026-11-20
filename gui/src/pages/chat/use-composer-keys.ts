@@ -16,7 +16,7 @@ import { slashItemsFor } from './use-command-palette';
  */
 
 /** @ 文件面板态（Chat useState 真值，共享不复制） */
-export interface ComposerFilePal {
+interface ComposerFilePal {
   query: string;
   from: number;
 }

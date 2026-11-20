@@ -37,7 +37,7 @@ import { CatalogWriteError, finishCatalogWrite, readWritableDoc, requireProjectR
 const EMPTY: PermissionsConfig = { deny: [], allow: [], additionalDirs: [] };
 
 /** permissions 读面：root:null 仅全局（project 面恒空）；warnings=两级形状告警单（坏键/坏槽点名） */
-export interface PermissionsView {
+interface PermissionsView {
   merged: PermissionsConfig;
   project: PermissionsConfig;
   global: PermissionsConfig;
@@ -61,7 +61,7 @@ export function listPermissions(root: string | null): PermissionsView {
 }
 
 /** 三清单名（settings permissions 键下的数组槽位） */
-export type PermissionList = 'deny' | 'allow' | 'additionalDirs';
+type PermissionList = 'deny' | 'allow' | 'additionalDirs';
 
 /** 写面目标文件落位 + project root 必备守卫（providers providerWriteFile 同款）：project 写落位 =
  *  装载读位（loadProjectSettings/loadGlobalSettings 单点） */

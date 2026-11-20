@@ -17,7 +17,7 @@ const FAILED = '\u0000failed';
 
 /** 本地图片引用判定:dataURL/http(s) 之外的形态一律按本地文件地址走解析(含 images-cache
  * 绝对地址与任意工作区/数据目录路径) */
-export function isLocalImageRef(src: string): boolean {
+function isLocalImageRef(src: string): boolean {
   return !src.startsWith('data:') && !/^https?:\/\//i.test(src);
 }
 

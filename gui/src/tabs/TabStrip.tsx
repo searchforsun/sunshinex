@@ -26,7 +26,7 @@ function WebFavicon({ src }: { src: string }): JSX.Element {
   return <img className="sx-tab-fav" src={src} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
 }
 
-export interface TabStripProps {
+interface TabStripProps {
   readonly tabs: readonly import('./tab-state').TabInstance[];
   readonly activeUid: string | null;
   readonly disabled?: boolean; // 无会话:整条灰

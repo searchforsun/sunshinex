@@ -28,7 +28,7 @@ export interface TeamMemberRef {
   readonly createdAt?: number;
 }
 
-export interface TaskBoardTabProps {
+interface TaskBoardTabProps {
   readonly board: TaskBoardState;
   readonly delegations: readonly Delegation[];
   /** 团队清单（快照 + team-created / task-created 直播）：卡头名称；缺名时回退 teamId */

@@ -1,5 +1,5 @@
 /** 思考强度档位(G14.14 共享):滑动块 0..5 与档位一一对应(daemon effort 白名单序) */
-export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 import type { CSSProperties } from 'react';
 import { t } from './i18n';
 

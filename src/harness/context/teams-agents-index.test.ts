@@ -32,7 +32,7 @@ test('快照注入 agents/teams 清单段（确定性、system kind）', () => {
   assert.ok(parts.agents.length === 1 && parts.teams.length === 1);
   assert.ok(parts.agents[0]!.content.includes('- DevX (id: devx): 编码实现'));
   assert.ok(parts.teams[0]!.content.includes('- 全栈交付小队 (id: fullstack-delivery)'));
-  assert.ok(parts.teams[0]!.content.includes('#team-id')); // lead 行声明软引用（plan §1105：用户以 "#team-id" 引用团队）
+  assert.ok(!parts.teams[0]!.content.includes('#team-id')); // lead 行不声明用法句（2026-11-20 用户裁定「这些都是工具描述该做的」→ 契约钉在 load_agent_teams 描述，钉测见 agent-teams-gate）
   assert.ok(ctx.snapshotExport().items.every((it) => it.kind === 'system' || it.kind === 'instruction'));
 });
 

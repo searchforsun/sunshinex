@@ -429,7 +429,7 @@ export async function branchDiffStat(root: string, branch: string): Promise<Resu
 }
 
 /** git 切换被未提交改动阻断的报错特征(本地改动会被覆盖/请先提交或贮藏) */
-export function isDirtyTreeError(err: string): boolean {
+function isDirtyTreeError(err: string): boolean {
   return /would be overwritten|commit your changes or stash|Please move or remove them/i.test(err);
 }
 

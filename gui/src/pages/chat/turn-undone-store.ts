@@ -6,7 +6,7 @@
  */
 const KEY = 'sunshinex.turn-undone';
 
-export interface TurnUndoneShape {
+interface TurnUndoneShape {
   [journalId: string]: { [runSeq: string]: { all?: true; paths?: string[] } };
 }
 

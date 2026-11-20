@@ -11,7 +11,7 @@ import { isWithin } from '../paths';
 export const MAX_PREVIEW_BYTES = 512 * 1024;
 
 /** 二进制探测窗（首 8KB）：UTF-8 文本不含 \0，命中即按二进制拒（415）——预览面只服务文本 */
-export const BINARY_PROBE_BYTES = 8 * 1024;
+const BINARY_PROBE_BYTES = 8 * 1024;
 
 /** 静态缺失提示（G1 裁定恒定文案；G3 起 dist-gui 在场则 GET 挂静态，缺场仍回此形态） */
 export const GUI_ASSETS_HINT = 'GUI assets not built — run pnpm --filter gui build (G2)';

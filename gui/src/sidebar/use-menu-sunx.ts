@@ -3,7 +3,7 @@ import type { SessionRow, WorkspaceRow } from '../connection';
 import { listShallowEqual } from './project-menu-util';
 
 /** SUNX 行集连接面(结构满足即收;App 实传整只 Connection 运行时满足) */
-export interface MenuSunxConn {
+interface MenuSunxConn {
   sunxSessions(): Promise<SessionRow[]>;
 }
 

@@ -40,7 +40,7 @@ function ledgerForBoard(tasks: TaskRegistry, boardKey: string, rawId: string): B
   return hits.reduce((a, b) => (b.startedAt > a.startedAt ? b : a));
 }
 
-export interface BoardStopReceipt {
+interface BoardStopReceipt {
   taskId: string;
   status: string;
   title: string;

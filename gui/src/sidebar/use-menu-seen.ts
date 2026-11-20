@@ -4,7 +4,7 @@ import { autoSeenSuppressed, loadSeenMap, persistSeenMap } from './project-menu-
 import type { SeenMap } from './project-menu-util';
 
 /** 已读档连接面(结构满足即收;App 实传整只 Connection 运行时满足) */
-export interface MenuSeenConn {
+interface MenuSeenConn {
   appSeen(): Promise<{ seen: Record<string, number> }>;
   saveAppSeen(seen: Record<string, number>): Promise<void>;
 }

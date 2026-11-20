@@ -8,7 +8,7 @@ import type { McpServerConfig } from '../types';
  *  - browser-use:server/host.js(每会话专属浏览器上下文,状态按会话持久)
  *  - computer-use:server/index.js --http(桌面共享;每会话「最近截图坐标系」与截图目录隔离)
  *  宿主 stdin 管道由本进程持有,进程退出即宿主收尾退出。 */
-export type BrowserHostMode = 'builtin' | 'default' | 'headless';
+type BrowserHostMode = 'builtin' | 'default' | 'headless';
 
 /** 浏览器插件 server 名(manifest mcpServers 键) */
 export const BROWSER_SERVER_NAME = 'browser-use';

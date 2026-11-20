@@ -26,6 +26,21 @@ export function syncOverflowAnchor(el: HTMLElement, stick: boolean): void {
   if (el.style.overflowAnchor !== want) el.style.overflowAnchor = want;
 }
 
+/** 视口顶内容锚(虚拟窗口块包装 data-unit-key):块 key + 块顶相对视口偏移(负值);
+ *  无块包装(jsdom 回退/降级面)回 undefined——存档退化为只记距底(D62 批K 自 Chat.tsx 平迁) */
+export function chatAnchorOf(el: HTMLElement): { key: string; off: number } | undefined {
+  const cTop = el.getBoundingClientRect().top;
+  for (const child of el.children) {
+    if (!(child instanceof HTMLElement) || !child.classList.contains('chat-unit')) continue;
+    const r = child.getBoundingClientRect();
+    if (r.bottom > cTop) {
+      const key = child.dataset.unitKey ?? '';
+      return key === '' ? undefined : { key, off: Math.round(r.top - cTop) };
+    }
+  }
+  return undefined;
+}
+
 /** 滚动跟随/存档恢复/mermaid 补归底/dock 高度实测四 effects(D32 第六批批F-5 自 Chat.tsx 平移,
  *  行为零变化)。refs 留宿主声明(滚动 handler/存档键消费),dockRef 因 JSX 消费由本 hook 返还。 */
 export function useChatScroll(deps: {

@@ -11,7 +11,7 @@ import { RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences
  *  (P5)——动作后快照重拉仅作显式确认(refreshQueued),轮询已退役。开关与队列态 props 注入。
  *  2026-10-31 用户裁定防竞态:立即/插入点击后本条显示转圈(会话标题运行中同款 run-spinner),
  *  直至对应文本落出正文(用户条文本命中)或队列帧摘除;期间全部行的四动作禁点(拖拽同锁)。 */
-export interface SteerQueueProps {
+interface SteerQueueProps {
   readonly queued: Array<{ seq: number; text: string; images?: string[] }>;
   readonly queueFolded: boolean;
   readonly setQueueFolded: Dispatch<SetStateAction<boolean>>;

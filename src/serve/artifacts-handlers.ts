@@ -6,7 +6,7 @@ import { sanitizeArtifacts } from '../session/entry';
  *  （任意 kind）。三条自动网（write/edit 写盘钩、轮末 git 新建差集、mtime 轮窗扫描）已按用户
  *  裁定全部退役——此前一次分析任务动辄列出几十个 xml/jar 自动卡；现由 agent 自己判断交付物。
  *  本函数=声明按 artifactKey 去重保序+64 帽单点 */
-export const ARTIFACTS_CAP = 64;
+const ARTIFACTS_CAP = 64;
 
 export function mergeRunArtifacts(declared: Artifact[]): Artifact[] {
   // 2026-11-20 用户裁定「完全去掉自己去解析,交给 agent 自己判断哪些是产物」:自动网全部退役,

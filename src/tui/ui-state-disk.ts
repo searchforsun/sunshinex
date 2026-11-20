@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { resolveDataDir } from '../config/data-dir';
 
-export interface TuiDiskState {
+interface TuiDiskState {
   /** 详情深度偏好（Ctrl+O 翻转；--continue 恢复路径同款语义） */
   latestFull?: boolean;
   /** 输入历史（↑↓ 续用；跨会话共享同一工作区——shell history 同位；cap 200 新者居尾） */

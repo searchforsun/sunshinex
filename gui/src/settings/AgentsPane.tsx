@@ -282,7 +282,9 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
       {data === null && loadError === '' && <EmptyState text={t('Loading agents…', '加载智能体清单…')} />}
       {data !== null && (
         <>
-          <h3>{t('Built-in roles (read-only)', '内建角色(只读)')}</h3>
+          <h3 className="sx-settings-sec">
+            {t('Built-in roles (read-only)', '内建角色(只读)')}
+          </h3>
           {builtins.length === 0 && <EmptyState text={t('No built-in roles match.', '无匹配的内建角色。')} />}
           <ul className="sx-agent-builtins">
             {builtins.map((b) => (
@@ -295,7 +297,9 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
               </li>
             ))}
           </ul>
-          <h3>{t('Registered (agents directory)', '已注册(agents 目录)')}</h3>
+          <h3 className="sx-settings-sec">
+            {t('Registered (agents directory)', '已注册(agents 目录)')}
+          </h3>
           {(data.view.entries.length === 0 || visible.length === 0) && (
             <EmptyState text={data.view.entries.length === 0 ? t('No custom agents.', '无自定义智能体。') : t('No matches.', '无匹配结果。')} />
           )}

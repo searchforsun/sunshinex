@@ -13,7 +13,7 @@ import { applyAgentEvent, sealOrphanAgentRuns, type AgentActivities } from './ta
  * 旧基线/旧板,弃)。refs 穿透 use-connection-wiring(onEvent 帧路由按窗分流直投/缓冲)。
  */
 
-export interface BoardSeedDeps {
+interface BoardSeedDeps {
   readonly sessionRef: MutableRefObject<string>;
   /** G14.2xx 运行态对表(零额外请求,复用 reseed 快照的 status 权威) */
   readonly setRunningIds: (f: (s: ReadonlySet<string>) => ReadonlySet<string>) => void;

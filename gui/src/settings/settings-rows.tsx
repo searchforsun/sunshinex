@@ -36,7 +36,7 @@ const SELECTED_CHECK = <span className="sx-dd-opt-check sx-card-check" aria-hidd
 function FontRow(): JSX.Element {
   const [pref, setPref] = useState<FontPreset>(readFontPreset);
   return (
-    <div className="sx-setting-row sx-font-row">
+    <div className="sx-setting-row sx-font-row" data-setting-key="font">
       <div className="sx-setting-main">
         <div className="sx-setting-title">
           <span className="sx-setting-label">{t('Font preset', '字体预设')}</span>
@@ -139,7 +139,7 @@ function PaletteRow(): JSX.Element {
   const mode = currentTheme();
   const active = readPalettePref(mode);
   return (
-    <div className="sx-setting-row sx-palette-row">
+    <div className="sx-setting-row sx-palette-row" data-setting-key="palette">
       <div className="sx-setting-main">
         <div className="sx-setting-title">
           <span className="sx-setting-label">{t('Color theme', '配色主题')}</span>
@@ -183,7 +183,7 @@ function ThemeRow(): JSX.Element {
   const [pref, setPref] = useState<ThemePref>(readThemePref);
   useEffect(() => watchSystemTheme(pref), [pref]);
   return (
-    <div className="sx-setting-row">
+    <div className="sx-setting-row" data-setting-key="theme">
       <div className="sx-setting-main">
         <div className="sx-setting-title">
           <span className="sx-setting-label">{t('Appearance', '外观')}</span>
@@ -213,7 +213,7 @@ function ThemeRow(): JSX.Element {
 function ZoomRow(): JSX.Element {
   const [pref, setPref] = useState<UiZoom>(readZoomPref);
   return (
-    <div className="sx-setting-row">
+    <div className="sx-setting-row" data-setting-key="zoom">
       <div className="sx-setting-main">
         <div className="sx-setting-title">
           <span className="sx-setting-label">{t('UI zoom', '界面放缩')}</span>

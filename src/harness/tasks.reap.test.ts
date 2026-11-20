@@ -2,10 +2,23 @@
 // 由 runSubagent finally 段统一 reap：触发 stop 句柄、落 [stopped] 终态行。断言面：任务终态、零泄漏。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { TaskRegistry } from './tasks';
 
 test('reap(ownerRun)：终结该 owner 名下全部 running、其余 owner 不误伤', () => {
-  const tasks = new TaskRegistry('/tmp/sunshinex-reap-test-data');
+  // 任务日志落盘目录钉文件私有 tmpdir + finally 清理（memory 线同范式）——硬编码 /tmp 在 win32
+  // 解析到盘符根（D:\tmp\…），测试残渣落出仓外且随盘漂移
+  const tasksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-reap-test-'));
+  try {
+    reapAssertions(new TaskRegistry(tasksDir));
+  } finally {
+    fs.rmSync(tasksDir, { recursive: true, force: true });
+  }
+});
+
+function reapAssertions(tasks: TaskRegistry): void {
   let stoppedA = false;
   let stoppedC = false;
   const a = tasks.submit({ kind: 'exec', label: 'a-owned', ownerRun: 'fork-1' });
@@ -27,7 +40,7 @@ test('reap(ownerRun)：终结该 owner 名下全部 running、其余 owner 不�
   assert.equal(tasks.get(b.id)?.status, 'done', '终态任务不受影响');
   assert.equal(stoppedC, false, '其他 owner 零误伤');
   assert.equal(tasks.get(c.id)?.status, 'running', '其他 owner 任务保持 running');
-});
+}
 
 /** 读任务日志（收割断言用） */
 function readLog(t: { outputFilePath: string }): string {

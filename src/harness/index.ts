@@ -86,7 +86,7 @@ export const SUNX_FACE_TOOLS: readonly string[] = [
  *  新增会话类=types 联合扩值+本表加一条；装配注册（Harness 构造期末段查表调钩）与内核 face
  *  派生（session/runtime createKernelRuntime derive({only})）不再各自 if 分叉。standard=空档案
  *  （主链 face 基线不变量：非 sunx 注册表不含 dispatch_task/task_status） */
-export interface SessionFaceProfile {
+interface SessionFaceProfile {
   /** 主链 face 白名单（runtime 消费；undefined=主链 face 原样） */
   faceTools?: readonly string[];
   /** 专属工具注册钩（构造期末段调，实参=装配中的 Harness；仅本表装配钩消费） */
@@ -183,8 +183,8 @@ export class Harness {
   readonly artifacts: ArtifactCollector;
   /** 子智能体执行单元（spawn 已注册进主链工具面；fork 子面一律派生剔除） */
   readonly runner: SubagentRunner;
-  /** 板通道成员实例化缝（teamAdapter：agent_id 角色框定+mountTeammate 全链）——dispatch_task
-   *  注册钩（registerOrchestrationTools）与八件套 create_agent_teammate 执行面共用 */
+  /** 板通道成员实例化缝（teamAdapter：agent_id 角色框定+mountTeammate 全链）——八件套
+   *  create_agent_teammate 执行面唯一消费（dispatch_task 的注册钩共用随 team 通道删除而退役） */
   private readonly teamAdapter: { spawn(input: SubagentSpawnInput, teamId: string): Result<{ name: string }> };
   /** 统一后台任务账本（后台任务线规格 D1）：exec/spawn 后台任务的 ID 空间/生命周期/状态单点 */
   readonly tasks: TaskRegistry;

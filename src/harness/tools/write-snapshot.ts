@@ -113,7 +113,7 @@ export class WriteSnapshotCollector {
 /** 装配接缝：capture 接受工具原始入参（相对项目根或绝对，安全链 safePath 两种形态都收敛在此），root 外路径跳过（防御性兜底）；
  *  G7 增 diff 查询面（nthFor/readBlob——daemon /session/:id/diff 消费，run 中查内存清单实时可得：daemon 会话
  *  drain 仅在 dispose/reset（快照清单随 seal 落 journal），会话存续期内清单常驻内存） */
-export interface WriteSnapshotSink {
+interface WriteSnapshotSink {
   capture(p: string): void;
   /** 落盘后的后像快照（2026-11-11）：紧跟 capture(p) 同路径调用，content=写入的新内容——
    *  挂到末尾该路径条目的 afterHash；无匹配条目（root 外 capture 被跳过）静默不挂 */

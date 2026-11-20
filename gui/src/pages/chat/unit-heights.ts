@@ -39,8 +39,3 @@ export function rememberUnitHeight(scope: string, key: string, h: number): void 
     m.delete(oldest);
   }
 }
-
-/** 测试/诊断:某档当前高度条目数 */
-export function unitHeightCount(scope: string): number {
-  return store.get(scope)?.size ?? 0;
-}

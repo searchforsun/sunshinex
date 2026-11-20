@@ -377,7 +377,10 @@ export function mergeSplitThinking(list: ChatEntry[]): ChatEntry[] {
     for (;;) {
       let k = j;
       while (k < list.length && list[k]!.kind === 'notice') k += 1;
-      if (k >= list.length || list[k]!.kind !== 'thinking' || k === j) break;
+      // 零间隔相邻也算同一思考流（2026-11-21 修）：2026-11-19 沉淀通知改轮尾落列后，被通知分隔的
+      // 两段在合并面前已相邻——旁白夹缝不再是合并的必要条件（新思考段只在工具调用后出现，相邻
+      // thinking 间无工具/正文必属同一思考流）；下一条非 thinking 即断
+      if (k >= list.length || list[k]!.kind !== 'thinking') break;
       for (let n = j; n < k; n += 1) notices.push(list[n]!);
       parts.push(list[k]!);
       j = k + 1;

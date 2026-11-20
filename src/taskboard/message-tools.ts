@@ -10,7 +10,7 @@ import type { SessionEvent } from '../types';
 /** text 上限(spec §5.5 消息体约束):超长违拒,不截断——发件方自查自改 */
 const MAX_TEXT = 4000;
 
-export interface SendMessageToolDeps {
+interface SendMessageToolDeps {
   inbox: Inbox;
   /** agent-message 事件出口(透传装配层 onEvent;缺省零副作用) */
   onEvent?: (e: SessionEvent) => void;

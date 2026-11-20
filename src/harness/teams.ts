@@ -131,7 +131,7 @@ export function createTeamsFacade(root: string): TeamsFacade {
 }
 
 /** 成员行素材（调用方自 agents 清单现读组装；missing 成员显式注记） */
-export interface TeamMemberRow { id: string; name: string; description: string; missing?: boolean }
+interface TeamMemberRow { id: string; name: string; description: string; missing?: boolean }
 
 /** 团队章程卡单点（team 工具观察原文，spec §3.3）：lead 星标、missing 注记、章程原文随卡 */
 export function formatTeamCard(m: TeamManifest, members: TeamMemberRow[], body: string): string {

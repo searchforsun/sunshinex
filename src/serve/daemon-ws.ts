@@ -23,7 +23,7 @@ function sendPtyFrame(ws: WebSocket, frame: { t: 'data' | 'exit'; b?: string; co
  * （drain→stopAll→mcpClose，本类 close 为其步骤 1）。会话注册表与 pty manager 经 deps 注入
  * （补发遍历/pty 帧协议），teardown 启动判据经 isClosing 注入（升级拒绝面同判）。
  */
-export interface WsHubDeps {
+interface WsHubDeps {
   readonly sessions: Map<string, SessionRuntime>;
   readonly ptyManager: PtyManager;
   /** daemon close 链已落链（upgrade 拒新连接面与鉴权失败同拒） */

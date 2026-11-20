@@ -53,7 +53,7 @@ export interface NewSunxConn {
 }
 
 
-export interface NewSunxDialogProps {
+interface NewSunxDialogProps {
   /** 受控开合:母体持态(false=零渲染) */
   readonly open: boolean;
   readonly onClose: () => void;

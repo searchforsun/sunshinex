@@ -17,7 +17,7 @@ export interface WebPoolItem {
   readonly params: TabParams;
 }
 
-export const DRAFT_PARTITION = 'sx-draft';
+const DRAFT_PARTITION = 'sx-draft';
 
 /** 池项身份=座位+uid(tab-state seatKey 单点;2026-11-08 用户报障「切会话还能看到上一个会话的浏览器页签」) */
 export const poolKey = seatKey;

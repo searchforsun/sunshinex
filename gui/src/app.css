@@ -4687,9 +4687,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-page > .sx-schedule-error { margin: 8px 24px 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
 .sx-schedule-page > .sx-schedule-notice { margin: 8px 24px 0; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
 
-/* ===== 2026-11-21 搜索面统一(用户裁定「各个类型的所有搜索框下边可以置顶分类,搜索出来内容
-   可以进行合理跳转,搜索框宽度可以和主会话一样随宽度变化」):分类条=搜索框下常驻;分组头
-   在结果滚动面内吸顶;键盘选中行共享一套高亮。侧栏聚合/标签页/目录树三面同源 ===== */
+/* ===== 2026-11-21 搜索面统一(用户裁定「所有搜索框下边可以置顶分类,搜索出来内容可以进行
+   合理跳转」+ 后续三点:不显示数量/宽度参考整体应用宽度/搜索框聚焦不换蓝边):分类条=搜索框下
+   常驻;分组头在结果滚动面内吸顶;键盘选中行共享一套高亮。侧栏聚合/标签页/目录树三面同源 ===== */
 .sx-search-cats {
   flex: none; display: flex; align-items: center; gap: 6px;
   overflow-x: auto; scrollbar-width: none;
@@ -4704,24 +4704,21 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 }
 .sx-search-cat:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, var(--surface-soft)); }
 .sx-search-cat.active { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
-.sx-search-cat-count { color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
-.sx-search-cat.active .sx-search-cat-count { color: var(--fg-secondary); }
 
 /* 分组头吸顶:列表滚动时分类保持可见(modal/tab 弹层同为 surface-elevated 面) */
 .sx-search-sec {
   position: sticky; top: 0; z-index: 2;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; gap: 8px;
   background: var(--surface-elevated);
 }
-.sx-search-sec-count { font-weight: 400; letter-spacing: 0; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 
 /* 键盘选中行(↑↓ 移动):hover 底色同档,三面共用 */
 .sx-search-row.sx-kbd-active,
 .sx-tabsearch-row.sx-kbd-active,
 .sx-tree-row.sx-kbd-active { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
 
-/* 侧栏聚合搜索:宽度随主会话列宽(--chat-max 由 App RO 透传到壳根),窄窗钳视口 */
-.sx-search-modal { width: min(calc(100vw - 64px), calc(var(--chat-max, 750px) + 32px)); }
+/* 侧栏聚合搜索:宽度参考整体应用宽度(不再绑主会话列宽)——75vw、封顶 1040、窄窗钳视口 */
+.sx-search-modal { width: min(calc(100vw - 96px), 75vw, 1040px); }
 .sx-search-modal .sx-search-cats { margin: 0 2px; }
 
 /* 标签页搜索:分类条与搜索头同面,浮层随视口收放 */
@@ -4732,7 +4729,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-tree-searchhead { position: sticky; top: 0; z-index: 2; background: var(--surface-under); padding-top: 2px; }
 .sx-tree-searchhead .sx-search-cats { padding: 0 8px 6px; }
 
-/* 设置页分组头吸顶 + 条数(分类置顶;设置面滚动容器=全宽 .sx-settings-main) */
+/* 设置页分组头吸顶(分类置顶;设置面滚动容器=全宽 .sx-settings-main) */
 .sx-settings-sec {
   position: sticky; top: 0; z-index: 2;
   display: flex; align-items: baseline; gap: 8px;
@@ -4740,7 +4737,6 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
   background: var(--surface); color: var(--fg-secondary);
   font-size: calc(14px * var(--fz)); font-weight: 600;
 }
-.sx-settings-sec-count { font-size: calc(14px * var(--fz)); font-weight: 400; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 .sx-skill-section-head {
   position: sticky; top: 0; z-index: 2;
   box-sizing: border-box; padding: 6px 0; margin: 0 0 8px;

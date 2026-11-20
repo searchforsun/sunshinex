@@ -9,7 +9,7 @@ import type { IPty } from 'node-pty';
  */
 
 /** spawn 入参（daemon 传入；`owner` 为 daemon 会话 id——killAllFor 的清杀锚） */
-export interface PtySpawnOptions {
+interface PtySpawnOptions {
   readonly file: string; readonly args: readonly string[];
   readonly cwd: string; readonly cols: number; readonly rows: number;
   readonly owner: string;                      // 会话 id(daemon 传入)——killAllFor 锚
@@ -18,7 +18,7 @@ export interface PtySpawnOptions {
 }
 
 /** 会话句柄（T3 消费面；onExit 触发后条目自动注销——has→false，句柄自身仍可安全调用） */
-export interface PtySession {
+interface PtySession {
   readonly id: string;
   write(data: string): void;                   // UTF-8 直写(输入链)
   resize(cols: number, rows: number): void;

@@ -6,6 +6,8 @@
 
 export function installInkOutputGuard(): void {
   try {
+    // ink 内部模块无类型面：require 路径+原型补丁整段 any（§5 豁免理由=本文件头注——护盾嫁接在
+    // 第三方私有原型上，unknown 窄化只会加断言噪声）
     const mod: any = require('ink/build/output.js');
     const Output = mod?.default;
     if (!Output?.prototype || (Output.prototype as any).__widthGuard) return;

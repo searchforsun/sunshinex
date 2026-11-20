@@ -117,22 +117,22 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
       </div>
       <SearchCatBar
         cats={[
-          { id: 'all', en: 'All', zh: '全部', count: entries.length },
-          { id: 'open', en: 'Open tabs', zh: '打开的标签页', count: openRows.length },
-          { id: 'closed', en: 'Recently closed', zh: '最近关闭', count: closedRows.length },
+          { id: 'all', en: 'All', zh: '全部' },
+          { id: 'open', en: 'Open tabs', zh: '打开的标签页' },
+          { id: 'closed', en: 'Recently closed', zh: '最近关闭' },
         ]}
         active={cat}
         onPick={pickCat}
       />
       <div className="sx-tabsearch-body">
-        {showOpen && openRows.length > 0 && <SearchSectionHead label={t('Open tabs', '打开的标签页')} count={openRows.length} />}
+        {showOpen && openRows.length > 0 && <SearchSectionHead label={t('Open tabs', '打开的标签页')} />}
         {showOpen && openRows.map(({ tab, title }, i) => (
           <div
             key={tab.uid}
             ref={i === nav.active ? nav.activeRef : undefined}
             role="button"
             tabIndex={0}
-            className={`sx-tabsearch-row${tab.uid === activeUid ? ' active' : ''}${i === nav.active ? ' nav-active' : ''}`}
+            className={`sx-tabsearch-row${tab.uid === activeUid ? ' active' : ''}${i === nav.active ? ' sx-kbd-active' : ''}`}
             onMouseEnter={() => nav.setActive(i)}
             onClick={() => pick(i)}
             onKeyDown={(e) => {
@@ -161,7 +161,7 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
             </span>
           </div>
         ))}
-        {showClosed && closedRows.length > 0 && <SearchSectionHead label={t('Recently closed', '最近关闭的标签页')} count={closedRows.length} />}
+        {showClosed && closedRows.length > 0 && <SearchSectionHead label={t('Recently closed', '最近关闭的标签页')} />}
         {showClosed && closedRows.map(({ closed, index, title }, i) => {
           const idx = closedOffset + i;
           return (
@@ -170,7 +170,7 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
               ref={idx === nav.active ? nav.activeRef : undefined}
               role="button"
               tabIndex={0}
-              className={`sx-tabsearch-row${idx === nav.active ? ' nav-active' : ''}`}
+              className={`sx-tabsearch-row${idx === nav.active ? ' sx-kbd-active' : ''}`}
               data-tip={title}
               onMouseEnter={() => nav.setActive(idx)}
               onClick={() => pick(idx)}

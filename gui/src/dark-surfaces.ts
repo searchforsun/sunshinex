@@ -5,7 +5,6 @@
  * 下生效=暗色主题下开关无感);外部 store 同 ui-mode 先例(转录 memo 组件穿透重渲);
  * 持久与其余外观偏好同通路(ui-pref-sync 双写)。
  */
-import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
 
 export type DarkSurfaceKey = 'bubbles' | 'code';
@@ -33,10 +32,6 @@ function readStored(key: DarkSurfaceKey): boolean {
   }
 }
 
-function readAttr(key: DarkSurfaceKey): boolean {
-  return document.documentElement.dataset[DATA_ATTRS[key]] === '1';
-}
-
 export function readDarkBubbles(): boolean {
   return readStored('bubbles');
 }
@@ -62,22 +57,4 @@ export function applyDarkBubbles(on: boolean): void {
 }
 export function applyDarkCode(on: boolean): void {
   apply('code', on);
-}
-
-function subscribe(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-export function useDarkBubbles(): boolean {
-  return useSyncExternalStore(subscribe, readAttr.bind(null, 'bubbles'), readDarkBubbles);
-}
-export function useDarkCode(): boolean {
-  return useSyncExternalStore(subscribe, readAttr.bind(null, 'code'), readDarkCode);
-}
-
-/** 暗色代码强制面(Monaco/取值侧读不了 CSS 覆写块):亮色主题 + 开关在座 */
-export function codeDarkForced(): boolean {
-  const root = document.documentElement;
-  return root.dataset.codeDark === '1' && root.dataset.theme === 'light';
 }

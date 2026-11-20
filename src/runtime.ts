@@ -96,7 +96,7 @@ export function resolveKnowledgeBase(root: string): KnowledgeBase | undefined {
 
 /** buildHarness 入参形态：HarnessOptions 的可全缺省视图，唯 kb 除外——kb 恒由本单点经 resolveKnowledgeBase
  *  解析（类型面上即杜绝调用方再自行拼一份 kb 接线；需要注入 kb 的测试直接用 new Harness） */
-export type HarnessAssemblyOpts = Omit<Partial<HarnessOptions>, 'kb'>;
+type HarnessAssemblyOpts = Omit<Partial<HarnessOptions>, 'kb'>;
 
 /**
  * 共享 Harness 装配单点（D27 收敛，技术债台账验收判据）：CLI `buildDeps` 与内核 `createKernelRuntime` 的
@@ -120,7 +120,7 @@ export function buildHarness(root: string, opts: HarnessAssemblyOpts = {}): Harn
 
 /** CLI run 依赖面（D24）：在 LoopDeps 之上补后台任务收口成员——不直接加进 engine 的 LoopDeps，
  *  因为 loop 引擎不消费它（收口是 CLI 命令生命周期语义，非环执行语义），由装配根透传给命令收尾即可 */
-export interface CliRunDeps extends LoopDeps {
+interface CliRunDeps extends LoopDeps {
   /** 停全部 running 后台任务并落 [stopped: process exit] 终态行（规格 D9 任务属进程；teardownCliRun 消费） */
   stopAllTasks: () => void;
   /** 任务板协调器透传：pipeline 命令板路径消费——模板任务集落板并 settle 到终态；

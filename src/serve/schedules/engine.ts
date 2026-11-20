@@ -6,7 +6,7 @@ import type { ScheduleStore } from './store';
 
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-export interface ScheduleEngineDeps {
+interface ScheduleEngineDeps {
   store: ScheduleStore;
   execute: (job: ScheduleJob, trigger: RunTrigger, plannedAt?: number) => string | undefined;
   now?: () => number;

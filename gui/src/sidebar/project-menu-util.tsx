@@ -172,7 +172,7 @@ export function sessionMetaLine(r: { runs?: number; steps?: number; createdAt?: 
 /** 行内「归档」确认 morph 钮(确认态=红确认钮,常态=归档图标钮;点外取消由宿主
  *  useConfirmOutsideCancel 承载)——项目组行/最近会话行/置顶行三面同款(D41 G6a 收敛;
  *  确认态悬浮提示为三面统一补齐——图标钮场景按 §13.1 规则 4 应有提示) */
-export function ArchiveConfirmButton(props: {
+function ArchiveConfirmButton(props: {
   readonly active: boolean;
   readonly rowId: string;
   readonly onArm: () => void;
@@ -385,7 +385,7 @@ export function SessionRow(props: {
       <span className="session-meta">
         {props.scheduled === true && (
           <span className="session-sched-icon" data-tip={t('Scheduled task', '定时任务')}>
-            <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
+            <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
           </span>
         )}
         {relTime(props.updatedAt)}

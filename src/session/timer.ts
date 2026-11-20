@@ -12,13 +12,13 @@ import type { WakeScheduleRecord } from './seglog';
 export type { WakeScheduleRecord };
 
 /** 钟面三缝（缺省=全局 setTimeout/clearTimeout/Date.now；测试注入假钟） */
-export interface TimerClock {
+interface TimerClock {
   setTimeoutImpl(fn: () => void, ms: number): unknown;
   clearTimeoutImpl(handle: unknown): void;
   now(): number;
 }
 
-export interface TimerControllerOpts {
+interface TimerControllerOpts {
   /** 宿主运行态：run 在途即 busy（空闲 false）——到点遇 busy 排队至轮收束 */
   busy(): boolean;
   /** 到点回调（宿主接缝）：lateMs=now-fireAt（≥0）。返回 false=未受理 → 留位待下次轮收束重试 */

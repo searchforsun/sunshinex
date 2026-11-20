@@ -10,7 +10,7 @@ import { parseTabSession, type TabStates } from './tabs/tab-state';
  * (开/关/激活/拖宽)全在宿主,本 hook 只承载「盘↔内存」两个方向的同步效应。
  */
 
-export interface TabPersistenceDeps {
+interface TabPersistenceDeps {
   readonly connInstance: Connection | null;
   readonly connState: ConnectionState;
   readonly openSessionId: string;

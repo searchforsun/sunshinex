@@ -8,8 +8,8 @@
  */
 import { notifyUiPref } from './ui-pref-sync';
 
-export const UI_FONT_DEFAULT = 14;
-export const CODE_FONT_DEFAULT = 12;
+const UI_FONT_DEFAULT = 14;
+const CODE_FONT_DEFAULT = 12;
 export const UI_FONT_CHOICES: readonly number[] = [12, 13, 14, 15, 16, 17, 18, 20];
 export const CODE_FONT_CHOICES: readonly number[] = [10, 11, 12, 13, 14, 15, 16, 18];
 

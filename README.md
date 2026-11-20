@@ -73,8 +73,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.6.
 # ② npm registry
 npm install -g sunshinex-agent
 
-# ③ 本地打包安装
-npm pack && npm install -g ./sunshinex-agent-0.6.0.tgz
+# ③ 本地打包安装（版本号随 package.json 走，以 pack 实际产物为准）
+npm pack && npm install -g ./sunshinex-agent-<版本>.tgz
 ```
 
 **源码运行**（开发者）：

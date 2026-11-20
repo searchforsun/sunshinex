@@ -193,6 +193,91 @@ describe('ProjectMenu G10-C2 侧栏(分区头与 Recents 恒显)', () => {
     fireEvent.click(searchRow!);
     await waitFor(() => expect(onComposeIn).toHaveBeenCalledWith('D:/w/p1'));
   });
+
+  it('聚合搜索:搜索框下分类条(不显示数量),切分类只留对应组;↑↓+Enter 直达会话(附接打开)', async () => {
+    const conn = makeConn();
+    const newSession = vi.spyOn(conn, 'newSession');
+    const attach = vi.spyOn(conn, 'attach');
+    renderMenu(conn, { onComposeIn: vi.fn() });
+    await screen.findByText('p1');
+    fireEvent.click(screen.getByRole('button', { name: 'search' }));
+    // 会话聚合回包落定(项目 3 + 会话 2:可见工作区 p1/harness-x 各一条同题会话)
+    await waitFor(() => expect(screen.getAllByText('demo goal').length).toBeGreaterThanOrEqual(2));
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((t) => t.textContent)).toEqual(['All', 'Projects', 'Sessions', 'SUNX', 'Actions']);
+    // 分类过滤:只留项目/只留会话(分组头同步只剩对应一节)
+    fireEvent.click(screen.getByRole('tab', { name: /Projects/ }));
+    expect(document.querySelectorAll('.sx-search-row')).toHaveLength(3);
+    expect(document.querySelector('.sx-search-modal-list')!.textContent).not.toContain('demo goal');
+    fireEvent.click(screen.getByRole('tab', { name: /Sessions/ }));
+    expect(document.querySelectorAll('.sx-search-row')).toHaveLength(2);
+    expect(document.querySelector('.sx-search-modal-list')!.textContent).not.toContain('harness-x');
+    // 键盘:全部=3 项目+2 会话;ArrowDown×3 落到第一条会话,Enter 附接打开(root 取会话行所属项目)
+    fireEvent.click(screen.getByRole('tab', { name: /All/ }));
+    const input = document.querySelector('.sx-search-modal input') as HTMLInputElement;
+    expect(document.activeElement).toBe(input); // 分类点击后焦点回搜索框
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(newSession).toHaveBeenCalledWith('D:/w/p1'));
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(expect.any(String), 'j1'));
+  });
+
+  it('聚合搜索 SUNX/定时任务:分类直达;点击分别 attachSunx / 开任务页定位', async () => {
+    const conn = makeConn();
+    conn.sunxSessions = vi.fn(async () => [{ id: 'sx1', title: 'SUNX 测试', updatedAt: FIXED_TS, root: 'D:/w/p1' }] as never);
+    conn.schedules = vi.fn(async () => ({
+      now: FIXED_TS,
+      defaultModel: 'm',
+      jobs: [{ id: 'job1', name: '每日报告', prompt: '生成日报', root: 'D:/w/p1', enabled: true, ended: false, nextRunAt: FIXED_TS + 3_600_000 }],
+    })) as never;
+    const attachSunx = vi.spyOn(conn, 'attachSunx');
+    const onOpenSchedule = vi.fn();
+    renderMenu(conn, { onOpenSchedule });
+    await screen.findByText('p1');
+    fireEvent.click(screen.getByRole('button', { name: 'search' }));
+    await waitFor(() => expect(document.querySelector('.sx-search-modal')!.textContent).toContain('SUNX 测试'));
+    await waitFor(() => expect(document.querySelector('.sx-search-modal')!.textContent).toContain('每日报告'));
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['All', 'Projects', 'Sessions', 'SUNX', 'Scheduled', 'Actions']);
+    // SUNX 分类:只留 SUNX 行,点击走域直寻址重开
+    fireEvent.click(screen.getByRole('tab', { name: 'SUNX' }));
+    expect(document.querySelectorAll('.sx-search-modal .sx-search-row')).toHaveLength(1);
+    fireEvent.click(document.querySelector('.sx-search-modal .sx-search-row')!);
+    await waitFor(() => expect(attachSunx).toHaveBeenCalledWith('sx1'));
+    // 重开搜索 → 定时任务分类 → 点击开任务页定位
+    fireEvent.click(screen.getByRole('button', { name: 'search' }));
+    await waitFor(() => expect(document.querySelector('.sx-search-modal')!.textContent).toContain('每日报告'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Scheduled' }));
+    fireEvent.click(document.querySelector('.sx-search-modal .sx-search-row')!);
+    expect(onOpenSchedule).toHaveBeenCalledWith('job1');
+  });
+
+  it('聚合搜索设置项与操作:搜「外观」直达设置行,搜「切换侧栏」执行操作', async () => {
+    const conn = makeConn();
+    const onOpenSettingsItem = vi.fn();
+    const run = vi.fn();
+    renderMenu(conn, {
+      onOpenSettingsItem,
+      searchActions: [{ id: 'toggle-sidebar', en: 'Toggle side bar', zh: '切换侧栏', run }],
+    });
+    await screen.findByText('p1');
+    fireEvent.click(screen.getByRole('button', { name: 'search' }));
+    const input = document.querySelector('.sx-search-modal input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '外观' } });
+    await waitFor(() => expect(document.querySelector('.sx-search-modal')!.textContent).toContain('Appearance'));
+    const settingRow = Array.from(document.querySelectorAll('.sx-search-modal .sx-search-row')).find((b) => (b.textContent ?? '').includes('Appearance'));
+    fireEvent.click(settingRow!);
+    expect(onOpenSettingsItem).toHaveBeenCalledWith('general', 'theme');
+    // 重开搜索:操作分类直达执行
+    fireEvent.click(screen.getByRole('button', { name: 'search' }));
+    const input2 = document.querySelector('.sx-search-modal input') as HTMLInputElement;
+    fireEvent.change(input2, { target: { value: '切换侧栏' } });
+    await waitFor(() => expect(document.querySelector('.sx-search-modal')!.textContent).toContain('Toggle side bar'));
+    const actionRow = Array.from(document.querySelectorAll('.sx-search-modal .sx-search-row')).find((b) => (b.textContent ?? '').includes('Toggle side bar'));
+    fireEvent.click(actionRow!);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('ProjectMenu G14.115 RECENTS 分页显形(默认 10 条,步进 10,收起复位)', () => {

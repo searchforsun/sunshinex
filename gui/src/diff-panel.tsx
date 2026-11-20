@@ -12,7 +12,7 @@ import { monacoCodeFontOptions } from './font-preset';
  * jsdom 无布局，测试经 data-diff-old/new 断言（monaco 渲染属浏览器面）。
  */
 
-export interface DiffPanelProps {
+interface DiffPanelProps {
   /** 旧文本（缺场 = 新文件全行增） */
   oldStr?: string;
   /** 新文本（恒在场） */

@@ -89,6 +89,7 @@ src/
     tools/task-stop.ts # task_stop 与 agent_team_task_stop（agentTeams 开时注册）
     tools/task-wait.ts # task_wait 与 agent_team_task_wait（同上）
     tools/schedule-tools.ts # schedule_wakeup/schedule_task（sunx 定时唤醒/定时派发,TimerController 接缝）
+    tools/schedule-create-tool.ts # create_scheduled_task（daemon 级周期任务创建草稿,ScheduleCreateSeam 接缝,缺席不注册）
     tools/artifact-collector.ts # 产物收集/声明双写入口（report_artifacts 声明与 bash 新建交付物并网）
     tasks.ts          # 统一后台任务账本（exec/spawn ID/生命周期/状态单点）
     mcp/              # MCP 客户端（官方 SDK 接缝，三传输；入口探活+断链重连 ≤2 次）
@@ -105,7 +106,7 @@ src/
   taskboard/          # 智能体团队域模型与协调器（model/board/store/translate/teammate/team-registry/inbox/executors）
   delegation/         # 委派投影（spawn/后台/graph 节点统一生命周期，TUI/GUI 同源）
   session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）、timer.ts（sunx 定时唤醒/派发 Timer）、wake-host.ts（daemon/TUI 宿主装配件：板名解析+通知文装配）
-  serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows；/sunx 组路由=域枚举/attach/rename/charter，sessionKind 'sunx' 域绑定 dataDir）
+  serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows；/sunx 组路由=域枚举/attach/rename/charter，sessionKind 'sunx' 域绑定 dataDir）；schedules/（daemon 级定时任务引擎：engine/executor/handlers/model/recurrence/store——到点新建普通会话派发,schedules.json 落 userConfigDir）
   storage/            # 本地 JSON 存储底座；archive.ts（归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘/全局快捷键/无边框窗控/NSIS 打包；壳与主仓零编译期耦合）
@@ -145,12 +146,15 @@ SUNSHINE.md          # 项目业务配置
 | markdansi | Markdown→ANSI 渲染，收敛于 `tui/md-ansi.ts` 单点出口 | renderMd 接缝稳定，替换不动渲染分流 |
 | cli-table3 | 表格框线渲染，收敛于 `tui/markdown.ts` | 降级原文行 |
 | highlight.js | 围栏代码块高亮，收敛于 `tui/highlight.ts` | `HiSpan` 接口稳定，替换不动渲染层 |
+| katex + remark-math + rehype-katex（GUI） | 数学公式渲染管线，收敛于 `gui/src/pages/chat/md-render.tsx` 插件单点 | 公式回落原文（不阻断正文渲染） |
+| unified 管线件（GUI）：remark-parse / remark-rehype / rehype-raw / rehype-sanitize / hast-util-to-jsx-runtime | markdown→hast→JSX 直拼管线（流式渲染面，与 react-markdown 同源），收敛于 `md-render.tsx` 单点 | 回退 react-markdown 封装面 |
+| vscode-icons-js + @iconify-json/vscode-icons（GUI） | 文件树/工具行 vscode 式文件图标（离线 SVG 内联零外联），收敛于 `gui/src/file-icon.tsx` | 回落缺省文件图标 |
 | mermaid（GUI） | 会话流围栏图渲染，收敛于 `gui/src/Mermaid.tsx` | 回落原文 |
 | @deepseek-ai/node-addon-landlock-run | exec 内核级写围栏（Linux-only），收敛于 `security/landlock.ts`；缺失/不支持静默降级不阻断 | `SUNSHINEX_SANDBOX=off` 回 JS 检查 |
 | ws | daemon WS 服务面，收敛于 `serve/daemon.ts` | 退 HTTP 快照轮询（路径已在） |
 | node-pty | 终端标签 PTY 宿主，收敛于 `serve/pty.ts`（原生模块） | 终端降级不可用提示 |
 | @xyflow/react + @dagrejs/dagre | 团队编排图，收敛于 `gui/src/tabs/TaskDag.tsx` | 降级任务列表；布局接缝 `layoutTaskDag` 纯函数 |
-| @playwright/mcp | browser-use 插件的浏览器 MCP server（钉版，插件目录开发依赖非主仓依赖；esbuild 内联双单文件束） | 插件不启用即零依赖面 |
+| @playwright/mcp | browser-use 插件的浏览器 MCP server（钉版，插件目录开发依赖非主仓依赖；esbuild 内联单宿主束 host.js=manifest 启动入口） | 插件不启用即零依赖面 |
 
 GUI 规划选型唯一登记于 §13 组件选型表，不在此重复。
 
@@ -256,10 +260,10 @@ GUI 规划选型唯一登记于 §13 组件选型表，不在此重复。
 | TUI 宽度 | string-width | 已引入 | 中英混排宽度测量 |
 | GUI 框架 | React 18 + Vite | 已引入 | `gui/` 工作区包 |
 | GUI 状态管理 | React hooks/useReducer | 已引入 | Chat reducer + App 级 hook，无外部状态库 |
-| GUI Markdown | react-markdown + remark-gfm | 已引入 | 会话流正文渲染 |
+| GUI Markdown | react-markdown + remark-gfm + remark-math/rehype-katex + unified 直拼管线（2026-10-25 数学公式/行内 HTML 轮补齐，2026-11-21 台账补登） | 已引入 | 会话流正文渲染，收敛 `md-render.tsx` |
 | GUI 编辑器 | Monaco（@monaco-editor/react） | 已引入 | `gui/src/monaco-setup.ts` + `diff-panel.tsx` |
 | GUI 图渲染 | mermaid | 已引入 | `gui/src/Mermaid.tsx`（懒加载/失败回落） |
-| GUI 图标 | lucide-react + @iconify/react | 已引入 | 界面图标与文件树图标 |
+| GUI 图标 | lucide-react + @iconify/react + vscode-icons-js/@iconify-json/vscode-icons（文件图标，2026-11-21 台账补登） | 已引入 | 界面图标与文件树图标（后者收敛 `file-icon.tsx`） |
 | GUI 终端 | @xterm/xterm + addon-fit + node-pty | 已引入 | gui 渲染、daemon 分配 PTY |
 | GUI 团队编排 | @xyflow/react + @dagrejs/dagre | 已引入 | `gui/src/tabs/TaskDag.tsx` |
 | GUI 桌面壳 | Electron | 已引入 | `shell/` 工作区包 |

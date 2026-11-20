@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { SettingsShell } from '../SettingsShell';
 import { applyDeveloperMode } from '../../developer-mode';
 
@@ -52,6 +52,25 @@ describe('设置导航高级组分层', () => {
     // 逐语义分组(不再是「高级」一口吞):四个高级组头齐在
     for (const g of ['Context & memory', 'Execution & extensions', 'Agents', 'System']) expect(screen.getAllByText(g).length).toBeGreaterThan(0);
     second.unmount();
+    applyDeveloperMode(false);
+  });
+
+  it('全局搜索深链高级页:普通态不回退通用;行锚异步落定后滚入视野', async () => {
+    applyDeveloperMode(false);
+    const scrollSpy = vi.fn();
+    (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView = scrollSpy;
+    const connWithRow = {
+      ...conn,
+      settings: () => Promise.resolve({
+        ...EMPTY_SETTINGS,
+        keys: [{ key: 'stepDigestTotalChars', value: '1500', source: 'global' as const, envOverride: false }],
+      }),
+    } as unknown as typeof conn;
+    render(<SettingsShell conn={connWithRow} root="" onBack={vi.fn()} requestedPane={{ id: 'memory', row: 'stepDigestTotalChars' }} />);
+    expect(await screen.findByRole('heading', { name: 'Memory' })).toBeDefined();
+    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+    expect(screen.queryByRole('heading', { name: 'General' })).toBeNull();
+    delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
     applyDeveloperMode(false);
   });
 });

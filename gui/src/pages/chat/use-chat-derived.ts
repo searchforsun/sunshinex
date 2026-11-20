@@ -93,7 +93,7 @@ function execPurposeOf(e: ChatEntry): string | undefined {
 
 /** 等待行可显名的后台任务:子智能体(后台 spawn,可链接转录页)与具名 exec(purpose,纯文本——2026-11-07
  *  后台命令必须命名,办公模式等待行因此可显任务名;无名 exec 仍不显,以免露命令原文) */
-export type WaitTaskRef = { name: string; prompt?: string; kind?: 'exec' };
+type WaitTaskRef = { name: string; prompt?: string; kind?: 'exec' };
 
 export function taskAgentResolverOf(entries: readonly ChatEntry[]): (id: string) => WaitTaskRef | undefined {
   const m = new Map<string, WaitTaskRef>();
@@ -144,7 +144,7 @@ export function teamNameResolverOf(
   };
 }
 
-export interface ChatDerivedDeps {
+interface ChatDerivedDeps {
   readonly chat: ChatState;
   readonly board?: TaskBoardState;
   readonly teams?: readonly BoardTeamRef[];

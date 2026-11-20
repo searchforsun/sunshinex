@@ -20,7 +20,7 @@ import { userConfigDir } from '../config/env';
  * 「点了没反应」实锤;GUI 子系统本不产控制台窗)。安装态缓存于 daemon 生命周期(低频事件,重启刷新)。
  */
 
-export interface EditorApp {
+interface EditorApp {
   id: string;
   name: string;
   exe: string;
@@ -207,7 +207,7 @@ const iconFailMemo = new Set<string>();
 /** 原生图标抽取(ExtractAssociatedIcon→透明画布重绘 64px→PNG):直接 ToBitmap 会丢透明度
  *  (透明区变黑、字形缩角=「只显示左上角」观感的根因);异步不阻塞;失败回 null(GUI 回落集内字形)
  *  并记负缓存。注:Icon(exe,64,64) 三参重载经 New-Object 绑定失败(实测「picture 必须是可用作 Icon」),不用 */
-export async function extractEditorIcon(id: string, exe: string): Promise<string | null> {
+async function extractEditorIcon(id: string, exe: string): Promise<string | null> {
   if (iconFailMemo.has(id)) return null;
   const out = editorIconPath(id);
   fs.mkdirSync(path.dirname(out), { recursive: true });

@@ -16,7 +16,7 @@ import type { TodoBatch } from '../pages/Chat';
  * 清单变点靠 Chat 转录派生 live 推送;开签/手动刷新走 GET 快照权威面。
  */
 
-export interface TodoCardsTabProps {
+interface TodoCardsTabProps {
   readonly batches: readonly TodoBatch[];
   readonly conn: Connection;
   readonly sessionId: string;

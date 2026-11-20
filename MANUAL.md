@@ -512,9 +512,9 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 | 内置 | `<安装目录>/plugins/<id>/` | 随包分发 |
 | 用户级 | `~/.sunshinex/plugins/<id>/` | 自装插件；同 id 遮蔽内置 |
 
-**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json）。**两内置插件均已单文件束化**（依赖图内联进各自单文件束，browser-use 现为 `server/index.js`+`server/host.js` 双束（host 为启动入口），目标机零补装——computer-use 用系统 powershell；browser-use 用系统 Chrome，均系统 node 即可）；自装插件依赖在目标机**首次启用前**补装（`pnpm --dir <插件目录> install` 或 npm 同义）。启用失败的表现：会话装配时该 server 连接失败，警告单出现 `assembly failed (browser-use): …`——降级语义，只损失此单 server 的工具，会话照常不中断；补装后**新开会话**即恢复。浏览器形态按运行环境自动定：桌面端（Electron）用内置侧栏页签（builtin）、网页端（serve）用系统默认浏览器（default）、命令行/TUI 用无头浏览器（headless，系统已装 Chrome 通道）——无须配置，也无须另下内核。
+**目标机安装步骤（内置插件带依赖时）**：包分发不含深层 `node_modules`（npm 打包恒剔除各级 `node_modules`，插件目录到手只剩 manifest/README/package.json）。**两内置插件均已单文件束化**（依赖图内联进各自单文件束，browser-use 为 `server/host.js` 宿主束=manifest 启动入口，目标机零补装——computer-use 用系统 powershell；browser-use 用系统 Chrome，均系统 node 即可）；自装插件依赖在目标机**首次启用前**补装（`pnpm --dir <插件目录> install` 或 npm 同义）。启用失败的表现：会话装配时该 server 连接失败，警告单出现 `assembly failed (browser-use): …`——降级语义，只损失此单 server 的工具，会话照常不中断；补装后**新开会话**即恢复。浏览器形态按运行环境自动定：桌面端（Electron）用内置侧栏页签（builtin）、网页端（serve）用系统默认浏览器（default）、命令行/TUI 用无头浏览器（headless，系统已装 Chrome 通道）——无须配置，也无须另下内核。
 
-**仓库工作区形态（当前版）**：两束产物 gitignore 不入库——checkout 后在插件目录跑一次 `node build.mjs`（`plugins/browser-use`、`plugins/computer-use` 各一，esbuild 构建出 `server/index.js` 与 `server/host.js`——后者为 browser-use manifest 启动入口），否则启用即 `assembly failed`；发版链 `scripts/release.mjs` 已前置该构建，开发机手动跑即可。
+**仓库工作区形态（当前版）**：两束产物 gitignore 不入库——checkout 后在插件目录跑一次 `node build.mjs`（`plugins/browser-use` 出宿主束 `server/host.js`=manifest 启动入口、`plugins/computer-use` 出 `server/index.js`），否则启用即 `assembly failed`；发版链 `scripts/release.mjs` 已前置该构建，开发机手动跑即可。
 
 **启用/禁用**（改完对新会话生效，运行中会话不热切换）：
 

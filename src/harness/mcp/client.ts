@@ -201,7 +201,7 @@ function toToolSpecParameters(input: unknown): JsonSchema | undefined {
 
 /** 操作说明参数名(2026-11-07 用户裁定「内置插件工具调用加一个说明本次目的的参数,工具行显示它」):
  *  模型按当前对话语言自拟,GUI 工具行以它替换「工具名+参数」;不下发给插件 */
-export const PURPOSE_PARAM = 'purpose';
+const PURPOSE_PARAM = 'purpose';
 
 const PURPOSE_SCHEMA: JsonSchema = {
   type: 'string',

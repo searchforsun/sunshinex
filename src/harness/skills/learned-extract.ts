@@ -8,7 +8,7 @@ export { LEARNED_EXTRACTION_MARKER, buildLearnedExtractionPrompt };
 export type { LearnedExtractionInput };
 
 /** G14.92 提炼裁决三态：create=新技能 / update=原地合并既有 id / skip=无可复用内容 */
-export interface LearnedVerdict {
+interface LearnedVerdict {
   action: 'create' | 'update' | 'skip';
   /** update 的目标 id（ALREADY-LEARNED SKILLS 之一；create/skip 无） */
   id?: string;

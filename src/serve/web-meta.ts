@@ -5,7 +5,7 @@
  * 解析失败全空回落(GUI 侧退 host/地球图标,与本模块缺席同形)。
  */
 
-export interface WebMeta {
+interface WebMeta {
   title: string;
   /** 绝对 URL(favicon);解析不出为空串(GUI 回落地球图标) */
   icon: string;

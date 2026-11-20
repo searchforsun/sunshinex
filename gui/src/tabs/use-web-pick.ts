@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
 /** 拾取目标 webview 方法面(结构满足即收;宿主 WvElement 运行时满足) */
-export interface PickWv {
+interface PickWv {
   executeJavaScript?(code: string, userGesture?: boolean): Promise<unknown>;
   getWebContentsId(): number;
 }

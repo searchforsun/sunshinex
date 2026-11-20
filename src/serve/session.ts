@@ -76,7 +76,7 @@ export interface SessionSnapshotPage {
 }
 
 /** 会话 todo 批次行(快照载荷面):daemon 权威投影,GUI「待办」页签直显(不再仅靠转录派生) */
-export interface SessionTodoBatch {
+interface SessionTodoBatch {
   key: string;
   ts: number;
   goal: string;
@@ -85,7 +85,7 @@ export interface SessionTodoBatch {
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
 }
 
-export interface SessionSnapshot {
+interface SessionSnapshot {
   messages: KernelEntry[];
   /** 内核流式游标(G14.51 归位):快照时刻的 openRun/openSeg——客户端装载直用,不再从条目反推 */
   openRun: number;
@@ -131,10 +131,10 @@ export interface SnapshotPendingRow {
 
 /** submit 结果：ok=true 受理（HTTP 202 面）；ok=false 拒（运行中 409——不排队，GUI 侧无队列语义，
  *  排队会静默吞掉用户意图） */
-export type SessionSubmitResult = { ok: true } | { ok: false; status: 409; error: string };
+type SessionSubmitResult = { ok: true } | { ok: false; status: 409; error: string };
 
 /** interrupt 结果：ok=true 已发中止信号；ok=false 无在跑 run（409 面） */
-export type SessionInterruptResult = { ok: true } | { ok: false; error: string };
+type SessionInterruptResult = { ok: true } | { ok: false; error: string };
 
 /** 一轮收尾信息（定时任务执行记录回填）：stopReason=done/interrupted/其它；一次性观察者。
  *  endedAt=收尾时刻（epoch ms）；seconds=轮计算秒数（与 runmeta 同源）；tokens=本轮 tokensUsed（在场才给） */
@@ -200,7 +200,7 @@ export interface SessionRuntimeOpts {
  *  以 deny/dismissed/放弃回填,TUI approval.ts 先例——plan 卡中断=confirmPlan(false) 语义）。
  *  sessionId 出模型——条目恒在所属会话表内,同会话寻址自明;wire 帧（ApprovalFrame/AskFrame/
  *  PlanApprovalFrame）由会话组帧时携带自身 id */
-export type PendingEntry =
+type PendingEntry =
   | { kind: 'approval'; req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }
   | { kind: 'ask'; req: AskUserRequest; resolve: (a: AskUserAnswer) => void }
   | { kind: 'plan-approval'; req: { name?: string; path?: string; doc: string; items: string[] }; resolve: (d: PlanDecision) => void };
@@ -221,7 +221,7 @@ export interface SnapshotPendingRow {
 export type SessionMode = 'read-only' | 'acceptEdits' | 'full-access' | 'plan';
 
 /** 运行中切换面(G10-C1b/C2b):tier/effort per-run 注入 runTask opts(与 TUI ctrl.state 同语义,下一轮生效) */
-export type SessionTier = ModelTier;
+type SessionTier = ModelTier;
 
 export class SessionRuntime {
   readonly id: string;

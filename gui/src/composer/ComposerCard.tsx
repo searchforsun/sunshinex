@@ -17,7 +17,7 @@ import { canonicalizeRefTokens, tokenSpanAt } from '../pages/chat/mention';
  * 恒透明(单绘制无叠影),组字段由调用面经 onCompositionRange 回抛在高亮层压平为普通前景段
  * (既有芯片全程保留);组字下划线由浏览器装饰层绘制,不受透明字影响。
  */
-export interface ComposerCardProps {
+interface ComposerCardProps {
   /** textarea aria-label(查询锚) */
   label: string;
   value: string;

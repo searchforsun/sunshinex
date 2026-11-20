@@ -332,7 +332,7 @@ export function inlineText(inlines: MdInline[]): string {
 
 /** 单元格规范化：去 VS16 变体选择符。⚠️/❤️ 等含 VS16 的歧义宽 emoji，string-width 记宽 2 而
  * Windows 控制台等终端按窄字符渲染，测量与显示不一致会导致表格边框错位；表格内统一按文本呈现（宽 1） */
-export function stripVariationSelector(s: string): string {
+function stripVariationSelector(s: string): string {
   return s.replace(/\uFE0F/g, '');
 }
 

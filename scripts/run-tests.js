@@ -47,8 +47,28 @@ const restFiles = files.filter((f) => !isPty(f));
 const baseArgs = ['--require', path.join(__dirname, 'test-env.cjs'), ...FORCE_EXIT, '--test'];
 const batchArgs = (list) => (conc !== undefined && conc !== '' ? [...baseArgs, `--test-concurrency=${conc}`, ...list] : [...baseArgs, ...list]);
 const testEnv = { ...process.env, SUNSHINEX_DATA_DIR: dataDir, SUNSHINEX_USER_SKILLS_DIR: path.join(dataDir, 'user-skills'), SUNSHINEX_GLOBAL_SUNSHINE: path.join(dataDir, 'global-sunshine') };
-const r = spawnSync(process.execPath, batchArgs(restFiles), { stdio: 'inherit', env: testEnv });
-let status = r.status ?? 1;
+// win32 命令行上限批拆（2026-11-21 技术债轮）：CreateProcess 单条命令行 ≤32K 字符——测试文件涨破
+// ~500 个后整批 argv 超限，spawnSync 直接 ENAMETOOLONG 起不来（status=null），`?? 1` 兜底成静默
+// EXIT=1 且零输出（全量门禁假死，而定点跑照样绿，实测三轮同形态才定位）。按 argv 字符量分批串行，
+// 每批仍是完整 node --test（并发度旋钮批内生效），门禁语义=各批退出码全过；spawn 错误显式上抛不再静默
+const ARG_CAP = 20_000;
+const chunks = [];
+for (const f of restFiles) {
+  const len = f.length + 1;
+  const cur = chunks[chunks.length - 1];
+  if (cur === undefined || cur.len + len > ARG_CAP) chunks.push({ files: [f], len });
+  else { cur.files.push(f); cur.len += len; }
+}
+let status = 0;
+for (const chunk of chunks) {
+  const r = spawnSync(process.execPath, batchArgs(chunk.files), { stdio: 'inherit', env: testEnv });
+  if (r.error !== undefined) {
+    console.error(`run-tests: 批启动失败（${r.error.code ?? r.error.message}）——本批 ${chunk.files.length} 个测试文件`);
+    status = 1;
+    break;
+  }
+  if ((r.status ?? 1) !== 0 && status === 0) status = r.status ?? 1;
+}
 if (ptyFiles.length > 0) {
   // pty 串行收尾走直接执行(node:test standalone,非 runner 子进程管态):并发批的挂死只在
   // runner 子进程形态出现,直接执行从无此象;退出码同语义(失败非零)

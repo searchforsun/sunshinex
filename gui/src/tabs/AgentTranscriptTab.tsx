@@ -37,7 +37,7 @@ import type { ChatEntry } from '../chat-reducer';
  * 活动流是会话内存态：页面刷新后从 journal subagent 行帧重放重建（seedShadow 同一消费通道）。
  */
 
-export interface AgentTranscriptTabProps {
+interface AgentTranscriptTabProps {
   readonly conn: Connection;
   readonly sessionId: string;
   readonly activities: AgentActivity | undefined;

@@ -119,7 +119,7 @@ export interface SessionStats {
   childWatermarks: Record<string, number>;
 }
 
-export function zeroSessionStats(): SessionStats {
+function zeroSessionStats(): SessionStats {
   return {
     turnStartedAt: 0, turnTokens: 0, turnCacheTokens: 0, turnPromptTokens: 0, turnChildTokens: 0,
     sessionTotalTokens: 0, sessionCacheTokens: 0, sessionPromptTokens: 0, sessionChildTokens: 0,
@@ -135,7 +135,7 @@ export function applyCtxWatermark(current: number, incoming: number, exact: bool
 }
 
 /** inbox drain step → 来源/正文。结构化 from/text 优先;旧档只带 `messageLine`（`from: text`）时从该行拆。 */
-export function inboundMessageOf(payload: Record<string, unknown> | undefined): { from: string; to: string; text: string } | undefined {
+function inboundMessageOf(payload: Record<string, unknown> | undefined): { from: string; to: string; text: string } | undefined {
   if (payload === undefined) return undefined;
   let from = typeof payload.from === 'string' ? payload.from : '';
   let text = typeof payload.text === 'string' ? payload.text : '';

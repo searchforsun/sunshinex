@@ -83,7 +83,7 @@ export interface SettingsFormConn {
 /** 键描述(2026-10-26 i18n 补全,用户裁定):label=行标题短标签双语对(desc 分离)——行标题不再
  *  裸显键名(language/projectsDir 中文页露英文);标题显本地化 label,键名降为 data-tip。
  *  en/zh=说明句(既有) */
-const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: string; zh: string }> = {
+export const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string }; en: string; zh: string }> = {
   language: { label: { en: 'Language', zh: '语言' }, en: 'Language for the app UI', zh: '界面语言' },
   shell: { label: { en: 'Shell', zh: 'Shell' }, en: 'Shell used for command execution', zh: '命令执行所用 shell' },
   projectsDir: { label: { en: 'Projects directory', zh: '项目目录' }, en: 'Root directory of workspace registry', zh: '工作区注册表根目录' },
@@ -569,7 +569,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
             const row = rows[fd.key]!;
             const desc = KEY_DESCRIPTIONS[fd.key];
             return (
-              <div key={fd.key} className="sx-setting-row">
+              <div key={fd.key} className="sx-setting-row" data-setting-key={fd.key}>
                 <div className="sx-setting-main">
                   <div className="sx-setting-title">
                     <span className="sx-setting-label" data-tip={fd.key}>{desc !== undefined ? t(desc.label.en, desc.label.zh) : fd.key}</span>

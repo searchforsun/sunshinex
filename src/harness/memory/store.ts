@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { Result, ok, fail } from '../../result';
 import { resolveDataDir } from '../../config/data-dir';
+import { slugifyMemory } from '../../slug';
 
 /** 容量与阈值常量（规格 §2：代码内钉住不加 env） */
 export const MEMORY_INDEX_MAX_LINES = 200;
@@ -14,16 +15,7 @@ export function normalizeText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-/** 标题确定性折叠：非字母数字 Unicode → '-'，掐头尾，截长 40，全折叠回退 memo（learned slugify 同款形态） */
-export function slugifyMemory(title: string): string {
-  const slug = title
-    .trim()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40)
-    .replace(/-+$/g, '');
-  return slug.length > 0 ? slug : 'memo';
-}
+export { slugifyMemory };
 
 export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
 /** 合法记忆类型集（R7 单点）：extractor 工具入口自校验与 writer 接缝校验共用 import，防三处清单漂移 */

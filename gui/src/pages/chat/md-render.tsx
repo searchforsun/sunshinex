@@ -106,11 +106,6 @@ const mdProcessor = unified()
 const MD_HAST_CACHE_MAX = 300;
 const mdHastCache = new Map<string, unknown>();
 
-/** 测试/主题域清缓存口(树与语言无关,当前无消费方;与 mermaidCacheClear 同形备用) */
-export function mdHastCacheClear(): void {
-  mdHastCache.clear();
-}
-
 function hastOf(md: string): unknown {
   let tree = mdHastCache.get(md);
   if (tree === undefined) {

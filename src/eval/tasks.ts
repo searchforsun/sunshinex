@@ -10,7 +10,7 @@ import * as path from 'path';
  * 消费面：scripts/eval-run.mjs（真实模型手动门）+ bench.test.ts（ScriptedAdapter wiring 门禁,verify 双态对照）。
  */
 
-export interface BenchTask {
+interface BenchTask {
   readonly id: string;
   readonly title: string;
   /** 喂给 `run` 命令的 goal（内嵌验收标准段——模型判据面;真值判定在 verify） */

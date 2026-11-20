@@ -95,7 +95,7 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
   // ws 面:playwright getTargets 应答同滤
   const ws = new WebSocket(facade.endpoint);
   await new Promise((r) => ws.on('open', r));
-  const pending = new Map<number, (v: any) => void>();
+  const pending = new Map<number, (v: unknown) => void>();
   let seq = 0;
   ws.on('message', (raw) => {
     const m = JSON.parse(String(raw)) as { id?: number };
@@ -103,7 +103,7 @@ test('过滤闸:/json/list 摘 GUI 自身 target;ws getTargets 应答同滤;crea
   });
   const send = (method: string, params?: Record<string, unknown>): Promise<{ id: number; result?: Record<string, unknown>; error?: { message: string } }> => {
     const id = ++seq;
-    return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params })); });
+    return new Promise((resolve) => { pending.set(id, resolve as (v: unknown) => void); ws.send(JSON.stringify({ id, method, params })); });
   };
   const targets = await send('Target.getTargets');
   assert.deepEqual((targets.result!.targetInfos as Array<{ targetId: string }>).map((t) => t.targetId), ['wv-7', 'wv-9']);
@@ -130,7 +130,7 @@ test('closeTarget 交 GUI 关页签;Input.insertText 前后聚焦/归还侧栏 w
   await facade.start();
   const ws = new WebSocket(facade.endpoint);
   await new Promise((r) => ws.on('open', r));
-  const pending = new Map<number, (v: any) => void>();
+  const pending = new Map<number, (v: unknown) => void>();
   let seq = 0;
   ws.on('message', (raw) => {
     const m = JSON.parse(String(raw)) as { id?: number };
@@ -138,7 +138,7 @@ test('closeTarget 交 GUI 关页签;Input.insertText 前后聚焦/归还侧栏 w
   });
   const send = (method: string, params?: Record<string, unknown>, sessionId?: string): Promise<{ result?: Record<string, unknown>; error?: { message: string } }> => {
     const id = ++seq;
-    return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) })); });
+    return new Promise((resolve) => { pending.set(id, resolve as (v: unknown) => void); ws.send(JSON.stringify({ id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) })); });
   };
   const ok = await send('Target.closeTarget', { targetId: 'wv-7' });
   assert.deepEqual(ok.result, { success: true });
@@ -163,7 +163,7 @@ test('agent 驱动型命令切侧栏页签:同页连续操作只切一次;求值
   await facade.start();
   const ws = new WebSocket(facade.endpoint);
   await new Promise((r) => ws.on('open', r));
-  const pending = new Map<number, (v: any) => void>();
+  const pending = new Map<number, (v: unknown) => void>();
   let seq = 0;
   ws.on('message', (raw) => {
     const m = JSON.parse(String(raw)) as { id?: number };
@@ -171,7 +171,7 @@ test('agent 驱动型命令切侧栏页签:同页连续操作只切一次;求值
   });
   const send = (method: string, params?: Record<string, unknown>, sessionId?: string): Promise<{ result?: Record<string, unknown> }> => {
     const id = ++seq;
-    return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) })); });
+    return new Promise((resolve) => { pending.set(id, resolve as (v: unknown) => void); ws.send(JSON.stringify({ id, method, params, ...(sessionId !== undefined ? { sessionId } : {}) })); });
   };
   const att = await send('Target.attachToTarget', { targetId: 'wv-7', flatten: true });
   const sid = String(att.result!.sessionId);
@@ -212,7 +212,7 @@ test('会话连接(/session/<key>?seat=):只见本会话分区的 target;建页�
   const base = facade.endpoint.replace(/\/devtools\/browser$/, '');
   const ws = new WebSocket(`${base}/session/jid-b?seat=sun-2`);
   await new Promise((r) => ws.on('open', r));
-  const pending = new Map<number, (v: any) => void>();
+  const pending = new Map<number, (v: unknown) => void>();
   let seq = 0;
   ws.on('message', (raw) => {
     const m = JSON.parse(String(raw)) as { id?: number };
@@ -220,7 +220,7 @@ test('会话连接(/session/<key>?seat=):只见本会话分区的 target;建页�
   });
   const send = (method: string, params?: Record<string, unknown>): Promise<{ result?: Record<string, unknown>; error?: { message: string } }> => {
     const id = ++seq;
-    return new Promise((resolve) => { pending.set(id, resolve as (v: any) => void); ws.send(JSON.stringify({ id, method, params })); });
+    return new Promise((resolve) => { pending.set(id, resolve as (v: unknown) => void); ws.send(JSON.stringify({ id, method, params })); });
   };
   const targets = await send('Target.getTargets');
   assert.deepEqual((targets.result!.targetInfos as Array<{ targetId: string }>).map((t) => t.targetId), ['wv-9'], '只见本会话分区');

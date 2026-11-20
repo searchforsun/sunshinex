@@ -26,6 +26,9 @@ export interface SchedulePageProps {
   readonly onToggleMenu?: () => void;
   /** 「在会话中创建」：App 负责退层、切欢迎页并把示例提示词预填进输入框 */
   readonly onCreateInChat?: () => void;
+  /** 搜索「定时任务」条目落点(2026-11-21):开页即定位该卡——过滤回全部、列表视图、
+   *  滚入视野+短高亮(沿既有 focusId 链,1.6s 自动褪) */
+  readonly focusJobId?: string;
 }
 
 type View = { kind: 'list' } | { kind: 'config'; editingId?: string } | { kind: 'records'; jobId: string };
@@ -62,7 +65,7 @@ function emptyText(filter: Filter): string {
   }
 }
 
-export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCreateInChat }: SchedulePageProps): JSX.Element {
+export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCreateInChat, focusJobId }: SchedulePageProps): JSX.Element {
   const [jobs, setJobs] = useState<ScheduleJobView[] | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [defaultModel, setDefaultModel] = useState('');
@@ -85,6 +88,9 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
   const refreshStarted = useRef<number | null>(null);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRefs = useRef(new Map<string, HTMLDivElement>());
+  /** 搜索跳转落点去重:同一 focusJobId 只落一次(卡片/轮询重渲染不反复高亮);
+   *  父级清空落点(退出任务页)后可再次落同一任务 */
+  const appliedFocusRef = useRef('');
   const reload = useCallback(() => setRefresh((v) => v + 1), []);
   // 2026-11-21 用户实测「点刷新不转圈」：手动刷新给转圈反馈，快速返回也至少转 420ms；
   // 轮询/自动刷新走 reload，不转圈；在途时按钮禁用，忽略连点。
@@ -153,11 +159,24 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
     const h = setTimeout(() => setFocusId(''), FOCUS_MS);
     return () => clearTimeout(h);
   }, [focusId]);
+  // 搜索「定时任务」落点(2026-11-21):任务清单落定后落卡——过滤回全部+列表视图+短高亮;
+  // 卡片 ref 已挂载时下方 focusId 效应滚入视野。父级清空落点即复位去重标记。
+  useEffect(() => {
+    if (focusJobId === undefined || focusJobId === '') {
+      appliedFocusRef.current = '';
+      return;
+    }
+    if (jobs === null || appliedFocusRef.current === focusJobId) return;
+    appliedFocusRef.current = focusJobId;
+    setFilter('all');
+    setView({ kind: 'list' });
+    setFocusId(focusJobId);
+  }, [focusJobId, jobs]);
   // 保存/取消回列表后把对应卡滚进视野（spec §9.2；block:'nearest' 已在视野内不动）
   useEffect(() => {
     if (focusId === '') return;
     cardRefs.current.get(focusId)?.scrollIntoView({ block: 'nearest' });
-  }, [focusId]);
+  }, [focusId, jobs]);
   // 视图切换：上一条视图的错误/提示不带入新视图；创建下拉随之收起
   useEffect(() => {
     setError('');

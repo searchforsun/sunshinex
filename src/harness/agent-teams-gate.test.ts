@@ -90,7 +90,9 @@ test('agentTeams off：teams/agents 清单照注、team/agent 工具照注册、
     const parts = h.context.snapshotPartsView();
     assert.equal(parts.teams.length, 1, 'teams index segment still injected with agentTeams off');
     assert.ok(parts.teams[0]!.content.includes('全栈交付小队'), 'preset team listed in teams segment');
-    assert.ok(parts.teams[0]!.content.includes('#team-id'), 'team segment lead line declares soft reference');
+    // 用法句不回清单段 lead（2026-11-20 用户裁定「这些都是工具描述该做的」），契约迁钉到工具描述：
+    assert.ok(!parts.teams[0]!.content.includes('#team-id'), 'team segment lead stays usage-free (ruling 2026-11-20)');
+    assert.match(h.tools.get('load_agent_teams')!.description, /#team-id/, '#team-id → load_agent_teams contract pinned in tool description');
     assert.equal(parts.agents.length, 1, 'agents index segment stays present (builtins keep it constant)');
     // 断言2: team/agent 工具照注册（接缝在场即注册，与开关无关；2026-11-05 用户裁定更名
     // team→load_agent_teams（命名准确不省略）、agent→load_subagent）

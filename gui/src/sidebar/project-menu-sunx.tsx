@@ -13,7 +13,7 @@ import { SessionRow as SessionRowView, SortPop, useConfirmOutsideCancel } from '
  * attachSunx 链。组头=「SUNX」标题(可折叠)+动作簇(数量/看板/排序/归档/新建,可选 guard 缺接线
  * 不渲染)。纯渲染件:数据/动作 props 注入,折叠态本组件自持。
  */
-export interface SunxSectionProps {
+interface SunxSectionProps {
   /** kind==='sunx' 聚合行(跨工作区;null=装载中);空列=「暂无Sunx」空态行 */
   readonly rows: Array<SessionRow & { root: string; slug: string }> | null;
   readonly activeSessionId: string;

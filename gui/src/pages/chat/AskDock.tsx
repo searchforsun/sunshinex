@@ -5,7 +5,7 @@ import type { AskPick } from './PendingCards';
 import type { GuiAskReq } from '../../connection';
 
 /** 问询挂起 dock(D32 第六批批F-2 自 Chat.tsx 平移,行为零变化):分支注释随迁。 */
-export interface AskDockProps {
+interface AskDockProps {
   readonly askCards: Array<{ pid: string; req: GuiAskReq }>;
   readonly askPicks: Record<string, AskPick>;
   readonly setAskPicks: Dispatch<SetStateAction<Record<string, AskPick>>>;

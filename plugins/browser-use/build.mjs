@@ -1,6 +1,8 @@
-// browser-use server 单文件束（2026-10-27）：@playwright/mcp 全依赖图内联（含 playwright-core）、
-// 产物 server/index.js 零外部依赖——装机形态免补装（系统 node + 系统 Chrome 即用，--browser chrome 走
-// channel 机制定位本机浏览器）。与 computer-use/build.mjs 同模式：路径按本文件解析（对调用方 cwd 免疫；
+// browser-use server 宿主单文件束：@playwright/mcp 全依赖图内联（含 playwright-core）、产物
+// server/host.js 零外部依赖——装机形态免补装（系统 node + 系统 Chrome 即用，--browser chrome 走
+// channel 机制定位本机浏览器）。host 为 manifest 唯一启动入口（2026-11-03 按会话隔离改造；旧
+// @playwright/mcp 裸 CLI 束 server/index.js 自此零启动方，2026-11-21 技术债轮停建并就地清历史束，
+// 安装包随之省 7MB）。与 computer-use/build.mjs 同模式：路径按本文件解析（对调用方 cwd 免疫；
 // release.mjs run() 现已透传 cwd,免疫性保留作双保险——96072b0 前实测踩坑）；产物 gitignore 不入库，发版链 release.mjs 前置现构建。
 // 运行：node build.mjs
 import * as esbuild from 'esbuild';
@@ -8,6 +10,10 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const PKG = path.dirname(fileURLToPath(import.meta.url));
+
+// 历史束清场：旧双束形态的 server/index.js 零启动方，就地删除防 npm pack 把陈年束打进安装包
+import { rmSync } from 'node:fs';
+rmSync(path.join(PKG, 'server', 'index.js'), { force: true });
 
 // playwright-core 包根资产拷贝（browsers.json 注册表）：束内代码以 __dirname 相对遍历找「包根」
 // （server/.. = browser-use 根），browsers.json 必须在该落位点（bin/ 等仅 trace/诊断用,不随束）。
@@ -28,18 +34,6 @@ const stubOptionalDeps = {
     build.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'module.exports = {};', loader: 'js' }));
   },
 };
-
-await esbuild.build({
-  entryPoints: [path.join(PKG, 'node_modules', '@playwright', 'mcp', 'cli.js')],
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  target: 'node22',
-  outfile: path.join(PKG, 'server', 'index.js'),
-  sourcemap: false,
-  plugins: [stubOptionalDeps],
-  logLevel: 'info',
-});
 
 // 浏览器宿主束(2026-11-03 按会话隔离):一个进程服务全部会话,createConnection(contextGetter) 复用
 // Playwright MCP 工具;playwright 与 MCP SDK 在 pnpm 隔离布局下需显式 nodePaths(@playwright/mcp 同级 store

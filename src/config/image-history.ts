@@ -14,7 +14,7 @@ import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './se
  *  当前轮图片全保（工作集，2026-11-17 前缀缓存轮：水位只在轮边界前移） */
 export const DEFAULT_IMAGE_HISTORY_LIMIT = 3;
 
-export interface ImageHistoryResolution {
+interface ImageHistoryResolution {
   /** 生效半径（buildMessages 第二参透传值） */
   value: number;
   /** 形状非法告警（点名级别与键名；selfcheck 上屏） */

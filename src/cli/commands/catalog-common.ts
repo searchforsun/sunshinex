@@ -41,7 +41,7 @@ export const SETTINGS_FLAG_KEYS: readonly string[] = ['scope', 'root'];
 export const PROVIDERS_FLAG_KEYS: readonly string[] = ['scope', 'root', 'json', 'base-url', 'models', 'context-window', 'reasoning-effort', 'supports-images', 'tier', 'direction'];
 
 /** 解析产物：scope+root 定位 catalog 读写目标面，json 是 list 输出形态旗，bad 走调用方 usage */
-export interface ResolvedTarget {
+interface ResolvedTarget {
   scope: Scope;
   /** 项目锚绝对路径（project 作用域定位/写面锚）；global 作用域恒 null */
   root: string | null;

@@ -22,10 +22,14 @@ describe('mergeSplitThinking', () => {
     expect(out[0]).toMatchObject({ md: 'ABC', streaming: true });
   });
 
-  it('隔着工具/正文不合并;无旁白相邻思考不合并;无合并原数组返回', () => {
+  it('隔着工具/正文不合并;相邻思考属同一流合并(2026-11-19 通知轮尾落列后零间隔为常态形态);无合并原数组返回', () => {
     const tool: ChatEntry = { key: 't', kind: 'tool', md: '' };
-    const list = [th('a', 'A'), tool, th('b', 'B'), th('c', 'C'), note('n')];
-    expect(mergeSplitThinking(list)).toBe(list);
+    const noMerge = [th('a', 'A'), tool, th('b', 'B'), note('n')];
+    expect(mergeSplitThinking(noMerge)).toBe(noMerge);
+    const adjacent = [th('a', 'A'), th('b', 'B')];
+    const merged = mergeSplitThinking(adjacent);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.md).toBe('AB');
   });
 
   it('合并视图跨帧复用(段引用不变即同一对象)', () => {
@@ -45,6 +49,8 @@ describe('mergeSplitThinking', () => {
     const kinds = s.entries.map((e) => e.kind);
     expect(kinds.filter((k) => k === 'thinking')).toHaveLength(1);
     expect(s.entries.find((e) => e.kind === 'thinking')!.md).toBe('in my previous reply I put image near top — just answer honestly.');
-    expect(kinds.indexOf('notice')).toBe(kinds.indexOf('thinking') + 1);
+    // 沉淀通知轮尾落列（2026-11-19 裁定）：缓冲到轮末,显示位置=本轮最后一条内容行（assistant）之后
+    expect(kinds[kinds.length - 1]).toBe('notice');
+    expect(kinds.indexOf('notice')).toBeGreaterThan(kinds.indexOf('thinking'));
   });
 });

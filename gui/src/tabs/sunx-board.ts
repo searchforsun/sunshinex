@@ -13,14 +13,14 @@ import { SESSION_KIND_SUNX } from '../connection';
  */
 
 /** 团队板任务窄面(dispatch target:'team' 的板通道任务;结构面解耦 BoardTask 全形) */
-export interface SunxBoardTaskLite {
+interface SunxBoardTaskLite {
   readonly title: string;
   readonly status: string;
   readonly updatedAt?: number;
 }
 
 /** 任务五态计数(后台任务账本+团队板任务并入;2026-11-16 用户裁定状态词汇对齐既有体系) */
-export interface SunxTaskCounts {
+interface SunxTaskCounts {
   readonly running: number;
   readonly pending: number;
   readonly done: number;
@@ -146,7 +146,7 @@ export function assembleSunxCards(
 }
 
 /** 顶部全局聚合条:运行中实例 n+任务五态汇总+等待确认 n(等待确认只计快照在场行)——卡片数据汇总 */
-export interface SunxAggregate {
+interface SunxAggregate {
   readonly running: number;
   readonly tasks: SunxTaskCounts;
   readonly awaiting: number;

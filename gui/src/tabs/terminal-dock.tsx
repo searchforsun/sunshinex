@@ -24,7 +24,7 @@ const LS_HEIGHT = 'sunshinex.terminal-dock-h';
 
 /** 会话绑定档(2026-11-10 用户裁定「页签样式持久化和会话绑定,重启/切会话保持原状」):
  *  {sessionId: {open, tabs, active}} 一档映射;高度全局一档(窗口形状相关不分会话) */
-export interface DockSessionState {
+interface DockSessionState {
   open: boolean;
   tabs: DockTab[];
   active: string;
@@ -46,7 +46,7 @@ const saveSession = (sessionId: string, state: DockSessionState): void => {
 };
 
 /** 单标签:uid=pty 记账/恢复寻址键(稳定不随改名变),name=用户可见名(可双击改名) */
-export interface DockTab {
+interface DockTab {
   readonly uid: string;
   name: string;
 }
@@ -94,7 +94,7 @@ const clampHeight = (h: number): number => {
   return Math.min(ceiling, Math.max(HEIGHT_MIN, h));
 };
 
-export interface TerminalDockProps {
+interface TerminalDockProps {
   readonly conn: Connection;
   readonly sessionId: string;
   /** pty 记账读写(App usePtyRegistry 同一单点;dock uid 与右栏页签 uid 不相交) */

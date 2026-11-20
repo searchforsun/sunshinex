@@ -46,7 +46,7 @@ function defineSxTheme(p: Palette): void {
 let appliedMonacoTheme = ''; // 全局重主题去重单点(2026-11-13 用户实测「切主题回正文卡」):setTheme 是
 // monaco 全局操作且不因同名短路——hook、@monaco-editor/react 的 theme prop 每编辑器实例各调一次
 // =N 次全编辑器重主题。ensureMonaco 在此包一层同值短路,全部调用方(含编辑器 prop 路径)一并收敛
-export function ensureMonaco(): void {
+function ensureMonaco(): void {
   if (typeof Worker !== 'undefined' && (self as { MonacoEnvironment?: unknown }).MonacoEnvironment === undefined) {
     (self as { MonacoEnvironment?: unknown }).MonacoEnvironment = { getWorker: () => new editorWorker() };
   }

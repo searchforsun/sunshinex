@@ -165,7 +165,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   web: Globe, // G8d 内嵌网页标签
 };
 
-export interface TabTypeEntry {
+interface TabTypeEntry {
   readonly id: import('./tab-state').TabTypeId;
   readonly group: 'content' | 'session' | 'tools';
   readonly title: (params: import('./tab-state').TabParams) => string;

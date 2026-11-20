@@ -13,7 +13,7 @@ export const IS_SHELL =
   typeof window.sunshinexWindow !== 'undefined';
 
 /** 桌面窗控桥(preload 注入;浏览器态无此全局——形态单点声明见 env-global.d.ts Window.sunshinexWindow) */
-export const winBridge = (): Window['sunshinexWindow'] => (IS_SHELL ? window.sunshinexWindow : undefined);
+const winBridge = (): Window['sunshinexWindow'] => (IS_SHELL ? window.sunshinexWindow : undefined);
 
 /** 桌面窗控簇:[|] 侧栏开关(唯一渲染——web 贴窗口最右/桌面 −□× 左,同件同尺寸不随收展
  *  变形,页签条自有钮已退役)+ − □ × 自绘按钮(桌面态)——sx-iconbtn 同款圆角 hover,

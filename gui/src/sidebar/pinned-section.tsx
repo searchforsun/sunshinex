@@ -10,7 +10,7 @@ import type { PinEntry } from './pin-store';
  *  状态点位换取消置顶、右槽换归档钮;确认 morph 点外部取消);点击行经宿主 attachJournal 链
  *  正常打开。归档联动(2026-10-23 用户裁定,推翻 10-22「恒显所有钉」):已归档会话整行滤除
  *  (archivedIds);右缘锚=工作区「新会话」钮:时间/归档右缘对齐(margin -8 对齐中心线)。纯渲染件。 */
-export interface PinnedSectionProps {
+interface PinnedSectionProps {
   readonly pins: PinEntry[];
   /** 归档中(in-flight 禁双发/禁打开) */
   readonly busy: boolean;

@@ -121,9 +121,6 @@ importers:
       remark-gfm:
         specifier: ^4.0.0
         version: 4.0.1
-      remark-ins:
-        specifier: ^1.2.6
-        version: 1.2.6(unified@11.0.5)
       remark-math:
         specifier: ^6.0.0
         version: 6.0.0
@@ -3144,11 +3141,6 @@ packages:
   remark-gfm@4.0.1:
     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
 
-  remark-ins@1.2.6:
-    resolution: {integrity: sha512-EI7iNGBbfMeJmYchtz7bsbZ1hm6QCo5ICXMW3A0TiWay3WuWfRIkRDw/qXHu6s4WYde4y/ZUIF2Yf/WrpfOuXA==}
-    peerDependencies:
-      unified: ^11
-
   remark-math@6.0.0:
     resolution: {integrity: sha512-MMqgnP74Igy+S3WwnhQ7kqGlEerTETXMvJhrUzDikVZ2/uogJCb+WHUg97hK9/jcfc0dkD73s3LN8zU49cTEtA==}
 
@@ -3564,20 +3556,8 @@ packages:
   unified@11.0.5:
     resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
 
-  unist-builder@4.0.0:
-    resolution: {integrity: sha512-wmRFnH+BLpZnTKpc5L7O67Kac89s9HMrtELpnNaE6TAobq5DTZZs5YaTQfAZBA9bFPECx2uVAPO31c+GVug8mg==}
-
   unist-util-find-after@5.0.0:
     resolution: {integrity: sha512-amQa0Ep2m6hE2g72AugUItjbuM8X8cGQnFoHk0pGfrFeT9GZhzN5SW8nRsiGKK7Aif4CrACPENkA6P/Lw6fHGQ==}
-
-  unist-util-find-all-after@5.0.0:
-    resolution: {integrity: sha512-nGmOYvTSdGcI4RvrUNfe0mOsqqbbJOtqCQsppsY9KZjmv3nwM3YRgNBwFPdZ8Y+iv9Z/2PDjR9u6u+uK62XTTg==}
-
-  unist-util-find-all-before@5.0.0:
-    resolution: {integrity: sha512-zir6a7GsXfdn4YAWR4F3hLNKZjTjLBJurdyquysvmX38xbftS1+qwvEhutxxHLq0Pp1tW5V1TDiuj+qluuOnKw==}
-
-  unist-util-find-between@1.2.3:
-    resolution: {integrity: sha512-hYC0ZwhbhILhk0LybBY5HUAtSimHPVW4SbizSnJ2yd7yFP3oSyLQG9Rx+xjuN25kurERTQATozxsam21qYRi0w==}
 
   unist-util-is@6.0.1:
     resolution: {integrity: sha512-LsiILbtBETkDz8I9p1dQ0uyRUWuaQzd/cuEeS1hoRSyW5E5XGmTzlwY1OrNzzakGowI9Dr/I8HVaw4hTtnxy8g==}
@@ -7187,17 +7167,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  remark-ins@1.2.6(unified@11.0.5):
-    dependencies:
-      '@types/mdast': 4.0.4
-      unified: 11.0.5
-      unist-builder: 4.0.0
-      unist-util-find-after: 5.0.0
-      unist-util-find-all-after: 5.0.0
-      unist-util-find-all-before: 5.0.0
-      unist-util-find-between: 1.2.3
-      unist-util-visit: 5.1.0
-
   remark-math@6.0.0:
     dependencies:
       '@types/mdast': 4.0.4
@@ -7660,26 +7629,7 @@ snapshots:
       trough: 2.2.0
       vfile: 6.0.3
 
-  unist-builder@4.0.0:
-    dependencies:
-      '@types/unist': 3.0.3
-
   unist-util-find-after@5.0.0:
-    dependencies:
-      '@types/unist': 3.0.3
-      unist-util-is: 6.0.1
-
-  unist-util-find-all-after@5.0.0:
-    dependencies:
-      '@types/unist': 3.0.3
-      unist-util-is: 6.0.1
-
-  unist-util-find-all-before@5.0.0:
-    dependencies:
-      '@types/unist': 3.0.3
-      unist-util-is: 6.0.1
-
-  unist-util-find-between@1.2.3:
     dependencies:
       '@types/unist': 3.0.3
       unist-util-is: 6.0.1

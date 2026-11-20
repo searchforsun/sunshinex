@@ -35,7 +35,7 @@ export interface CtxSnapshot {
 /** ContextManager 装配接缝（可选第四参，缺省全缺席；2026-11-15 sunx §17.1）：charter=实例品性原文——
  *  sunx 会话装配期（Harness 构造）注入的会话级常量，standard 会话恒缺席。非磁盘源、零漂移检测。
  *  dataDir（2026-11-15 sunx P3 Task 1 注入缝）：ctx-snap 归档缺省落点与记忆引导/漂移面随域；缺席=既有推导 */
-export interface ContextManagerOpts {
+interface ContextManagerOpts {
   charter?: string;
   dataDir?: string;
 }

@@ -9,7 +9,7 @@
  */
 
 const THREAD_FILL_MAX = 782; // 满宽上界:区宽到此处列宽恰为 750,与第一档平台接续
-export const THREAD_COL_BASE = 750; // 第一档最大宽度(常态档;2026-10-27 用户裁定 880→820→720→750)
+const THREAD_COL_BASE = 750; // 第一档最大宽度(常态档;2026-10-27 用户裁定 880→820→720→750)
 const THREAD_STEP_1 = 960; // 第二档最大宽度
 const THREAD_COL_MAX = 1120; // 封顶档最大宽度
 const THREAD_RAMP_1_AT = 1040; // 第一坡道起点(区宽;2026-10-27 1120→1040:档距大,坡道前移保 960 平台)

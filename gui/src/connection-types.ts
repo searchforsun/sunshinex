@@ -655,9 +655,6 @@ export interface PluginRow {
 
 // ---------- 定时任务面类型（2026-11-20 scheduled-tasks Task 7；字段形与 daemon /schedules* 应答同形） ----------
 
-/** GUI 周期下拉七预设（cycle.ts 单点；存储侧 recurrence 的 GUI 友好投影） */
-export type ScheduleCycle = 'every15m' | 'hourly' | 'daily' | 'weekdays' | 'weekly' | 'monthly' | 'yearly';
-
 /** 重复规则单位（对齐 daemon RecurrenceUnit） */
 export type ScheduleRecurrenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
 

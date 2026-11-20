@@ -21,7 +21,7 @@ import { FileIcon } from '../file-icon';
  *   相对路径;欢迎页无会话不渲染此区。
  * 插入即收口:调用面 onInsert 负责落文本+关面板+焦点回输入框。
  */
-export interface PlusPanelConn {
+interface PlusPanelConn {
   commands(): Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] }>;
   skillsGroups(root?: string): Promise<{
     groups: Array<{ source: string; skills: Array<{ id: string; name?: string; description?: string; disabled?: boolean }> }>;

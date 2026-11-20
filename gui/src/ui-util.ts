@@ -250,13 +250,6 @@ export function messageTimeMs(ms: number, now: number = Date.now()): string {
   return t(`${d.getMonth() + 1}/${d.getDate()} ${hm}`, `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`);
 }
 
-/** 毫秒时刻 → 本地短时刻(HH:mm;run 尾部完成时间):非法日期回退 '--:--' */
-export function shortClockMs(ms: number): string {
-  const d = new Date(ms);
-  if (!(ms > 0) || Number.isNaN(d.getTime())) return '--:--';
-  return `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-}
-
 /** G14.69 原生工作区选择结果:null=用户取消;字符串态=降级原因(GUI 回退自建目录浏览) */
 export type WorkspacePickResult = { path: string } | 'unsupported' | 'denied' | 'timeout' | null;
 

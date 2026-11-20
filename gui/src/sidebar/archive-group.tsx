@@ -23,7 +23,7 @@ export interface ArchivedRow {
   awaiting?: boolean;
 }
 
-export interface ArchiveSectionProps {
+interface ArchiveSectionProps {
   readonly rows: ArchivedRow[] | null;
   /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」):空态文案随域;缺省 'session' */
   readonly scope?: 'session' | 'sunx';

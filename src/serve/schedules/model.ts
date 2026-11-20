@@ -1,6 +1,6 @@
 import type { ReasoningEffort } from '../../types';
 
-export type CadenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
+type CadenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
 export type ScheduleMode = 'read-only' | 'acceptEdits' | 'full-access';
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'stopped' | 'skipped' | 'interrupted';
 export type RunTrigger = 'schedule' | 'catch-up' | 'manual';

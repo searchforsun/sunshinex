@@ -12,7 +12,7 @@ import type { Connection } from '../../connection';
 /** 折叠阈值(2026-11-16 用户裁定「产物默认显示 4 个,显示更多」):首屏 4 张,余量经「显示更多」展开 */
 const FOLD_AT = 4;
 
-export interface ArtifactCardActions {
+interface ArtifactCardActions {
   /** file 类主钮:侧栏预览 */
   onOpenFile?: (p: string) => void;
   /** url 类主钮:右栏 Web 页签内嵌打开 */

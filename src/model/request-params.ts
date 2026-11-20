@@ -7,7 +7,7 @@
  */
 
 /** 请求参数值：JSON 可表示值（string/number/boolean/null/数组/对象）——原样并入请求体 */
-export type RequestParamValue = string | number | boolean | null | RequestParamValue[] | { [key: string]: RequestParamValue };
+type RequestParamValue = string | number | boolean | null | RequestParamValue[] | { [key: string]: RequestParamValue };
 
 /** 自定义请求参数字典（键=请求体顶层字段名） */
 export type RequestParams = Record<string, RequestParamValue>;

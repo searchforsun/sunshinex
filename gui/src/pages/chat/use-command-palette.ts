@@ -6,7 +6,7 @@ import type { Connection } from '../../connection';
 /** 「/」命令面板数据面（D32 批B 拆分自 Chat.tsx）：GET /commands 内置清单 +
  *  面板高亮游标。slashItemsFor 令牌解析与键盘导航的消费侧留在 Chat（渲染耦合），本 hook 只承载
  *  状态与装载。行为零变化（Chat.test 命令面板组为锚）。 */
-export interface CmdData {
+interface CmdData {
   commands: string[];
   descriptions: Record<string, string>;
   supported: string[];

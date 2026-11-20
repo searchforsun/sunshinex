@@ -1,6 +1,6 @@
 /** O3 基准集报告聚合（纯函数）：单任务结果 → 汇总（完成率/干预合计/成本合计）——runner 与测试共用 */
 
-export interface TaskRunResult {
+interface TaskRunResult {
   readonly id: string;
   /** 权威判定（脚本验盘 + run 退出面），非模型自报 */
   readonly pass: boolean;
@@ -15,7 +15,7 @@ export interface TaskRunResult {
   readonly toolUsage?: { calls: number; byOutcome: Record<string, number> };
 }
 
-export interface BenchReport {
+interface BenchReport {
   readonly total: number;
   readonly passed: number;
   /** 完成率（0-1，两位小数截断） */

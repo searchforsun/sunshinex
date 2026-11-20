@@ -14,13 +14,13 @@ import type { PtyFrame } from './pty-codec';
 export type PtySocketState = 'connecting' | 'open' | 'closed';
 
 /** wsFactory 产出的最小 WS 形(send/close/on 三法——PtySocket 只消费这面) */
-export interface PtySocketWs {
+interface PtySocketWs {
   send(s: string): void;
   close(): void;
   on(ev: string, cb: (arg?: unknown) => void): void;
 }
 
-export interface PtySocketOpts {
+interface PtySocketOpts {
   url: string;
   token: string;
   onFrame(f: PtyFrame): void;

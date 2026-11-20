@@ -157,4 +157,35 @@ describe('DirectoryTab(左菜单 dirview 承载的目录树;原 G8b 目录标签
     click('fileB.ts');
     expect(openTabCalls).toEqual([['file', { path: '/w/root-a/dirA/fileB.ts' }]]);
   });
+
+  it('全层级搜索:文件/目录分类条带计数;↑↓+Enter 打开命中(目录回树面定位,文件开签)', async () => {
+    const { conn, openTabCalls } = stubConn();
+    const searchTree = vi.fn(async () => ({
+      results: [
+        { name: 'dirA', path: 'dirA', kind: 'dir' as const },
+        { name: 'a.ts', path: 'dirA/a.ts', kind: 'file' as const },
+        { name: 'b.ts', path: 'b.ts', kind: 'file' as const },
+      ],
+    }));
+    (conn as unknown as { searchTree: typeof searchTree }).searchTree = searchTree;
+    conn.treeByPath = { '': { entries: [{ name: 'dirA', kind: 'dir' }] }, dirA: { entries: [{ name: 'a.ts', kind: 'file' }] } };
+    mountTab(conn, 's1', openTabCalls);
+    await waitFor(() => expect(conn.treeCalls).toEqual([['s1', '']]));
+    const input = screen.getByLabelText('filter files') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'ts' } });
+    await waitFor(() => expect(document.querySelectorAll('.sx-tree-file')).toHaveLength(3));
+    // 分类条在搜索框下:全部/文件/目录(不显示数量)
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['All', 'Files', 'Folders']);
+    // 键盘:全部态第一条=目录 → Enter 清过滤回树面并逐层展开定位
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'a.ts' })).toBeDefined());
+    expect(screen.queryAllByRole('tab')).toHaveLength(0); // 回树面分类条收起
+    // 再搜:切文件分类,↓ 到 b.ts,Enter 开文件标签(绝对路径)
+    fireEvent.change(input, { target: { value: 'ts' } });
+    await waitFor(() => expect(document.querySelectorAll('.sx-tree-file')).toHaveLength(3));
+    fireEvent.click(screen.getByRole('tab', { name: /Files/ }));
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(openTabCalls).toEqual([['file', { path: '/w/root-a/b.ts' }]]);
+  });
 });

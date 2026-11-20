@@ -10,7 +10,7 @@ import type { ScheduleStore } from './store';
 const RETAIN_MAX = 10;
 
 /** 执行器对 daemon 的触点面（Task 6 装配注入）：建/取/释放运行时 + 当前 active 会话 + 时钟 */
-export interface ScheduleExecutorIo {
+interface ScheduleExecutorIo {
   createSession(root: string, opts?: CreateSessionOpts): Result<{ sessionId: string }>;
   getSession(id: string): SessionRuntime | undefined;
   releaseSession(id: string): void;

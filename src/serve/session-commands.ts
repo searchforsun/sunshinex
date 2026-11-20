@@ -17,11 +17,11 @@ import type { SessionRuntime } from './session';
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
 export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan', '/skills-rm'] as const;
 
-export type CommandRunResult = 'ok' | 'unsupported' | 'busy';
+type CommandRunResult = 'ok' | 'unsupported' | 'busy';
 
 const IDLE_ONLY = new Set(['/compact', '/archive', '/unarchive', '/delete']);
 
-export function isCommandSupported(line: string): boolean {
+function isCommandSupported(line: string): boolean {
   return (COMMAND_SUPPORT as readonly string[]).includes(line.split(/\s/)[0] ?? '');
 }
 

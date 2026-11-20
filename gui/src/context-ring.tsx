@@ -12,7 +12,7 @@ import { zoomScale } from './ui-zoom';
  * 其余高危(err)。弹层复用 pill-pop 定位面(锚右上,展开向左不越卡沿)。
  */
 
-export interface ContextRingProps {
+interface ContextRingProps {
   /** 当前上文占用 tokens(ctx 面估算/水位) */
   used: number;
   /** 窗口预算 tokens(resolveRunWindow 同源) */

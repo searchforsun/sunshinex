@@ -11,7 +11,7 @@ import type { NavControls, NavHistory, NavLoc } from './nav-history';
  * chat 位=openSession(会话常驻 daemon,GUI 端点全按 :id 寻址,零 newSession/attach)。
  */
 
-export interface NavHistoryDeps {
+interface NavHistoryDeps {
   /** welcome 位回放动词(壳层清场;宿主 leaveToWelcome) */
   readonly goWelcome: () => void;
   /** chat 位回放动词(宿主 openSession;sessionId/root/journalId 三参原样) */
@@ -20,7 +20,7 @@ export interface NavHistoryDeps {
   readonly settingsOpen: boolean;
 }
 
-export interface AppNavHistory {
+interface AppNavHistory {
   readonly navControls: NavControls;
   /** 壳层位置记录动词(openSession/backHome/New chat 各记录;navLock 回放期自抑制) */
   readonly recordNav: (loc: NavLoc) => void;

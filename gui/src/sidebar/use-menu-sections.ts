@@ -4,7 +4,7 @@ import type { ArchivedRow } from './archive-group';
 import { pinFromRow, type PinEntry } from './pin-store';
 
 /** 归档区连接面(结构满足即收;App 实传整只 Connection 运行时满足) */
-export interface MenuArchiveConn {
+interface MenuArchiveConn {
   archivedSessions(): Promise<ArchivedRow[]>;
 }
 

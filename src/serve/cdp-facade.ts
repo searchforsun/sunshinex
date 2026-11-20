@@ -24,7 +24,7 @@ const asPage = (t: { type?: string }): void => {
   if (t.type === 'webview') t.type = 'page';
 };
 
-export interface FacadeOpts {
+interface FacadeOpts {
   /** 壳 userData 路径(读 DevToolsActivePort) */
   userDataDir: string;
   /** daemon 自身 origin 前缀(如 http://127.0.0.1:57677)——GUI 渲染层 target 按此前缀过滤 */
@@ -49,7 +49,7 @@ export interface FacadeOpts {
 
 /** 会话连接身份(2026-11-03 浏览器状态按会话隔离):key=浏览器键(journalId,分区 persist:sx-<key>),
  *  seat=GUI 页签座位(运行时会话 id)。连接路径 /session/<key>?seat=<seat> */
-export interface SessionScope {
+interface SessionScope {
   key: string;
   seat: string;
 }
@@ -57,7 +57,7 @@ export interface SessionScope {
 /** 会话连接一律拒绝的命令:关整个浏览器(=关应用)/建删浏览器上下文(上下文=会话分区,归 GUI 管) */
 const FORBIDDEN_METHODS = new Set(['Browser.close', 'Browser.crash', 'Browser.crashGpuProcess', 'Target.createBrowserContext', 'Target.disposeBrowserContext']);
 
-export function parseScope(url: string | undefined): SessionScope | undefined {
+function parseScope(url: string | undefined): SessionScope | undefined {
   const u = new URL(url ?? '/', 'http://127.0.0.1');
   const m = /^\/session\/([^/]+)$/.exec(u.pathname);
   if (m === null) return undefined;

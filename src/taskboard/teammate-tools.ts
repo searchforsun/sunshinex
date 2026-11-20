@@ -61,7 +61,7 @@ export function makeTeammateTools(board: TaskBoard): RegisteredTool[] {
 
 /** 派生可注入面（2026-11-15 sunx P2 Task 2 收敛：Task 1 移交义务——原 6 位置参收敛为 opts 对象，
  *  接缝错位由编译期失配兜底；行为逐字节等价，既有 teammate-face/teammate/message 三套锚保持绿） */
-export interface TeammateRegistryOpts {
+interface TeammateRegistryOpts {
   /** teammate 面 send_agent_team_message 注入器（缺席=面无消息件） */
   messageTool?: RegisteredTool;
   /** 账本（task_wait 换装 exec-only——可等自动转后台命令不可等板任务；缺席=卸下 lead 版 task_wait） */

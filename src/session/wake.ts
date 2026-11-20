@@ -66,10 +66,10 @@ export const RESTORED_WAKE_GOAL = 'Re-read the board and ledger, decide what to 
 
 /** 迟到注明宽限（准点定时器抖动容差）：lateMs 超过它才在通知文注「fired late by」——
  *  busy 排队/停机跨越的迟到远超此值，准点 fire 的毫秒级抖动不注 */
-export const SCHEDULE_LATE_GRACE_MS = 1_000;
+const SCHEDULE_LATE_GRACE_MS = 1_000;
 
 /** 迟到时长人读串（R7 通知文「fired late by X」数据源）：秒内=Xs、时内=Xm Ys、其余=Xh Ym */
-export function formatDelayMs(ms: number): string {
+function formatDelayMs(ms: number): string {
   const s = Math.max(1, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
   const m = Math.floor(s / 60);
@@ -180,8 +180,8 @@ export interface WakeControllerOpts {
 }
 
 /** 缺省单点（2026-11-16 技术债补审 I2：三处 `?? 10`/`?? 1500` 字面量重复收编） */
-export const WAKE_MAX_CHAIN_DEFAULT = 10;
-export const WAKE_BATCH_MS_DEFAULT = 1500;
+const WAKE_MAX_CHAIN_DEFAULT = 10;
+const WAKE_BATCH_MS_DEFAULT = 1500;
 
 /** 唤醒控制器（session 层单点，daemon/TUI 各一实例）：登记/合批/用户优先/复检/防循环。
  *  零 IO（timer 除外）；宿主 teardown 调 reset() 清 timer（防句柄泄漏） */

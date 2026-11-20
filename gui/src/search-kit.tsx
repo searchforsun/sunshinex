@@ -8,12 +8,11 @@ import { t } from './i18n';
  *  移动、Enter 直达目标。侧栏聚合搜索/标签页搜索/目录树搜索三面同源,行为不再各写一套。
  */
 
-/** 分类条单项(count 缺省=计数未就绪,如会话清单仍在拉取) */
+/** 分类条单项 */
 export interface SearchCatDef {
   readonly id: string;
   readonly en: string;
   readonly zh: string;
-  readonly count?: number;
 }
 
 /** 分类条:位于搜索框下方、结果滚动区之外——列表滚到底也恒在 */
@@ -36,7 +35,6 @@ export function SearchCatBar(props: {
             onClick={() => props.onPick(c.id)}
           >
             <span>{t(c.en, c.zh)}</span>
-            {c.count !== undefined && <span className="sx-search-cat-count">{c.count}</span>}
           </button>
         );
       })}
@@ -44,12 +42,11 @@ export function SearchCatBar(props: {
   );
 }
 
-/** 置顶分组头:结果分组标题在滚动面内吸顶(sticky),右侧落条数 */
-export function SearchSectionHead(props: { readonly label: string; readonly count: number }): JSX.Element {
+/** 置顶分组头:结果分组标题在滚动面内吸顶(sticky) */
+export function SearchSectionHead(props: { readonly label: string }): JSX.Element {
   return (
     <div className="sx-search-sec" role="presentation">
       <span>{props.label}</span>
-      <span className="sx-search-sec-count">{props.count}</span>
     </div>
   );
 }
@@ -59,7 +56,7 @@ export interface SearchListNav<T extends HTMLElement> {
   readonly active: number;
   readonly setActive: (index: number) => void;
   /** 挂到选中行:active 变化即滚入可视区(block:nearest,最小滚动) */
-  readonly activeRef: RefObject<T | null>;
+  readonly activeRef: RefObject<T>;
   /** 挂搜索输入框:↑↓/Home/End 移动,Enter 选中当前行 */
   readonly onKeyDown: (e: ReactKeyboardEvent<HTMLElement>) => void;
 }
@@ -76,7 +73,7 @@ export function useSearchListNav<T extends HTMLElement = HTMLButtonElement>(opts
   const { count, onPick } = opts;
   const resetKey = opts.resetKey ?? '';
   const [active, setActive] = useState(0);
-  const activeRef = useRef<T | null>(null);
+  const activeRef = useRef<T>(null);
 
   useEffect(() => {
     setActive(0);

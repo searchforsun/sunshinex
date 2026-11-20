@@ -250,7 +250,8 @@ safety 三类 = 插件作者对所贡献工具的**自声明**风险类别；gua
   "mcpServers": {
     "computer-use": {
       "command": "node",
-      "args": ["dist/plugins/computer-use/server.js"],
+      "cwd": ".",
+      "args": ["server/index.js"],
       "safety": {
         "act": ["click", "type", "key", "scroll", "drag", "app"],
         "confirm": ["screenshot"],
@@ -258,8 +259,7 @@ safety 三类 = 插件作者对所贡献工具的**自声明**风险类别；gua
       }
     }
   },
-  "skills": ["skills"],
-  "configSchema": { "worker": { "type": "string", "description": "PowerShell 可执行名（缺省 powershell.exe）" } }
+  "skills": ["skills"]
 }
 ```
 

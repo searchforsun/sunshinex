@@ -706,14 +706,6 @@ export class SubagentRunner {
 
 /* ---------- spawn 内置工具（主链动态派生入口） ---------- */
 
-/** teammate 创建接缝（P2 spec §5，裁定：回调形态避免本文件反向值 import Teammate——taskboard 侧类型环）：
- *  spawn 分流命中时经此建长驻 teammate；回执 name 供观察行组装 */
-/** teammate 创建接缝(create_agent_teammate 工具消费):长驻执行体的登记动作——与 spawn 分立的两个动词,
- *  各自一份契约(2026-10-20 定位定版:重量级通道不再作为 spawn 的隐藏参数) */
-export interface TeamSpawnSeam {
-  spawn(input: SubagentSpawnInput): Result<{ name: string }>;
-}
-
 /** spawn 工具工厂：同步阻塞形态，子智能体最终报告作为该轮工具观察回传；
  * 同轮 tools 数组批量并行由 reactor 并行闸门放行（subagent 类非 bash）；本身无直接 IO 副作用
  * （guard manual 分支免审批），子智能体内部每个工具调用独立过安全链。

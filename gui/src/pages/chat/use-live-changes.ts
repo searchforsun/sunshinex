@@ -21,7 +21,6 @@ export interface LiveChangeFile {
 export type LiveChanges = readonly LiveChangeFile[] | null | undefined;
 
 export const LiveChangesContext = createContext<LiveChanges>(null);
-export const useLiveChanges = (): LiveChanges => useContext(LiveChangesContext);
 
 /** 路径 → 最后一个改它的轮(runSeq)(2026-11-11 冻结快照面配套):全 entries 汇总单点,轮尾条据此
  *  判「本轮是否仍是该文件最新一轮」——后续轮次覆盖=只能看不能撤(用户裁定),服务端 staleness 兜底 */

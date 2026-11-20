@@ -32,7 +32,7 @@ const sortRows = (rows: WorkspaceRow[], mode: WsSortMode): WorkspaceRow[] => {
 /** PROJECTS 区(D32 批PM-3 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 添加工作区)
  *  + 工作区组列表(展开惰拉会话/组内行 attach)。纯渲染件,数据/动作 props 注入——
  *  分区折叠与添加工作区在途态(actionError/busy)留宿主。 */
-export interface ProjectsSectionProps {
+interface ProjectsSectionProps {
   readonly projectsOpen: boolean;
   readonly onToggleProjects: () => void;
   readonly busy: boolean;

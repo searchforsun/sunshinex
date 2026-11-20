@@ -5,8 +5,8 @@
 import { CodedToolError, RegisteredTool, jsonAbsent } from '../tools';
 import type { ReasoningEffort } from '../../types';
 
-export type ScheduleCadenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
-export type ScheduleCreateMode = 'read-only' | 'acceptEdits' | 'full-access';
+type ScheduleCadenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
+type ScheduleCreateMode = 'read-only' | 'acceptEdits' | 'full-access';
 
 /** 工具归一后的创建草稿（与 serve/schedules/model.ts 的 ScheduleDraft 结构同形；harness 不反向依赖 serve）。 */
 export interface ScheduleCreateDraft {
@@ -31,7 +31,7 @@ export interface ScheduleCreateDraft {
 }
 
 /** 接缝返回（只回传工具回执需要的字段，避免 harness 依赖 ScheduleJob 全形） */
-export interface ScheduleCreateResult {
+interface ScheduleCreateResult {
   id: string;
   name: string;
   nextRunAt: number | null;

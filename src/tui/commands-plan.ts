@@ -95,7 +95,7 @@ export async function confirmPlanOn(ctrl: SessionController, yes: boolean, feedb
 /** 批准落所选档（2026-11-03 批准卡三选;2026-11-04 泛化:可写域=维持当前档,同值幂等直落）：
  *  退出只读覆盖+真档 setBaseMode+arm 解除（acceptEdits
  *  补挂 asker——full-access 侧宁停语义与 CLI --mode=full-access 一致） */
-export function landModeOn(ctrl: SessionController, mode: PlanLandMode): void {
+function landModeOn(ctrl: SessionController, mode: PlanLandMode): void {
   ctrl.runtime.harness.security.exitModeOverride();
   ctrl.planArmed = false;
   if (ctrl.runtime.harness.security.mode === mode) return;

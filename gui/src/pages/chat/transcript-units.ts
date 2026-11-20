@@ -14,7 +14,7 @@ import type { ChatEntry } from '../../chat-reducer';
  */
 
 /** 块种类(估算高度与渲染分支同键) */
-export type UnitKind = 'day' | 'seg' | 'cmd' | 'run' | 'user' | 'assistant';
+type UnitKind = 'day' | 'seg' | 'cmd' | 'run' | 'user' | 'assistant';
 
 export interface UnitSpan {
   /** 稳定键(React key / 高度表键):日=day:<groupKey>,段=seg:<首条 key>,其余=条目 key */

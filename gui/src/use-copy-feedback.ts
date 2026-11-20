@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 /** 复制回显自动回 idle 时长（六处手写统一前值：✓ 可辨识又不恋屏的最短确认窗） */
 export const COPY_RESET_MS = 1500;
 
-export type CopyStatus = 'idle' | 'ok' | 'fail';
+type CopyStatus = 'idle' | 'ok' | 'fail';
 
 /**
  * 复制回显单点（D45 收敛：CodeBlock/MermaidBlock/RunFooter/Files/AgentTranscriptTab/

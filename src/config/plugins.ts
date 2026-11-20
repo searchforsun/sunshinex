@@ -41,7 +41,7 @@ interface McpServerContrib {
 }
 
 /** 插件 manifest（manifestVersion 1），字段语义见 plugins/schema/plugin-manifest.schema.json 与 spec §2.2 字段表 */
-export interface PluginManifest {
+interface PluginManifest {
   manifestVersion: 1;
   id: string;
   name: string;

@@ -194,7 +194,7 @@ export function commandRunningLabel(name: string): string {
   return t(pair[0], pair[1]);
 }
 
-export const RUNNING_LABELS: Record<string, [string, string]> = {
+const RUNNING_LABELS: Record<string, [string, string]> = {
   // 斜杠命令三态行(2026-10-31 用户裁定「命令执行与工具行三态一致」):/cmd 名即工具名
   '/compact': ['Compacting context', '上下文压缩中'],
   '/status': ['Querying status', '查询状态'],
@@ -242,10 +242,10 @@ export const RUNNING_LABELS: Record<string, [string, string]> = {
 
 /** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，
  *  折叠行默认分型只出动词——任务名经 taskNameOf 单点解析后跟行 */
-export const TASK_OP_TOOLS = new Set(['task_stop', 'agent_team_task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task']);
+const TASK_OP_TOOLS = new Set(['task_stop', 'agent_team_task_stop', 'update_agent_team_task', 'assign', 'set_dependency', 'get_task']);
 
 /** G14.214 运行态动词对（拼接任务名替代泛文案，仿 spawn G14.166 先例）；折叠行动词走 zhToolName 既有映射 */
-export const TASK_OP_RUNNING: Record<string, [string, string]> = {
+const TASK_OP_RUNNING: Record<string, [string, string]> = {
   task_stop: ['Stopping', '正在停止'],
   agent_team_task_stop: ['Stopping', '正在停止'],
   update_agent_team_task: ['Updating', '正在更新'],

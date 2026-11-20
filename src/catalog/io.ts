@@ -119,7 +119,7 @@ export function writeJsonAtomic(file: string, text: string): void {
  * suppress 按 (resource,scope,root) 键丢 watcher 事件，键不同构则回声去重失效（自触双发）。 */
 
 /** 写通知回调形态（catalog 写面落盘成功后携带的定位三元的消费签名） */
-export type CatalogWriteNotify = (resource: ResourceKind, scope: Scope, root: string | null) => void;
+type CatalogWriteNotify = (resource: ResourceKind, scope: Scope, root: string | null) => void;
 
 /** 当前钩子（模块内可变量；经 setter 注入/摘除，catalog 模块一律走 notifyCatalogWrite 不直读） */
 let onCatalogWrite: CatalogWriteNotify | null = null;

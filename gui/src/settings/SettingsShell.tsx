@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Settings } from 'lucide-react';
 import { t } from '../i18n';
 import { chatMaxFor } from '../thread-width';
+import { SETTINGS_GROUPS } from './settings-groups';
 import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
@@ -87,56 +88,9 @@ export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, 
   workspaces(): Promise<WorkspaceRow[]>;
 }
 
-/** 导航分组(2026-11-17 用户裁定「不要用通用和高级,使用基础,下面再逐个分组,打开开发者模式再显示」):
- *  「基础」组恒显(通用/模型与提供方/快捷键);其余四组按语义分组(advanced:true)仅开发者模式开启时
- *  渲染——此前「通用」「高级」两组同名塌缩(组头与首项重名、高级组一口吞 12 项)已按裁定拆开。
- *  标题双语对(G14.213 设置面 i18n):渲染期 t() 求值——此前裸中文,壳层导航永不随语言切换 */
-const SETTINGS_GROUPS: ReadonlyArray<{ readonly group: { readonly en: string; readonly zh: string } | ''; readonly advanced?: boolean; readonly items: ReadonlyArray<{ readonly id: string; readonly title: { readonly en: string; readonly zh: string } }> }> = [
-  {
-    group: { en: 'Basics', zh: '基础' },
-    items: [
-      { id: 'general', title: { en: 'General', zh: '通用' } },
-      { id: 'providers', title: { en: 'Models & providers', zh: '模型与提供方' } },
-      { id: 'shortcuts', title: { en: 'Shortcuts', zh: '快捷键' } },
-    ],
-  },
-  {
-    group: { en: 'Context & memory', zh: '上下文与记忆' },
-    advanced: true,
-    items: [
-      { id: 'limits', title: { en: 'Context & limits', zh: '上下文与限额' } },
-      { id: 'memory', title: { en: 'Memory', zh: '记忆' } },
-      { id: 'kb', title: { en: 'Knowledge & search', zh: '知识库与搜索' } },
-      { id: 'global-rules', title: { en: 'Global norms', zh: '全局规范' } },
-    ],
-  },
-  {
-    group: { en: 'Execution & extensions', zh: '执行与扩展' },
-    advanced: true,
-    items: [
-      { id: 'paths', title: { en: 'Paths & shell', zh: '路径与执行环境' } },
-      { id: 'skills', title: { en: 'Skills', zh: '技能' } },
-      { id: 'mcp', title: { en: 'MCP', zh: 'MCP' } },
-      { id: 'plugins', title: { en: 'Plugins', zh: '插件' } },
-    ],
-  },
-  {
-    group: { en: 'Agents', zh: '智能体' },
-    advanced: true,
-    items: [
-      { id: 'agents', title: { en: 'Agents', zh: '智能体' } },
-      { id: 'teams', title: { en: 'Agent Teams', zh: '智能体团队' } },
-    ],
-  },
-  {
-    group: { en: 'System', zh: '系统' },
-    advanced: true,
-    items: [
-      { id: 'permissions', title: { en: 'Permissions', zh: '权限' } },
-      { id: 'raw', title: { en: 'Advanced', zh: '高级' } },
-    ],
-  },
-];
+/** 导航分组数据单源在 settings-groups.ts(壳层渲染 + 全局搜索索引共用;避免搜索面反向
+ *  import 本壳产生循环依赖)。「基础」组恒显,其余四组仅开发者模式开启时渲染(2026-11-17
+ *  用户裁定);标题双语对渲染期 t() 求值(G14.213)。 */
 const SETTINGS_NAV = SETTINGS_GROUPS.flatMap((g) => g.items);
 /** 高级组 pane id 集(普通态回退锚点) */
 const ADVANCED_IDS = new Set(SETTINGS_GROUPS.filter((g) => g.advanced === true).flatMap((g) => g.items.map((i) => i.id)));
@@ -149,8 +103,9 @@ export interface SettingsShellProps {
   readonly root: string;
   /** 「← 返回」/Esc:回会话态(App 侧关设置态) */
   readonly onBack: () => void;
-  /** 指定落点面板(托盘「快捷键」直达):对象身份变化即切换,缺省=「通用」 */
-  readonly requestedPane?: { readonly id: string };
+  /** 指定落点面板(托盘「快捷键」直达/全局搜索跳转):对象身份变化即切换,缺省=「通用」;
+   *  row=目标行锚(data-setting-key),面板异步装载后重试滚入视野 */
+  readonly requestedPane?: { readonly id: string; readonly row?: string };
 }
 
 export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShellProps): JSX.Element {
@@ -173,12 +128,33 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
   useEffect(() => {
     if (requestedPane !== undefined) setActivePane(requestedPane.id);
   }, [requestedPane]);
+  /** 全局搜索跳转落行(2026-11-21):面板异步装载,按 data-setting-key 重试滚入视野
+   *  (最多 2.5s;行未渲染/不存在=只落面板不滚,面板级跳转仍成立) */
+  useEffect(() => {
+    const row = requestedPane?.row;
+    if (row === undefined) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let tries = 0;
+    const find = (): void => {
+      const el = settingsMainRef.current?.querySelector(`[data-setting-key="${row}"]`);
+      if (el !== null && el !== undefined) {
+        el.scrollIntoView({ block: 'center' });
+        return;
+      }
+      if (tries++ < 25) timer = setTimeout(find, 100);
+    };
+    timer = setTimeout(find, 0);
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [requestedPane]);
   /** Task 3 导航分层:开发者模式关(普通态)隐藏高级组导航;停在高级 pane(如刚关掉开关)时
-   *  回退到通用,避免渲染不可见页面 */
+   *  回退到通用,避免渲染不可见页面。全局搜索深链是显式用户动作——落点面板为高级页时不回退
+   *  (2026-11-21:否则搜「上下文压缩阈值」等设置项只能落到通用页,搜索直达失效) */
   const dev = useDeveloperMode();
   useEffect(() => {
-    if (!dev && ADVANCED_IDS.has(activePane)) setActivePane('general');
-  }, [dev, activePane]);
+    if (!dev && ADVANCED_IDS.has(activePane) && activePane !== requestedPane?.id) setActivePane('general');
+  }, [dev, activePane, requestedPane]);
   /** G14.213 语言切换 tick:SettingsForm 语言键保存 → onLanguageChanged → 本壳重渲染
    *  (t 非响应式——导航/分组/壳头等本组件的 t() 面不 tick 不翻面) */
   const [, setLangTick] = useState(0);

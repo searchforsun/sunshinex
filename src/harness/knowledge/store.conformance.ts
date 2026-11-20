@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { VectorStore } from './store';
 
-export interface ConformanceOptions {
+interface ConformanceOptions {
   /** 损坏存储的注入点（各后端存储介质不同，由挂接方提供）；未提供时跳过损坏恢复契约 */
   corruptStorage?: () => void;
 }

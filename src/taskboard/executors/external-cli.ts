@@ -18,7 +18,7 @@ export interface ExternalExecutorLike {
   stop?(taskId: string): void;
 }
 
-export interface ExternalCliExecutorDeps {
+interface ExternalCliExecutorDeps {
   sandbox: ProcessSandbox;
   registry: TaskRegistry;
   onEvent?: (e: SessionEvent) => void;

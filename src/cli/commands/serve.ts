@@ -8,7 +8,7 @@ import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
 /** 缺省端口（spec §4.3 鉴权/监听裁定的用户面常量）：--port=N 可覆盖；0 仍为临时端口（测试形态） */
-export const SERVE_DEFAULT_PORT = 7788;
+const SERVE_DEFAULT_PORT = 7788;
 
 /**
  * GUI daemon 薄壳入口（spec §3/§4.3；G3 会话中心修正）：目录判据同 run/pipeline 统一单点

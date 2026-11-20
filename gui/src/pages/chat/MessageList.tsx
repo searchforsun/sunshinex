@@ -22,7 +22,7 @@ function fmtTokens(n: number): string {
 /** D48 尾部窗口:会话流只全量渲染尾部窗口条目,更早条目折叠为头部「显示更早」行渐进回放
  *  (对齐主仓 TUI tail-rewrite 上限口径;立项与切点回退设计见 docs/superpowers/plans/
  *  2026-10-23-messagelist-tail-window.md) */
-export const RENDER_WINDOW_DEFAULT = 80; // 2026-11-13 用户裁定「切会话不要卡,先进视口再平滑补齐」:入口窗口缩到视口级
+const RENDER_WINDOW_DEFAULT = 80; // 2026-11-13 用户裁定「切会话不要卡,先进视口再平滑补齐」:入口窗口缩到视口级
 // (原 600 条整表同步渲染=重会话进入即长帧),余量由下方空闲分批回放逐批补齐,上限不变
 const RENDER_WINDOW_STEP = 300; // 手动回放步进(「显示更早」钮/滚顶回放,用户显式动作取大批)
 // 空闲回放步进(2026-11-13:批小让主线程,交互可抢占;上限仍 600)。2026-11-17 用户实测

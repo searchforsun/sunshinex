@@ -362,11 +362,11 @@ fs.rmSync(path.join(ROOT, 'gui-dist'), { recursive: true, force: true });
 fs.cpSync(path.join(ROOT, 'dist-gui'), path.join(ROOT, 'gui-dist'), { recursive: true });
 if (!fs.existsSync(path.join(ROOT, 'gui-dist', 'index.html'))) die('gui-dist/index.html 缺失——gui build 未产出');
 
-// npm pack 前置 2：computer-use server 单文件束（2026-10-27）——sdk 内联,装机形态零子包依赖
-// （产物 server/index.js gitignore 不入库,发版时点现构建;plugins/computer-use/build.mjs esbuild 束）
-say('browser-use server 单文件束（plugins/browser-use build.mjs）');
+// npm pack 前置 2：插件 server 单文件束（2026-10-27）——依赖图内联,装机形态零子包依赖
+// （产物 gitignore 不入库,发版时点现构建;各插件 build.mjs esbuild 束;browser-use 只出宿主束 host.js——
+// 旧裸 CLI 束 index.js 2026-11-21 拆除,零启动方,build.mjs 就地清历史束）
+say('browser-use server 宿主束（plugins/browser-use build.mjs）');
 run(process.execPath, ['build.mjs'], { cwd: path.join(ROOT, 'plugins', 'browser-use'), stdio: 'inherit' });
-if (!fs.existsSync(path.join(ROOT, 'plugins', 'browser-use', 'server', 'index.js'))) die('plugins/browser-use/server/index.js 缺失——bundle 未产出');
 if (!fs.existsSync(path.join(ROOT, 'plugins', 'browser-use', 'server', 'host.js'))) die('plugins/browser-use/server/host.js 缺失——宿主束未产出（manifest 启动入口）');
 say('computer-use server 单文件束（plugins/computer-use build.mjs）');
 run(process.execPath, ['build.mjs'], { cwd: path.join(ROOT, 'plugins', 'computer-use'), stdio: 'inherit' });

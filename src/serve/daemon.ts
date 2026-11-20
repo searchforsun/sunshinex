@@ -76,7 +76,7 @@ export type { ApprovalFrame, AskFrame, ResetFrame, ConfigChangedFrame, DaemonFra
  *  按需装配（--root CLI 参数降级为「启动即预选」，缺省空注册表启动）。model 与 CLI buildModel/TUI
  *  同源注入（三面同一 ModelAdapter 契约，daemon 级单例供各会话共享）；staticRoot 为 GUI 静态产物目录
  *  （G3 静态挂载），缺省 cwd 相对 dist-gui——serve 命令从仓库根跑即对，测试注入 tmp 路径保持 hermetic */
-export interface GuiDaemonOpts {
+interface GuiDaemonOpts {
   model: ModelAdapter;
   staticRoot?: string;
   /** providers 装载根（与 assembleGuiModel 装配期同一根；配置热重载按它重读清单）——缺省 process.cwd() */
@@ -87,13 +87,13 @@ export interface GuiDaemonOpts {
 }
 
 /** start 入参：port 缺省 0（临时端口，返回实际监听值）；token 缺省随机 24 字节 hex（规格 §4.3） */
-export interface GuiDaemonStartOpts {
+interface GuiDaemonStartOpts {
   port?: number;
   token?: string;
 }
 
 /** start 回执：port 为实际监听端口；close 与 GuiDaemon.close 同一幂等收口 */
-export interface GuiDaemonHandle {
+interface GuiDaemonHandle {
   port: number;
   /** undefined = 免鉴权档(G10:本地 serve 缺省);显式 --token 启用时为该值 */
   token: string | undefined;

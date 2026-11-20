@@ -33,6 +33,8 @@ import { readPersistedProject } from './welcome/use-welcome-persisted';
 import type { WelcomeGoal } from './welcome/WelcomeComposer';
 import { CHAT_MAX_EVENT, chatMaxFor } from './thread-width';
 import { useDeveloperMode } from './developer-mode';
+import { applyTheme, currentTheme } from './theme';
+import type { SearchAction } from './search-actions';
 import { useAppearanceSync } from './use-appearance-sync';
 import { useOpError } from './use-op-error';
 import { useShellLayout } from './use-shell-layout';
@@ -280,8 +282,10 @@ function AppShell(): JSX.Element {
   /** 定时任务主区层(2026-11-20):固定层覆盖主区,左侧菜单保持;Chat 不卸载——点会话/新建/
    *  记录打开会话即关层,回到既有会话链 */
   const [schedulesMain, setSchedulesMain] = useState(false);
+  /** 定时任务搜索跳转落点(2026-11-21):非空=任务页开席即定位该卡;手动开页/退出即清 */
+  const [scheduleFocus, setScheduleFocus] = useState<string | null>(null);
   /** 设置落点面板请求(托盘「快捷键」直达;关设置即清,侧栏再开仍落「通用」) */
-  const [settingsPane, setSettingsPane] = useState<{ readonly id: string } | undefined>(undefined);
+  const [settingsPane, setSettingsPane] = useState<{ readonly id: string; readonly row?: string } | undefined>(undefined);
   const [settingsRoot, setSettingsRoot] = useState('');
   /** 三栏壳根(拖宽期挂 .sx-dragging:iframe 指针事件让位——web 标签内容会吞 window mousemove,
    *  光标进入 iframe 即拖拽冻结) */
@@ -637,12 +641,28 @@ function AppShell(): JSX.Element {
   const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); setSchedulesMain(false); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效;终审:层在时点看板=退层开页签(不能在层后开)
   const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
   const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
+  /** 设置面板/行直达(2026-11-21 全局搜索):开设置覆盖层并落指定面板;row=行锚(SettingsShell 滚动) */
+  const openSettingsPaneStable = useStableCallback((pane: string, row?: string): void => {
+    closeMenuDrawer();
+    setSettingsPane({ id: pane, row });
+    if (!settingsOpen) openSettings();
+  });
   /** 定时任务层开合(2026-11-20):侧栏入口开(抽屉态自动收),页内返回/Esc 关 */
   const openSchedulesFromMenu = useStableCallback((): void => {
     closeMenuDrawer();
+    setScheduleFocus(null); // 手动开页:不继承上次搜索落点
     setSchedulesMain(true);
   });
-  const closeSchedulesStable = useStableCallback((): void => setSchedulesMain(false));
+  /** 搜索「定时任务」条目跳转(2026-11-21):开任务页并把该卡滚入视野+短高亮 */
+  const openScheduleFromSearchStable = useStableCallback((id: string): void => {
+    closeMenuDrawer();
+    setScheduleFocus(id);
+    setSchedulesMain(true);
+  });
+  const closeSchedulesStable = useStableCallback((): void => {
+    setScheduleFocus(null);
+    setSchedulesMain(false);
+  });
   /** 「在会话中创建」：退层 → 欢迎页 → 输入框预填示例提示词（用户可改后发送；agent 用
    *  create_scheduled_task 工具落档）——与 New chat 同路径，goal 走 preset 序号通道 */
   const createScheduleInChatStable = useStableCallback((): void => {
@@ -1013,6 +1033,42 @@ function AppShell(): JSX.Element {
   const { onActivateTab, onTabMeta, services, bgRunningCount, projectNameOfOpenRoot } = useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, onLocateTodo, openLeaderBubble, refreshFromSnapshot });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
+  /** 右栏开合(从 WindowControls 内联抽单点):搜索「操作」分类与窗控钮共用同一语义 */
+  const toggleRightSidebarStable = useStableCallback((): void => {
+    const opening = tabState.collapsed;
+    setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, !opening));
+    // 两侧抽屉互斥(2026-10-24 用户裁定):浮窗态开右抽屉即收菜单抽屉
+    if (opening && sidebarFloating) setMenuClosed(true);
+  });
+
+  /** 全局搜索「操作」分类(2026-11-21):菜单/页面动作从搜索框直达——全部走既有回调,
+   *  不另造旁路;键位提示只登记界面真实存在的键(无键位不显示) */
+  const searchActions = useMemo<readonly SearchAction[]>(
+    () => [
+      { id: 'new-chat', en: 'New chat', zh: '新对话', run: newChatFromMenu },
+      { id: 'schedules', en: 'Scheduled tasks', zh: '定时任务', run: openSchedulesFromMenu },
+      { id: 'settings', en: 'Settings', zh: '设置', run: openSettingsFromMenu },
+      { id: 'shortcuts', en: 'Keyboard shortcuts', zh: '快捷键说明', run: () => openSettingsPaneStable('shortcuts') },
+      { id: 'settings-skills', en: 'Open skills settings', zh: '打开技能设置', run: () => openSettingsPaneStable('skills') },
+      { id: 'settings-providers', en: 'Open models & providers', zh: '打开模型与提供方', run: () => openSettingsPaneStable('providers') },
+      { id: 'toggle-sidebar', en: 'Toggle side panel', zh: '切换侧栏', run: toggleRightSidebarStable },
+      {
+        id: 'toggle-theme',
+        en: 'Toggle light / dark theme',
+        zh: '切换亮色 / 暗色主题',
+        run: () => applyTheme(currentTheme() === 'light' ? 'dark' : 'light'),
+      },
+      { id: 'tab-terminal', en: 'Add terminal tab', zh: '添加终端标签', run: () => openTabType('terminal') },
+      { id: 'tab-web', en: 'Add browser tab', zh: '添加浏览器标签', run: () => openTabType('web') },
+      { id: 'tab-memory', en: 'Open memory', zh: '打开记忆', run: () => openMemoryTab() },
+      { id: 'tab-learned', en: 'Open learned skills', zh: '打开学习技能', run: () => openLearnedTab() },
+      { id: 'tab-artifacts', en: 'Open artifacts', zh: '打开产物', run: openArtifactsTab },
+      { id: 'tab-board', en: 'Open task board', zh: '打开任务板', run: openBoardTab },
+      { id: 'tab-sunxboard', en: 'Sunx board', zh: 'Sunx 看板', run: openSunxBoardFromMenu },
+    ],
+    [newChatFromMenu, openSchedulesFromMenu, openSettingsFromMenu, openSettingsPaneStable, toggleRightSidebarStable, openTabType, openMemoryTab, openLearnedTab, openArtifactsTab, openBoardTab, openSunxBoardFromMenu],
+  );
+
   /** 面板开合平滑(2026-11-18 用户裁定「应用的侧栏、菜单栏,下栏,展开和关闭要平滑效果」):
    *  左菜单/右栏均条件渲染,收起时先保留挂载 200ms 让根节点关闭类跑完宽度过渡再卸载;
    *  打开立即挂载,根节点自带 sx-panel-in 入场 keyframe */
@@ -1120,7 +1176,10 @@ function AppShell(): JSX.Element {
               onCloseDirView={closeDirViewStable}
               onOpenFileFromTree={openFileFromTreeStable}
               onOpenSettings={openSettingsFromMenu}
+              onOpenSettingsItem={openSettingsPaneStable}
+              searchActions={searchActions}
               onOpenSchedules={openSchedulesFromMenu}
+              onOpenSchedule={openScheduleFromSearchStable}
               onNewChat={newChatFromMenu}
               onComposeIn={composeInFromMenu}
               onCollapse={collapseMenuStable}
@@ -1272,6 +1331,7 @@ function AppShell(): JSX.Element {
                 conn={connInstance}
                 onOpenSession={openJournalSessionStable}
                 onExit={closeSchedulesStable}
+                focusJobId={scheduleFocus ?? undefined}
                 /* 菜单开着时页内不再放菜单钮（设置页同构：标题行只有标题）；收进抽屉后留一个重开入口 */
                 onToggleMenu={menuClosed ? toggleMenuStable : undefined}
                 onCreateInChat={createScheduleInChatStable}
@@ -1420,12 +1480,7 @@ function AppShell(): JSX.Element {
       )}
       {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
-      <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain} onToggleRightSidebar={() => {
-        const opening = tabState.collapsed;
-        setTabStates((s) => setCollapsed(s, isWelcome ? WELCOME_TAB_SEAT : openSessionId, !opening));
-        // 两侧抽屉互斥(2026-10-24 用户裁定):浮窗态开右抽屉即收菜单抽屉
-        if (opening && sidebarFloating) setMenuClosed(true);
-      }} />
+      <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain} onToggleRightSidebar={toggleRightSidebarStable} />
     </div>
     </DirOpenerContext.Provider>
   );

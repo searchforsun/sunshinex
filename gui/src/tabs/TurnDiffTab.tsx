@@ -22,7 +22,7 @@ interface DiffContent {
   deleted?: boolean;
 }
 
-export interface TurnDiffTabProps {
+interface TurnDiffTabProps {
   readonly conn: Connection;
   readonly sessionId: string;
   readonly params: TabParams;

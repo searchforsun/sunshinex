@@ -20,7 +20,7 @@ import { openExternalUrl } from '../ui-util';
  */
 
 
-export interface WebTabProps {
+interface WebTabProps {
   /** daemon 连接(2026-10-25 页名/站标服务端代取——iframe 跨域拒访,fetchWebMeta 尽力而为) */
   readonly conn: import('../connection').Connection;
   /** 开档参数:url 可选(带 url 开档即直开;「+」菜单裸开 = 空态引导面) */

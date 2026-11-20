@@ -9,7 +9,7 @@
 
 /** 目录条目（agentsView.view.entries / teamsView.view.entries 的 id+name 投影；shadowed 行
  *  在装配面剔除——同 id 两级行只留生效者） */
-export interface RefEntry {
+interface RefEntry {
   id: string;
   name: string;
 }
@@ -17,7 +17,7 @@ export interface RefEntry {
 /** 会话任务板任务（2026-11-20 用户裁定「$/# 出来当前会话正在运行的或存在的团队及任务,不含
  *  临时 spawn 子智能体」）：任务板上的开放任务（pending/running）——spawn 子智能体在账本不在板，
  *  天然不入列 */
-export interface RefTask {
+interface RefTask {
   id: string;
   title: string;
   status: string;

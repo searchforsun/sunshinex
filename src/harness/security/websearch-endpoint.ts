@@ -10,7 +10,7 @@ export function isBingMode(): boolean {
   return (process.env.SUNSHINEX_WEBSEARCH_PROVIDER ?? '').toLowerCase() === 'bing';
 }
 
-export function isDdgMode(): boolean {
+function isDdgMode(): boolean {
   return (process.env.SUNSHINEX_WEBSEARCH_PROVIDER ?? '').toLowerCase() === 'duckduckgo';
 }
 

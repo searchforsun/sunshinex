@@ -6,6 +6,7 @@ import type { TabTypeId, TabParams } from './tab-state';
 import { FileIcon } from '../file-icon';
 import { t } from '../i18n';
 import { joinWsPath } from '../ui-util';
+import { SearchCatBar, useSearchListNav } from '../search-kit';
 
 /**
  * G8b 目录标签体(T7):会话 root 的逐层惰拉树——G14.7 对齐 VSCode 资源管理器:
@@ -75,6 +76,10 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
   const [refreshing, setRefreshing] = useState(false);
   /** G14.2xx 搜索态机(见 SearchState) */
   const [search, setSearch] = useState<SearchState>({ status: 'idle' });
+  /** 2026-11-21 用户裁定「所有搜索框下边可以置顶分类」:命中面 全部/文件/目录 三档 */
+  const [hitCat, setHitCat] = useState<'all' | 'file' | 'dir'>('all');
+  /** 搜索框 ref(键盘 ↑↓/Enter 跳转;分类切换后回焦) */
+  const hitInputRef = useRef<HTMLInputElement>(null);
   /** 搜索回包乱序守卫:仅最新 seq 可落态(防抖连打,慢包不覆盖新词结果) */
   const searchSeq = useRef(0);
   /** G14.2xx 定位去重:同一路径只定位一次(重开同路径不重放) */
@@ -245,6 +250,29 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
     }
   };
 
+  /** 命中面分类过滤(空串回树面时复位全部):文件/目录各成类,顺序沿服务端相关性 */
+  const hits = search.status === 'loaded' ? search.hits : [];
+  const fileHits = hits.filter((h) => h.kind === 'file');
+  const dirHits = hits.filter((h) => h.kind === 'dir');
+  const shownHits = hitCat === 'file' ? fileHits : hitCat === 'dir' ? dirHits : hits;
+  useEffect(() => {
+    if (filter.trim() === '') setHitCat('all');
+  }, [filter]);
+  const hitNav = useSearchListNav({
+    count: shownHits.length,
+    resetKey: filter + '|' + hitCat,
+    onPick: (i) => {
+      const h = shownHits[i];
+      if (h === undefined) return;
+      if (h.kind === 'dir') openDirResult(h.path);
+      else openFile(h.path);
+    },
+  });
+  const pickHitCat = (id: string): void => {
+    setHitCat(id as 'all' | 'file' | 'dir');
+    hitInputRef.current?.focus(); // 分类点击后回搜索框:方向键/Enter 连续可用
+  };
+
   /** G14.2xx 命中面(VSCode quick-open 形):相对目录面包屑——目录段暗淡 / 分隔,文件行末段亮;
    *  目录行(chevron 标识)点击回树面原地逐层展开定位,文件行点击开文件页签。git 装饰同树面
    *  口径:ignored 整行灰/文件字母徽标/目录聚合圆点。 */
@@ -256,12 +284,12 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
       return <div className="sx-tree-row sx-tree-error">{search.message}</div>;
     }
     if (search.status === 'idle') return renderLevel('', 0); // 不可达(调用面 idle 才走树面)——类型收窄兜底
-    if (search.hits.length === 0) {
+    if (shownHits.length === 0) {
       return <div className="sx-tree-row sx-tree-status">{t('No matches', '无匹配')}</div>;
     }
     return (
       <>
-        {search.hits.map((h) => {
+        {shownHits.map((h, i) => {
           const gst = gitMap[h.path];
           // 2026-10-24 用户裁定:服务端忽略标记(git check-ignore)与 gitMap ignored 双源,命中行暗淡
           const dimmed = h.ignored === true || gst === 'ignored';
@@ -274,10 +302,12 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
           return (
             <button
               key={h.path}
+              ref={i === hitNav.active ? hitNav.activeRef : undefined}
               type="button"
-              className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}${gst !== undefined && gst !== 'ignored' ? ` sx-tree-git-${gst}` : ''}`}
+              className={`sx-tree-row sx-tree-file${dimmed ? ' sx-tree-ignored' : ''}${gst !== undefined && gst !== 'ignored' ? ` sx-tree-git-${gst}` : ''}${i === hitNav.active ? ' sx-kbd-active' : ''}`}
               style={indent(0)}
               data-tip={h.path}
+              onMouseEnter={() => hitNav.setActive(i)}
               onClick={() => (h.kind === 'dir' ? openDirResult(h.path) : openFile(h.path))}
             >
               {h.kind === 'dir' ? (
@@ -425,19 +455,42 @@ export function DirectoryTab({ conn, sessionId, root, openTab, locate }: Directo
           </span>
         </div>
       )}
-      {/* 文件过滤(VSCode「搜索文件」同位;G14.2xx 起非空即全层级服务端搜索) */}
-      <div className="sx-tree-filter">
-        <Search size={14} strokeWidth={1.75} aria-hidden="true" />
-        <input
-          aria-label="filter files"
-          value={filter}
-          placeholder={t('Search files…', '搜索文件…')}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        {filter !== '' && (
-          <button type="button" aria-label="clear filter" onClick={() => setFilter('')}>
-            <X size={14} strokeWidth={1.75} />
-          </button>
+      {/* 文件过滤 + 分类(VSCode「搜索文件」同位;G14.2xx 起非空即全层级服务端搜索)。
+          2026-11-21 用户裁定「所有搜索框下边可以置顶分类」:搜索头整条吸顶,列表内滚不带走
+          搜索框/分类条;↑↓/Enter 直接打开命中。 */}
+      <div className="sx-tree-searchhead">
+        <div className="sx-tree-filter">
+          <Search size={14} strokeWidth={1.75} aria-hidden="true" />
+          <input
+            ref={hitInputRef}
+            aria-label="filter files"
+            value={filter}
+            placeholder={t('Search files…', '搜索文件…')}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setFilter('');
+                return;
+              }
+              hitNav.onKeyDown(e);
+            }}
+          />
+          {filter !== '' && (
+            <button type="button" aria-label="clear filter" onClick={() => setFilter('')}>
+              <X size={14} strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
+        {filter.trim() !== '' && (
+          <SearchCatBar
+            cats={[
+              { id: 'all', en: 'All', zh: '全部' },
+              { id: 'file', en: 'Files', zh: '文件' },
+              { id: 'dir', en: 'Folders', zh: '目录' },
+            ]}
+            active={hitCat}
+            onPick={pickHitCat}
+          />
         )}
       </div>
       {search.status === 'idle' ? renderLevel('', 0) : renderSearch()}

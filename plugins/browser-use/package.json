@@ -1,6 +1,6 @@
 {
   "name": "sunshinex-plugin-browser-use",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "sunshinex 内置插件：Playwright MCP 浏览器自动化",
   "dependencies": {

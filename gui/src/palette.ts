@@ -14,9 +14,9 @@
 
 import { notifyUiPref } from './ui-pref-sync';
 
-export type ThemeMode = 'light' | 'dark';
+type ThemeMode = 'light' | 'dark';
 
-export interface PaletteTokens {
+interface PaletteTokens {
   /** 主面(对话区) */
   readonly surface: string;
   /** 底层(侧栏/页面底) */

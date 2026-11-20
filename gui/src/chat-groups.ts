@@ -2,7 +2,7 @@ import type { ChatEntry } from './chat-reducer';
 
 /** 会话流日期分组(Codex 形:跨日插居中日期分隔;spec §3.2)。纯投影:无 ts 条目贴前组
  *  (首条无 ts 入无标组,label='' 渲染面跳过分隔行);now 注入便于测试。 */
-export interface ChatDayGroup {
+interface ChatDayGroup {
   key: string;
   label: string;
   entries: ChatEntry[];

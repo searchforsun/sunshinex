@@ -21,7 +21,7 @@ const RESTART_RUNNING_NOTE = 'interrupted by restart (execution lost — recreat
 const RESTART_PENDING_NOTE = 'no live executors after restart — recreate the task if needed';
 
 /** 执行回写:成功，或失败且可标明终态(缺省 failed;abort 路径传 cancelled) */
-export type ExecutionReport =
+type ExecutionReport =
   | { ok: true; by?: string; reply?: string; tokens?: number; durationMs?: number }
   | {
     ok: false;

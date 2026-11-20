@@ -36,7 +36,7 @@ export async function handleWorkspaceLocate(io: WorkspaceHandlerIo, req: http.In
 }
 
 /** 系统扫描根(Windows=各盘根;其余平台家目录);盘符探测 C..Z 存在即入列 */
-export function systemScanRoots(): string[] {
+function systemScanRoots(): string[] {
   if (process.platform !== 'win32') return [os.homedir()];
   const roots: string[] = [];
   for (let i = 67; i <= 90; i += 1) {
@@ -48,7 +48,7 @@ export function systemScanRoots(): string[] {
 
 /** 多根 BFS 找标记文件(标记文件名=token):单次 readdir 即判本目录是否命中;噪声目录
  *  (系统/程序目录/node_modules/$ 开头)剪枝,深度 ≤10,整体限时;命中即返绝对路径 */
-export async function walkForMarker(roots: string[], token: string, capMs: number): Promise<string | null> {
+async function walkForMarker(roots: string[], token: string, capMs: number): Promise<string | null> {
   const deadline = Date.now() + capMs;
   const skip = new Set([
     'windows', 'program files', 'program files (x86)', 'programdata', 'appdata',

@@ -94,7 +94,7 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
 }
 
 /** 在途轮 run 行 key(末个 run 条目且 streaming;无=''):自尾向前扫到首个 run 即止 */
-export function liveRunKeyOf(entries: readonly ChatEntry[]): string {
+function liveRunKeyOf(entries: readonly ChatEntry[]): string {
   for (let i = entries.length - 1; i >= 0; i -= 1) {
     const e = entries[i]!;
     if (e.kind === 'run') return e.streaming === true ? e.key : '';

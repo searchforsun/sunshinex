@@ -58,7 +58,7 @@ import { parseImagesParam } from '../images';
 import { createWorktree, randomWorktreeName } from '../harness/worktree';
 
 /** submit/steer 携图请求的 body 上限：8 张 × 单张上限 × JSON 转义余量 */
-export const MAX_IMAGE_BODY_BYTES = 32 * 1024 * 1024;
+const MAX_IMAGE_BODY_BYTES = 32 * 1024 * 1024;
 
 export async function handleSubmit(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
   const parsed = await io.readJson(req, MAX_IMAGE_BODY_BYTES);

@@ -21,7 +21,7 @@ import { useBranchSwitch } from '../branch-switch';
  * 文件名点击开 file 标签。params.path 在场(主对话 write 条目点击)即自动展开对应项。
  */
 
-export interface DiffTabProps {
+interface DiffTabProps {
   readonly conn: Connection;
   readonly sessionId: string;
   readonly params: TabParams;

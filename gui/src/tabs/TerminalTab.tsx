@@ -36,7 +36,7 @@ import type { TabParams } from './tab-state';
  * bearer. 空串与主事件 WS 同形态)。
  */
 
-export interface TerminalTabProps {
+interface TerminalTabProps {
   readonly conn: Connection;
   /** 当前会话(:id 寻址维) */
   readonly sessionId: string;

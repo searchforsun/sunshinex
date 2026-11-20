@@ -6,7 +6,7 @@ import type { ConnectionState, ConfigChangedInfo, WsFrame, GuiApprovalReq, GuiAs
  *  卡、重置与状态变迁经 TransportCallbacks 注入。行为零变化（connection.test 为锚）。
  */
 
-export interface TransportCallbacks {
+interface TransportCallbacks {
   onEvent(sessionId: string, e: SessionEvent, seq: number): void;
   onApproval?(sessionId: string, pid: string, req: GuiApprovalReq): void;
   onAsk?(sessionId: string, pid: string, req: GuiAskReq): void;
@@ -20,7 +20,7 @@ export interface TransportCallbacks {
   onStateChange?(next: ConnectionState): void;
 }
 
-export interface ConnectionTransport {
+interface ConnectionTransport {
   state(): ConnectionState;
   generation(): number;
   readonly lastSeqBySession: Map<string, number>;

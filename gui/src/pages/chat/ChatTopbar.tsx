@@ -42,7 +42,7 @@ const DYN_META: Record<DynBlockKind, { label: string; icon: typeof ListTodo; tab
 /** 顶栏动态信息块(2026-11-11 用户裁定改版):最近两轮(中断轮额外回溯)每类「最后生效块」的终态——
  *  图标=对应页签前缀图标,状态=运行中(转圈)/完成(✓)/中断·跳过(⊘);0 不显示;点击开对应页签。
  *  旧「运行中才显、收束即隐」行为退役 */
-export function ChatDynButtons({ blocks, onOpenTab }: {
+function ChatDynButtons({ blocks, onOpenTab }: {
   blocks: readonly DynBlock[];
   onOpenTab?: (type: 'tasks' | 'agents' | 'bgtasks' | 'plans') => void;
 }): JSX.Element | null {

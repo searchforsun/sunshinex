@@ -13,7 +13,7 @@ import { highlightCode } from './highlight';
  * (changes 侧栏):透明平铺无内滚——纵向滚动统一交外层,展开卡单开。
  */
 
-export interface DiffRow {
+interface DiffRow {
   kind: 'same' | 'add' | 'del';
   text: string;
   numOld?: number;

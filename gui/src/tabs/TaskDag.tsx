@@ -18,16 +18,16 @@ import '@xyflow/react/dist/style.css';
  */
 
 /** 任务节点盒尺寸(dagre 布局步进 + React Flow 免实测尺寸的既定值;CSS 同值配套) */
-export const TASK_NODE_W = 224;
-export const TASK_NODE_H = 66; // 2026-11-09 节点字号统一 14px:两行(标题+执行者/耗时)+内边距
-export const TASK_NODE_H_COMPACT = 42;
+const TASK_NODE_W = 224;
+const TASK_NODE_H = 66; // 2026-11-09 节点字号统一 14px:两行(标题+执行者/耗时)+内边距
+const TASK_NODE_H_COMPACT = 42;
 /** 起止虚拟节点尺寸 */
 const TERMINAL_W = 92;
 const TERMINAL_H = 32;
 const START_ID = '__start';
 const END_ID = '__end';
 
-export interface TaskNodeData extends Record<string, unknown> {
+interface TaskNodeData extends Record<string, unknown> {
   id: string;
   title: string;
   status: BoardTask['status'];
@@ -42,7 +42,7 @@ interface TerminalNodeData extends Record<string, unknown> {
   label: string;
 }
 
-export interface TaskDagProps {
+interface TaskDagProps {
   readonly tasks: readonly BoardTask[];
   /** taskId → 执行子智能体显示名(未派发回空串);布局(有无代理行)与可点判定共用同一单点 */
   readonly agentOf: (taskId: string) => string;

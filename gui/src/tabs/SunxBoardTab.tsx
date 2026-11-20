@@ -24,7 +24,7 @@ import { aggregateSunxCards, assembleSunxCards, sunxSectionsOf, sunxSnapOf, type
  * awaiting 布尔;快照拉取失败同降级不炸(行仍在卡)。
  */
 
-export interface SunxBoardTabProps {
+interface SunxBoardTabProps {
   readonly conn: Connection;
   /** App panelRefreshNonce(打开即刷一次;REFRESHABLE_TAB_TYPES 同款) */
   readonly refreshNonce?: number;

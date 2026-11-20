@@ -338,7 +338,7 @@ export function reduceWakeScheduleRows(rows: ReadonlyArray<SegRowLike>): WakeSch
 // ===== 挂起持久化（2026-11-15 sunx P2 Task 4）：pending-open/pending-resolve 机制行读面（attach 回放素材源） =====
 
 /** pending 机制行挂起种类（与 SnapshotPendingRow/挂起表三态同源——serve/session 挂起面判定单点） */
-export type PendingRowKind = 'ask' | 'approval' | 'plan-approval';
+type PendingRowKind = 'ask' | 'approval' | 'plan-approval';
 
 /** 恢复轮素材（attach 回放面产出——Task 5 恢复轮 notice 消费;凡界面可见皆落库延伸的挂起形态）:
  *  pid=存档铸造票据（审计寻址键,新 run 不复用）;title=人读面（ask=question 原文/approval=subject/
@@ -355,11 +355,11 @@ export interface PendingMaterial {
 }
 
 /** 已决挂起审计行（已答的行仅审计——裁定 ①;material 同构+outcome 结果摘要,入 resolved 列） */
-export type PendingResolved = PendingMaterial & { outcome: string };
+type PendingResolved = PendingMaterial & { outcome: string };
 
 /** pending 机制行读面视图:open=未决（daemon 重启蒸发在内存表,档上 open 行无 resolve 对位=未决态）
  *  ——attach 回放转恢复轮素材（不复活 promise,不重建挂起表,不重发挂起帧）;resolved=已决（仅审计） */
-export interface PendingRowsView {
+interface PendingRowsView {
   open: PendingMaterial[];
   resolved: PendingResolved[];
 }

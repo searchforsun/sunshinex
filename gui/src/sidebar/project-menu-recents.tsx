@@ -7,7 +7,7 @@ import { RECENT_VISIBLE_DEFAULT, SessionRow as SessionRowView, useConfirmOutside
 /** RECENTS 区(D32 批PM-4 自 ProjectMenu 平移,行为零变化):分区头(折叠 + 默认工作区✎)
  *  + 最近会话行(G14.52 运行圆点/未读点)+ G14.115 尾行分页(显示更多/收起)。纯渲染件,
  *  数据/动作 props 注入——折叠复位与分页窗留宿主(onToggleRecents/onShowMore/onCollapse)。 */
-export interface RecentsSectionProps {
+interface RecentsSectionProps {
   readonly recentsOpen: boolean;
   readonly onToggleRecents: () => void;
   /** 头部「新对话」钮(2026-10-23 用户裁定:常驻右侧,点击开默认工作区欢迎页) */

@@ -17,8 +17,8 @@ const CLIP_TIMEOUT_MS = 8_000;
 /** 读盘图片上限（与 serve 面 MAX_IMAGE_CHARS≈6MB 二进制口径对齐，留 base64 余量前截断在源头） */
 const FILE_MAX_BYTES = 6 * 1024 * 1024;
 
-export type ClipStdout = string | Buffer;
-export type ClipRunner = (file: string, args: string[], timeoutMs: number) => Promise<ClipStdout>;
+type ClipStdout = string | Buffer;
+type ClipRunner = (file: string, args: string[], timeoutMs: number) => Promise<ClipStdout>;
 
 const defaultRunner: ClipRunner = async (file, args, timeoutMs) => {
   // encoding:'buffer'：linux 面回退命令输出是 PNG 二进制，utf8 串会毁字节——decode 面自辨文本/字节

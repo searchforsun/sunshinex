@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import type { Connection, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
+import type { Connection, ScheduleJobView, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
 import { ArrowLeft, Clock, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
@@ -24,6 +24,7 @@ import { SunxSection } from './project-menu-sunx';
 import { ArchiveSection } from './archive-group';
 import { PinnedSection } from './pinned-section';
 import type { PinEntry } from './pin-store';
+import type { SearchAction } from '../search-actions';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
 export { FolderAddIcon } from './project-menu-util';
@@ -50,6 +51,9 @@ export interface ProjectMenuConn {
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /sunx/sessions(sunx P3 Task 3 数据源改向):sunx 域容器全域枚举——SUNX 过滤组数据源单点 */
   sunxSessions(): Promise<SessionRow[]>;
+  /** GET /schedules(2026-11-21 搜索分类扩展):定时任务清单供聚合搜索按类型检索;
+   *  旧桩缺名=不出「定时任务」分类(App 传整只 Connection 运行时满足) */
+  schedules?(): Promise<{ jobs: ScheduleJobView[] }>;
   /** POST /sunx/attach(sunx P3 Task 3):journalId 直寻址重开 sunx 实例——SUNX 组条目点击链 */
   attachSunx(journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;
   dirpicker(path?: string): Promise<{ path: string; parent: string; dirs: string[] }>;
@@ -114,6 +118,12 @@ export interface ProjectMenuProps {
   readonly onOpenSettings?: () => void;
   /** 定时任务主区页(2026-11-20):入口在「新建 Sunx」下方(可选——未配时钮不渲染) */
   readonly onOpenSchedules?: () => void;
+  /** 定时任务搜索跳转(2026-11-21):开任务页并定位到指定任务卡;未配时搜索不出该分类 */
+  readonly onOpenSchedule?: (id: string) => void;
+  /** 设置项搜索跳转(2026-11-21):开设置面板并滚到行锚;未配时搜索不出设置分类 */
+  readonly onOpenSettingsItem?: (pane: string, row?: string) => void;
+  /** 操作类快捷项(宿主注入:菜单/页面动作从搜索框直达) */
+  readonly searchActions?: readonly SearchAction[];
   /** 「New chat」:回欢迎页开新对话(G10-C16) */
   readonly onNewChat: () => void;
   /** 项目行「+」:回欢迎页并预选该项目(G10-C16;审批模式由欢迎页选择器承载,旧 auto/manual 直进面退役) */
@@ -145,7 +155,7 @@ export interface ProjectMenuProps {
 const EMPTY_RUNNING: ReadonlySet<string> = new Set();
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
-  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onOpenSchedules, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree, onOpenLiveSeat } = props;
+  const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onOpenSchedules, onOpenSchedule, onOpenSettingsItem, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree, onOpenLiveSeat } = props;
   const recentVersion = props.recentVersion ?? 0;
   const pins = props.pins ?? [];
   const persistPins = props.persistPins ?? ((): void => undefined);
@@ -188,8 +198,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   // G14.2xx 组内会话默认收窄(2026-11-18 多组同开):「显示更多」按组独立(slug → 全量),
   // 收起该组即复位;旧单布尔是全侧栏一份,多组同开下会互相串档
   const [showAllBySlug, setShowAllBySlug] = useState<Record<string, boolean>>({});
-  /** 查找面板簇(开合/查询词/聚合会话集)收口 use-menu-search(D62 批J) */
-  const { searchOpen, setSearchOpen, allSessions, query, setQuery } = useMenuSearch(conn, rows);
+  /** 查找面板簇(开合/查询词/聚合会话集/定时任务)收口 use-menu-search(D62 批J) */
+  const { searchOpen, setSearchOpen, allSessions, schedules, query, setQuery } = useMenuSearch(conn, rows);
+  /** 搜索「操作」分类:本面动作(新建 Sunx)+ App 注入的菜单/页面动作 */
+  const searchActions = useMemo<readonly SearchAction[]>(
+    () => [
+      { id: 'new-sunx', en: 'New Sunx', zh: '新建 Sunx', run: () => setSunxOpen(true) },
+      ...(props.searchActions ?? []),
+    ],
+    [props.searchActions],
+  );
   /** 各组已载会话行并集(已读映射/journal 行寻址面):多组同开后活跃行不再只认单组数据 */
   const openSessions = useMemo(() => {
     const out: SessionRow[] = [];
@@ -661,6 +679,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         <ProjectSearch
           rows={rows}
           allSessions={allSessions}
+          allSunx={sunxRows}
+          schedules={schedules}
+          searchActions={searchActions}
           query={query}
           onQuery={setQuery}
           onClose={() => setSearchOpen(false)}
@@ -671,6 +692,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           isUnseen={isUnseen}
           onAttach={attachJournal}
           onComposeIn={onComposeIn}
+          onAttachSunx={attachSunxJournal}
+          onOpenSchedule={onOpenSchedule}
+          onOpenSettingsItem={onOpenSettingsItem}
         />
       )}
             {/* 2026-10-27 目录视图层(用户裁定:目录树从右侧栏挪入左菜单,参考 ZCode):返回+树复用

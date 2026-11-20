@@ -13,20 +13,11 @@ import { ClampBlock } from '../clamp-block';
 import { highlightCommand, stripAnsi } from '../highlight';
 
 /**
- * G10-C6 右栏三面板(spec §7 映射:/context /tasks /memory 的 GUI 承载):
- * - ContextTab:上下文分段构成(结构化 parts,占比条)
+ * G10-C6 右栏两面板(spec §7 映射:/tasks /memory 的 GUI 承载;/context 面板未挂载已清,承载归会话流):
  * - BgTasksTab:后台任务账本(/tasks 底层,与任务板分立——账本是 exec/spawn 运行面)
  * - MemoryTab:持久记忆清单(/memory 底层;删除钮走 /memory/rm)
- * 三者皆只读拉取 + 手动刷新;错误行内示出不静默。
+ * 两者皆只读拉取 + 手动刷新;错误行内示出不静默。
  */
-
-type CtxBreakdown = {
-  parts: Array<{ id: string; tokens: number; count: number }>;
-  chainByAction: Array<{ action: string; tokens: number }>;
-  total: number;
-  window: number;
-  free: number;
-};
 
 type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string; body: string };
 
@@ -76,8 +67,6 @@ function useFetch<T>(
   return { data, error, reload, fetching };
 }
 
-const pct = (tokens: number, total: number): string => `${Math.round((tokens / Math.max(1, total)) * 100)}%`;
-
 /** 运行时长(m→mm:ss,h 进位 h:mm:ss;秒位定宽——tabular-nums 在 CSS 面) */
 const fmtDur = (ms: number): string => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -86,51 +75,6 @@ const fmtDur = (ms: number): string => {
   const ss = String(s % 60).padStart(2, '0');
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
 };
-
-/** 上下文面板:/context 结构化面——分段条 + 总量/窗口余量 */
-export function ContextTab({
-  conn,
-  sessionId,
-  refreshNonce,
-}: {
-  conn: Connection;
-  sessionId: string;
-  refreshNonce?: number;
-}): JSX.Element {
-  const { data, error, reload, fetching } = useFetch<CtxBreakdown>(
-    () => conn.sessionContext(sessionId),
-    [conn, sessionId],
-    { refreshNonce },
-  );
-  return (
-    <div className="insight-tab">
-      <div className="insight-bar">
-        <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
-        </button>
-      </div>
-      {error !== '' && <p className="home-error" role="alert">{error}</p>}
-      {data !== null && (
-        <>
-          <p className="insight-summary">
-            {data.total} / {data.window} tokens · {t('free', '余量')} {data.free}
-          </p>
-          <ul className="ctx-parts">
-            {data.parts.map((p) => (
-              <li key={p.id} className="ctx-part">
-                <span className="ctx-part-id">{p.id}</span>
-                <span className="ctx-part-bar">
-                  <span className="ctx-part-fill" style={{ width: pct(p.tokens, data.total) }} />
-                </span>
-                <span className="ctx-part-num">{p.tokens}</span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </div>
-  );
-}
 
 /** 从后台 spawn 日志首行解析 prompt(落盘形 `[spawn background] <agent>: <prompt>`)——开转录页
  *  任务气泡兜底;live taskBand 在场时 AgentTranscriptTab 优先用活动流,此仅补缺 */

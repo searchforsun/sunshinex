@@ -981,7 +981,7 @@ export function makeTeamTool(teams: { resolve(id: string): { ok: true; value: im
     },
     name: 'load_agent_teams',
     description:
-      "Load a team's charter card by id. Teams come from two sources: the catalog (predefined team.md entries listed in the available agent teams section) and this session (created by create_agent_team, or announced by a [teams] notice). A session team's charter is already part of this conversation, so loading it again returns nothing new — loading is what surfaces a catalog team's charter. The charter is returned verbatim and never truncated. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
+      "Load a team's charter card by id. When the user message references a team like \"#team-id\" that matches an entry in the available agent teams list, load that team's charter with this tool first and follow it before proceeding. Teams come from two sources: the catalog (predefined team.md entries listed in the available agent teams section) and this session (created by create_agent_team, or announced by a [teams] notice). A session team's charter is already part of this conversation, so loading it again returns nothing new — loading is what surfaces a catalog team's charter. The charter is returned verbatim and never truncated. Instantiate per the charter with create_agent_team + create_agent_teammate + create_agent_team_task",
     category: 'read' as const,
     fullObservation: true,
     executor: async (input: ToolInput) => {

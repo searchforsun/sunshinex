@@ -23,7 +23,7 @@ import { TerminalDock } from '../tabs/terminal-dock';
 import { ChatTopbar } from './chat/ChatTopbar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
 import { flushScrollMem, peekScrollAnchor, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
-import { isProgBottom, markProgBottom, syncOverflowAnchor, useChatScroll } from './chat/use-chat-scroll';
+import { isProgBottom, markProgBottom, syncOverflowAnchor, useChatScroll, chatAnchorOf } from './chat/use-chat-scroll';
 import { useChatTitle } from './chat/use-chat-title';
 import { useChatSessionInfo } from './chat/use-chat-session-info';
 import { useChatSubmit } from './chat/use-chat-submit';
@@ -39,7 +39,7 @@ import { useChatImages } from './chat/use-chat-images';
 import { useChatSeenArchive } from './chat/use-chat-seen-archive';
 import { useChatTerminalDock } from './chat/use-chat-terminal-dock';
 import { useCollapseTransition } from '../use-collapse-transition';
-import { expandFileRefs, expandRefContents, hasMentionTokens, refKindOf, renderMentionSpans, setRefLabels, setRefOpenHandler, slashTokenAt } from './chat/mention';
+import { expandFileRefs, expandRefContents, hasMentionTokens, renderMentionSpans, slashTokenAt } from './chat/mention';
 export { atomicRange, expandFileRefs, fileHit, FilePalette, hasMentionTokens, rankFileHits, rebuildPickTokens, RefTokenChip, renderMentionSpans, renderUserMd, slashTokenAt, splitBrowserFences, splitMentionTokens, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './chat/mention';
 export type { MentionToken, TokenGuardVerdict } from './chat/mention';
 export { buildMdComponents, buildUserMdComponents, keepUrl, mdComponentsPlain, MermaidBlock, MD_REMARK_PLUGINS, MD_REHYPE_PLUGINS, MarkdownCached, renderMdCached } from './chat/md-render';
@@ -48,7 +48,7 @@ export { useDirResolver } from './chat/md-render';
 export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } from './chat/EntryViews';
 import { useWorkspaceFiles } from './chat/use-workspace-files';
 import type { AskPick } from './chat/PendingCards';
-import type { RefEntries, RefItem, RefPal } from './chat/ref-palette';
+import type { RefItem } from './chat/ref-palette';
 import { refPanelItems as buildRefPanelItems, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
@@ -57,7 +57,9 @@ import { ChatTranscript } from './chat/chat-transcript';
 import { RENDER_WINDOW_MAX } from './chat/MessageList';
 import { usePopOutsideClose } from '../use-pop-outside-close';
 import { useChatNotify } from './chat/use-chat-notify';
-import { LiveChangesContext, TurnLatestContext, useLiveGitChanges } from './chat/use-live-changes';
+import { LiveChangesContext, TurnLatestContext } from './chat/use-live-changes';
+import { useChatRefEntries } from './chat/use-chat-ref-entries';
+import { useChatChanges } from './chat/use-chat-changes';
 import { TurnUndoContext, makeTurnUndoApi } from './chat/turn-undone-context';
 import { useChatLocate } from './chat/use-chat-locate';
 export { ToolEntryView } from './chat/ToolEntry';
@@ -86,21 +88,6 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
  *  saveScrollPos/peekScrollPos 原路径同名导入,行为零变化 */
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
-
-/** 视口顶内容锚(虚拟窗口块包装 data-unit-key):块 key + 块顶相对视口偏移(负值);
- *  无块包装(jsdom 回退/降级面)回 undefined——存档退化为只记距底 */
-function chatAnchorOf(el: HTMLElement): { key: string; off: number } | undefined {
-  const cTop = el.getBoundingClientRect().top;
-  for (const child of el.children) {
-    if (!(child instanceof HTMLElement) || !child.classList.contains('chat-unit')) continue;
-    const r = child.getBoundingClientRect();
-    if (r.bottom > cTop) {
-      const key = child.dataset.unitKey ?? '';
-      return key === '' ? undefined : { key, off: Math.round(r.top - cTop) };
-    }
-  }
-  return undefined;
-}
 
 export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
@@ -175,31 +162,16 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
   const [filePalActive, setFilePalActive] = useState(0);
-  /** agents-teams P1 §3.2 $/# 引用面板:触发态 + 两目录缓存(agents/teams id+name 投影)+单游标。
-   *  entries 懒加载(refEntriesLoadedRef 门:首次命中拉一次,失败静默空列=面板照开仅无项;
-   *  R5:未知引用提示只认这份缓存,从未拉过=跳过检查,不为提示补拉) */
-  const [refPal, setRefPal] = useState<RefPal | null>(null);
-  const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
-  /** 本会话实时团队/任务(2026-11-20 用户裁定「$/# 出来当前会话正在运行的或存在的团队及任务,
-   *  不含临时 spawn 子智能体」):teams=投影队卡;任务=板开放态(pending/running)——spawn 在账本
-   *  不在板,天然排除;与目录合并后的单点供面板/注册表/发送展开三面共用 */
-  const liveRefEntries = useMemo<RefEntries>(() => {
-    const liveTeams = (teams ?? []).map((t) => ({ id: t.teamId, name: t.name }));
-    const liveMembers = (members ?? []).map((m) => ({ id: m.name, name: m.name }));
-    const liveTasks = board !== undefined
-      ? Object.values(board.tasks)
-          .filter((t) => t.status === 'pending' || t.status === 'running')
-          .map((t) => ({ id: t.id, title: t.title, status: t.status }))
-      : [];
-    return {
-      ...refEntries,
-      ...(liveTeams.length > 0 ? { liveTeams } : {}),
-      ...(liveTasks.length > 0 ? { liveTasks } : {}),
-      ...(liveMembers.length > 0 ? { liveMembers } : {}),
-    };
-  }, [refEntries, teams, board, members]);
-  const [refActive, setRefActive] = useState(0);
-  const refEntriesLoadedRef = useRef(false);
+  /** $/# 引用面板簇(触发态/目录缓存/懒加载/按名注册表+点击跳转接线)收口 use-chat-ref-entries(D62 批K) */
+  const { refPal, setRefPal, refActive, setRefActive, refEntries, liveRefEntries, loadRefEntries, refEntriesLoadedRef } = useChatRefEntries({
+    conn,
+    root,
+    teams,
+    board,
+    members,
+    onOpenTask,
+    onOpenAgent,
+  });
   // G14.211 @ 面板点外即收:收口此前只有 Esc/改写输入两条路,焦点离开输入框后 Esc 不可达、
   // 点外无处理 = 面板滞留(「无法关闭」直感)。pointerdown 落 composer 卡外即收;面板行在
   // 卡内(overlays 锚卡根),选中点击不受影响
@@ -220,41 +192,6 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const composingRef = useRef(false);
   /** 工作区文件索引 hook(D32 批B 数据部):装载/缓存/预热/解析器——记账表注入,pickRelRef 写入面留 UI */
   const { resolveFileRef, loadWorkspaceFiles, filesVer } = useWorkspaceFiles(conn, sessionId, root, pickRelRef);
-  /** $/# 名称注册表 + 点击跳转(2026-11-20 用户裁定「名称不是标识」「点击跳转到指定团队/成员,
-   *  与页面蓝色超链接一致」):目录装载后写入模块级注册表——气泡/输入框按名显示、按 id 跳转;
-   *  跳转路由=团队卡(`team:<id>`)/成员转录(onOpenAgent) */
-  useEffect(() => {
-    setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? [], liveRefEntries.liveMembers ?? []);
-  }, [liveRefEntries]);
-  useEffect(() => {
-    setRefOpenHandler((sym, id) => {
-      if (sym === '#') onOpenTask?.(refKindOf('#' + id) === 'task' ? id : `team:${id}`);
-      else onOpenAgent?.(id, id);
-    });
-    return () => setRefOpenHandler(null);
-  }, [onOpenTask, onOpenAgent]);
-  /** agents-teams P1 §3.2 引用目录懒加载:并行 agentsView+teamsView(root 同口径守卫——缺省/
-   *  空串/'default' 走全局清单),结果投影 id+name(shadowed 行剔除——同 id 两级行只留生效者),
-   *  缓存于 ref(首次命中后零网络);失败静默空列——面板照开仅无项(R5 不为提示补拉) */
-  const loadRefEntries = useCallback((): void => {
-    if (refEntriesLoadedRef.current) return;
-    refEntriesLoadedRef.current = true;
-    const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
-    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
-      ([a, tv]) => {
-        setRefEntries({
-          // 内置四角色并入候选池(2026-11-05 用户实测:零注册目录下 $ 弹了等于没弹)——内置本就
-          // 可 $ 引用(spawn/agent 工具均收,agents 索引同源),同 id 注册行不重复列(builtin-first)
-          agents: [
-            ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
-            ...a.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
-          ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
-          teams: tv.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
-        });
-      },
-      () => {}, // 失败静默:entries 保持空列(面板无项不开;不重试——零网络纪律)
-    );
-  }, [conn, root]);
   /** 目录引用解析(md 链接面/输入框高亮层共用):记账表优先、索引兜底——值带尾斜杠=目录
    *  (内部标记,显示/插入一律无斜杠)。依赖 filesVer:缓存落定即换新引用→context 值变化,
    *  驱动 memo 封存条目(会话恢复先于异步索引渲染)重渲补上黄目录图标 */
@@ -375,42 +312,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const running = chat.status === 'running' || commandRunning;
   /** run-live 行/顶部运行态只认真实 run(2026-10-31 用户裁定「步数 tokens 行是普通对话用的,命令期不显」)——命令期 composer 侧运行态走 commandRunning */
   const runLive = chat.status === 'running';
-  /** 轮尾改动条动态渲染(2026-11-07):本会话当前 git 变动(审查页同源),各轮条取交集显示;
-   *  有轮改动记录才拉,run 收尾/回焦/广播/10s 可见轮询刷新(use-live-changes) */
-  const hasRunChanges = chat.entries.some((en) => en.changes !== undefined && en.changes.length > 0);
-  const liveChanges = useLiveGitChanges(
-    typeof conn.sessionChanges === 'function'
-      ? // 非 git 目录(branch='' )→ null:live 缺场回落轮记录原样——轮次 checkpoint 面 git 无关,
-        // 改动卡在非 git 目录同样可用(数据=轮末快照封存条目)
-        () => conn.sessionChanges(sessionId).then((r) => (r.branch === '' ? null : { files: r.files }))
-      : undefined,
-    sessionId,
-    running,
-    active && hasRunChanges,
-  );
-  // 顶栏总改动(2026-11-10 用户裁定「主会话顶部实时展示 +A −D,点击开审查页」):独立于改动卡的
-  // enabled 门(有 run 改动记录才拉)——主会话恒拉(辅助会话不拉,零 git 开销);live 缺场=null 不渲染。
-  // 2026-11-18 多会话卡顿轮:/changes 实测 689–745ms(单线程 daemon),隐藏驻留座恒停轮询——
-  // 切回合再随 enabled 翻转重拉一次(useLiveGitChanges effect 依赖 enabled)
-  const topbarLive = useLiveGitChanges(
-    sideChat !== true && typeof conn.sessionChanges === 'function'
-      ? () => conn.sessionChanges(sessionId).then((r) => (r.branch === '' ? null : { files: r.files }))
-      : undefined,
-    sessionId,
-    running,
-    active && sideChat !== true,
-  );
-  const changesTotal = useMemo(() => {
-    const files = topbarLive;
-    if (files === undefined || files === null || files.length === 0) return null;
-    let add = 0;
-    let del = 0;
-    for (const f of files) {
-      add += f.added ?? f.newLines ?? 0;
-      del += f.deleted ?? 0;
-    }
-    return add + del > 0 ? { add, del } : null;
-  }, [topbarLive]);
+  /** 轮尾改动条+顶栏总改动簇(hasRunChanges 门双 useLiveGitChanges+add/del 汇总)收口 use-chat-changes(D62 批K) */
+  const { liveChanges, changesTotal } = useChatChanges({ conn, sessionId, entries: chat.entries, running, active, sideChat });
   /** 浏览器导航跟随(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):browser_navigate
    *  工具条落条即上抛目标 url 开 web 页签;lastNavRef 免对同一条目逐帧重开 */
   const lastNavRef = useRef('');

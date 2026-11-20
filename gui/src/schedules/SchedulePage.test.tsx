@@ -95,6 +95,14 @@ describe('SchedulePage 列表', () => {
     expect(screen.queryByRole('button', { name: /Back|返回/ })).toBeNull();
   });
 
+  it('搜索落点 focusJobId:任务清单落定后定位该卡(短高亮+滚入视野)', async () => {
+    const { conn } = makeConn([job(), job({ id: 'j2', name: '依赖升级', prompt: '升级依赖并跑测试' })]);
+    render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} focusJobId="j2" />);
+    await screen.findByText('依赖升级');
+    await waitFor(() => expect(screen.getByText('依赖升级').closest('.sx-schedule-card')!.className).toContain('is-focus'));
+    expect(scrollSpy).toHaveBeenCalled();
+  });
+
   it('卡片主体 → 执行记录；「…」菜单 → 编辑/立即执行/删除', async () => {
     const { conn, scheduleRuns, runScheduleNow } = makeConn([job()]);
     render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);

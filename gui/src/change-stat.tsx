@@ -4,7 +4,7 @@
  * 新建(untracked,numstat 不覆盖)的增加行=内容行数 newLines;删除文件 numstat 本就是 +0 -N。
  */
 
-export interface ChangeCountsLike {
+interface ChangeCountsLike {
   readonly added: number | null;
   readonly deleted: number | null;
   readonly newLines?: number;

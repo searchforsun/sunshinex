@@ -70,7 +70,7 @@ export interface TeammateRosterRecord {
   createdAt: number;
 }
 
-export interface TeammateRosterStoreBackend {
+interface TeammateRosterStoreBackend {
   load(): TeammateRosterRecord[];
   save(rows: TeammateRosterRecord[]): void;
 }

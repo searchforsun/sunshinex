@@ -10,7 +10,7 @@ export const MAX_IMAGES = 8;
 /** 单张图片 dataURL 字符上限（≈6MB 二进制）：交互面压缩后正常远低于此；防单张巨型载荷 */
 export const MAX_IMAGE_CHARS = 8 * 1024 * 1024;
 /** dataURL 形态校验（png/jpeg/webp/gif；交互端产物恒此四类） */
-export const IMAGE_DURL_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+const IMAGE_DURL_RE = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/;
 /** 降采样长边（vision 端点惯例 ≤1568px）：GUI 装载面与插件 server 生产者同规范——视觉端点友好口径 */
 export const IMAGE_MAX_EDGE = 1568;
 /** 降采样 JPEG 质量：GUI 装载面与插件 server 生产者同规范——视觉端点友好口径 */
