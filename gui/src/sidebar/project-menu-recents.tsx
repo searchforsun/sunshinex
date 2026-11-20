@@ -108,6 +108,7 @@ export const RecentsSection = memo(function RecentsSection(props: RecentsSection
                 active={active}
                 running={running}
                 awaiting={r.awaiting === true}
+                scheduled={r.scheduled === true}
                 unseen={isUnseen(r.id, r.updatedAt)}
                 busy={busy}
                 onOpen={() => onAttach(r.root, r.id)}

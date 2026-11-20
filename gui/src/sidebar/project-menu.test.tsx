@@ -440,4 +440,20 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;20
     await second.findByText('demo goal');
     expect(second.queryByRole('button', { name: 'scheduled tasks' })).toBeNull();
   });
+
+  it('定时任务执行会话：相对时间左侧挂钟面图标；普通会话不挂', async () => {
+    const conn = makeConn();
+    conn.recentSessions = (async () => [
+      { id: 'j1', firstUser: '定时巡检', updatedAt: FIXED_TS, root: 'D:/w/p1', slug: 'p1', scheduled: true },
+      { id: 'j2', firstUser: '手工会话', updatedAt: FIXED_TS - 1000, root: 'D:/w/p1', slug: 'p1' },
+    ]) as never;
+    renderMenu(conn);
+    await screen.findByText('定时巡检');
+    const rows = Array.from(document.querySelectorAll('.sx-session-row'));
+    const of = (text: string): Element => rows.find((r) => r.textContent?.includes(text))!;
+    const sched = of('定时巡检');
+    const plain = of('手工会话');
+    expect(sched.querySelector('.session-meta .session-sched-icon')).not.toBeNull();
+    expect(plain.querySelector('.session-sched-icon')).toBeNull();
+  });
 });

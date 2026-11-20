@@ -320,6 +320,7 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
                               active={active}
                               running={running}
                               awaiting={sr.awaiting === true}
+                              scheduled={sr.scheduled === true}
                               unseen={isUnseen(sr.id, sr.updatedAt)}
                               busy={busy}
                               onOpen={() => {

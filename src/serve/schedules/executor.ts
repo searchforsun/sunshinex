@@ -76,7 +76,10 @@ export class ScheduleExecutor {
       if (!session.setEffort(job.effort)) session.setEffort('medium');
       session.ensureJournalMinted();
       journalId = session.attachedJournalId;
-      if (journalId !== undefined) writeSessionMeta(session.dataDir, journalId, { title: `${job.name} · ${stamp(startedAt)}` });
+      if (journalId !== undefined) {
+        // scheduled=定时任务执行会话标记（2026-11-21）：侧栏会话行在相对时间左侧挂钟面图标
+        writeSessionMeta(session.dataDir, journalId, { title: `${job.name} · ${stamp(startedAt)}`, scheduled: true });
+      }
       const submitted = session.submit(job.prompt);
       if (!submitted.ok) {
         // 拒收（如 409 运行中）：运行时释放 + 出生档/meta 清除——不留空会话痕迹

@@ -8,7 +8,7 @@ import { ModelAdapter, parseEffort } from '../model/adapter';
 import type { Result } from '../result';
 import type { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir } from "../tui/session-journal";
+import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../tui/session-journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles, fetchRemoteBranches } from './session-changes';
@@ -16,7 +16,7 @@ import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
 import { ModelSwitcher } from '../model/catalog';
 import { loadProviders } from '../config/providers';
-import { projectsRoot, sunxContainerDir, sunxDomainDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir, sunxContainerDir, sunxDomainDir } from '../config/data-dir';
 import {
   applySettings,
   getSelfFilledSlots,
@@ -491,8 +491,32 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 合法;强杀(TerminateProcess)不触发属物理极限。幂等:二次收割杀已死 pid 无害
     process.once('exit', () => this.reapBuiltinBrowsers());
     // 定时任务布防：监听已就绪后再补跑/布防，catch-up 建的会话走完整 HTTP/会话栈
+    this.backfillScheduledSessionMarks();
     this.scheduleEngine.start();
     return { port: addr.port, token, close: () => this.close() };
+  }
+
+  /** 存量定时执行会话补标(2026-11-21 用户裁定「定时任务的会话时间左侧显示定时任务图标」)：
+   *  新执行由 executor 建会话时直接落 scheduled=true；本次升级前已产生的会话从 schedules.json
+   *  执行记录（journalId+root）反查 dataDir 补写——否则侧栏旧会话永远没有钟面标。只写已存在的
+   *  meta（不凭空造档），单档/整库失败静默（下次 boot 再试，不阻塞启动）。 */
+  private backfillScheduledSessionMarks(): void {
+    try {
+      for (const job of this.scheduleStore.list()) {
+        for (const run of job.runs) {
+          if (run.journalId === undefined) continue;
+          try {
+            const dataDir = resolveDataDir(run.root);
+            if (!fs.existsSync(path.join(dataDir, 'sessions', run.journalId + '.meta.json'))) continue;
+            writeSessionMeta(dataDir, run.journalId, { scheduled: true });
+          } catch {
+            /* 单档补写失败：跳过，下次启动再试 */
+          }
+        }
+      }
+    } catch {
+      /* 任务库不可读：不挡启动 */
+    }
   }
 
   /** 幂等 teardown：单次化落链（closePromise 守卫），升级拒绝面同判 */

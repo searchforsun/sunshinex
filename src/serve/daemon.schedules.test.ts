@@ -223,6 +223,35 @@ test('boot catch-up：start 补跑一次逾期任务并落会话/标题', async 
   }, seed);
 });
 
+test('boot 补标：存量执行会话按 run.journalId 补 scheduled=true（侧栏定时图标数据源）', async () => {
+  const seed = (_dataDir: string, tmp: string): void => {
+    const jid = 'jid-old-run';
+    const dir = sessionsDir(resolveDataDir(tmp));
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, jid + '.meta.json'), JSON.stringify({ title: '巡检 · 11-20 15:00' }), 'utf8');
+    const now = Date.now();
+    const job = {
+      id: 'sch-old',
+      name: '巡检',
+      prompt: '检查',
+      root: tmp,
+      effort: 'medium',
+      mode: 'full-access',
+      recurrence: { unit: 'day', every: 1, at: '09:00' },
+      startAt: now - 30 * 86_400_000,
+      enabled: false,
+      createdAt: now,
+      updatedAt: now,
+      nextRunAt: null,
+      runs: [{ id: 'run-old', trigger: 'schedule', startedAt: now - 3_600_000, status: 'succeeded', journalId: jid, root: tmp }],
+    };
+    fs.writeFileSync(path.join(tmp, 'schedules.json'), JSON.stringify({ version: 1, jobs: [job] }), 'utf8');
+  };
+  await withSchedulesDaemon(async ({ tmp }) => {
+    assert.equal(readSessionMeta(resolveDataDir(tmp), 'jid-old-run').scheduled, true, '升级前产生的执行会话也要补上标记');
+  }, seed);
+});
+
 test('PUT /schedules/:id 更新名字与作息并重算 nextRunAt', async () => {
   await withSchedulesDaemon(async ({ base, tmp }) => {
     const created = await createJob(base, createDraft(tmp));

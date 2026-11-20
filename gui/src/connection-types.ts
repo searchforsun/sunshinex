@@ -163,6 +163,8 @@ export interface SessionRow {
   title?: string;
   /** 会话形态(2026-11-15 sunx P1 Task 4,meta 读面):'sunx'=编排会话;缺席=standard——GUI 弹窗/徽标消费(Task 6) */
   kind?: string;
+  /** 定时任务执行会话(2026-11-21,meta 读面):侧栏会话行相对时间左侧挂定时任务钟面图标 */
+  scheduled?: boolean;
   createdAt?: string;
   runs?: number;
   steps?: number;

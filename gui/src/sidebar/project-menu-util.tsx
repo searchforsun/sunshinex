@@ -304,6 +304,8 @@ export function SessionRow(props: {
   readonly running: boolean;
   /** 会话待确认(2026-10-31 主菜单「?」图标):运行中遇 ask/approval 挂起,转圈换 ? 图标 */
   readonly awaiting?: boolean;
+  /** 定时任务执行会话(2026-11-21):相对时间左侧挂钟面图标,与定时任务入口同件 */
+  readonly scheduled?: boolean;
   readonly unseen: boolean;
   readonly busy: boolean;
   readonly onOpen: () => void;
@@ -380,7 +382,14 @@ export function SessionRow(props: {
           onCardLeave={hoverDelayClose}
         />
       )}
-      <span className="session-meta">{relTime(props.updatedAt)}</span>
+      <span className="session-meta">
+        {props.scheduled === true && (
+          <span className="session-sched-icon" data-tip={t('Scheduled task', '定时任务')}>
+            <Clock size={13} strokeWidth={1.75} aria-hidden="true" />
+          </span>
+        )}
+        {relTime(props.updatedAt)}
+      </span>
       <span className="session-row-actions">
         <ArchiveConfirmButton
           active={props.confirmId === props.rowId}

@@ -125,8 +125,9 @@ test('run：建会话/设强度/标题/提交/记录成功（done→succeeded）
   assert.equal(run.root, defaultScratchRoot());
   assert.equal(run.trigger, 'schedule');
   assert.equal(run.scheduledAt, 5);
-  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'sessions', 'jid1.meta.json'), 'utf8')) as { title?: string };
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'sessions', 'jid1.meta.json'), 'utf8')) as { title?: string; scheduled?: boolean };
   assert.match(meta.title ?? '', /^巡检 · \d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.equal(meta.scheduled, true, '定时执行会话要打 scheduled 标（侧栏行图标数据源）');
   session.finish('done');
   assert.equal(store.get('j')!.runs[0]!.status, 'succeeded');
   assert.deepEqual(released, []);
