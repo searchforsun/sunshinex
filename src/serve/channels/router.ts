@@ -41,6 +41,10 @@ export interface ChannelRouterDeps {
   pendingReply?: (sessionId: string, text: string) => boolean;
   /** lastSender 表回写（engine 接线，Task 7 群聊定向回复消费） */
   noteSender?: (sessionId: string, display: string) => void;
+  /** 提交分派成功回调（裁定 1，engine 接线）：submit/steer 分派成功后回调一次——engine 据此武装
+   *  终态观察（armed-once onRunEnd，Task 7）。target 形同 ReplyTarget（reply.ts 结构同构类型——
+   *  router 不 import reply，reply.ts 头注防环裁定） */
+  onSubmitted?: (sessionId: string, target: { channelId: string; chatId: string }) => void;
   now?: () => number;
 }
 
@@ -218,12 +222,14 @@ export class ChannelRouter {
     this.deps.noteSender?.(sessionId, msg.userDisplay ?? msg.userId); // ⑫ 绑定解析成功即回写
     const body = msg.text ?? '';
     const submitText = msg.chatKind === 'group' ? `[来自 ${msg.userDisplay ?? msg.userId}]: ${body}` : body; // ⑫ 单聊原文
+    const target = { channelId: cfg.id, chatId: msg.chatId };
     if (rt.status() === 'idle') {
       const r = rt.submit(submitText, msg.images);
       if (!r.ok && r.status === 409) rt.steer(submitText, msg.images); // 受理间隙竞态：回退穿插
     } else {
       rt.steer(submitText, msg.images); // running → steer
     }
+    this.deps.onSubmitted?.(sessionId, target); // 裁定 1：分派成功（submit 直达/409 回退 steer/running steer）即回调
     await this.deps.ack(msg, '已受理，处理中');
   }
 
