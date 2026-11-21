@@ -17,6 +17,15 @@ function mount(onClose = vi.fn()): void {
   render(<SessionRowMenu x={100} y={80} items={ITEMS.map((it) => ({ ...it, onSelect: vi.fn() }))} onClose={onClose} />);
 }
 
+describe('SessionRowMenu portal(2026-11-21 正文卡菜单飞了根修)', () => {
+  it('菜单渲染到 document.body:不受 .chat-unit contain:layout 包含块劫持', () => {
+    render(<div className="chat-unit"><SessionRowMenu x={100} y={80} items={[{ id: 'a', label: 'A', onSelect: vi.fn() }]} onClose={vi.fn()} /></div>);
+    const menu = screen.getByRole('menu');
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.closest('.chat-unit')).toBeNull();
+  });
+});
+
 describe('SessionRowMenu(会话行快捷菜单)', () => {
   it('渲染:menuitem 全量在场(含 disabled 灰显),divider 渲染为分隔线', () => {
     mount();

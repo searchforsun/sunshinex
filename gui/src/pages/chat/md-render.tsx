@@ -1,4 +1,5 @@
 import { memo, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 import { Check, Copy, Maximize2, Square, WrapText } from 'lucide-react';
@@ -669,7 +670,9 @@ export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: str
           />
         </div>
       )}
-      {zoom && (
+      {/* mermaid 预览 portal 到 body(2026-11-21):.chat-unit 的 contain:layout 是其 fixed 后代的
+          包含块,原地挂载会把 inset:0 面板压进消息块内——与产物菜单「飞了」同根 */}
+      {zoom && createPortal(
         <div
           className="mermaid-lightbox"
           role="dialog"
@@ -703,7 +706,8 @@ export function MermaidBlock({ chart, onNodeClick, draft = false }: { chart: str
               style={{ transform: `translate(${view.x}px, ${view.y}px)`, cursor: dragRef.current !== null ? 'grabbing' : 'grab' }}
             />
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

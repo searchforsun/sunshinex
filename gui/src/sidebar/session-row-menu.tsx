@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { COPY_RESET_MS } from '../use-copy-feedback';
 import { zoomScale } from '../ui-zoom';
 
@@ -8,7 +9,10 @@ import { zoomScale } from '../ui-zoom';
  *  document 先收击穿)。纯展示件:items 注入,选择即回调+关。
  *  x/y 入参=调用方 gBCR 视觉 px;fixed 偏移吃本地 px——按 ui-zoom 跨空间契约在渲染处归一
  *  (写入单点,三调用方 ChatTopbar ⋯/归档确认、projects 移除确认零迁移),zoom≠1 桌面
- *  弹层不再漂移 zoom 倍(同根病先例:821ea9d 两栏拖拽/db5bf3e④ tooltip)。 */
+ *  弹层不再漂移 zoom 倍(同根病先例:821ea9d 两栏拖拽/db5bf3e④ tooltip)。
+ *  2026-11-21 正文卡菜单「飞了」根修:菜单 portal 到 document.body——此前挂在原地,
+ *  .chat-unit 的 contain:layout 会使其成为 fixed 后代包含块(坐标按块盒解释),正文产物卡的
+ *  「打开 ▾/更多方式」菜单遂错位到远处;portal 后恒以视口为基准(与 ImageLightbox 同手法)。 */
 export interface SessionRowMenuItem {
   id: string;
   label: string;
@@ -72,7 +76,7 @@ export function SessionRowMenu({ x, y, anchorTop, items, onClose, placement = 'b
       window.removeEventListener('resize', onScroll);
     };
   }, [onClose]);
-  return (
+  return createPortal(
     <div
       ref={ref}
       className="sx-menu-pop sx-session-row-pop"
@@ -103,6 +107,7 @@ export function SessionRowMenu({ x, y, anchorTop, items, onClose, placement = 'b
           </button>
         ),
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
