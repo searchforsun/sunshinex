@@ -14,6 +14,8 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupDef> = [
     items: [
       { id: 'general', title: { en: 'General', zh: '通用' } },
       { id: 'providers', title: { en: 'Models & providers', zh: '模型与提供方' } },
+      // 通道(channels Task 12,spec §8):daemon 外连执行面全局豁免单档——基础组恒显
+      { id: 'channels', title: { en: 'Channels', zh: '通道' } },
       { id: 'storage', title: { en: 'Storage', zh: '存储' } },
       { id: 'shortcuts', title: { en: 'Shortcuts', zh: '快捷键' } },
     ],

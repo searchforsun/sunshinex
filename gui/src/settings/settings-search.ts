@@ -101,6 +101,33 @@ function buildIndex(): SettingsSearchItem[] {
     label: { en: 'Clear cache', zh: '清理缓存' },
     desc: { en: 'Identified cache categories with sizes', zh: '已识别的缓存分类与占用' },
   });
+  // ②c 通道页行(channels Task 12,spec §8):pane 条目已由 SETTINGS_GROUPS 自动收录;此处补两枚
+  // 稳定行锚(pane 恒渲染:添加工具栏 data-setting-key="channels.add"、凭证说明行
+  // data-setting-key="channels.secret")。逐通道字段锚 channels.<id>.<field> 的 id 运行期
+  // 自动生成,索引期不可枚举——搜索直达落面板级,不在索引里放悬空锚。
+  const channelsTitle = PANE_TITLES.get('channels') ?? { en: 'Channels', zh: '通道' };
+  out.push({
+    id: 'row:channels:add',
+    pane: 'channels',
+    paneTitle: channelsTitle,
+    row: 'channels.add',
+    label: { en: 'Add channel', zh: '添加通道' },
+    desc: {
+      en: 'Telegram / Mock today; Feishu, DingTalk and WeCom coming soon',
+      zh: '现支持 Telegram/Mock;飞书、钉钉、企业微信即将支持',
+    },
+  });
+  out.push({
+    id: 'row:channels:secret',
+    pane: 'channels',
+    paneTitle: channelsTitle,
+    row: 'channels.secret',
+    label: { en: 'Channel credentials', zh: '通道凭证' },
+    desc: {
+      en: 'Secrets live in env slots — set SUNSHINEX_CHANNEL_SECRET_<ID> in the settings.json env block (D6: never in channel config)',
+      zh: '密钥按通道 id 走 env 槽——在 settings.json 的 env 块配置 SUNSHINEX_CHANNEL_SECRET_<ID>(D6:凭证不进通道配置)',
+    },
+  });
   // ③ 快捷键说明行(ShortcutsPane 文档表同源;点击开快捷键页并滚到该行)
   const shortcutsTitle = PANE_TITLES.get('shortcuts') ?? { en: 'Shortcuts', zh: '快捷键' };
   SHORTCUT_GROUPS.forEach((group, gi) => {

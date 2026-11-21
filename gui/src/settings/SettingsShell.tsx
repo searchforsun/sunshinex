@@ -7,6 +7,8 @@ import { SettingsForm, SETTINGS_PANES } from './SettingsForm';
 import type { SettingsFormConn } from './SettingsForm';
 import { ProvidersPane } from './ProvidersPane';
 import type { ProvidersPaneConn } from './ProvidersPane';
+import { ChannelsPane } from './ChannelsPane';
+import type { ChannelsPaneConn } from './ChannelsPane';
 import { McpPane } from './McpPane';
 import type { McpPaneConn } from './McpPane';
 import { PluginsPane } from './PluginsPane';
@@ -85,7 +87,7 @@ import { useDeveloperMode } from '../developer-mode';
  *  注册项目清单数据源;既有端点,零新造)。2026-11-04 agents-teams P1 Task 3 并入
  *  TeamsPaneConn(teams 三端点:teamsView/putTeamOp/teamBody——成员多选数据源复用
  *  AgentsPaneConn.agentsView) */
-export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, TeamsPaneConn, SkillsPaneConn, PermissionsPaneConn, GlobalRulesPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
+export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, ChannelsPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, TeamsPaneConn, SkillsPaneConn, PermissionsPaneConn, GlobalRulesPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
   /** GET /workspaces:工作区注册表扫描(T2;行含 slug+root——root 缺档历史行不可选) */
   workspaces(): Promise<WorkspaceRow[]>;
   /** GET/POST /cache(2026-11-21 存储页):缓存清点与受控清理 */
@@ -238,6 +240,9 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
       case 'providers':
         // 2026-10-29 用户裁定:提供方页即全局——不下发 root/scope/下拉选项(页面不再提供项目切换)
         return <ProvidersPane key="providers" conn={conn} refreshTick={refreshTick.providers} />;
+      case 'channels':
+        // channels Task 12(spec §8):通道全局豁免单档——ProvidersPane 分支同款全局形态,不下发 root/scope
+        return <ChannelsPane key="channels" conn={conn} />;
       case 'mcp':
         return <McpPane key="mcp" conn={conn} root={targetRoot} scope={scope} onScopeChange={onTargetChange} scopeOptions={scopeOptions} refreshTick={refreshTick.mcp} />;
       case 'plugins':
