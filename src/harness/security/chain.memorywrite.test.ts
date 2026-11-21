@@ -10,8 +10,9 @@ import { ProcessSandbox } from './sandbox';
 import { resolveDataDir } from '../../config/data-dir';
 
 /**
- * 记忆写窄口（规格 §4.2）：Write 只在 <dataDir>/memory/** 放行（总开关 resolveMemoryConfig().autoMemory 联动），
+ * 记忆写窄口（规格 §4.2）：Write 在 <dataDir>/memory/** 放行（总开关 resolveMemoryConfig().autoMemory 联动），
  * Read/Grep 的 D6 只读放行不受开关影响；withMemoryScope 派生链把写面收窄到子智能体自身 agents/<id>/。
+ * 技能窄口（<dataDir>/skills/**，2026-11-21 channels §5.3）另见 chain.test.ts 围栏⑧。
  * 范式对齐 chain.datadir.test.ts：tmpdir 作 root、SUNSHINEX_DATA_DIR 重定向、finally 还原 + 清理。
  * 本文件只做判界（不落盘），路径构造一律 path.join（win32 兼容）。
  */
@@ -58,7 +59,7 @@ test('write 落在数据目录其它子树 / 同前缀不同目录 / 记忆目�
   withChain((chain, _root, dataDir) => {
     fs.mkdirSync(path.join(dataDir, 'memory'), { recursive: true });
     const denied = [
-      path.join(dataDir, 'skills', 'a.md'),
+      // skills/** 已随 2026-11-21 channels §5.3 技能窄口放行（chain.test.ts 围栏⑧），移出拒清单
       path.join(dataDir, 'memoryx', 'a.md'),
       path.join(dataDir, 'memory'),
       path.join(dataDir, 'memory', 'agents'),
@@ -167,10 +168,13 @@ test('dataDir 自身经符号链接传入 → 记忆写窄口按真实路径判�
     assert.equal(d.allowed, true, `数据目录经符号链接时不得误拒合法记忆写入：${d.allowed ? '' : d.reason}`);
     if (d.allowed) assert.equal(d.safePath, path.join(fs.realpathSync(real), 'memory', 'a.md'), 'safePath 为 realpath 归一后的真实路径');
 
-    // 归一化不放松写面：同链接下的非记忆子树仍拒
-    const other = chain.evaluate('Write', { path: path.join(link, 'skills', 'x.md') });
-    assert.equal(other.allowed, false, '归一后仍只放行 memory 子树');
+    // 归一化不放松写面：同链接下的窄口外子树仍拒（skills 已随 2026-11-21 channels §5.3 开技能窄口，
+    // 经链接路径同样放行——窄口与归一正交；此处钉非窄口子树 runs 的恒拒）
+    const other = chain.evaluate('Write', { path: path.join(link, 'runs', 'x.md') });
+    assert.equal(other.allowed, false, '归一后仍只放行 memory/skills 窄口子树');
     if (!other.allowed) assert.ok(other.reason.includes('COMMAND_DENIED'));
+    const linkedSkills = chain.evaluate('Write', { path: path.join(link, 'skills', 'x.md') });
+    assert.equal(linkedSkills.allowed, true, `技能窄口随域归一生效（经链接 dataDir 不误拒）：${linkedSkills.allowed ? '' : linkedSkills.reason}`);
   } finally {
     if (prevDataDir === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevDataDir;

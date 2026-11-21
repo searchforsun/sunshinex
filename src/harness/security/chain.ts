@@ -36,6 +36,13 @@ function isIsolatedTreePath(real: string): boolean {
   return i !== -1 && segs[i + 1] === 'sunshinex' && segs[i + 2] === 'worktrees';
 }
 
+/** 技能子树形态判据（2026-11-21 channels §5.3；纯判定零 IO，与 isMemoryPath 同位）：
+ *  路径落于 <dataDir>/skills/** 子树（含目录本身）。isWithin 契约：两侧口径同源——判界处
+ *  字面∪real 双查各以对应形态传入（对齐记忆窄口 isMemoryPath 的两侧同归一纪律） */
+function isSkillsPath(dataDir: string, absPath: string): boolean {
+  return isWithin(path.join(path.resolve(dataDir), 'skills'), path.resolve(absPath));
+}
+
 /** 内置凭据模式集：命中替换为 ***（零依赖；spec 2.3 逐字清单） */
 const MASK_PATTERNS: RegExp[] = [
   /sk-[A-Za-z0-9]{20,}/g,
@@ -169,12 +176,17 @@ export class SafetyChain {
   /**
    * 路径归一判界（spec §5.1 判定序）：存在段 realpathSync 解析符号链接，新建段字面拼接（resolve 产物无 .. 残留）；
    * 异常按拒绝处理不放行（spec 2.1 兜底条款）。求值序：settings.json → .git → 记忆写窄口（字面∪real 双查）→
-   * worktree 主根拒写 → 用户 deny → 会话目录放行 → 用户 allow → 读分支 → 写分支（信任域放行 → 隔离链根外恒拒 → 数据目录只读 → 档位）。
-   * 产品硬底线先于用户规则（规则只可收窄不可放宽）；
+   * 域绑定防漏 → 技能写窄口（字面∪real 双查）→ userConfigDir 白名单恒拒（写族专属，两豁免）→ worktree 主根拒写 →
+   * 用户 deny → 会话目录放行 → 用户 allow → 读分支 → 写分支（信任域放行 → 隔离链根外恒拒 → 数据目录只读 → 档位）。
+   * 产品硬底线先于用户规则（规则只可收窄不可放宽；用户 allow 不可放宽白名单恒拒，2026-11-21 channels §5.3）；
    * 读分支（D1）信任域内直放、域外缺省全放（fence 开启才收窄：acceptEdits=ask、其余档=拒）；
-   * 写分支（D2/D3）信任域放行、域外按档位（acceptEdits=ask 且 askDir 记目录），隔离链根外恒拒；
+   * 写分支（D2/D3）信任域放行——**信任域不含 userConfigDir 整根**（2026-11-21 channels §5.3：其放行语义由
+   * 白名单四面承接，应用档与三容器 projects/sunx/channels 的 data 随之只读）、域外按档位（acceptEdits=ask
+   * 且 askDir 记目录），隔离链根外恒拒；
    * 数据目录只读在写分支信任域之后求值：root/活动工作树落在 dataDir 子树内的布局（SUNSHINEX_DATA_DIR 重定向、
-   * worktreesRoot 归 dataDir）不得被只读条款误伤——信任域命中即放行，仅两域之外的 dataDir 子树保持只读定性。
+   * worktreesRoot 归 dataDir）不得被只读条款误伤——信任域命中即放行，仅两域之外的 dataDir 子树保持只读定性；
+   * 白名单恒拒同享同源豁免（自 root/活动树/信任目录族交给信任域放行，自 dataDir 子树交给两窄口与只读条款，
+   * 上列 root 落 dataDir 子树布局不误伤）。
    */
   private resolveSafe(raw: unknown, tool: string): GuardDecision {
     try {
@@ -224,6 +236,46 @@ export class SafetyChain {
       ) {
         return { allowed: false, reason: `COMMAND_DENIED: memory writes are domain-bound (write <dataDir>/memory/** in the session domain instead): ${real}` };
       }
+      // ③c 技能写窄口（2026-11-21 channels §5.3，记忆窄口同构邻位）：仅 <dataDir>/skills/** 放行
+      // （学习技能唯一写入面 learnedSkillsDir——skills.ts learnedSkillsDir 落 <dataDir>/skills），总开关
+      // resolveMemoryConfig().learnedSkills 联动。字面∪real 双查对齐记忆窄口（链接形式上是技能路径即进窄口
+      // 定论）：仅查 real 时，dataDir 内 skills 下由模型植入的符号链接指向子树之外，realpath 后不呈技能形态，
+      // 窄口失察、写面落到下方档位放行（安全回归）
+      if (
+        WRITE_TOOL_NAMES.has(tool) &&
+        (isSkillsPath(boundaryReal, real) || isSkillsPath(boundaryReal, abs) ||
+          isSkillsPath(dataDirLiteral, real) || isSkillsPath(dataDirLiteral, abs))
+      ) {
+        const skills = this.skillsWriteAllowed(real);
+        return skills.allowed
+          ? { allowed: true, safePath: real }
+          : { allowed: false, reason: `COMMAND_DENIED: ${skills.reason}: ${real}` };
+      }
+
+      // ── 信任域布尔（单点求值：读/写分支与白名单豁免共用。自写分支原位上移至白名单豁免判定之前——
+      // 2026-11-21 channels §5.3 最小侵入重排，各布尔语义逐字节不变）──
+      const cfgReal = this.userConfigReal();
+      const inUserConfig = real === cfgReal || isWithin(cfgReal, real);
+      const inActiveRoot = this.activeRootReal !== null && (real === this.activeRootReal || isWithin(this.activeRootReal, real));
+      const inMainRoot = real === this.rootReal || isWithin(this.rootReal, real);
+      const inAdditional = this.additionalDirs.some((d) => real === d || isWithin(d, real));
+
+      // ④ userConfigDir 白名单恒拒（2026-11-21 channels §5.3；写族专属——读路径完全不走本判定）：
+      // 写族路径 ∈ ~/.sunshinex/ 时白名单四面放行（skills/**、agents/**、teams/**、SUNSHINE.md——内容性
+      // 目录，agent 协助修改面），其余一律恒拒：应用档（mcp.json/serve-token/schedules.json/plugins/gui…）
+      // 与三容器 data（projects/sunx/channels 均不在白名单，只读成为自然子集，不再单列条款）写面封死。
+      // 硬底线：不借档位放行（先于档位求值）、用户 allow 不可放宽（先于用户规则面求值）。
+      // 两豁免（防误伤）：路径 ∈ 自 root/活动树/信任目录族交给既有信任域放行（root 落 dataDir 子树的布局
+      // 不得误伤，见方法头注警示）；路径 ∈ 自 dataDir 子树（underDataDir 单点，与数据目录只读条款同源）
+      // 交给既有两窄口与只读条款定论——sessions/teams 等板面运行态由该条款恒拒，本判定不越权代管。
+      if (
+        WRITE_TOOL_NAMES.has(tool) && inUserConfig && !inActiveRoot && !inAdditional && !inMainRoot &&
+        !this.underDataDir(real)
+      ) {
+        return this.userConfigWhitelistAllowed(real)
+          ? { allowed: true, safePath: real }
+          : { allowed: false, reason: `COMMAND_DENIED: ~/.sunshinex is write-fenced (application profile and data directories are read-only; writable whitelist: skills/**, agents/**, teams/**, SUNSHINE.md): ${real}` };
+      }
       // ⑤ worktree 主根拒写（既有硬底线；主根读类恒开放）。树落位(2026-11-10)在主根
       // .git/sunshinex/worktrees 内——字面落在主根域,但那是隔离会话的工作树(活动根域),不按主根拒
       if (this.activeRootReal !== null && WRITE_TOOL_NAMES.has(tool) && !isIsolatedTreePath(real) && (real === this.rootReal || isWithin(this.rootReal, real))) {
@@ -240,13 +292,6 @@ export class SafetyChain {
         return { allowed: true, safePath: real };
       }
 
-      // ── 信任域 ──
-      const cfgReal = fs.existsSync(userConfigDir()) ? fs.realpathSync(userConfigDir()) : userConfigDir();
-      const inUserConfig = real === cfgReal || isWithin(cfgReal, real);
-      const inActiveRoot = this.activeRootReal !== null && (real === this.activeRootReal || isWithin(this.activeRootReal, real));
-      const inMainRoot = real === this.rootReal || isWithin(this.rootReal, real);
-      const inAdditional = this.additionalDirs.some((d) => real === d || isWithin(d, real));
-
       // 读分支（D1）：信任域内直放；域外全盘放行，fence 开启时收窄（acceptEdits=ask、其余档=拒）
       // （写族走下方写分支——edit 与 write 同审批/同档位语义，不得借读分支域外直放）
       if (!WRITE_TOOL_NAMES.has(tool)) {
@@ -256,17 +301,18 @@ export class SafetyChain {
         return { allowed: true, safePath: real };
       }
 
-      // 写分支（D2/D3）：信任域放行；隔离链根外恒拒（程序化隔离，spec D2 边界）；
+      // 写分支（D2/D3）：信任域放行（userConfigDir 整根已移出写信任域——放行语义由上方白名单四面承接，
+      // 2026-11-21 channels §5.3，应用档与三容器 data 只读随之成立）；隔离链根外恒拒（程序化隔离，spec D2 边界）；
       // 数据目录只读在信任域之后求值（上移会误伤 root/活动树落 dataDir 内的布局，见方法注释）；
-      // 两域之外的 dataDir 子树写仍恒拒（不借档位放行），只保留 <dataDir>/memory/** 记忆窄口一个写通道
-      if (inUserConfig || inActiveRoot || inAdditional || inMainRoot) return { allowed: true, safePath: real };
+      // 两域之外的 dataDir 子树写仍恒拒（不借档位放行），写通道仅两窄口（<dataDir>/memory/** 与 <dataDir>/skills/**）
+      if (inActiveRoot || inAdditional || inMainRoot) return { allowed: true, safePath: real };
       if (this.isolatedRootReal !== null) {
         return { allowed: false, reason: `COMMAND_DENIED: path escapes the isolated worktree root: ${real}` };
       }
       if (this.underDataDir(real)) {
         return {
           allowed: false,
-          reason: `COMMAND_DENIED: data directory is read-only (only <dataDir>/memory/** is writable): ${real}`,
+          reason: `COMMAND_DENIED: data directory is read-only (only <dataDir>/memory/** and <dataDir>/skills/** are writable): ${real}`,
         };
       }
       const mode = this.guard.mode;
@@ -354,6 +400,61 @@ export class SafetyChain {
       };
     }
     return { allowed: true };
+  }
+
+  /**
+   * 技能写入窄口（2026-11-21 channels §5.3，memoryWriteAllowed 同构）：仅 <dataDir>/skills/** 放行
+   * （学习技能唯一写入面 learnedSkillsDir——skills.ts 单点落 <dataDir>/skills），总开关
+   * resolveMemoryConfig().learnedSkills（技能沉淀开关，与记忆窄口 autoMemory 对齐同构）联动；
+   * 无 scope 维度（学习技能按工作区隔离落盘，不存在子智能体收窄形态，路径形状即全部判据）。
+   * 返回**带原因的判定**而非裸 boolean（memoryWriteAllowed 同款纪律）：拒绝成因（总开关关闭 /
+   * 不在技能子树内）分别给出技能侧可读原因，不与「路径越出项目 root」共用文案；
+   * 拒绝理由经工具结果入链（进模型上下文）→ 英文单语，不随 --language 分叉。
+   */
+  private skillsWriteAllowed(real: string): { allowed: true } | { allowed: false; reason: string } {
+    if (!resolveMemoryConfig().learnedSkills) {
+      return {
+        allowed: false,
+        reason: 'skills write denied: learned skills are off',
+      };
+    }
+    if (!isSkillsPath(this.boundaryDataDirReal(), real)) {
+      return {
+        allowed: false,
+        reason: 'skills write denied: outside the skills subtree (<dataDir>/skills/**)',
+      };
+    }
+    return { allowed: true };
+  }
+
+  /** 用户配置根真实路径（存在段 realpathSync 归一，缺失/归一异常按字面回退——构造 rootReal 同法）：
+   *  inUserConfig 信任域布尔与白名单判定共用本单点，防两处归一漂移 */
+  private userConfigReal(): string {
+    const cfg = userConfigDir();
+    try {
+      return fs.existsSync(cfg) ? fs.realpathSync(cfg) : cfg;
+    } catch {
+      return cfg;
+    }
+  }
+
+  /**
+   * userConfigDir 白名单判据（2026-11-21 channels §5.3）：写族路径 ∈ ~/.sunshinex/ 时仅四面放行——
+   * skills/**（用户级技能根，userSkillsDir 缺省根）、agents/**（用户级子智能体定义）、teams/**
+   * （预定义团队用户级根 userTeamsDir；会话级 <dataDir>/teams/<journalId>/ 板面运行态**不在此列**，
+   * 随数据目录只读条款定论）、SUNSHINE.md（单档）；其余一律恒拒。
+   * 四面锚定 userConfigDir 本根首段：缺省形态与 userSkillsDir/userTeamsDir 同根；显式覆盖
+   * （SUNSHINEX_USER_SKILLS_DIR 等）把根挪出 userConfigDir 时，该根已越出本判定管辖，按普通域外路径
+   * 走写分支档位。三容器 data（projects/sunx/channels 的 data）均在白名单外——只读是本判定的
+   * 自然子集，不再单列条款。
+   */
+  private userConfigWhitelistAllowed(real: string): boolean {
+    const cfgReal = this.userConfigReal();
+    if (real === cfgReal) return false; // 配置根本身非白名单（只读定性）
+    if (isWithin(path.join(cfgReal, 'skills'), real)) return true;
+    if (isWithin(path.join(cfgReal, 'agents'), real)) return true;
+    if (isWithin(path.join(cfgReal, 'teams'), real)) return true;
+    return real === path.join(cfgReal, 'SUNSHINE.md');
   }
 
   /**

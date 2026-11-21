@@ -11,7 +11,8 @@ import { resolveDataDir } from '../../config/data-dir';
 
 /**
  * 数据目录白名单（规格 D6 + 对齐规格 §4.2）：Read/Grep 放行 dataDir 整子树；
- * Write 仅在 <dataDir>/memory/** 开窄口（记忆子树，另一文件 chain.memorywrite.test.ts 覆盖），数据目录其它子树仍拒；
+ * Write 在 <dataDir>/memory/** 与 <dataDir>/skills/** 开窄口（记忆子树 chain.memorywrite.test.ts 覆盖，
+ * 技能窄口 chain.test.ts 围栏⑧覆盖——2026-11-21 channels §5.3），数据目录其它子树仍拒；
  * 非 dataDir 外部路径行为不变。
  * 第三参 dataDir 为**真正的数据目录**（= SUNSHINEX_DATA_DIR = tmp），各用例自行拼出所需子路径。
  */
@@ -56,10 +57,11 @@ test('D6 Grep 数据目录内路径放行（只读类）', () => {
   });
 });
 
-test('D6 Write 数据目录非记忆子树仍拒绝（记忆子树另有窄口）', () => {
+test('D6 Write 数据目录窄口外子树仍拒绝（memory/skills 两窄口外）', () => {
   withChain((chain, _root, dataDir) => {
     fs.mkdirSync(dataDir, { recursive: true });
-    const targets = [path.join(dataDir, 'skills', 'x.md'), path.join(dataDir, 'runs', 'x.json')];
+    // skills/** 已随 2026-11-21 channels §5.3 技能窄口放行（chain.test.ts 围栏⑧），移出拒清单
+    const targets = [path.join(dataDir, 'runs', 'x.json')];
     for (const target of targets) {
       const d = chain.evaluate('Write', { path: target });
       assert.equal(d.allowed, false, `Write 不得借只读放行出 root：${target}`);
