@@ -21,6 +21,7 @@ import { t } from '../i18n';
 import { useCommandPalette } from './chat/use-command-palette';
 import { TerminalDock } from '../tabs/terminal-dock';
 import { ChatTopbar } from './chat/ChatTopbar';
+import { ChannelInfoBar } from './chat/ChannelInfoBar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
 import { flushScrollMem, peekScrollAnchor, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
 import { isProgBottom, markProgBottom, syncOverflowAnchor, useChatScroll, chatAnchorOf } from './chat/use-chat-scroll';
@@ -618,6 +619,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         nav={nav}
       />
       ) : null}
+      {/* 聊天信息条(channels Task 13,spec §9.3):通道会话才渲染(journalId 命中绑定档,组件内自守卫) */}
+      {active ? <ChannelInfoBar conn={conn} journalId={journalId} /> : null}
 
       <ChatTranscript
         active={active}

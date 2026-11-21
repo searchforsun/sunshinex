@@ -161,8 +161,12 @@ export interface SessionRow {
   /** 会话工作区根(2026-11-10 worktree 会话=树真实路径;悬浮卡路径/复制钮消费) */
   root?: string;
   title?: string;
-  /** 会话形态(2026-11-15 sunx P1 Task 4,meta 读面):'sunx'=编排会话;缺席=standard——GUI 弹窗/徽标消费(Task 6) */
+  /** 会话形态(2026-11-15 sunx P1 Task 4,meta 读面):'sunx'=编排会话;'channel'=通道域会话
+   *  (2026-11-21 channels Task 9,GET /channels/sessions 容器判据钉值);缺席=standard */
   kind?: string;
+  /** 通道标(channels Task 9 行透出,meta 读面 SessionSidecarMeta.channel):出生通道配置 id——
+   *  侧栏「通道」组平台图标反查键(Task 13,settingsChannels 按 id 对表;缺席=旧会话无标) */
+  channel?: string;
   /** 定时任务执行会话(2026-11-21,meta 读面):侧栏会话行相对时间左侧挂定时任务钟面图标 */
   scheduled?: boolean;
   createdAt?: string;

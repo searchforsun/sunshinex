@@ -16,11 +16,13 @@ import {
 import { useMenuSeen } from './use-menu-seen';
 import { useMenuSearch } from './use-menu-search';
 import { useMenuSunx } from './use-menu-sunx';
+import { useMenuChannels } from './use-menu-channels';
 import { useMenuArchive, useMenuPins, useMenuRecentsDisplay } from './use-menu-sections';
 import { ProjectSearch } from './project-menu-search';
 import { ProjectsSection } from './project-menu-projects';
 import { RecentsSection } from './project-menu-recents';
 import { SunxSection } from './project-menu-sunx';
+import { ChannelsSection } from './project-menu-channels';
 import { ArchiveSection } from './archive-group';
 import { PinnedSection } from './pinned-section';
 import type { PinEntry } from './pin-store';
@@ -51,6 +53,11 @@ export interface ProjectMenuConn {
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /sunx/sessions(sunx P3 Task 3 数据源改向):sunx 域容器全域枚举——SUNX 过滤组数据源单点 */
   sunxSessions(): Promise<SessionRow[]>;
+  /** GET /channels/sessions(2026-11-21 channels Task 13):通道域容器全域枚举——侧栏「通道」
+   *  组数据源(可选声明同 schedules? 先例:旧测试桩缺名=组不渲染,App 实传整只 Connection) */
+  channelSessions?(): Promise<SessionRow[]>;
+  /** GET /settings/channels(channels Task 12):通道配置读面——平台图标按 SessionRow.channel 反查 */
+  settingsChannels?(): Promise<{ channels: import('../connection-api').ChannelConfigMsg[]; warnings: string[] }>;
   /** GET /schedules(2026-11-21 搜索分类扩展):定时任务清单供聚合搜索按类型检索;
    *  旧桩缺名=不出「定时任务」分类(App 传整只 Connection 运行时满足) */
   schedules?(): Promise<{ jobs: ScheduleJobView[] }>;
@@ -253,6 +260,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  setSunxReload——workspaces 未变(rows 保引用)时既有驱动点全不触发,nonce 即时缝兜底 */
   const [sunxReload, setSunxReload] = useState(0);
   const sunxRows = useMenuSunx(conn, rows, sunxReload);
+  /** 「通道」组行集(channels Task 13,spec §9.1;域枚举拉取收口 use-menu-channels):空容器=组整块不渲染(组内自守卫) */
+  const channelRows = useMenuChannels(conn, rows);
   // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
   // RO 盯滚动容器(拖栏宽度变化即重测)。2026-11-16 流畅轮:补数据依赖(原无 deps=每次渲染全量
   // DOM 扫描+重建 RO,App 壳高频态即触发);数据引用不变时零扫描,宽变仍由 RO 兜底。
@@ -743,6 +752,20 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             loadArchived();
             setArchiveOpen(true);
           }}
+        />
+        )}
+        {!archiveOpen && (
+        // 通道组(channels Task 13,spec §9.1):SUNX 组邻位(容器域专属组相邻,基础组「项目」之前);
+        // 空容器/装载中整块不渲染(组内自守卫);归档层开启不渲染(整替语义同 SUNX 组);
+        // 行点击=attachJournal(root, journalId) 直寻址链(行 root=域目录,attach 落在正确的域)
+        <ChannelsSection
+          rows={channelRows}
+          activeSessionId={activeSessionId}
+          runningIds={runningIds}
+          journalOfSession={journalOfSession}
+          isUnseen={isUnseen}
+          busy={busy}
+          onAttach={attachJournal}
         />
         )}
         <PinnedSection

@@ -527,6 +527,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     channelBindings() {
       return getJson<{ bindings: ChannelBindingMsg[] }>('/channels/bindings');
     },
+    async putChannelBinding(key: string, patch: { rootOverride?: string | null }): Promise<{ ok: true }> {
+      // key=`channelId:chatId` 绑定键（chatId 可含 ':'）——patch 原样作 body（null=清除/缺席=
+      // 清除、非空串=设置，全量定态；404 unknown binding/400 空串经 opError 透出）
+      await putJson<{ ok: true }>(`/channels/bindings/${encodeURIComponent(key)}`, patch);
+      return { ok: true };
+    },
     async deleteChannelBinding(key: string): Promise<{ ok: true }> {
       // key=`channelId:chatId` 绑定键（chatId 可含 ':'）——deleteSchedule 同款 del+组装 ok
       // （200 {ok:true} 只作成功信号；404 unknown binding 经 opError 透出）

@@ -59,7 +59,18 @@ export interface ChannelConfigMsg {
   allow: { kind: 'first-user' | 'list' | 'all'; userIds?: string[]; chatIds?: string[] };
 }
 export interface ChannelHealthRowMsg { id: string; platform: string; enabled: boolean; connected: boolean; detail?: string }
-export interface ChannelBindingMsg { key: string; sessionId: string; journalId?: string; lockedUserId?: string; rootOverride?: string; updatedAt: number }
+export interface ChannelBindingMsg {
+  key: string;
+  sessionId: string;
+  journalId?: string;
+  lockedUserId?: string;
+  /** 绑定工作区切换覆盖(spec §9.3 聊天信息条写入):下次 /new 生效,当前会话不动 */
+  rootOverride?: string;
+  /** 聊天形态(单聊/群聊,Task 13 信息条只读面):可选防旧 daemon——wire 暂未透出时信息条
+   *  只示聊天 id 不示单聊群聊标(GUI 无平台无关推导法,如实缺省) */
+  chatKind?: 'direct' | 'group';
+  updatedAt: number;
+}
 
 export interface Connection {
   /** GET /workspaces：工作区注册表扫描（T2） */
@@ -100,6 +111,11 @@ export interface Connection {
   /** DELETE /channels/bindings/:key：解除绑定（journal 留盘；缺失 404 非幂等，写面从严）——
    *  key=`channelId:chatId` 绑定键，恒 encodeURIComponent（chatId 可含 ':' 等保留字） */
   deleteChannelBinding(key: string): Promise<{ ok: true }>;
+  /** PUT /channels/bindings/:key body {rootOverride?: string|null}（2026-11-21 channels Task 13
+   *  聊天信息条「绑定工作区切换」写面）：绑定不存在 404、空串/非串 400（写面从严）；null/缺席=
+   *  清除、非空字符串=设置（trim 归一）——每次 PUT 完全决定 rootOverride 态；生效语义=下次
+   *  /new（或解绑重聊），当前会话不动（spec §9.3） */
+  putChannelBinding(key: string, patch: { rootOverride?: string | null }): Promise<{ ok: true }>;
   /** GET /channels/sessions：通道域会话枚举（侧栏「通道」组数据源）——应答=裸 SessionRow[]
    *  （GET /sunx/sessions 同款无信封；行 root=域目录 GUI attach 直寻址，kind 钉 'channel'） */
   channelSessions(): Promise<SessionRow[]>;
