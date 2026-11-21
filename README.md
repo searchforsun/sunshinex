@@ -32,12 +32,13 @@
 ## 产品功能
 
 - **三面入口，同一引擎**：CLI 基础执行面、交互式 TUI（对标 Claude Code，35 个斜杠命令）、GUI 桌面端/浏览器（对标 Codex 工作台），共用同一会话内核，会话数据互通。
+- **定时任务（调度器）**：daemon 级全局调度——按本地时间到点**新建会话并自动发送任务**，每小时 / 每天 / 每周 / 每月（及分钟与自定义间隔）任选，支持截止时间、停/启开关、立即执行与逐次执行记录（成功 / 失败 / 跳过 / 已中断 / 已停止 / 运行中，可回跳原会话）；停运或休眠唤醒后到期任务只补跑一次，上次未跑完自动记「跳过」不并行；支持自然语言「在会话中创建」（`create_scheduled_task`，工作区/权限/模型与强度随会话沿用，任务可固定模型）。Sunx 会话内另有一次性唤醒与定时派发（`schedule_wakeup` / `schedule_task`）。
 - **GUI 工作台**：16 类页签——对话、Git 审查（暂存/提交/推送/分支切换）、本轮改动与一键撤销、智能体团队与任务 DAG、子智能体转录、终端（PTY）、内置浏览器（元素拾取）、记忆、学习技能、文件预览、产物库、SUNX 总览页等；左栏 VSCode 式目录树 + 全层级搜索。
 - **Sunx 编排会话**：路由型编排智能体——只拆解分派不执行，后台子任务完成自动唤醒接续（调度定时/挂起问询/重启恢复轮），一 Sunx 一持久化域（记忆/台账/看板域内隔离）；侧栏 SUNX 分组 + 总览页看板。
-- **长任务稳定可靠**：验收修正环 + 运行中消息排队（可编辑/重排/插队）+ 跨天 resume、rewind 回退、fork 分叉。
+- **长任务稳定可靠**：验收修正环 + 运行中消息排队（可编辑/重排/插队）+ 跨天 resume、rewind 回退、fork 分叉；计划模式先规划后执行，Worktree 隔离让并行任务互不踩脚。
 - **多 Agent 编排**：任务板五态 + 依赖 + 审批门 + 裁决；长驻 teammate、外部 CLI 执行体（如 claude code）、定向消息收件箱，kill -9 崩溃可恢复。
 - **生产级安全**：权限三档（read-only / acceptEdits / full-access）、审批三态（allow / deny / always）、破坏性命令底线拦截、Linux 下 Landlock 内核围栏。
-- **记忆与知识库**：全局 / 项目 / 会话三级记忆注入，任务成功自动沉淀学习级技能，知识库索引 + 向量检索（kb_search）。
+- **记忆、知识库与联网检索**：全局 / 项目 / 会话三级记忆注入，任务成功自动沉淀学习级技能，知识库索引 + 向量检索（kb_search）；网页抓取（webfetch）与全网检索（websearch）开箱即用。
 - **模型面**：任意 OpenAI 协议兼容供应商，small / medium / large 三档算力路由，思考强度七档自动降级，图片输入三面通用。
 - **上下文工程**：checksum 门禁的确定性上下文压缩，超长会话不失真。
 - **开放扩展**：MCP 协议兼容（热载）、技能多根就近遮蔽（兼容 `.claude` / `.codex` / `.cursor` / `.agents` 既有资产）、插件治理（内置 browser-use / computer-use 样例）。
@@ -68,7 +69,7 @@ graph LR
 
 ```bash
 # ① GitHub Release 直装（推荐）
-npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.6.0/sunshinex-agent-0.6.0.tgz
+npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.7.0/sunshinex-agent-0.7.0.tgz
 
 # ② npm registry
 npm install -g sunshinex-agent
