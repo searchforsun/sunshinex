@@ -43,6 +43,24 @@ import type { RestorePlan, RewindResult, RewindTarget } from './connection-types
 import type { SessionEvent } from '../../src/types';
 import type { ConnectionState } from './connection-types';
 
+/** 通道面视图类型（2026-11-21 channels Task 11）：形状镜像 serve 侧 channels/model.ts 实裁
+ *  （GUI 不 import serve 层——house 规矩，本地声明；SessionRow 复用 connection-types 既有行形）。
+ *  ChannelConfigMsg=PUT /settings/channels 写面入参行（parseChannelsKey 归一形）、
+ *  ChannelHealthRowMsg=GET /channels 健康快照行、ChannelBindingMsg=GET /channels/bindings 绑定行
+ *  （行含 rootOverride——channels Task 9 handlers 实装，供聊天信息条回显） */
+export interface ChannelConfigMsg {
+  id: string;
+  platform: 'feishu' | 'dingtalk' | 'wecom' | 'telegram' | 'mock';
+  enabled: boolean;
+  root: string;
+  mode: 'read-only' | 'acceptEdits' | 'full-access';
+  model?: string;
+  ident?: Record<string, string>;
+  allow: { kind: 'first-user' | 'list' | 'all'; userIds?: string[]; chatIds?: string[] };
+}
+export interface ChannelHealthRowMsg { id: string; platform: string; enabled: boolean; connected: boolean; detail?: string }
+export interface ChannelBindingMsg { key: string; sessionId: string; journalId?: string; lockedUserId?: string; rootOverride?: string; updatedAt: number }
+
 export interface Connection {
   /** GET /workspaces：工作区注册表扫描（T2） */
   workspaces(): Promise<WorkspaceRow[]>;
@@ -62,6 +80,25 @@ export interface Connection {
   setScheduleEnabled(id: string, enabled: boolean): Promise<ScheduleJobView>;
   scheduleRuns(id: string, limit?: number): Promise<{ runs: ScheduleRunView[] }>;
   previewSchedule(body: { recurrence: ScheduleRecurrence; startAt: number; until?: number }): Promise<{ next: number[] }>;
+  /** 通道面（2026-11-21 channels Task 11）：daemon /channels* 运维面 + /settings/channels 配置写面
+   *  全封装——健康快照 / 配置整键写（daemon 写盘后 engine.applyConfigs 热生效）/ dry-run 测试 /
+   *  绑定档读·解除 / 通道域会话枚举（Task 12 ChannelsPane 与 Task 13 侧栏「通道」组数据源） */
+  channelsView(): Promise<{ channels: ChannelHealthRowMsg[] }>;
+  /** PUT /settings/channels body {channels}：channels 键全局豁免单档（带 root 一律 400）——成功
+   *  200 {ok:true,warnings:[]}（写面校验从严：warnings 非空走 400 error 回显，成功帽恒空列——
+   *  serve 实装应答含 warnings 键，契约面按实装形状声明）；409 注释档/畸形引流 raw 编辑面 */
+  putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
+  /** POST /channels/:id/test：dry-run 测试连接（独立起停适配器，不动在座表）——失败恒 200
+   *  {ok:false,error}（诊断面失败即结果非错误码，mcp probe 同裁定），成功 {ok:true,botId} */
+  testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
+  /** GET /channels/bindings：绑定档全列（行含 rootOverride 供聊天信息条回显——Task 13 消费） */
+  channelBindings(): Promise<{ bindings: ChannelBindingMsg[] }>;
+  /** DELETE /channels/bindings/:key：解除绑定（journal 留盘；缺失 404 非幂等，写面从严）——
+   *  key=`channelId:chatId` 绑定键，恒 encodeURIComponent（chatId 可含 ':' 等保留字） */
+  deleteChannelBinding(key: string): Promise<{ ok: true }>;
+  /** GET /channels/sessions：通道域会话枚举（侧栏「通道」组数据源）——应答=裸 SessionRow[]
+   *  （GET /sunx/sessions 同款无信封；行 root=域目录 GUI attach 直寻址，kind 钉 'channel'） */
+  channelSessions(): Promise<SessionRow[]>;
   /** GET /sessions/recent：跨工作区扁平最近会话（G10-C2 侧栏 Recents 区） */
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /session/:id/model：模型 pill 数据源(G10-C4;choices 空=不可切)。

@@ -48,6 +48,7 @@ import type { RestorePlan, RewindResult, RewindTarget } from './connection-types
 import type { SessionEvent } from '../../src/types';
 
 
+import type { ChannelBindingMsg, ChannelConfigMsg, ChannelHealthRowMsg } from './connection-api';
 import type { Connection } from './connection-api';
 export type { Connection } from './connection-api';
 
@@ -506,6 +507,30 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     previewSchedule(body: { recurrence: ScheduleRecurrence; startAt: number; until?: number }) {
       return postJson<{ next: number[] }>('/schedules/preview', body);
+    },
+    // ---- 通道面（2026-11-21 channels Task 11）：路径/应答形状与 channels Task 9 serve 实装逐字对齐 ----
+    channelsView() {
+      return getJson<{ channels: ChannelHealthRowMsg[] }>('/channels');
+    },
+    putChannels(channels: ChannelConfigMsg[]) {
+      // putJson（失败 opError 透出 error/hint——400 校验回显/409 注释档·畸形 引流 raw 编辑面）
+      return putJson<{ ok: true; warnings: string[] }>('/settings/channels', { channels });
+    },
+    testChannel(id: string) {
+      return postJson<{ ok: boolean; botId?: string; error?: string }>(`/channels/${encodeURIComponent(id)}/test`, {});
+    },
+    channelBindings() {
+      return getJson<{ bindings: ChannelBindingMsg[] }>('/channels/bindings');
+    },
+    async deleteChannelBinding(key: string): Promise<{ ok: true }> {
+      // key=`channelId:chatId` 绑定键（chatId 可含 ':'）——deleteSchedule 同款 del+组装 ok
+      // （200 {ok:true} 只作成功信号；404 unknown binding 经 opError 透出）
+      await del(`/channels/bindings/${encodeURIComponent(key)}`);
+      return { ok: true };
+    },
+    channelSessions() {
+      // 裸 SessionRow[]（sunxSessions 同款消费形，无信封）
+      return getJson<SessionRow[]>('/channels/sessions');
     },
     sessionSubmit(id: string, goal: string, images?: string[]): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/submit`, { goal, ...(images !== undefined && images.length > 0 ? { images } : {}) });
