@@ -19,6 +19,8 @@ import type {
   PermissionOpInput,
   PluginRow,
   ProviderOpInput,
+  CacheClearResp,
+  CacheStatusResp,
   ScheduleDraft,
   ScheduleJobView,
   ScheduleRecurrence,
@@ -246,6 +248,10 @@ export interface Connection {
   archiveSession(id: string, archived: boolean): Promise<void>;
   /** GET /sessions/archived:跨工作区归档列表(归档页数据源)。kind=sunx 形态透出(归档行徽标) */
   archivedSessions(): Promise<Array<{ id: string; slug: string; root: string; title?: string; updatedAt: number; archivedAt: number; liveSessionId?: string; awaiting?: boolean; kind?: string }>>;
+  /** GET /cache(2026-11-21 缓存清理):登记表逐类体积+保留期信息 */
+  cacheStatus(): Promise<CacheStatusResp>;
+  /** POST /cache/clear {categories?}:受控清理——ids 缺省=daemon safe 全档(http-cache 归壳桥) */
+  clearCache(categories?: string[]): Promise<CacheClearResp>;
   /** POST /session/:id/pty {cols?,rows?,prevPtyId?}（G8b T3）：按需开 pty → {ptyId}；cols/rows 缺省省字段
    *  （daemon 缺省 80×24）；Terminal 页（T6）持 ptyId 开专用 WS /session/:id/pty/:ptyId。
    *  prevPtyId=页签盘档里已死的旧 pty(daemon 重启):daemon 以其落盘回放回种新壳滚动区 */

@@ -34,7 +34,8 @@ import { AppShellPanes, type AppShellPanesProps } from './app-shell-panes';
 export { emptyTabCardIds } from './app-shell-panes';
 import { useAppRewind } from './use-app-rewind';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
-import { prefetchEditorIcons } from './ui-util';
+import { prefetchEditorIcons, fmtBytes } from './ui-util';
+import { t } from './i18n';
 import { useCollapseTransition } from './use-collapse-transition';
 import { clearAutoSeenSuppressed } from './sidebar/project-menu-util';
 
@@ -135,8 +136,9 @@ function AppShell(): JSX.Element {
   const setSessionTodos = useCallback((todos: TodoItem[]): void => {
     setProjection((p) => ({ ...p, sessionTodos: todos }));
   }, []);
-  /** 会话级操作失败提示(use-op-error 单点,2026-10-27 技术债轮 D53 批E 外提):sx-toast 3s 自隐 */
-  const { opError, showOpError } = useOpError();
+  /** 会话级操作失败提示(use-op-error 单点,2026-10-27 技术债轮 D53 批E 外提):sx-toast 3s 自隐;
+   *  showOpMessage=同槽正向提示(缓存清理释放量等,2026-11-21) */
+  const { opError, showOpError, showOpMessage } = useOpError();
   /** G8d/G14.2xx 子智能体活动聚合按会话分桶+LRU(use-agent-projections 单点;onEvent 归约与
    *  services.agentActivities 消费) */
   const { agentActivitiesBySession, bumpActs, dropPendingFolds, flushActsNow } = useAgentBuckets();
@@ -476,12 +478,34 @@ function AppShell(): JSX.Element {
       .catch(showOpError);
   });
 
+  /** 缓存清理(2026-11-21):daemon safe 档+壳浏览器 HTTP 缓存并行;toast 回显释放量——
+   *  搜索框 Actions 与托盘 clear-cache 同走此稳定回调,不另造旁路语义 */
+  const clearCacheNow = useStableCallback((): void => {
+    const conn = connRef.current;
+    if (conn === null) return;
+    const http = window.sunshinexWindow?.clearHttpCache?.().catch(() => undefined);
+    void conn
+      .clearCache()
+      .then(async (r) => {
+        await http;
+        const freed = r.cleared.reduce((a, c) => a + c.freed, 0);
+        if (r.failed.length > 0) showOpMessage(t(`${r.failed.length} cache item(s) failed to clear`, `${r.failed.length} 项缓存清理失败`));
+        else if (freed > 0) showOpMessage(t(`Cache cleared — freed ${fmtBytes(freed)}`, `已清理缓存，释放 ${fmtBytes(freed)}`));
+        else showOpMessage(t('Cache is already clean', '缓存本来就很干净'));
+      })
+      .catch(showOpError);
+  });
+
   /** 托盘菜单动作(壳 tray:action,2026-11-07 用户裁定三组菜单):主进程已唤窗,此处只导航——
    *  最近会话走 attach 两步(同侧栏:newSession 装壳 → attach 播种 → openSession)/新对话/设置/
-   *  设置·快捷键面。监听挂一次,经 ref 取最新闭包 */
+   *  设置·快捷键面/清理缓存(2026-11-21)。监听挂一次,经 ref 取最新闭包 */
   const trayActionRef = useRef<(a: SxTrayAction) => void>(() => undefined);
   trayActionRef.current = (a) => {
     closeMenuDrawer();
+    if (a.kind === 'clear-cache') {
+      clearCacheNow();
+      return;
+    }
     if (a.kind === 'settings' || a.kind === 'shortcuts') {
       if (a.kind === 'shortcuts') setSettingsPane({ id: 'shortcuts' });
       if (!settingsOpen) openSettings();
@@ -592,6 +616,7 @@ function AppShell(): JSX.Element {
       { id: 'settings-skills', en: 'Open skills settings', zh: '打开技能设置', run: () => openSettingsPaneStable('skills') },
       { id: 'settings-providers', en: 'Open models & providers', zh: '打开模型与提供方', run: () => openSettingsPaneStable('providers') },
       { id: 'toggle-sidebar', en: 'Toggle side panel', zh: '切换侧栏', run: toggleRightSidebarStable },
+      { id: 'clear-cache', en: 'Clear cache', zh: '清理缓存', run: clearCacheNow },
       {
         id: 'toggle-theme',
         en: 'Toggle light / dark theme',
@@ -606,7 +631,7 @@ function AppShell(): JSX.Element {
       { id: 'tab-board', en: 'Open task board', zh: '打开任务板', run: openBoardTab },
       { id: 'tab-sunxboard', en: 'Sunx board', zh: 'Sunx 看板', run: openSunxBoardFromMenu },
     ],
-    [newChatFromMenu, openSchedulesFromMenu, openSettingsFromMenu, openSettingsPaneStable, toggleRightSidebarStable, openTabType, openMemoryTab, openLearnedTab, openArtifactsTab, openBoardTab, openSunxBoardFromMenu],
+    [newChatFromMenu, openSchedulesFromMenu, openSettingsFromMenu, openSettingsPaneStable, toggleRightSidebarStable, clearCacheNow, openTabType, openMemoryTab, openLearnedTab, openArtifactsTab, openBoardTab, openSunxBoardFromMenu],
   );
 
   /** 面板开合平滑(2026-11-18 用户裁定「应用的侧栏、菜单栏,下栏,展开和关闭要平滑效果」):

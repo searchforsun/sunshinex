@@ -790,3 +790,30 @@ export interface ConnectionOpts {
   /** 退避基数 ms（缺省 1000；delay = base×2^连续失败数，帽 30s）——测试注入 1 */
   backoffBaseMs?: number;
 }
+
+// ---------- 存储面（2026-11-21 缓存清理；字段形与 daemon /cache 应答同形；不引服务端类型） ----------
+
+export interface CacheCategoryStatus {
+  id: string;
+  safe: boolean;
+  size: number;
+  files: number;
+}
+
+export interface CacheRetentionInfo {
+  days: number;
+  lastRunAt: number | null;
+  lastPurged: number;
+  lastFailed: number;
+}
+
+export interface CacheStatusResp {
+  total: number;
+  categories: CacheCategoryStatus[];
+  retention: CacheRetentionInfo;
+}
+
+export interface CacheClearResp {
+  cleared: Array<{ id: string; freed: number }>;
+  failed: Array<{ id: string; error: string }>;
+}

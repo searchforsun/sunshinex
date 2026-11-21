@@ -64,6 +64,19 @@ export function fmtTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k tokens` : `${n} tokens`;
 }
 
+/** 字节量格式(存储页体积/toast,2026-11-21):B 直显,KB 起一位小数(≥100 取整) */
+export function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 1024) return `${Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = n;
+  let i = -1;
+  do {
+    v /= 1024;
+    i += 1;
+  } while (v >= 1024 && i < units.length - 1);
+  return `${v >= 100 ? String(Math.round(v)) : v.toFixed(1)} ${units[i]!}`;
+}
+
 /** 路径段切分单点：双分隔符归一、空段滤除（disambiguateTabTitles 逐级上溯段构成消费；
  *  daemon 下发 POSIX 相对路径与 Windows 绝对路径两面同源）。 */
 export function pathSegments(p: string): string[] {

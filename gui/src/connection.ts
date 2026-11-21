@@ -24,6 +24,8 @@ import type {
   PermissionOpInput,
   PluginRow,
   ProviderOpInput,
+  CacheClearResp,
+  CacheStatusResp,
   ScheduleDraft,
   ScheduleJobView,
   ScheduleRecurrence,
@@ -562,6 +564,13 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     archivedSessions() {
       return getJson('/sessions/archived');
+    },
+    cacheStatus(): Promise<CacheStatusResp> {
+      return getJson<CacheStatusResp>('/cache');
+    },
+    clearCache(categories?: string[]): Promise<CacheClearResp> {
+      // categories 缺省=daemon safe 全档;http-cache 归壳侧(clearHttpCache 桥),不经本端点
+      return postJson<CacheClearResp>('/cache/clear', { ...(categories === undefined ? {} : { categories }) });
     },
     async openPty(sessionId: string, cols?: number, rows?: number, prevPtyId?: string): Promise<{ ptyId: string }> {
       const path = `/session/${encodeURIComponent(sessionId)}/pty`;
