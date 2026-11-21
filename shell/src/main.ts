@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray, webContents } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeImage, nativeTheme, screen, session, shell, Tray, webContents } from 'electron';
 import { resolveDaemonPaths } from './lib/paths';
 import { clampSize, lockedDragBounds } from './lib/window-drag';
 import { appUrl, LOOPBACK } from './lib/app-url';
@@ -333,6 +333,12 @@ if (!app.requestSingleInstanceLock()) {
     win.on('unmaximize', notifyMaximized);
     // 2026-11-21 用户实测升级后仍见旧样式/旧工具名：同端口同 URL 的 dist-gui index.html 被 Chromium
     // HTTP cache 命中，hash 资源不重新取。启动时先清 cache 再 load（壳升级一次后长期生效）。
+    // Web 标签持久分区登记（will-attach-webview 收集 persist:sx-*）——shell:clear-cache 逐分区清。
+    const webviewPartitions = new Set<string>();
+    win.webContents.on('will-attach-webview', (_event, webPreferences, params) => {
+      const p = typeof webPreferences.partition === 'string' && webPreferences.partition !== '' ? webPreferences.partition : params.partition;
+      if (typeof p === 'string' && p.startsWith('persist:')) webviewPartitions.add(p);
+    });
     await win.webContents.session.clearCache();
     win.loadURL(appUrl(daemon.port, daemon.token)).catch((err) => console.error('[shell] loadURL failed:', err));
 
@@ -489,6 +495,26 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle('shell:pick-folder', (_e, defaultPath?: unknown) => pickPath('openDirectory', defaultPath));
     // 文件选择(设置页 Shell 可执行文件行)
     ipcMain.handle('shell:pick-file', (_e, defaultPath?: unknown) => pickPath('openFile', defaultPath));
+
+    // 缓存清理(2026-11-21):主窗 session + 已登记 webview 持久分区逐个 clearCache——
+    // cookie/localStorage(登录态)不动,只清 HTTP cache;单分区失败不阻断(逐项记账)
+    ipcMain.handle('shell:clear-cache', async (): Promise<{ ok: boolean; partitions: number }> => {
+      let partitions = 0;
+      for (const name of webviewPartitions) {
+        try {
+          await session.fromPartition(name).clearCache();
+          partitions += 1;
+        } catch (err) {
+          console.error(`[shell] clearCache(${name}) failed:`, err);
+        }
+      }
+      try {
+        if (mainWindow !== undefined && !mainWindow.isDestroyed()) await mainWindow.webContents.session.clearCache();
+      } catch (err) {
+        console.error('[shell] main session clearCache failed:', err);
+      }
+      return { ok: true, partitions };
+    });
 
     // 驻留序（H-D2）：非退出流程中关窗=preventDefault+hide（会话/PTY 不中断），退出流程放行真关闭
     win.on('close', (event) => {

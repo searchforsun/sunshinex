@@ -61,6 +61,9 @@ contextBridge.exposeInMainWorld('sunshinexWindow', {
     ipcRenderer.on('tray:action', handler);
     return () => void ipcRenderer.removeListener('tray:action', handler);
   },
+  /** 缓存清理(2026-11-21):主窗+已登记 webview 持久分区 HTTP cache;登录态 cookie 不动。
+   *  旧壳缺席(消费面 ?. 容忍)——浏览器态本就无 Chromium 缓存面 */
+  clearHttpCache: (): Promise<{ ok: boolean; partitions?: number }> => ipcRenderer.invoke('shell:clear-cache'),
   onMaximizedChange: (cb: (maximized: boolean) => void): (() => void) => {
     const handler = (_: unknown, v: boolean): void => cb(v);
     ipcRenderer.on('win:maximized', handler);

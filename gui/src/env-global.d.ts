@@ -10,7 +10,8 @@ type SxTrayAction =
   | { kind: 'open-session'; root: string; journalId: string }
   | { kind: 'new-chat' }
   | { kind: 'settings' }
-  | { kind: 'shortcuts' };
+  | { kind: 'shortcuts' }
+  | { kind: 'clear-cache' };
 
 interface Window {
   sunshinex?: {
@@ -55,6 +56,8 @@ interface Window {
     onMaximizedChange: (cb: (maximized: boolean) => void) => () => void;
     /** 托盘菜单动作(2026-11-07 三组菜单;主进程已唤窗,GUI 负责导航);旧壳缺席 ?. 跳过 */
     onTrayAction?: (cb: (action: SxTrayAction) => void) => () => void;
+    /** 缓存清理(2026-11-21):主窗+webview 持久分区 HTTP cache;登录态 cookie 不动。旧壳缺席 ?. 跳过 */
+    clearHttpCache?: () => Promise<{ ok: boolean; partitions?: number }>;
   };
   /** 开机画面收尾（index.html 内联控制脚本定义；reload 跳过演时已 remove——可选调用静默无副作用） */
   __sxBootDone?: () => void;
