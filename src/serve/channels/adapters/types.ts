@@ -6,6 +6,7 @@
  *  与 telegram/飞书/钉钉 平台侧共同消费。 */
 import type { ChannelConfig, DeliveryCaps, InboundMessage, OutboundMessage } from '../model';
 import { MockChannelAdapter } from './mock';
+import { TelegramAdapter } from './telegram';
 
 /** 出站投递目标:通道 id + 平台会话标识 */
 export interface ChatRef {
@@ -44,13 +45,13 @@ export interface AdapterDeps {
 }
 
 /** 注册表工厂:按 cfg.platform 分派到具体适配器;未落地平台 throw——engine 捕获记 health error。
- *  telegram 分支 Task 10 接入 ./telegram 适配器;feishu/dingtalk/wecom 后续任务接入。 */
+ *  telegram 分支已接 ./telegram(Task 10,long-poll 真实现);feishu/dingtalk/wecom 后续任务接入。 */
 export function createChannelAdapter(cfg: ChannelConfig, deps: AdapterDeps): ChannelAdapter {
   switch (cfg.platform) {
     case 'mock':
       return new MockChannelAdapter(cfg, deps);
     case 'telegram':
-      throw new Error('telegram adapter lands in a later task');
+      return new TelegramAdapter(cfg, deps);
     case 'feishu':
     case 'dingtalk':
     case 'wecom':
