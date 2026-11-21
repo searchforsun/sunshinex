@@ -58,6 +58,10 @@ import type { CacheHandlerIo } from './cache-handlers';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
 import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
+import { ChannelsEngine } from './channels/engine';
+import { ChannelsBindingsStore, channelsBindingsFile } from './channels/store';
+import type { ChannelConfig } from './channels/model';
+import { loadChannels } from '../config/channels';
 import {
   GUI_ASSETS_HINT,
   MAX_PREVIEW_BYTES,
@@ -88,6 +92,12 @@ interface GuiDaemonOpts {
   /** 定时任务档路径（终审 finding 7）：缺省 schedulesFile()（SUNSHINEX_DATA_DIR / ~/.sunshinex）。
    *  测试可注入临时文件，避免裸跑时读/补跑真实用户的 schedules.json */
   schedulesFile?: string;
+  /** 通道 bindings 档路径（channels Task 8）：缺省 channelsBindingsFile()（SUNSHINEX_DATA_DIR /
+   *  ~/.sunshinex）。测试注入临时文件——构造器处裸跑警示注释同 schedulesFile */
+  channelsBindingsFile?: string;
+  /** 通道配置注入（channels Task 8 测试面）：在场则引擎调和用此快照（configs 单一事实源），
+   *  缺省 start() 调和时读全局档 channels 键（loadChannels） */
+  channelsConfigs?: ChannelConfig[];
 }
 
 /** start 入参：port 缺省 0（临时端口，返回实际监听值）；token 缺省随机 24 字节 hex（规格 §4.3） */
@@ -216,6 +226,12 @@ export class GuiDaemon {
   private readonly scheduleStore: ScheduleStore;
   private readonly scheduleExecutor: ScheduleExecutor;
   private readonly scheduleEngine: ScheduleEngine;
+  /** 通道引擎（2026-11-21 channels Task 8）：router/projector/适配器装配单点，start/stop 随 daemon
+   *  生命周期；public readonly 供测试（mockAdapter 注入面）与后续 handlers（GET /channels/* 端点）消费 */
+  readonly channelsEngine: ChannelsEngine;
+  /** 通道 bindings 运行时档（channels Task 8）：engine 持引用读写（router 绑定三态/projector 反解），
+   *  daemon 只管档路径注入与生命周期 */
+  private readonly channelsBindings: ChannelsBindingsStore;
   /** 归档保留期清扫器（2026-11-21）：start 布防/teardown 摘除；undefined=未布防（直构 daemon 未 start 的测试面可缺） */
   private retentionSweeper: RetentionSweeper | undefined;
 
@@ -237,6 +253,31 @@ export class GuiDaemon {
     this.scheduleEngine = new ScheduleEngine({
       store: this.scheduleStore,
       execute: (job, trigger, plannedAt) => this.scheduleExecutor.run(job, trigger, plannedAt),
+    });
+    // 通道 bindings 档：缺省 channelsBindingsFile()（SUNSHINEX_DATA_DIR / ~/.sunshinex）。
+    // **裸跑测试警示**（同上 schedulesFile 形态）：直接 `node --test dist/serve/...` 而未预载
+    // scripts/test-env.cjs 时，这里读真实用户档，且 start() 会按真实全局 channels 配置调和起座
+    // （真实平台适配器外连）——裸跑必须 `--require scripts/test-env.cjs`（批量走测试 runner 已自动
+    // 注入），或用 opts.channelsBindingsFile / opts.channelsConfigs 注入临时档与测试配置。
+    this.channelsBindings = new ChannelsBindingsStore(opts.channelsBindingsFile ?? channelsBindingsFile());
+    const channelsConfigs = opts.channelsConfigs;
+    this.channelsEngine = new ChannelsEngine({
+      // 会话 IO 七面注入（channels Task 8）：前五面对齐 lifecycleIo 既有单点（attach 双参同款写法）；
+      // onFrame=进程内订阅 seam（broadcastFrame 旁挂）；resolveApproval=审批回执单点翻译——daemon
+      // 既有回执是 ApprovalDecision（'allow'|'always'|'deny'）三态（POST /approval/:pid 路由经
+      // sessionHandlers 最终落 resolveApproval），IM 面只产 y/n 语义：approved=true→allow、false→deny，
+      // ALWAYS 不由 IM 面产生；feedback 无载体（ApprovalDecision 为字面量类型）不透传
+      createSession: (root, o) => this.createSession(root, o),
+      getSession: (id) => this.sessions.get(id),
+      attach: (id, journalId) => this.attach(id, journalId),
+      releaseSession: (id) => this.releaseSession(id),
+      activeSessionId: () => this.activeId(),
+      onFrame: (cb) => this.onFrame(cb),
+      resolveApproval: (pid, d) => this.resolveApproval(pid, d.approved ? 'allow' : 'deny'),
+    }, this.channelsBindings, {
+      // 配置档：测试注入（opts.channelsConfigs）优先——engine.start() 调和时取值；缺省读全局档
+      // channels 键（loadChannels 单点，config/channels.ts 全局豁免裁定）
+      configs: channelsConfigs !== undefined ? () => channelsConfigs : () => loadChannels().value,
     });
   }
 
@@ -433,10 +474,32 @@ export class GuiDaemon {
     return false;
   }
 
-  /** 泵广播面薄委托(broadcast 四法+WS 五法已外提 daemon-ws WsHub——传输状态归 hub 私有):
-   *  两张 io 面(lifecycle/session)经本名保持零迁移 */
+  /** 泵广播面（broadcast 四法+WS 五法已外提 daemon-ws WsHub——传输状态归 hub 私有）：WS 下行 +
+   *  进程内订阅 seam 双路（channels Task 8）——两张 io 面(lifecycle/session)经本名保持零迁移 */
+  /** 进程内帧订阅 seam（channels Task 8）：broadcastFrame 旁挂本地订阅者——WsHub 零改动，进程内
+   *  消费面（通道投影 engine Task 7 / 测试探针）与 WS 传输面同源同拍；逐个 try/catch 吞错（订阅者
+   *  异常绝不击穿广播与 WS 下行） */
+  private readonly frameSubscribers: Array<(frame: DaemonFrame) => void> = [];
+
+  /** 订阅 daemon 全量下行帧（进程内直调，不经 WS/合帧窗）：返回退订函数（重复退订幂等——indexOf
+   *  未命中即跳过）；通道投影与测试探针消费面 */
+  onFrame(cb: (frame: DaemonFrame) => void): () => void {
+    this.frameSubscribers.push(cb);
+    return () => {
+      const i = this.frameSubscribers.indexOf(cb);
+      if (i >= 0) this.frameSubscribers.splice(i, 1);
+    };
+  }
+
   private broadcastFrame(frame: DaemonFrame): void {
     this.wsHub.broadcastFrame(frame);
+    for (const cb of this.frameSubscribers) {
+      try {
+        cb(frame);
+      } catch {
+        /* 订阅者异常吞错：广播面绝不因旁路订阅者击穿 */
+      }
+    }
   }
 
   /**
@@ -519,6 +582,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 定时任务布防：监听已就绪后再补跑/布防，catch-up 建的会话走完整 HTTP/会话栈
     this.backfillScheduledSessionMarks();
     this.scheduleEngine.start();
+    // 通道引擎布防（channels Task 8）：帧订阅先挂 → 配置调和起座（engine.start 内序）——mock/平台
+    // 适配器入站自此可达完整会话栈（createSession/submit/steer 同 lifecycleIo 单点）
+    this.channelsEngine.start();
     // 归档保留期清扫器布防（2026-11-21 spec §4）：schedule 引擎之后——错过窗口（≥24h 未扫）即刻
     // 补扫，否则 5 分钟首扫，此后每 24h；在座会话跳过（runtime 表按 attachedJournalId 反查）
     this.retentionSweeper = new RetentionSweeper({
@@ -563,6 +629,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
    *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
     this.scheduleEngine.stop();
+    // 通道引擎收口（channels Task 8，与 schedule 引擎同位、先停外连）：适配器全量 stop + 投影摘帧
+    // 订阅——外连面在 WS/HTTP/会话收口前断（挂起审批表 engine 内保留，重启不丢回执面）
+    this.channelsEngine.stop();
     // 归档保留期清扫器摘除（与 schedule 引擎同生命周期）
     this.retentionSweeper?.stop();
     this.retentionSweeper = undefined;

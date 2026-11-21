@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
 import { GuiDaemon } from './daemon';
+import type { DaemonFrame } from './daemon-wire';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult } from '../types';
@@ -2647,6 +2648,110 @@ describe('全局规范 GET/PUT /settings/sunshine(2026-11-05 设置页「全局�
       const v = (await (await fetch(`${base}/settings/sunshine`, { headers: AUTH })).json()) as { content: string; exists: boolean };
       assert.equal(v.content, '');
       assert.equal(v.exists, true); // 文件存在但为空——exists=文件在,不因空串回 false
+    });
+  });
+});
+
+// ---------- 通道引擎挂进 GuiDaemon(Task 8,spec §2/§7):onFrame 进程内订阅 seam + 引擎生命周期 + e2e mock 通道 ----------
+
+/** 通道 e2e 样板(照 withDaemon 隔离形态):数据目录钉 tmp + GuiDaemon 注入临时 bindings 档与 mock
+ *  通道配置(enabled,root=tmp,allow all)——引擎随 daemon.start 调和起座;close 后临时档随 tmp 回收 */
+async function withChannelsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; tmp: string; bindingsFile: string }) => Promise<void>): Promise<void> {
+  const tmp = tmpdir('sunshinex-serve-ch-');
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+  const bindingsFile = path.join(tmp, 'channels-bindings.json');
+  try {
+    const daemon = new GuiDaemon({
+      model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
+      channelsBindingsFile: bindingsFile,
+      channelsConfigs: [{ id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'read-only', allow: { kind: 'all' } }],
+    });
+    const s = await daemon.start({ port: 0, token: 'test-token' });
+    const base = `http://127.0.0.1:${s.port}`;
+    try {
+      await fn({ daemon, base, tmp, bindingsFile });
+    } finally {
+      await s.close();
+    }
+  } finally {
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
+    else process.env.SUNSHINEX_DATA_DIR = prevData;
+    rmTmp(tmp);
+  }
+}
+
+/** 读临时 bindings 档(GET /channels/bindings 端点属 Task 9+ handlers——此处直读档断言同一事实源:
+ *  ChannelsBindingsStore persist 落盘即「绑定已建立」,路由端点交付后同源可查) */
+function readBindings(file: string): Array<{ key: string; sessionId: string; journalId?: string }> {
+  return (JSON.parse(fs.readFileSync(file, 'utf8')) as { bindings: Array<{ key: string; sessionId: string; journalId?: string }> }).bindings;
+}
+
+describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
+  test('① e2e:mock 通道入站 → 绑定建立 + ack 受理 + 会话注册表出现新会话', async () => {
+    await withChannelsDaemon(async ({ daemon, base, tmp, bindingsFile }) => {
+      const mock = daemon.channelsEngine.mockAdapter('m1');
+      assert.ok(mock !== undefined, 'mock 适配器在座(start 调和已起)');
+      mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '你好' });
+      // 绑定建立:bindings 档落盘 m1:c1 → 新 sessionId(路由绑定解析三态之「新建」)
+      await waitFor(() => {
+        try { return readBindings(bindingsFile).some((b) => b.key === 'm1:c1'); } catch { return false; }
+      }, 3000);
+      const binding = readBindings(bindingsFile).find((b) => b.key === 'm1:c1')!;
+      assert.ok(binding.sessionId.length > 0, '绑定指向新建通道会话');
+      // ack 受理文本回 IM(mock.sent;定向回复可带 @Alice 前缀,关键词断言不受影响)
+      await waitFor(() => mock.sent.some((m) => m.text.includes('已受理')), 3000);
+      // 会话注册表出现新会话(GET /sessions 按数据目录列行,出生 journalId 对位——首 run 落盘后可见)
+      assert.ok(binding.journalId !== undefined, '通道会话出生即铸 journal(router seatAndTag)');
+      await waitFor(() => {
+        try {
+          const rows = fs.readdirSync(path.join(tmp, 'data', 'sessions')).filter((f) => f === `${binding.journalId}.jsonl`);
+          return rows.length > 0;
+        } catch { return false; }
+      }, 5000);
+      const rows = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(tmp)}`, { headers: AUTH })).json()) as Array<{ id: string }>;
+      assert.ok(rows.some((r) => r.id === binding.journalId), 'GET /sessions 出现通道新会话');
+    });
+  });
+
+  test('② 运行中第二条消息走 steer 路径:二次受理 ack + 队列帧可观测', async () => {
+    await withChannelsDaemon(async ({ daemon }) => {
+      const mock = daemon.channelsEngine.mockAdapter('m1')!;
+      // 队列帧探针:onFrame seam(Task 8)——steer 入队即广播 queue 事件帧(session emitQueueFrame
+      // → daemon broadcastFrame),是运行中穿插路径的直接证据(router ack 恒「已受理」无队列字样)
+      const frames: DaemonFrame[] = [];
+      daemon.onFrame((f) => frames.push(f));
+      // 同拍双发:首条 dispatch 微任务里 createSession+submit(同步占 run 锁),次条 dispatch 见
+      // status=running → steer(router ⑧⑨⑫ 分派面)——脚本桩单步轮不会在双发间隙收口
+      mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '第一条' });
+      mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n2', text: '第二条' });
+      await waitFor(() => mock.sent.filter((m) => m.text.includes('已受理')).length >= 2, 3000);
+      assert.ok(frames.some((f) => f.kind === 'event' && f.e.type === 'queue'), 'steer 入队 → queue 事件帧(运行中穿插路径)');
+    });
+  });
+
+  test('③ onFrame 订阅:HTTP 提交 → cb 收 kind=event 帧;退订后不再收帧', async () => {
+    await withChannelsDaemon(async ({ daemon, base, tmp }) => {
+      const r = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+      assert.equal(r.status, 200, 'session/new 应 200');
+      const { sessionId } = (await r.json()) as { sessionId: string };
+      const rt = daemon.get(sessionId);
+      assert.ok(rt !== undefined, '会话入注册表');
+      const frames: DaemonFrame[] = [];
+      const off = daemon.onFrame((f) => frames.push(f));
+      const submit = (): Promise<globalThis.Response> =>
+        fetch(`${base}/session/${sessionId}/submit`, { method: 'POST', headers: AUTH, body: JSON.stringify({ goal: 'onframe 探针' }) });
+      const r1 = await submit();
+      assert.equal(r1.status, 202, '首轮受理 202');
+      await waitFor(() => frames.some((f) => f.kind === 'event' && f.sessionId === sessionId && f.e.type === 'done'), 5000);
+      await waitFor(() => rt.status() === 'idle', 5000); // 首轮收口再退订,防轮间隙帧计数漂移
+      off();
+      const count = frames.length;
+      const r2 = await submit();
+      assert.equal(r2.status, 202, '次轮受理 202');
+      await waitFor(() => rt.status() === 'idle', 5000); // 次轮收口(帧若误投必已发生)
+      await new Promise((resolve) => setTimeout(resolve, 50)); // 收口后再给一拍:误投即在此窗内现形
+      assert.equal(frames.length, count, '退订后不再收帧');
     });
   });
 });
