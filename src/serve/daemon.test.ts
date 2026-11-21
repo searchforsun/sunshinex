@@ -2714,18 +2714,21 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
     });
   });
 
-  test('② 运行中第二条消息走 steer 路径:二次受理 ack + 队列帧可观测', async () => {
+  test('② 运行中第二条消息走 steer 路径:排队 ack「已加入排队」+ 队列帧可观测', async () => {
     await withChannelsDaemon(async ({ daemon }) => {
       const mock = daemon.channelsEngine.mockAdapter('m1')!;
       // 队列帧探针:onFrame seam(Task 8)——steer 入队即广播 queue 事件帧(session emitQueueFrame
-      // → daemon broadcastFrame),是运行中穿插路径的直接证据(router ack 恒「已受理」无队列字样)
+      // → daemon broadcastFrame),是运行中穿插路径的直接证据;ack 二态回执(计划 §4 第 6 条,
+      // Task 8 e2e 回修):首条受理「已受理,处理中」、次条 running 排队「已加入排队…」——
+      // IM 用户凭回执即分辨立即处理还是排队
       const frames: DaemonFrame[] = [];
       daemon.onFrame((f) => frames.push(f));
       // 同拍双发:首条 dispatch 微任务里 createSession+submit(同步占 run 锁),次条 dispatch 见
       // status=running → steer(router ⑧⑨⑫ 分派面)——脚本桩单步轮不会在双发间隙收口
       mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '第一条' });
       mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n2', text: '第二条' });
-      await waitFor(() => mock.sent.filter((m) => m.text.includes('已受理')).length >= 2, 3000);
+      await waitFor(() => mock.sent.some((m) => m.text.includes('已受理')), 3000); // 首条受理态回执
+      await waitFor(() => mock.sent.some((m) => m.text.includes('已加入排队')), 3000); // 次条排队态回执(二态区分)
       assert.ok(frames.some((f) => f.kind === 'event' && f.e.type === 'queue'), 'steer 入队 → queue 事件帧(运行中穿插路径)');
     });
   });

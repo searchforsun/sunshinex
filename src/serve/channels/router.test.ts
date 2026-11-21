@@ -353,3 +353,27 @@ test('⑬ 契约:io 异常不击穿 handleInbound,尽力 ack 处理失败', asyn
   assert.equal(h.acks.length, 1);
   assert.ok(h.acks[0]!.text.includes('处理失败'));
 });
+
+test('⑭ ack 二态回执:running/409 回退 ack「排队」;idle 受理 ack「已受理」', async () => {
+  // running → steer 排队文案(Task 8 e2e 回修:计划 §4 第 6 条「受理即回执」二态)
+  const h = makeHarness();
+  await h.router.handleInbound(mkMsg({ msgId: 'q1', text: '开场' }));
+  const rt = rtOf(h, bindingKey('m1', 'c1'));
+  assert.ok(h.acks[0]!.text.includes('已受理'));
+  rt._status = 'running';
+  await h.router.handleInbound(mkMsg({ msgId: 'q2', text: '排队发言' }));
+  assert.ok(h.acks[1]!.text.includes('排队'));
+  assert.ok(!h.acks[1]!.text.includes('已受理'));
+
+  // 409 竞态回退同排队文案
+  const h2 = makeHarness({ runtimeFactory: () => makeRuntime({ submit409: true }) });
+  await h2.router.handleInbound(mkMsg({ msgId: 'q3', text: '撞锁发言' }));
+  assert.ok(h2.acks[0]!.text.includes('排队'));
+  assert.ok(!h2.acks[0]!.text.includes('已受理'));
+
+  // idle 受理照旧「已受理」,不含「排队」
+  const h3 = makeHarness();
+  await h3.router.handleInbound(mkMsg({ msgId: 'q4', text: '直答' }));
+  assert.ok(h3.acks[0]!.text.includes('已受理'));
+  assert.ok(!h3.acks[0]!.text.includes('排队'));
+});

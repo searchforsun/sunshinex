@@ -4,7 +4,7 @@
  *  （deps.pendingReply 命中即消费，不发 ack——engine 接线 projector，Task 6/7）→ 指令短路
  *  （/help 帮助文案 / /stop 中断 / /new 新建重绑）→ 绑定解析三态（在座直用 → attach 重开 →
  *  新建；attach 失败释放残座走新建）→ 提交分派（idle→submit，409 回退 steer；running→steer）→
- *  ack（受理即 ack）。平台无关——平台差异由上游 SPI 适配器吃掉，本模块只认 InboundMessage。
+ *  ack 二态回执（计划 §4 第 6 条：受理「已受理，处理中」/ 排队「已加入排队…」）。平台无关——平台差异由上游 SPI 适配器吃掉，本模块只认 InboundMessage。
  *  root 解析（spec §4）：binding.rootOverride 优先（聊天信息条「绑定工作区切换」下次 /new 生效，
  *  spec §9.3）；cfg.root==='auto'（缺省形态）→ channelChatWorkspaceRoot 聊天专属域 workspace 铸造。
  *  契约（Task 5 预检裁定）：handleInbound **绝不抛**——整体 try/catch，失败尽力 ack「处理失败」；
@@ -182,7 +182,7 @@ export class ChannelRouter {
 
   /** 绑定解析三态（⑦⑧⑨）+ 提交分派：在座直用 → attach 重开（失败释放残座）→ 新建；
    *  idle→submit（409 回退 steer）、running→steer；群聊注入发送者前缀（⑫）；
-   *  绑定解析成功后 noteSender 回写（Task 7 lastSender 消费）；受理即 ack */
+   *  绑定解析成功后 noteSender 回写（Task 7 lastSender 消费）；ack 二态回执（计划 §4 第 6 条） */
   private async dispatch(msg: InboundMessage, cfg: ChannelConfig, key: string, existing: Binding | undefined): Promise<void> {
     let sessionId: string | undefined;
     let rt: SessionRuntime | undefined;
@@ -223,14 +223,22 @@ export class ChannelRouter {
     const body = msg.text ?? '';
     const submitText = msg.chatKind === 'group' ? `[来自 ${msg.userDisplay ?? msg.userId}]: ${body}` : body; // ⑫ 单聊原文
     const target = { channelId: cfg.id, chatId: msg.chatId };
+    // ack 二态回执（计划 §4 第 6 条「受理即回执」，Task 8 e2e 回修）：idle submit 受理 →
+    // 「已受理，处理中」；steer 排队（running 直排 / 409 竞态回退）→「已加入排队，当前任务完成后处理」
+    // ——IM 用户凭回执即分辨消息是立即处理还是排队
+    let queued = false;
     if (rt.status() === 'idle') {
       const r = rt.submit(submitText, msg.images);
-      if (!r.ok && r.status === 409) rt.steer(submitText, msg.images); // 受理间隙竞态：回退穿插
+      if (!r.ok && r.status === 409) {
+        rt.steer(submitText, msg.images); // 受理间隙竞态：回退穿插
+        queued = true;
+      }
     } else {
       rt.steer(submitText, msg.images); // running → steer
+      queued = true;
     }
     this.deps.onSubmitted?.(sessionId, target); // 裁定 1：分派成功（submit 直达/409 回退 steer/running steer）即回调
-    await this.deps.ack(msg, '已受理，处理中');
+    await this.deps.ack(msg, queued ? '已加入排队，当前任务完成后处理' : '已受理，处理中');
   }
 
   /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel})（⑩ 通道标出生写一次，
