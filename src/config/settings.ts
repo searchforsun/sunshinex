@@ -78,6 +78,10 @@ interface SettingsDoc {
   /** mcpApprovals/mcpDenied 结构化语义键原值（项目 MCP 批准阀账本，键=projectSlug(root)→名单，读写单点 catalog/approvals.ts）：形状裁决在 approvals 模块，不经 flatten/env 槽 */
   mcpApprovals?: unknown;
   mcpDenied?: unknown;
+  /** channels 结构化语义键原值（声明性通道配置，spec 2026-11-21-channels §4 存储总览 1）：形状裁决在
+   *  config/channels.ts，不经 flatten/env 槽；**全局豁免**——项目级整键忽略（通道是 daemon 主动外连的
+   *  执行面，项目档定义通道=克隆仓库注入外连目标的供应链攻击面），装载恒走全局档（loadChannels 单点） */
+  channels?: unknown;
 }
 
 /**
@@ -163,6 +167,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   let imageHistoryLimit: unknown = undefined;
   let mcpApprovals: unknown = undefined;
   let mcpDenied: unknown = undefined;
+  let channels: unknown = undefined;
   for (const [key, value] of Object.entries(root)) {
     if (key === 'version' || key === 'env') continue;
     if (key === 'permissions') {
@@ -189,6 +194,10 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
       mcpDenied = root[key] as unknown;
       continue;
     }
+    if (key === 'channels') {
+      channels = root[key] as unknown;
+      continue;
+    }
     semantic[key] = value;
   }
   const env: Record<string, string> = {};
@@ -202,7 +211,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
       // 非字符串值静默忽略：env 块定位是环境变量透传，数字/布尔无对应语义
     }
   }
-  return { semantic, env, permissions, providers, plugins, imageHistoryLimit, mcpApprovals, mcpDenied };
+  return { semantic, env, permissions, providers, plugins, imageHistoryLimit, mcpApprovals, mcpDenied, channels };
 }
 
 interface FlattenResult {
