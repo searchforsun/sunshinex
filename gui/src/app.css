@@ -4765,6 +4765,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-storage-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-storage-btn:disabled { opacity: 0.5; cursor: default; }
 .sx-storage-btn.danger { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
-.sx-card-head .sx-storage-head-btn { margin-left: auto; align-self: center; }
-.sx-storage-size { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); flex: none; }
-.sx-storage-rowctl { display: inline-flex; align-items: center; gap: 8px; }
+.sx-card-head .sx-storage-headctl { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 12px; }
+.sx-storage-size { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); flex: none; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+/* 存储行:控件组(体积+清理钮)贴右缘对齐——setting-row 定宽控件列在此不适用 */
+.sx-storage-row { display: flex; align-items: center; gap: 16px; }
+.sx-storage-row > .sx-setting-main { flex: 1 1 auto; }
+.sx-storage-row > .sx-setting-ctl.sx-storage-rowctl { width: auto; max-width: none; margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }

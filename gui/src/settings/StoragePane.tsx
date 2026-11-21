@@ -26,11 +26,11 @@ const CACHE_LABELS: Record<string, { label: { en: string; zh: string }; desc: { 
   'pty-replay': { label: { en: 'Terminal replay buffers', zh: '终端回放缓存' }, desc: { en: 'PTY scrollback replay files', zh: '终端回滚缓冲的落盘副本' } },
   'editor-icons': { label: { en: 'Editor icon cache', zh: '编辑器图标缓存' }, desc: { en: 'Regenerated on demand', zh: '按需自动重新生成' } },
   'compaction-archives': { label: { en: 'Compaction archive mirrors', zh: '压缩归档镜像' }, desc: { en: 'Session journals stay the byte-exact authority', zh: '会话档为逐字节权威，镜像可清' } },
-  'tool-outputs': { label: { en: 'Oversized tool outputs', zh: '超长工具输出存档' }, desc: { en: 'Previews stay in the chain; old recovery paths stop working', zh: '链上保留预览；旧恢复路径将失效' } },
+  'tool-outputs': { label: { en: 'Oversized tool outputs', zh: '超长工具输出存档' }, desc: { en: 'Previews stay in the chain, old recovery paths stop working', zh: '链上保留预览，旧恢复路径将失效' } },
   'plugin-logs': { label: { en: 'Plugin host logs', zh: '插件宿主日志' }, desc: { en: 'MCP host logs', zh: 'MCP 宿主运行日志' } },
   'computer-use-screenshots': { label: { en: 'Computer-use screenshots', zh: '电脑操作截图' }, desc: { en: 'Temporary screenshots from computer use', zh: '电脑操作过程的临时截图' } },
   'http-cache': { label: { en: 'Browser HTTP cache', zh: '浏览器 HTTP 缓存' }, desc: { en: 'Login states are not touched', zh: '登录态不受影响' } },
-  'images-cache': { label: { en: 'Image attachment originals', zh: '图片附件原图' }, desc: { en: 'Only copy on disk — past images become unviewable after clearing', zh: '磁盘唯一副本——清理后历史消息中的图片将无法查看' } },
+  'images-cache': { label: { en: 'Image attachment originals', zh: '图片附件原图' }, desc: { en: 'Only copy on disk, past images become unviewable after clearing', zh: '磁盘唯一副本，清理后历史消息中的图片将无法查看' } },
 };
 
 /** 引用型单清二次确认窗口(首点置确认态,窗口内再点才执行) */
@@ -196,10 +196,10 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
                 {retention === undefined
                   ? t('Loading…', '加载中…')
                   : retention.days <= 0
-                    ? t('Auto-clean is off (0 = never)', '自动清理已关闭（0 = 永不）')
+                    ? t('Auto-clean is off, 0 keeps everything', '自动清理已关闭，0 为永不')
                     : retention.lastRunAt === null
                       ? t('Not run yet', '尚未运行')
-                      : t(`${relTime(retention.lastRunAt)} · ${retention.lastPurged} session(s) purged`, `${relTime(retention.lastRunAt)} · 已清理 ${retention.lastPurged} 个会话`)}
+                      : t(`${relTime(retention.lastRunAt)} · purged ${retention.lastPurged} sessions`, `${relTime(retention.lastRunAt)} · 已清理 ${retention.lastPurged} 个会话`)}
               </p>
             </div>
           </div>
@@ -210,34 +210,26 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
           <span className="sx-card-title" data-setting-key="cache">
             {t('Cache', '缓存')}
           </span>
-          <button
-            type="button"
-            className="sx-storage-btn sx-storage-head-btn"
-            disabled={busy}
-            data-tip={t('Clear all safe caches + browser HTTP cache', '清理全部安全缓存与浏览器 HTTP 缓存')}
-            onClick={() => clear(undefined)}
-          >
-            <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-            {t('Clear cache', '清理缓存')}
-          </button>
+          {/* 总占用随卡头右侧:「总量 + 清理缓存」一组贴右缘,不另立行 */}
+          <div className="sx-storage-headctl">
+            {cache !== null && <span className="sx-storage-size">{fmtBytes(cache.total)}</span>}
+            <button
+              type="button"
+              className="sx-storage-btn sx-storage-head-btn"
+              disabled={busy}
+              data-tip={t('Clear all safe caches + browser HTTP cache', '清理全部安全缓存与浏览器 HTTP 缓存')}
+              onClick={() => clear(undefined)}
+            >
+              <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+              {t('Clear cache', '清理缓存')}
+            </button>
+          </div>
         </div>
         <div className="sx-card-rows">
-          {cache !== null && (
-            <div className="sx-setting-row">
-              <div className="sx-setting-main">
-                <div className="sx-setting-title">
-                  <span className="sx-setting-label">{t('Total cache size', '缓存总占用')}</span>
-                </div>
-              </div>
-              <div className="sx-setting-ctl">
-                <span className="sx-storage-size">{fmtBytes(cache.total)}</span>
-              </div>
-            </div>
-          )}
           {categories.map((c) => {
             const l = CACHE_LABELS[c.id];
             return (
-              <div key={c.id} className="sx-setting-row" data-setting-key={`cache:${c.id}`}>
+              <div key={c.id} className="sx-setting-row sx-storage-row" data-setting-key={`cache:${c.id}`}>
                 <div className="sx-setting-main">
                   <div className="sx-setting-title">
                     <span className="sx-setting-label">{l !== undefined ? t(l.label.en, l.label.zh) : c.id}</span>
@@ -246,39 +238,36 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
                 </div>
                 <div className="sx-setting-ctl sx-storage-rowctl">
                   <span className="sx-storage-size">{fmtBytes(c.size)}</span>
-                  {c.safe ? (
-                    <button type="button" className="sx-iconbtn" aria-label={`clear ${c.id}`} data-tip={t('Clear', '清理')} disabled={busy} onClick={() => clear([c.id])}>
-                      <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className={`sx-storage-btn${confirmId === c.id ? ' danger' : ''}`}
-                      disabled={busy}
-                      data-tip={t('Click again within 3.5s to confirm', '3.5 秒内再次点击确认')}
-                      onClick={() => clearWithConfirm(c.id)}
-                    >
-                      {confirmId === c.id ? t('Confirm clear?', '确认清理？') : t('Clear', '清理')}
-                    </button>
-                  )}
+                  {/* 行级清理统一「图标+文字」胶囊,控件组贴右缘对齐;引用型保行内二次确认态 */}
+                  <button
+                    type="button"
+                    className={`sx-storage-btn${confirmId === c.id ? ' danger' : ''}`}
+                    aria-label={`clear ${c.id}`}
+                    data-tip={c.safe || confirmId === c.id ? undefined : t('Click again within 3.5s to confirm', '3.5 秒内再次点击确认')}
+                    disabled={busy}
+                    onClick={() => (c.safe ? clear([c.id]) : clearWithConfirm(c.id))}
+                  >
+                    <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+                    {confirmId === c.id ? t('Confirm clear?', '确认清理？') : t('Clear', '清理')}
+                  </button>
                 </div>
               </div>
             );
           })}
           {hasHttpCache && (
-            <div className="sx-setting-row" data-setting-key="cache:http-cache">
+            <div className="sx-setting-row sx-storage-row" data-setting-key="cache:http-cache">
               <div className="sx-setting-main">
                 <div className="sx-setting-title">
                   <span className="sx-setting-label">{t(CACHE_LABELS['http-cache']!.label.en, CACHE_LABELS['http-cache']!.label.zh)}</span>
                 </div>
                 <p className="sx-setting-desc">{t(CACHE_LABELS['http-cache']!.desc.en, CACHE_LABELS['http-cache']!.desc.zh)}</p>
               </div>
-              <div className="sx-setting-ctl">
+              <div className="sx-setting-ctl sx-storage-rowctl">
+                <span className="sx-storage-size" />
                 <button
                   type="button"
-                  className="sx-iconbtn"
+                  className="sx-storage-btn"
                   aria-label="clear http-cache"
-                  data-tip={t('Clear', '清理')}
                   disabled={busy}
                   onClick={() => {
                     setBusy(true);
@@ -291,6 +280,7 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
                   }}
                 >
                   <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+                  {t('Clear', '清理')}
                 </button>
               </div>
             </div>

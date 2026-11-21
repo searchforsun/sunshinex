@@ -133,8 +133,8 @@ export const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string 
   websearchEndpoint: { label: { en: 'Search endpoint', zh: '搜索端点' }, en: 'Web search endpoint', zh: '网页搜索端点' },
   archiveRetentionDays: {
     label: { en: 'Archive retention', zh: '归档保留天数' },
-    en: 'Archived sessions older than this many days are purged daily (0 = never; default 30)',
-    zh: '归档超过该天数的会话每日自动清理（0 = 永不清理，缺省 30 天）',
+    en: 'Archived sessions older than this many days are purged daily, 0 keeps them forever, default 30',
+    zh: '归档超过该天数的会话每日自动清理，0 为永不清理，缺省 30 天',
   },
 };
 

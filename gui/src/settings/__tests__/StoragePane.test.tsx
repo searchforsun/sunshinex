@@ -63,12 +63,13 @@ describe('StoragePane(存储页)', () => {
     renderPane(spy);
     expect(await screen.findByLabelText('archiveRetentionDays')).toHaveProperty('value', '30');
     expect(screen.getByText('Last auto-clean')).toBeDefined();
-    expect(screen.getByText('Total cache size')).toBeDefined();
+    // 总占用在卡头「清理缓存」左侧(不再单立行)
+    expect(screen.getByText('14 B')).toBeDefined();
+    expect(screen.queryByText('Total cache size')).toBeNull();
     expect(screen.getByText('Terminal replay buffers')).toBeDefined();
     expect(screen.getByText('Image attachment originals')).toBeDefined();
     expect(screen.getAllByText('5 B').length).toBeGreaterThan(0);
     expect(screen.getAllByText('9 B').length).toBeGreaterThan(0);
-    expect(screen.getByText('14 B')).toBeDefined();
   });
 
   it('保留天数失焦写回 global 桶(数字化);清空=删键(null)', async () => {
@@ -91,11 +92,12 @@ describe('StoragePane(存储页)', () => {
     await waitFor(() => expect(spy.clearCache).toHaveBeenCalledWith(['pty-replay']));
   });
 
-  it('引用型行内二次确认:首点确认态(不执行),再点执行', async () => {
+  it('引用型行内二次确认:首点确认态(不执行),再点执行;行级清理钮统一图标+文字胶囊', async () => {
     const spy = connOf(viewOf([keyRow('archiveRetentionDays', { value: '30' })]), cacheOf());
     renderPane(spy);
     await screen.findByText('Image attachment originals');
-    const btn = screen.getByRole('button', { name: 'Clear' });
+    const btn = screen.getByLabelText('clear images-cache');
+    expect(btn.textContent).toContain('Clear'); // 统一「图标+清理文字」形态
     fireEvent.click(btn);
     expect(screen.getByText('Confirm clear?')).toBeDefined();
     expect(spy.clearCache).not.toHaveBeenCalled();
