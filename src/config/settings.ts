@@ -37,6 +37,9 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   stepDigestItemChars: 'SUNSHINEX_MEMORY_STEP_DIGEST_ITEM_CHARS',
   stepDigestTotalChars: 'SUNSHINEX_MEMORY_STEP_DIGEST_TOTAL_CHARS',
   maxSteps: 'SUNSHINEX_MAX_STEPS',
+  // 归档保留天数(2026-11-21 归档保留期 spec §4.1):归档超 N 天的会话由 daemon 每日清扫
+  // (serve/retention.ts 单点);两级语义——未设=30(缺省启用),0=显式永不清理
+  archiveRetentionDays: 'SUNSHINEX_ARCHIVE_RETENTION_DAYS',
   maxLoopIterations: 'SUNSHINEX_MAX_LOOP_ITERATIONS',
   maxGraphNodes: 'SUNSHINEX_MAX_GRAPH_NODES',
   maxTokens: 'SUNSHINEX_MAX_TOKENS',

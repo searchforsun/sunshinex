@@ -291,3 +291,36 @@ export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerRes
   out.sort((a, b) => b.archivedAt - a.archivedAt);
   io.send(res, 200, out);
 }
+
+/** dataDir 枚举帮手(2026-11-21 归档保留期/缓存面共用;D89 同构族的新成员自出生走本帮手,
+ *  既有三组扫描不动):projectsRoot slug 枚举;目录不可读=空表 */
+export function listWorkspaceDataDirs(): Array<{ slug: string; dataDir: string }> {
+  const out: Array<{ slug: string; dataDir: string }> = [];
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(projectsRoot(), { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    out.push({ slug: ent.name, dataDir: path.join(projectsRoot(), ent.name, 'data') });
+  }
+  return out;
+}
+
+/** sunx 域枚举(容器缺席=空表;slug=域名) */
+export function listSunxDataDirs(): Array<{ slug: string; dataDir: string }> {
+  const out: Array<{ slug: string; dataDir: string }> = [];
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(sunxContainerDir(), { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    out.push({ slug: ent.name, dataDir: path.join(sunxContainerDir(), ent.name, 'data') });
+  }
+  return out;
+}
