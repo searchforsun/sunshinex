@@ -3,7 +3,8 @@
  *  空表→全停 disconnected);② secret 缺失 fail-closed(telegram + 无 env,存/删 + try/finally);
  *  ③ test(id) dry-run 独立实例;④ mockAdapter(id).emit 全链路(binding 创建 + ack 进 mock.sent +
  *  定向回复 @前缀,裁定 2 deliver 包装面)。域容器钉 SUNSHINEX_CHANNELS_DIR 临时目录(防污染真实
- *  ~/.sunshinex,router.test.ts 同款)。 */
+ *  ~/.sunshinex,router.test.ts 同款)。⑤ 终审修复波 F2:未武装绑定会话直接来 token 帧(模拟排队
+ *  steer 收尾内部续跑轮,session.ts 不经 router.onSubmitted)→ ensureArmed 补注册 onRunEnd。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
@@ -15,6 +16,7 @@ import { ChannelsBindingsStore } from './store';
 import { bindingKey, channelSecretEnv } from './model';
 import type { ChannelConfig, InboundMessage } from './model';
 import type { SessionRuntime } from '../session';
+import type { DaemonFrame } from '../daemon-wire';
 
 process.env.SUNSHINEX_CHANNELS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'chan-engine-'));
 
@@ -73,6 +75,7 @@ function makeHarness(configs: ChannelConfig[] = []) {
   const bindings = new ChannelsBindingsStore(path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'chan-bind-')), 'channels-bindings.json'));
   const runtimes = new Map<string, RtStub>();
   let seq = 0;
+  let frameSink: ((f: DaemonFrame) => void) | undefined; // 帧泵桩存回调(⑤ 投影器帧驱动)
   const io: ChannelsSessionIo = {
     createSession: () => {
       const id = `s${++seq}`;
@@ -88,11 +91,17 @@ function makeHarness(configs: ChannelConfig[] = []) {
       runtimes.delete(id);
     },
     activeSessionId: () => undefined,
-    onFrame: () => () => {},
+    onFrame: (cb) => {
+      frameSink = cb;
+      return () => {
+        frameSink = undefined;
+      };
+    },
     resolveApproval: () => true,
+    resolveAsk: () => true,
   };
   const engine = new ChannelsEngine(io, bindings, { configs: () => configs });
-  return { engine, bindings, runtimes, io };
+  return { engine, bindings, runtimes, io, pushFrame: (f: DaemonFrame) => frameSink?.(f) };
 }
 
 /** 等微任务排空:emit → handleInbound(异步)→ ack → deliver 全链路 fire-and-forget 落账 */
@@ -161,4 +170,26 @@ test('④ mockAdapter(id).emit → router 全链路:binding 创建 + ack 进 moc
   assert.ok(mock.sent.length >= 1); // ack 回环进 mock.sent
   assert.ok(mock.sent[0]!.text.includes('已受理'));
   assert.ok(mock.sent[0]!.text.startsWith('@Alice ')); // 定向回复前缀(裁定 2:deliver 包装查 lastSender)
+});
+
+test('⑤ 终态武装补漏(F2):未武装绑定会话直接来 token 帧(模拟排队续跑轮)→ onRunEnd 被注册,触发即投终态注记', async () => {
+  const h = makeHarness([mkCfg()]);
+  h.engine.start(); // projector.start() 挂帧泵 → frameSink 就位
+  // 绑定 + runtime 预置,不经 router 提交(无 onSubmitted 武装)——session.ts 排队 steer 收尾内部续跑轮形态
+  h.runtimes.set('s1', makeRuntime());
+  h.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 's1', journalId: 'j1', updatedAt: 1 });
+  h.pushFrame({ kind: 'event', sessionId: 's1', seq: 1, e: { type: 'token', text: '续跑输出', ts: 0 } });
+  const rt = h.runtimes.get('s1')!;
+  assert.equal(rt.runEndCbs.length, 1); // ensureArmed → engine.armRunEnd 注册一次性 onRunEnd(session 桩断言)
+  h.pushFrame({ kind: 'event', sessionId: 's1', seq: 2, e: { type: 'token', text: '更多输出', ts: 0 } });
+  assert.equal(rt.runEndCbs.length, 1); // armed-once 幂等:逐帧不重复注册
+  // 终态注记:观察者触发 → projector.onRunEnd → deliver → mock.sent(通道侧可见「任务失败」)
+  const mock = h.engine.mockAdapter('m1')!;
+  rt.runEndCbs[0]!({ stopReason: 'error-x' });
+  await drain();
+  assert.ok(mock.sent.some((m) => m.text.includes('任务失败: error-x')));
+  // 未绑定会话帧不武装
+  h.runtimes.set('s2', makeRuntime());
+  h.pushFrame({ kind: 'event', sessionId: 's2', seq: 3, e: { type: 'token', text: '野帧', ts: 0 } });
+  assert.equal(h.runtimes.get('s2')!.runEndCbs.length, 0);
 });

@@ -264,11 +264,13 @@ export class GuiDaemon {
     this.channelsBindings = new ChannelsBindingsStore(opts.channelsBindingsFile ?? channelsBindingsFile());
     const channelsConfigs = opts.channelsConfigs;
     this.channelsEngine = new ChannelsEngine({
-      // 会话 IO 七面注入（channels Task 8）：前五面对齐 lifecycleIo 既有单点（attach 双参同款写法）；
-      // onFrame=进程内订阅 seam（broadcastFrame 旁挂）；resolveApproval=审批回执单点翻译——daemon
-      // 既有回执是 ApprovalDecision（'allow'|'always'|'deny'）三态（POST /approval/:pid 路由经
-      // sessionHandlers 最终落 resolveApproval），IM 面只产 y/n 语义：approved=true→allow、false→deny，
-      // ALWAYS 不由 IM 面产生；feedback 无载体（ApprovalDecision 为字面量类型）不透传
+      // 会话 IO 八面注入（channels Task 8 + 终审修复波 F1 第 8 面）：前五面对齐 lifecycleIo 既有单点
+      // （attach 双参同款写法）；onFrame=进程内订阅 seam（broadcastFrame 旁挂）；resolveApproval=审批
+      // 回执单点翻译——daemon 既有回执是 ApprovalDecision（'allow'|'always'|'deny'）三态（POST
+      // /approval/:pid 路由经 sessionHandlers 最终落 resolveApproval），IM 面只产 y/n 语义：
+      // approved=true→allow、false→deny，ALWAYS 不由 IM 面产生；feedback 无载体（ApprovalDecision
+      // 为字面量类型）不透传；resolveAsk=ask 回执单点直通（daemon.resolveAsk 同参——AskUserAnswer
+      // 三态铸形在投影器，POST /ask/:pid/reply 内部方法同源）
       createSession: (root, o) => this.createSession(root, o),
       getSession: (id) => this.sessions.get(id),
       attach: (id, journalId) => this.attach(id, journalId),
@@ -276,6 +278,7 @@ export class GuiDaemon {
       activeSessionId: () => this.activeId(),
       onFrame: (cb) => this.onFrame(cb),
       resolveApproval: (pid, d) => this.resolveApproval(pid, d.approved ? 'allow' : 'deny'),
+      resolveAsk: (pid, answer) => this.resolveAsk(pid, answer),
     }, this.channelsBindings, {
       // 配置档：测试注入（opts.channelsConfigs）优先——engine.start() 调和时取值；缺省读全局档
       // channels 键（loadChannels 单点，config/channels.ts 全局豁免裁定）

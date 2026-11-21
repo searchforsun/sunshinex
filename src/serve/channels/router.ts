@@ -16,6 +16,7 @@ import type { Binding, ChannelConfig, InboundMessage } from './model';
 import type { ChannelsBindingsStore } from './store';
 import type { SessionRuntime } from '../session';
 import type { DaemonFrame } from '../daemon-wire';
+import type { AskUserAnswer } from '../../types';
 import type { Result } from '../../result';
 
 /** 会话 IO 面（engine/Task 7 装配 daemon 既有单点：createSession/attach 走 session-lifecycle、
@@ -30,6 +31,9 @@ export interface ChannelsSessionIo {
   onFrame(cb: (frame: DaemonFrame) => void): () => void;
   /** 审批回执单点（router 自身不消费——engine Task 7 消费） */
   resolveApproval(pid: string, decision: { approved: boolean; feedback?: string }): boolean;
+  /** ask 挂起回执单点（终审修复波 F1 第 8 面，router 自身不消费——engine 装配 projector 消费）：
+   *  daemon POST /ask/:pid/reply 内部方法 resolveAsk(pid, AskUserAnswer) 同参透传 */
+  resolveAsk(pid: string, answer: AskUserAnswer): boolean;
 }
 
 export interface ChannelRouterDeps {

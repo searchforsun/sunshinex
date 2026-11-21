@@ -8,8 +8,11 @@
  *    回调,engine 据此武装终态观察(armed-once,见 armRunEnd)。
  *  - 裁定 2(engine 装配三线):① 定向回复——lastSender 表(router.noteSender 写入)命中 → deliver 的
  *    OutboundMessage.text 前缀 @<display>(streaming 全量替换帧不加前缀,streamDeliver 不走前缀路);
- *    ② 审批接线——projector.resolveApproval ← io.resolveApproval,router.pendingReply ← projector
- *    .pendingReply;③ 终态观察——runEndArmed 武装位,onSubmitted 首次回调即注册一次性 onRunEnd。
+ *    ② 审批/提问接线——projector.resolveApproval ← io.resolveApproval、projector.resolveAsk ←
+ *    io.resolveAsk(终审修复波 F1 第 8 面),router.pendingReply ← projector.pendingReply;
+ *    ③ 终态观察——runEndArmed 武装位,onSubmitted 首次回调即注册一次性 onRunEnd;终审修复波 F2
+ *    补投影器侧缺口:排队续跑轮(session.ts 轮收尾内部 submit)不经 onSubmitted → projector
+ *    ensureArmed 透传 armRunEnd 补武装(armed-once 位幂等,双入口同一观察单点)。
  *  - 硬约束(上游裁定 M-4):帧流 done 必须先于 onRunEnd 投影——帧经 io.onFrame 泵入 projector
  *    (subscribe 直挂),onRunEnd 只发终态注记,engine 不自行重排(顺序天然成立)。
  *
@@ -67,7 +70,9 @@ export class ChannelsEngine {
   ) {
     // 出站投影装配(裁定 2):boundSessions ← bindings 档反解;capsOf ← 在座适配器;deliver/streamDeliver
     // ← 本引擎包装;subscribe ← io.onFrame 帧泵直挂(M-4 顺序成立面:done 帧先入投影,onRunEnd 只补注记);
-    // resolveApproval ← io.resolveApproval 审批回执单点透传(裁定 2②)
+    // resolveApproval ← io.resolveApproval 审批回执单点透传(裁定 2②);resolveAsk ← io.resolveAsk
+    // ask 回执单点透传(终审修复波 F1 第 8 面);ensureArmed ← armRunEnd 透传(终审修复波 F2——
+    // 排队续跑轮不经 onSubmitted 的终态武装缺口,投影器 token/done 帧补调,armed-once 位幂等)
     this.projector = new ReplyProjector({
       boundSessions: () => this.boundTargets(),
       capsOf: (channelId) => this.adapters.get(channelId)?.caps(),
@@ -75,6 +80,8 @@ export class ChannelsEngine {
       streamDeliver: (t, delta) => this.streamDeliver(t, delta),
       subscribe: (cb) => this.io.onFrame(cb),
       resolveApproval: (pid, decision) => this.io.resolveApproval(pid, decision),
+      resolveAsk: (pid, answer) => this.io.resolveAsk(pid, answer),
+      ensureArmed: (sessionId, target) => this.armRunEnd(sessionId, target),
       log: (s) => this.log(s),
     });
     // 入站路由装配(裁定 2):ack ← 同款 deliver(定向回复前缀统一走此);pendingReply ← projector
@@ -244,9 +251,10 @@ export class ChannelsEngine {
     else await adapter.send(t, { text: delta.fullText });
   }
 
-  /** 终态观察武装(裁定 1/2③,armed-once):onSubmitted 首次回调注册一次性 onRunEnd——跑完即拆
-   *  (delete 武装位)下一轮提交重武装;只发终态注记,不重排帧序(M-4:done 帧已先经 io.onFrame
-   *  泵入投影,此处天然后至) */
+  /** 终态观察武装(裁定 1/2③,armed-once):onSubmitted(router 提交分派)与 ensureArmed(投影器
+   *  token/done 帧补调,终审修复波 F2——排队续跑轮缺口)双入口同一单点:武装位在场即跳过(幂等),
+   *  否则注册一次性 onRunEnd——跑完即拆(delete 武装位)下一轮重武装;只发终态注记,不重排帧序
+   *  (M-4:done 帧已先经 io.onFrame 泵入投影,此处天然后至) */
   private armRunEnd(sessionId: string, target: ReplyTarget): void {
     if (this.runEndArmed.has(sessionId)) return;
     const rt = this.io.getSession(sessionId);

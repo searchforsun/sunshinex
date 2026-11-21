@@ -107,6 +107,7 @@ function makeHarness(opts: HarnessOpts = {}) {
     activeSessionId: () => undefined,
     onFrame: () => () => {},
     resolveApproval: () => true,
+    resolveAsk: () => true, // 第 8 面(终审修复波 F1):router 自身不消费,桩仅满足 io 形
   };
   const deps: ChannelRouterDeps = {
     io,
