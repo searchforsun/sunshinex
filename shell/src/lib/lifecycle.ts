@@ -10,7 +10,8 @@ export type TrayAction =
   | { kind: 'open-session'; root: string; journalId: string }
   | { kind: 'new-chat' }
   | { kind: 'settings' }
-  | { kind: 'shortcuts' };
+  | { kind: 'shortcuts' }
+  | { kind: 'clear-cache' };
 
 export type TrayMenuItem =
   | { type: 'separator' }
@@ -65,16 +66,17 @@ export function resolveUiLangFromSetting(value: string | undefined): UiLang | un
   return v.startsWith('zh') ? 'zh' : v.startsWith('en') ? 'en' : undefined;
 }
 
-const TRAY_LABELS: Record<UiLang, { newChat: string; settings: string; shortcuts: string; show: string; quit: string }> = {
-  en: { newChat: 'New chat', settings: 'Settings', shortcuts: 'Keyboard shortcuts', show: 'Open Sunshinex', quit: 'Quit' },
-  zh: { newChat: '新对话', settings: '设置', shortcuts: '快捷键', show: '打开 Sunshinex', quit: '退出' },
+const TRAY_LABELS: Record<UiLang, { newChat: string; settings: string; shortcuts: string; clearCache: string; show: string; quit: string }> = {
+  en: { newChat: 'New chat', settings: 'Settings', shortcuts: 'Keyboard shortcuts', clearCache: 'Clear cache', show: 'Open Sunshinex', quit: 'Quit' },
+  zh: { newChat: '新对话', settings: '设置', shortcuts: '快捷键', clearCache: '清理缓存', show: '打开 Sunshinex', quit: '退出' },
 };
 
 /** 唤主窗的全局快捷键(main.ts 注册同值;菜单项右侧显示,兼撑宽菜单) */
 export const SHOW_ACCELERATOR = 'Alt+Shift+S';
 
 /** 托盘菜单三组(2026-11-07 用户裁定,组间细线):①最近活跃会话(≤5,无则整组连同分隔线省略)
- *  ②新对话/设置/快捷键 ③打开 Sunshinex/退出。重复触发防护由壳侧 runQuit 幂等守卫承担。 */
+ *  ②新对话/设置/快捷键/清理缓存(2026-11-21 缓存清理) ③打开 Sunshinex/退出。重复触发防护由壳侧
+ *  runQuit 幂等守卫承担。 */
 export function trayMenu(lang: UiLang, recents: readonly TrayRecent[] = []): TrayMenuItem[] {
   const l = TRAY_LABELS[lang];
   const sessions: TrayMenuItem[] = recents.map((r) => ({
@@ -87,6 +89,7 @@ export function trayMenu(lang: UiLang, recents: readonly TrayRecent[] = []): Tra
     { type: 'action', label: l.newChat, action: { kind: 'new-chat' } },
     { type: 'action', label: l.settings, action: { kind: 'settings' } },
     { type: 'action', label: l.shortcuts, action: { kind: 'shortcuts' } },
+    { type: 'action', label: l.clearCache, action: { kind: 'clear-cache' } },
     { type: 'separator' },
     { type: 'show', label: l.show, accelerator: SHOW_ACCELERATOR },
     { type: 'quit', label: l.quit },

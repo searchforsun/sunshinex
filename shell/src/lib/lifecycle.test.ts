@@ -43,12 +43,13 @@ describe('resolveUiLangFromSetting(2026-10-23 托盘菜单跟应用语言设置)
 
 const recent = (journalId: string, updatedAt: number, label = journalId, root = '/w/a'): TrayRecent => ({ journalId, root, label, updatedAt });
 
-describe('trayMenu(2026-11-07 三组+细线)', () => {
+describe('trayMenu(2026-11-07 三组+细线;2026-11-21 ②组增清理缓存)', () => {
   it('zh 态无最近会话:会话组连同分隔线省略,余两组', () => {
     expect(trayMenu('zh')).toEqual([
       { type: 'action', label: '新对话', action: { kind: 'new-chat' } },
       { type: 'action', label: '设置', action: { kind: 'settings' } },
       { type: 'action', label: '快捷键', action: { kind: 'shortcuts' } },
+      { type: 'action', label: '清理缓存', action: { kind: 'clear-cache' } },
       { type: 'separator' },
       { type: 'show', label: '打开 Sunshinex', accelerator: SHOW_ACCELERATOR },
       { type: 'quit', label: '退出' },
@@ -58,9 +59,10 @@ describe('trayMenu(2026-11-07 三组+细线)', () => {
   it('有最近会话:首组为会话(开会话动作带 root/journalId),组间分隔', () => {
     const items = trayMenu('en', [recent('j1', 2, 'Fix login', '/w/p'), recent('j2', 1, 'Refactor')]);
     expect(items.map((i) => (i.type === 'separator' ? '—' : i.label))).toEqual([
-      'Fix login', 'Refactor', '—', 'New chat', 'Settings', 'Keyboard shortcuts', '—', 'Open Sunshinex', 'Quit',
+      'Fix login', 'Refactor', '—', 'New chat', 'Settings', 'Keyboard shortcuts', 'Clear cache', '—', 'Open Sunshinex', 'Quit',
     ]);
     expect(items[0]).toEqual({ type: 'action', label: 'Fix login', action: { kind: 'open-session', root: '/w/p', journalId: 'j1' } });
+    expect(items[6]).toEqual({ type: 'action', label: 'Clear cache', action: { kind: 'clear-cache' } });
   });
 });
 
