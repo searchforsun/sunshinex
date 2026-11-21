@@ -174,9 +174,14 @@ function tokenFromGitCredential() {
   return password.length > 0 ? password : null;
 }
 
-/** 通道决议：gh CLI 优先（一次登录多仓库通用）；否则内置 fetch + 令牌（环境变量 > git 凭据助手） */
+/** 通道决议：gh CLI 优先（一次登录多仓库通用）；否则内置 fetch + 令牌（环境变量 > git 凭据助手）。
+ *  gh 在册≠可用：has 只探二进制在 PATH，未登录的 gh 会通过决议、把失败拖到全量验证+打包之后才炸——
+ *  与本脚本「通道决议在开头完成」纪律相悖。故以 `gh auth token` 实证登录态，未登录即降级下一通道。 */
 function resolveChannel() {
-  if (has('gh')) return { kind: 'gh', label: 'gh CLI' };
+  if (has('gh')) {
+    const auth = run('gh', ['auth', 'token', '-h', HOST], { allowFail: true });
+    if (auth.status === 0 && (auth.stdout || '').trim()) return { kind: 'gh', label: 'gh CLI' };
+  }
   const envToken = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
   if (envToken) return { kind: 'api', token: envToken, label: 'GitHub API', auth: 'GITHUB_TOKEN 环境变量' };
   const gitToken = tokenFromGitCredential();
