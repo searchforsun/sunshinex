@@ -51,6 +51,10 @@ import { validateDraft } from './schedules/model';
 import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
 import * as scheduleHandlers from './schedules/handlers';
 import type { SchedulesHandlerIo } from './schedules/handlers';
+import { readRetentionState, resolveRetentionDays, RetentionSweeper } from './retention';
+import { cacheStatus, clearCacheCategories } from './cache-inventory';
+import { handleCacheClear, handleCacheStatus } from './cache-handlers';
+import type { CacheHandlerIo } from './cache-handlers';
 import { WsHub } from './daemon-ws';
 import { startBuiltinFacade } from './cdp-facade';
 import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
@@ -212,6 +216,8 @@ export class GuiDaemon {
   private readonly scheduleStore: ScheduleStore;
   private readonly scheduleExecutor: ScheduleExecutor;
   private readonly scheduleEngine: ScheduleEngine;
+  /** 归档保留期清扫器（2026-11-21）：start 布防/teardown 摘除；undefined=未布防（直构 daemon 未 start 的测试面可缺） */
+  private retentionSweeper: RetentionSweeper | undefined;
 
   constructor(opts: GuiDaemonOpts) {
     this.staticRoot = opts.staticRoot ?? path.resolve('dist-gui');
@@ -372,6 +378,26 @@ export class GuiDaemon {
     };
   }
 
+  /** 缓存面 handlers 触点面（2026-11-21 缓存清理 spec §5；send/readJson 复用 daemon 单点，
+   *  status/clear/retentionInfo 供真实现——cache-inventory 单点 + retention state） */
+  private get cacheIo(): CacheHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+      status: () => cacheStatus(),
+      clear: (ids) => clearCacheCategories(ids),
+      retentionInfo: () => {
+        const st = readRetentionState();
+        return {
+          days: resolveRetentionDays(process.env.SUNSHINEX_ARCHIVE_RETENTION_DAYS),
+          lastRunAt: typeof st.lastRunAt === 'number' ? st.lastRunAt : null,
+          lastPurged: typeof st.lastPurgedCount === 'number' ? st.lastPurgedCount : 0,
+          lastFailed: typeof st.lastFailed === 'number' ? st.lastFailed : 0,
+        };
+      },
+    };
+  }
+
   /** 会话维挂起回填（G4 裁定 3：interrupt/reset=deny 回填）：P6 §4 表在会话——薄委托 denyPending
    *  （approval→deny、ask→dismissed 清表,不发 notice）;未知会话静默（与旧全表过滤等价） */
   private denyPendingFor(sessionId: string): void {
@@ -493,6 +519,12 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 定时任务布防：监听已就绪后再补跑/布防，catch-up 建的会话走完整 HTTP/会话栈
     this.backfillScheduledSessionMarks();
     this.scheduleEngine.start();
+    // 归档保留期清扫器布防（2026-11-21 spec §4）：schedule 引擎之后——错过窗口（≥24h 未扫）即刻
+    // 补扫，否则 5 分钟首扫，此后每 24h；在座会话跳过（runtime 表按 attachedJournalId 反查）
+    this.retentionSweeper = new RetentionSweeper({
+      isKnownSession: (jid) => [...this.sessions.values()].some((s) => s.attachedJournalId === jid),
+    });
+    this.retentionSweeper.start();
     return { port: addr.port, token, close: () => this.close() };
   }
 
@@ -531,6 +563,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
    *  保序，daemon 维网络面插在两相之间）；细节裁定见各步骤行内注释 */
   private async teardown(): Promise<void> {
     this.scheduleEngine.stop();
+    // 归档保留期清扫器摘除（与 schedule 引擎同生命周期）
+    this.retentionSweeper?.stop();
+    this.retentionSweeper = undefined;
     // -2) M2 融合面收口:meta 周期写停 + facade ws 停(先于收割——收割删壳 kind 指针档防死端口误导)
     if (this.builtinMetaTimer !== undefined) clearInterval(this.builtinMetaTimer);
     this.builtinFacade?.facade.stop();
@@ -732,6 +767,10 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         sessionHandlers.handleSessionArchive(this.sessionIo, res, p.id, parsed.body as { archived?: unknown });
       } },
     { method: 'GET', path: '/sessions/archived', auth: true, run: async (_req, res) => sessionHandlers.handleSessionsArchived(this.sessionIo, res) },
+    // 缓存面（2026-11-21 spec §5）：登记表三档口径——GET 报体积/保留期信息，POST 受控清理
+    // （ids 缺省=safe 全档；http-cache 归壳 IPC，不经本端点）
+    { method: 'GET', path: '/cache', auth: true, run: async (_req, res) => handleCacheStatus(this.cacheIo, res) },
+    { method: 'POST', path: '/cache/clear', auth: true, run: async (req, res) => handleCacheClear(this.cacheIo, req, res) },
     // 受控删除(2026-10-21 门禁升级):双寻址同 archive;未归档 409;归档态 purgeSession 真清全家
     { method: 'POST', path: '/session/:id/delete', auth: true, run: async (_req, res, p) => this.handleDelete(res, p.id) },
     // G8b T3 pty 面：分配（shell 探测 daemon 内定，cols/rows 缺省 80/24）+ kill（幂等）
