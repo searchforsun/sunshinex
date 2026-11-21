@@ -4771,3 +4771,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-storage-row { display: flex; align-items: center; gap: 16px; }
 .sx-storage-row > .sx-setting-main { flex: 1 1 auto; }
 .sx-storage-row > .sx-setting-ctl.sx-storage-rowctl { width: auto; max-width: none; margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
+/* 窄窗断点(全局 720px 纵向裁定同拍):存储行随全局改纵向——align-items 回 stretch,
+   防 StoragePane 基础规则的 center 在纵向轴上把标题/说明水平居中;体积+清理钮经
+   margin-left auto 落右下 */
+@media (max-width: 720px) {
+  .sx-storage-row { flex-direction: column; align-items: stretch; gap: 8px; }
+}
