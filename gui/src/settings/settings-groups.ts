@@ -14,6 +14,7 @@ export const SETTINGS_GROUPS: ReadonlyArray<SettingsGroupDef> = [
     items: [
       { id: 'general', title: { en: 'General', zh: '通用' } },
       { id: 'providers', title: { en: 'Models & providers', zh: '模型与提供方' } },
+      { id: 'storage', title: { en: 'Storage', zh: '存储' } },
       { id: 'shortcuts', title: { en: 'Shortcuts', zh: '快捷键' } },
     ],
   },

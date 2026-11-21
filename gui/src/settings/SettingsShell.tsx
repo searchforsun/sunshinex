@@ -24,9 +24,11 @@ import type { RawPaneConn } from './RawPane';
 import { TeamsPane } from './TeamsPane';
 import type { TeamsPaneConn } from './TeamsPane';
 import { ShortcutsPane } from './ShortcutsPane';
+import { StoragePane } from './StoragePane';
 import type { SettingsScope, ScopeOption } from './components';
 import { defaultScopeOptions, scopeTargetLabel } from './components';
 import type { WorkspaceRow } from '../connection';
+import type { CacheClearResp, CacheStatusResp } from '../connection-types';
 import { useConfigChanged } from './use-config-changed';
 import type { ConfigChangedSource } from './use-config-changed';
 import { useDeveloperMode } from '../developer-mode';
@@ -86,6 +88,9 @@ import { useDeveloperMode } from '../developer-mode';
 export interface SettingsShellConn extends SettingsFormConn, ProvidersPaneConn, McpPaneConn, PluginsPaneConn, AgentsPaneConn, TeamsPaneConn, SkillsPaneConn, PermissionsPaneConn, GlobalRulesPaneConn, ConfigChangedSource, Omit<RawPaneConn, 'settings'> {
   /** GET /workspaces:工作区注册表扫描(T2;行含 slug+root——root 缺档历史行不可选) */
   workspaces(): Promise<WorkspaceRow[]>;
+  /** GET/POST /cache(2026-11-21 存储页):缓存清点与受控清理 */
+  cacheStatus(): Promise<CacheStatusResp>;
+  clearCache(categories?: string[]): Promise<CacheClearResp>;
 }
 
 /** 导航分组数据单源在 settings-groups.ts(壳层渲染 + 全局搜索索引共用;避免搜索面反向
@@ -254,6 +259,9 @@ export function SettingsShell({ conn, root, onBack, requestedPane }: SettingsShe
       case 'shortcuts':
         // 快捷键说明页(纯静态文档面,无连接面/读写)
         return <ShortcutsPane key="shortcuts" />;
+      case 'storage':
+        // 存储页(2026-11-21):归档保留天数+缓存清点/清理——快照 root(保留天数行随行 source 归桶)
+        return <StoragePane key="storage" conn={conn} root={root} />;
       default:
         return <RawPane key="raw" conn={conn} root={root} scope={scope} />;
     }

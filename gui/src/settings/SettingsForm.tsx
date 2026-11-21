@@ -131,6 +131,11 @@ export const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string 
   embeddingModel: { label: { en: 'Embedding model', zh: 'Embedding 模型' }, en: 'Embedding model id', zh: 'Embedding 模型 id' },
   websearchProvider: { label: { en: 'Search provider', zh: '搜索提供方' }, en: 'Web search provider', zh: '网页搜索提供方' },
   websearchEndpoint: { label: { en: 'Search endpoint', zh: '搜索端点' }, en: 'Web search endpoint', zh: '网页搜索端点' },
+  archiveRetentionDays: {
+    label: { en: 'Archive retention', zh: '归档保留天数' },
+    en: 'Archived sessions older than this many days are purged daily (0 = never; default 30)',
+    zh: '归档超过该天数的会话每日自动清理（0 = 永不清理，缺省 30 天）',
+  },
 };
 
 /** 行过滤匹配(Task 25):键名/双语标签/双语说明四元大小写不敏感包含——键名、本地化标签、

@@ -87,6 +87,20 @@ function buildIndex(): SettingsSearchItem[] {
       }
     }
   }
+  // ②b 存储页行(2026-11-21 StoragePane 自绘行,非 SETTINGS_PANES 字段;锚=data-setting-key)
+  const storageTitle = PANE_TITLES.get('storage') ?? { en: 'Storage', zh: '存储' };
+  const rd = KEY_DESCRIPTIONS.archiveRetentionDays;
+  if (rd !== undefined) {
+    out.push({ id: 'row:storage:archiveRetentionDays', pane: 'storage', paneTitle: storageTitle, row: 'archiveRetentionDays', label: rd.label, desc: { en: rd.en, zh: rd.zh } });
+  }
+  out.push({
+    id: 'row:storage:cache',
+    pane: 'storage',
+    paneTitle: storageTitle,
+    row: 'cache',
+    label: { en: 'Clear cache', zh: '清理缓存' },
+    desc: { en: 'Identified cache categories with sizes', zh: '已识别的缓存分类与占用' },
+  });
   // ③ 快捷键说明行(ShortcutsPane 文档表同源;点击开快捷键页并滚到该行)
   const shortcutsTitle = PANE_TITLES.get('shortcuts') ?? { en: 'Shortcuts', zh: '快捷键' };
   SHORTCUT_GROUPS.forEach((group, gi) => {

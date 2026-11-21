@@ -4760,3 +4760,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    高亮层整体 pointer-events:none(保打字穿透),此前仅 ⟦⟧ chip 放开;ref token 同样放开并给手型,
    mousedown preventDefault 在组件侧保 textarea 焦点。id 中段大写(如 #team-pA)也已随词法修复 */
 .sx-composer-highlight .hn-agent, .sx-composer-highlight .hn-team { pointer-events: auto; cursor: pointer; }
+/* ===== 存储页(2026-11-21 归档保留期/缓存清理):清理按钮/体积列/引用型警示态 ===== */
+.sx-storage-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--fg); font-size: calc(14px * var(--fz)); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter); flex: none; }
+.sx-storage-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.sx-storage-btn:disabled { opacity: 0.5; cursor: default; }
+.sx-storage-btn.danger { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.sx-card-head .sx-storage-head-btn { margin-left: auto; align-self: center; }
+.sx-storage-size { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); flex: none; }
+.sx-storage-rowctl { display: inline-flex; align-items: center; gap: 8px; }
