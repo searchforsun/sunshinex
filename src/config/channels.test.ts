@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadChannels, resolveChannelSecret } from './channels';
+import { loadChannels, resolveChannelSecret, channelChatDomainDir, channelChatWorkspaceRoot } from './channels';
+import { channelsContainerDir, resolveDataDir } from './data-dir';
 
 function writeGlobal(channels: unknown): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'chan-cfg-'));
@@ -31,5 +32,29 @@ test('resolveChannelSecret: env 槽名解析', () => {
     assert.equal(resolveChannelSecret('t1'), 'sec');
   } finally {
     delete process.env.SUNSHINEX_CHANNEL_SECRET_T1; // 断言失败也不泄漏 env 改动
+  }
+});
+
+test('聊天专属域: workspace/data 平级 + resolveDataDir 分支', () => {
+  // 钉环境:容器指临时区(domain 落临时区、不写真实 HOME);SUNSHINEX_DATA_DIR 显式覆盖会短路
+  // channels 分支(其优先级最高),必须确保未设——存/删 + try/finally 还原,不污染其他用例
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'chan-dom-'));
+  const prevChannels = process.env.SUNSHINEX_CHANNELS_DIR;
+  const prevData = process.env.SUNSHINEX_DATA_DIR;
+  delete process.env.SUNSHINEX_DATA_DIR;
+  process.env.SUNSHINEX_CHANNELS_DIR = tmp;
+  try {
+    assert.equal(channelsContainerDir(), path.resolve(tmp)); // 覆盖生效(容器落临时区)
+    const domain = channelChatDomainDir('feishu-main', 'oc_yyy');
+    const ws = channelChatWorkspaceRoot('feishu-main', 'oc_yyy');
+    assert.equal(ws, path.join(domain, 'workspace')); // 平级:ws 与 data 同为域下两目录
+    assert.equal(resolveDataDir(ws), path.join(domain, 'data')); // 容器内 root → 域/data
+    assert.ok(!resolveDataDir(ws).startsWith(ws + path.sep), 'data 不得嵌在工作区内');
+    assert.ok(fs.existsSync(ws)); // 首调即铸造
+    assert.ok(fs.existsSync(domain)); // domain 目录本体亦铸造(mkdir 幂等)
+  } finally {
+    if (prevChannels === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;else process.env.SUNSHINEX_CHANNELS_DIR = prevChannels;
+    if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;else process.env.SUNSHINEX_DATA_DIR = prevData;
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 });

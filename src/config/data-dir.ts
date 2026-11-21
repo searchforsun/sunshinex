@@ -62,6 +62,17 @@ export function sunxDomainDir(journalId: string): string {
   return path.join(sunxContainerDir(), journalId, 'data');
 }
 
+/** channels 域容器根（2026-11-21 channels spec §4 存储总览：IM 聊天持久化独立容器）：`~/.sunshinex/channels/`——
+ *  各聊天专属域 `im-<channelSlug>-<chatSlug>/{workspace,data}` 逐域落位（config/channels.ts
+ *  channelChatDomainDir 同根推导）；GET 侧栏「通道」扫描面用（Task 9 与 sunxContainerDir 扫描同构）。
+ *  严格三分容器（projects/sunx/channels 各自独立、不混居）；不 mkdir（空容器=扫描面 readdir 失败回空列，合法空态） */
+export function channelsContainerDir(): string {
+  // 显式覆盖（sunxContainerDir :47 同款惯例：惰性求值——测试可运行期重定向）：缺省 ~/.sunshinex/channels/
+  const override = process.env.SUNSHINEX_CHANNELS_DIR;
+  if (override !== undefined && override.length > 0) return path.resolve(override);
+  return path.join(userConfigDir(), 'channels');
+}
+
 /** worktree 树识别(2026-11-10):树根 .git 是**文件**(gitdir: 指针→主仓 .git/worktrees/<name>/)
  *  且旁边有 sunshinex-mainroot 标记(建树时写入主项目根)→ 返回主项目根;普通工作区/主仓(.git 是
  *  目录)undefined。resolveDataDir 据此重定向(会话档/记忆/技能归主项目),session-lifecycle 据此
@@ -80,12 +91,22 @@ export function worktreeMainRootOf(root: string): string | undefined {
   }
 }
 
-/** 解析当前工作区数据目录：直指覆盖 > projects 根覆盖 > 缺省全局（HOME 可建）> 项目内回退；子目录由各写入面自行 mkdir */
+/** 解析当前工作区数据目录：直指覆盖 > channels 域分支 > projects 根覆盖 > 缺省全局（HOME 可建）> 项目内回退；子目录由各写入面自行 mkdir */
 export function resolveDataDir(root: string): string {
   const held = worktreeMainRootOf(root);
   if (held !== undefined) return resolveDataDir(held);
   const override = process.env.SUNSHINEX_DATA_DIR;
   if (override !== undefined && override.length > 0) return path.resolve(override);
+  // ②′ channels 聊天域分支（2026-11-21 channels spec §4 绑定解析；用户裁定：data 与 agent 脚下平级隔离、
+  // 不嵌套——full-access agent 不得踩到自己的会话账本；常规项目 root 与 data 异树、sunx 域为纯持久化域，
+  // 均无此问题，channels 不做嵌套形态）：root 位于 channels 容器内 → <容器>/<首段>/data（首段 = im-* 域
+  // 目录，即 agent 工作区 workspace 的父目录）；置于 SUNSHINEX_DATA_DIR 检查之后=最小侵入（开发与测试
+  // 专用直指口仍最高优先，常规路径行为零变动）；容器自身（rel 空串）非域目录，不命中走常规路径
+  const container = channelsContainerDir();
+  const rel = path.relative(container, root);
+  if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+    return path.join(container, rel.split(path.sep)[0]!, 'data');
+  }
   const base = projectsRoot();
   const projectsOverride = process.env.SUNSHINEX_PROJECTS_DIR;
   // 显式指定 projects 根即权威：不探测、不回退（回退会掩盖「指了 D 盘却写在 C 盘」的配置错误）

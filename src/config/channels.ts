@@ -8,9 +8,16 @@
  * 密钥不进本键（D6 用户裁决「设置与凭据分离」延续）：键内零密钥字段，每通道按名取
  * SUNSHINEX_CHANNEL_SECRET_<大写通道名> env 槽（channelSecretEnv 派生，规则同 providers.ts
  * providerApiKeyEnv），settings env 块或真实环境变量皆可。
+ * 兼营聊天专属域目录铸造单点（channelChatDomainDir/channelChatWorkspaceRoot，spec §4 绑定解析
+ * 「root==='auto'」缺省形态）：域容器 ~/.sunshinex/channels/ 与容器覆盖（channelsContainerDir）落
+ * data-dir.ts——严格三分 projects/sunx/channels；workspace/data 平级不嵌套（用户裁定 2026-11-21）。
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import { parseSettingsFile, loadGlobalSettings } from './settings';
 import { parseChannelsKey, channelSecretEnv } from '../serve/channels/model';
+import { slugify } from '../slug';
+import { channelsContainerDir } from './data-dir';
 import type { ChannelConfig } from '../serve/channels/model';
 
 /**
@@ -39,4 +46,31 @@ export function loadChannels(filePath: string = loadGlobalSettings()): { value: 
 export function resolveChannelSecret(id: string): string | undefined {
   const value = process.env[channelSecretEnv(id)];
   return value !== undefined && value !== '' ? value : undefined;
+}
+
+/**
+ * 聊天专属域目录铸造（spec §4 绑定解析 root==='auto' 缺省形态）：`<channelsContainerDir()>/im-<channelSlug>-<chatSlug>`——
+ * 一聊天一持久化域（与 sunx 域对称），slug 用 src/slug.ts 主链 slugify 单点规则（非拉丁字符折叠 '-'，
+ * 防中文 chatId 在跨平台路径面出隐患）；max 60（对齐 projectSlug 折叠截长，防超长 chatId 撑爆路径）、
+ * fallback 'chat'（全折叠空串兜底，域目录名恒合法）。mkdir 幂等（域目录本体首调即铸造，recursive 连容器
+ * 一起建）；Task 5 router root 解析 / Task 9 容器扫描 / Task 13 侧栏消费本单点。
+ */
+export function channelChatDomainDir(channelId: string, chatId: string): string {
+  const dir = path.join(
+    channelsContainerDir(),
+    `im-${slugify(channelId, { max: 60, fallback: 'chat' })}-${slugify(chatId, { max: 60, fallback: 'chat' })}`,
+  );
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/**
+ * 聊天专属工作区根（createSession 的 root = agent 工作目录，任务文件产出落这里）：`<域>/workspace`——
+ * **与 `<域>/data` 平级、不嵌套**（2026-11-21 用户裁定：full-access agent 不得踩到自己的会话账本，
+ * data 分支见 data-dir.ts resolveDataDir ②′）。mkdir 幂等。
+ */
+export function channelChatWorkspaceRoot(channelId: string, chatId: string): string {
+  const dir = path.join(channelChatDomainDir(channelId, chatId), 'workspace');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
 }
