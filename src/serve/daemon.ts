@@ -60,6 +60,8 @@ import { startBuiltinFacade } from './cdp-facade';
 import { purgeBrowserState, reapBuiltinBrowsers as reapBuiltinBrowsersHost, sweepOrphanBrowserState } from './builtin-browser';
 import { ChannelsEngine } from './channels/engine';
 import { ChannelsBindingsStore, channelsBindingsFile } from './channels/store';
+import * as channelsHandlers from './channels/handlers';
+import type { ChannelsHandlerIo } from './channels/handlers';
 import type { ChannelConfig } from './channels/model';
 import { loadChannels } from '../config/channels';
 import {
@@ -436,6 +438,21 @@ export class GuiDaemon {
           lastFailed: typeof st.lastFailed === 'number' ? st.lastFailed : 0,
         };
       },
+    };
+  }
+
+  /** 通道 handlers 触点面（channels Task 9，scheduleHandlerIo 同模式）：send/readJson 复用 daemon
+   *  单点，engine/bindings 注入单例，sessions/activeSessionId/releaseSession 供 /channels/sessions
+   *  活跃标注与 DELETE binding 回收判据（schedules/handlers.ts:56-70 同款） */
+  private get channelsHandlerIo(): ChannelsHandlerIo {
+    return {
+      send: (res, status, body) => this.send(res, status, body),
+      readJson: (req) => this.readJson(req),
+      engine: this.channelsEngine,
+      bindings: this.channelsBindings,
+      sessions: this.sessions,
+      activeSessionId: () => this.activeId(),
+      releaseSession: (id) => this.releaseSession(id),
     };
   }
 
@@ -1101,6 +1118,17 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // 提供方连通探测(2026-11-17 用户裁定「模型列表加测试链接图标」):GET {baseUrl}/models,零 token
     { method: 'POST', path: '/settings/providers/probe', auth: true, run: async (req, res) => configHandlers.handleProvidersProbe(this.configIo, req, res) },
     { method: 'PUT', path: '/settings/permissions/op', auth: true, run: (req, res) => this.handlePermissionsOp(req, res) },
+    // 通道面（channels Task 9，spec §2/§8.3）：/settings/channels 结构化键写面（全局豁免单档——
+    // 带 root 400/warnings 非空 400；写后 applyConfigs 热生效 + config-changed 直发，configIo 薄委托）
+    // + /channels 运维面（健康快照/dry-run 测试/绑定读写/聊天域会话枚举——channelsHandlerIo 薄委托）
+    { method: 'GET', path: '/settings/channels', auth: true, run: async (_req, res) => this.handleChannelsGet(res) },
+    { method: 'PUT', path: '/settings/channels', auth: true, run: (req, res) => this.handleChannelsPut(req, res) },
+    { method: 'GET', path: '/channels', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsList(this.channelsHandlerIo, res) },
+    { method: 'POST', path: '/channels/:id/test', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsTest(this.channelsHandlerIo, res, p.id) },
+    { method: 'GET', path: '/channels/bindings', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsBindingsGet(this.channelsHandlerIo, res) },
+    { method: 'PUT', path: '/channels/bindings/:key', auth: true, run: async (req, res, p) => channelsHandlers.handleChannelsBindingPut(this.channelsHandlerIo, req, res, p.key) },
+    { method: 'DELETE', path: '/channels/bindings/:key', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsBindingDelete(this.channelsHandlerIo, res, p.key) },
+    { method: 'GET', path: '/channels/sessions', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsSessions(this.channelsHandlerIo, res) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },
@@ -1585,6 +1613,21 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
 
   private async handlePluginsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await configHandlers.handlePluginsPut(this.configIo, req, res);
+  }
+
+  private handleChannelsGet(res: http.ServerResponse): void {
+    configHandlers.handleChannelsGet(this.configIo, res);
+  }
+
+  /** PUT /settings/channels 收尾注入（channels Task 9）：写盘成功后 channelsEngine.applyConfigs 热生效
+   *  （引擎调和幂等，键=cfg.id）+ 写回环抑制 + config-changed 直发——onCatalogWrite 钩子同套两路合一
+   *  （suppress 丢 watcher 回声、broadcast 承担帧下行，同键不双发；notifySunshineWrite 同款就地形） */
+  private async handleChannelsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    await configHandlers.handleChannelsPut(this.configIo, req, res, (channels: ChannelConfig[]) => {
+      this.channelsEngine.applyConfigs(channels);
+      this.watcher.suppress('settings', 'global', null);
+      this.broadcastFrame({ kind: 'config-changed', resource: 'settings', scope: 'global', root: null });
+    });
   }
 
   private handleAgentsGet(req: http.IncomingMessage, res: http.ServerResponse): void {

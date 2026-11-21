@@ -2758,3 +2758,138 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
     });
   });
 });
+
+// ---------- 通道 HTTP 面(Task 9,spec §2/§8.3):/settings/channels 结构化键写面(全局豁免)+ /channels 运维面 ----------
+
+/** 读临时 bindings 档原形(rootOverride 断言需要全字段,readBindings 助手的收窄形不够用) */
+function readBindingsRaw(file: string): Array<Record<string, unknown>> {
+  return (JSON.parse(fs.readFileSync(file, 'utf8')) as { bindings: Array<Record<string, unknown>> }).bindings;
+}
+
+describe('通道 HTTP 面(Task 9)', () => {
+  test('① PUT /settings/channels 合法表 → GET roundtrip → GET /channels 出现该通道 enabled', async () => {
+    await withSettingsDaemon(async ({ base, tmp }) => {
+      const cfg = { id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'read-only', allow: { kind: 'all' } };
+      const put = await fetch(`${base}/settings/channels`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ channels: [cfg] }) });
+      assert.equal(put.status, 200, 'PUT 合法表应 200');
+      assert.deepEqual((await put.json()) as { ok: boolean; warnings: string[] }, { ok: true, warnings: [] });
+      // GET roundtrip:全局档复读(parseChannelsKey 归一后与入场值相等——mock 免密通道零裁剪)
+      const got = await fetch(`${base}/settings/channels`, { headers: AUTH });
+      assert.equal(got.status, 200);
+      const body = (await got.json()) as { channels: Array<Record<string, unknown>>; warnings: string[] };
+      assert.deepEqual(body.warnings, []);
+      assert.deepEqual(body.channels, [cfg], 'GET roundtrip 与入场值相等');
+      // 热生效:GET /channels 出现该通道且 enabled(mock 免密,健康快照 connected)
+      const health = (await (await fetch(`${base}/channels`, { headers: AUTH })).json()) as { channels: Array<{ id: string; platform: string; enabled: boolean; connected: boolean }> };
+      const row = health.channels.find((r) => r.id === 'm1');
+      assert.ok(row !== undefined, 'GET /channels 出现 m1');
+      assert.equal(row.platform, 'mock');
+      assert.equal(row.enabled, true, 'PUT 后 enabled');
+      assert.equal(row.connected, true, 'mock 适配器健康');
+    });
+  });
+
+  test('② PUT 带 root → 400(全局豁免:channels 无项目级语义);③ PUT 非法条目 → 400 + warnings 回显;注释档 409 引流 raw', async () => {
+    await withSettingsDaemon(async ({ base, tmp, home }) => {
+      const cfg = { id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'read-only', allow: { kind: 'all' } };
+      // ② 带 root 参数一律 400(null 同判——全局豁免钉死单档)
+      const withRoot = await fetch(`${base}/settings/channels`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ channels: [cfg], root: tmp }) });
+      assert.equal(withRoot.status, 400, '带 root 应 400');
+      const withRootNull = await fetch(`${base}/settings/channels`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ channels: [cfg], root: null }) });
+      assert.equal(withRootNull.status, 400, 'root:null 同判 400');
+      // ③ 非法条目(缺 id)→ 400 + warnings 回显(设置页写面从严)
+      const bad = await fetch(`${base}/settings/channels`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ channels: [{ platform: 'mock', root: tmp, mode: 'read-only', allow: { kind: 'all' } }] }) });
+      assert.equal(bad.status, 400);
+      const badBody = (await bad.json()) as { error: string; warnings: string[] };
+      assert.ok(Array.isArray(badBody.warnings) && badBody.warnings.length > 0, 'warnings 回显非空');
+      assert.ok(badBody.warnings[0]!.includes('channels[0]'), 'warning 带条目定位');
+      // 档未动(零部分写)
+      const after = (await (await fetch(`${base}/settings/channels`, { headers: AUTH })).json()) as { channels: unknown[] };
+      assert.deepEqual(after.channels, [], '400 后全局档零部分写');
+      // 注释档 → 409 引流 raw(plugins PUT 同款守卫)
+      fs.writeFileSync(path.join(home, '.sunshinex', 'settings.json'), '{\n  // 手注\n  "version": 1\n}\n', 'utf8');
+      const commented = await fetch(`${base}/settings/channels`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ channels: [cfg] }) });
+      assert.equal(commented.status, 409, '注释档 409');
+      assert.equal(((await commented.json()) as { hint?: string }).hint, 'use raw editor');
+    });
+  });
+
+  test('④ POST /channels/m1/test(mock 通道)→ ok:true(免密 dry-run)', async () => {
+    await withChannelsDaemon(async ({ base }) => {
+      const r = await fetch(`${base}/channels/m1/test`, { method: 'POST', headers: AUTH });
+      assert.equal(r.status, 200, '诊断面失败也是 200,此处应成功');
+      const body = (await r.json()) as { ok: boolean; botId?: string };
+      assert.equal(body.ok, true, 'mock 通道 dry-run 应 ok');
+    });
+  });
+
+  test('⑤ 绑定面:GET 列表;PUT rootOverride 设置/清除;DELETE 解除(GET bindings 少一条)+回收非 active 绑定会话(active 不释放);重复 DELETE 404', async () => {
+    await withChannelsDaemon(async ({ daemon, base, tmp, bindingsFile }) => {
+      // mock 入站建立绑定(Task 8 e2e 同路径——绑定无独立创建端点,入站即绑定)
+      const mock = daemon.channelsEngine.mockAdapter('m1');
+      assert.ok(mock !== undefined);
+      mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '绑定' });
+      await waitFor(() => {
+        try { return readBindings(bindingsFile).some((b) => b.key === 'm1:c1'); } catch { return false; }
+      }, 3000);
+      const bound = readBindings(bindingsFile).find((b) => b.key === 'm1:c1')!;
+      const boundSession = bound.sessionId as string;
+      // GET /channels/bindings 端点与档同源
+      const list1 = (await (await fetch(`${base}/channels/bindings`, { headers: AUTH })).json()) as { bindings: Array<{ key: string }> };
+      assert.ok(list1.bindings.some((b) => b.key === 'm1:c1'), 'GET bindings 出现 m1:c1');
+      // PUT rootOverride 设置(聊天信息条「绑定工作区切换」写面)
+      const put1 = await fetch(`${base}/channels/bindings/m1:c1`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ rootOverride: tmp }) });
+      assert.equal(put1.status, 200);
+      assert.equal(readBindingsRaw(bindingsFile).find((b) => b['key'] === 'm1:c1')?.['rootOverride'], tmp, 'rootOverride 落档');
+      assert.equal(readBindingsRaw(bindingsFile).find((b) => b['key'] === 'm1:c1')?.['journalId'], bound.journalId, '其余字段保留');
+      // PUT rootOverride null 清除
+      const put2 = await fetch(`${base}/channels/bindings/m1:c1`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ rootOverride: null }) });
+      assert.equal(put2.status, 200);
+      assert.equal('rootOverride' in readBindingsRaw(bindingsFile).find((b) => b['key'] === 'm1:c1')!, false, 'null 清除后键不在场');
+      // 通道会话出生即 active(createSession setActive):再造一会话抢 active,让绑定会话非 active
+      const rNew = await fetch(`${base}/session/new`, { method: 'POST', headers: AUTH, body: JSON.stringify({ root: tmp }) });
+      assert.equal(rNew.status, 200);
+      const { sessionId: other } = (await rNew.json()) as { sessionId: string };
+      assert.equal(daemon.activeId(), other, '新会话抢 active');
+      // DELETE 解除:档少一条 + 非 active 绑定会话被回收(journal 留盘)+ active 不受扰
+      const del = await fetch(`${base}/channels/bindings/m1:c1`, { method: 'DELETE', headers: AUTH });
+      assert.equal(del.status, 200);
+      assert.deepEqual((await del.json()) as { ok: boolean }, { ok: true });
+      const list2 = (await (await fetch(`${base}/channels/bindings`, { headers: AUTH })).json()) as { bindings: unknown[] };
+      assert.equal(list2.bindings.length, 0, 'GET bindings 少一条(归零)');
+      await waitFor(() => daemon.get(boundSession) === undefined, 3000);
+      assert.ok(daemon.get(other) !== undefined, 'active 会话不受扰');
+      const journalFile = path.join(tmp, 'data', 'sessions', `${bound.journalId as string}.jsonl`);
+      assert.ok(fs.existsSync(journalFile), 'journal 留盘(解除绑定不删档)');
+      // 重复 DELETE → 404(非幂等,写面从严)
+      const del2 = await fetch(`${base}/channels/bindings/m1:c1`, { method: 'DELETE', headers: AUTH });
+      assert.equal(del2.status, 404);
+    });
+  });
+
+  test('⑥ GET /channels/sessions 空容器 → {sessions:[]};⑦ 捏域档出行(root=域目录/kind=channel)', async () => {
+    await withSettingsDaemon(async ({ base, home }) => {
+      // 空容器:HOME 钉 fakeHome,channels 容器缺席=合法空态
+      const empty = await fetch(`${base}/channels/sessions`, { headers: AUTH });
+      assert.equal(empty.status, 200);
+      assert.deepEqual(await empty.json(), { sessions: [] });
+      // 捏域档(channelsContainerDir 单点=HOME/.sunshinex/channels):出行 root=域目录、kind=channel
+      const container = path.join(home, '.sunshinex', 'channels');
+      const domain = path.join(container, 'im-m1-c1');
+      const sessions = path.join(domain, 'data', 'sessions');
+      fs.mkdirSync(sessions, { recursive: true });
+      fs.writeFileSync(path.join(sessions, 'j-ch1.jsonl'), '{"t":"header","createdAt":"2026-01-01T00:00:00.000Z"}\n', 'utf8');
+      fs.writeFileSync(path.join(sessions, 'j-ch1.meta.json'), JSON.stringify({ channel: 'm1', title: 'IM 聊天' }), 'utf8');
+      const r = await fetch(`${base}/channels/sessions`, { headers: AUTH });
+      assert.equal(r.status, 200);
+      const body = (await r.json()) as { sessions: Array<Record<string, unknown>> };
+      assert.equal(body.sessions.length, 1, '恰一域一行');
+      const row = body.sessions[0]!;
+      assert.equal(row['id'], 'j-ch1');
+      assert.equal(row['root'], domain, '行 root=域目录(GUI attach 直寻址)');
+      assert.equal(row['kind'], 'channel');
+      assert.equal(row['channel'], 'm1', '通道 id 透出(Task 13 分组键)');
+      assert.equal(row['title'], 'IM 聊天');
+    });
+  });
+});

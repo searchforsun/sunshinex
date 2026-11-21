@@ -62,6 +62,11 @@ import type { PermissionsConfig } from '../config/permissions';
 import { loadMcpServers, parseMcpJsonFile } from '../config';
 import { userConfigDir } from '../config/env';
 import { loadEffectivePlugins } from '../config/plugins';
+// channels Task 9（spec §2/§8.3）：全局档 channels 结构化键读面 loadChannels（全局豁免单点）+
+// 写面 parseChannelsKey 校验单点（serve/channels/model）——形状裁决单点不在此复制
+import { loadChannels } from '../config/channels';
+import { parseChannelsKey } from '../serve/channels/model';
+import type { ChannelConfig } from '../serve/channels/model';
 import { builtinAgentRoles, loadAgentsView, parseAgentFrontmatter } from '../harness/subagent';
 import { isSkillDisabled, learnedSkillsDir, loadCrossProjectSkillGroups, loadSkillsGrouped, loadUserSkillsGroup, skillFileIn, SkillsGroup } from '../harness/skills';
 
@@ -919,6 +924,88 @@ export async function handlePluginsPut(io: ConfigHandlerIo, req: http.IncomingMe
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
   if (root !== undefined) io.reloadSettingsChain(root); // plugins 键随 settings 链生效；无 root 无项目锚不 reload
   io.send(res, 200, { ok: true });
+}
+
+/** GET /settings/channels（channels Task 9，spec §2/§8.3）：全局档 channels 结构化语义键读面——
+ *  loadChannels() 全局豁免单点（通道是 daemon 主动外连的执行面，项目档 channels 键整键忽略——
+ *  config/channels.ts 供应链裁定：克隆仓库即注入「外连机器人 + full-access 会话」面不可开）。应答
+ *  {channels, warnings}：非法条目 warning 跳过不致命的装载口径原样透出（设置页 pane 呈现）。 */
+export function handleChannelsGet(io: ConfigHandlerIo, res: http.ServerResponse): void {
+  const loaded = loadChannels();
+  io.send(res, 200, { channels: loaded.value, warnings: loaded.warnings });
+}
+
+/** PUT /settings/channels body {channels}（channels Task 9；settings 结构化写面 plugins PUT 同款
+ *  守卫族，差异三点）：
+ *  - ① 带 root 参数一律 400——全局豁免裁定（config/channels.ts）的写面镜像：providers 键允许项目级
+ *    遮蔽，channels 不行，写面同口径钉死全局单档、无两级语义（root 在场即请求形态错，null 同判）；
+ *  - ② parseChannelsKey 校验后 warnings 非空即 400 回显（设置页写面从严；装载面「warning 跳过不
+ *    致命」是读面宽容语义，写面放行会固化坏条目——raw 编辑走 RawPane 不受此限）；
+ *  - ③ 写后经 afterWrite 注入回调热生效（daemon：channelsEngine.applyConfigs + config-changed
+ *    直发——engine 不在 ConfigHandlerIo 三面内，仿 handleSunshinePut 的可选尾参注入形）。
+ *  守卫与写档机制照 handlePluginsPut :855-895 同款：注释档 409 引流 raw / 畸形 JSON 409 / 根非对象
+ *  409 / version 非 1 409（BOM 容忍同装载口径）/ 新档补 version:1 / 原子写（writeJsonAtomic 单点）；
+ *  obj['channels'] = value 落 parseChannelsKey 归一值（写进盘的即装载零告警面）。全局无项目锚不
+ *  reloadSettingsChain（plugins 全局路径同款——channels 键不入 env 链，热生效走 applyConfigs，
+ *  回显 warnings:[] 成功帽照 brief 契约行）。IO 失败（写/换名）不经本地捕获——沿 dispatch 500 收口 */
+export async function handleChannelsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, afterWrite?: (channels: ChannelConfig[]) => void): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) {
+    io.send(res, parsed.status, { error: parsed.error });
+    return;
+  }
+  const body = parsed.body as { channels?: unknown; root?: unknown } | null;
+  // ① 全局豁免：带 root 一律 400（channels 键无项目级语义——见上注供应链裁定）
+  if (body?.root !== undefined) {
+    io.send(res, 400, { error: 'channels is a global-only key — project-level channels are ignored by design; do not pass root' });
+    return;
+  }
+  // ② 校验从严：warnings 非空即 400 回显（零部分写；错型/缺键经 parseChannelsKey 产「须为数组」等告警同面）
+  const { value, warnings } = parseChannelsKey(body?.channels);
+  if (warnings.length > 0) {
+    io.send(res, 400, { error: 'channels 校验失败,零部分写', warnings });
+    return;
+  }
+  const target = loadGlobalSettings(); // 全局豁免单档（写哪级读哪级的两级语义在此不存在）
+  // 409 守卫：既有文件注释/畸形/version（handlePluginsPut 同款——结构化写不越权处置这三类文件现状）
+  let raw: string | null = null;
+  try {
+    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+  } catch {
+    io.send(res, 409, { error: `settings file not readable: ${target}` });
+    return;
+  }
+  if (raw !== null && hasJsonComments(raw)) {
+    io.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
+    return;
+  }
+  let obj: Record<string, unknown>;
+  if (raw === null) {
+    obj = { version: 1 }; // 新档补 version:1（settings schema 口径，plugins 同款）
+  } else {
+    let parsedRoot: unknown;
+    try {
+      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 装载口径一致）
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
+      return;
+    }
+    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+      io.send(res, 409, { error: 'settings root must be a JSON object' });
+      return;
+    }
+    const existing = parsedRoot as Record<string, unknown>;
+    if ((existing['version'] ?? 1) !== 1) {
+      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
+      return;
+    }
+    obj = existing;
+  }
+  obj['channels'] = value; // 归一值整键落盘（channels 以外顶层键原样保留，T2 同语义）
+  writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
+  afterWrite?.(value); // 热生效 + config-changed 直发（daemon 注入；见上注 ③）
+  io.send(res, 200, { ok: true, warnings: [] });
 }
 
 /** GET /settings/agents?root=（G8c T5，Settings 页 Agents 清单数据源）：builtins = builtinAgentRoles
