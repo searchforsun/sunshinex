@@ -26,7 +26,7 @@ import type { ScheduleCadence, ScheduleWhen } from './cycle';
  *   模型名只读（定时执行使用应用当前默认模型），强度可调；保存钮移到页头右上角。
  * - 编辑既有非四档任务（分钟/年/多倍 every）保留 custom，原 recurrence 原样带回。
  */
-export interface ScheduleConfigProps {
+interface ScheduleConfigProps {
   readonly conn: Connection;
   readonly job?: ScheduleJobView;
   readonly defaultModel: string;

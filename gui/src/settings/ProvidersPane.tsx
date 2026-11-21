@@ -138,7 +138,7 @@ const modelFormOf = (m: ProviderEntryModel): ModelForm => ({
 });
 
 
-export interface ProvidersPaneProps {
+interface ProvidersPaneProps {
   readonly conn: ProvidersPaneConn;
   /** T21 config-changed 订阅 tick(providers 资源计数——外部改动信号,变化即重拉) */
   readonly refreshTick?: number;

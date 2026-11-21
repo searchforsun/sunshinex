@@ -8,7 +8,7 @@ import { SHORTCUT_GROUPS } from './ShortcutsPane';
  * 纯数据、双语对在渲染期 t() 求值;点击由宿主开设置并滚到对应行(data-setting-key 锚)。
  */
 
-export interface BiText {
+interface BiText {
   readonly en: string;
   readonly zh: string;
 }

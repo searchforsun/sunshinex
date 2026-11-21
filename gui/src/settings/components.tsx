@@ -87,7 +87,7 @@ export function defaultScopeOptions(root: string): ScopeOption[] {
 
 /** ScopeSelect props:目标选择器受控——value=当前目标项目 root('' = 全局);options=壳装配的
  *  全局+注册项目清单;onChange 上抛新目标 root 字符串('' = 全局) */
-export interface ScopeSelectProps {
+interface ScopeSelectProps {
   readonly value: string;
   readonly options: readonly ScopeOption[];
   readonly onChange: (value: string) => void;
@@ -113,7 +113,7 @@ export function ScopeSelect({ value, options, onChange }: ScopeSelectProps): JSX
 }
 
 /** ModalTabs 选项行:id=受控当值键;label=渲染期 t() 后的标签 */
-export interface ModalTabItem {
+interface ModalTabItem {
   readonly id: string;
   readonly label: string;
 }
@@ -122,7 +122,7 @@ export interface ModalTabItem {
  *  两 Tab 替代"表单+折叠 JSON 段"堆叠;切 Tab 不清内容——内容留存由弹窗宿主持有)。
  *  role=tablist/tab+aria-selected(键盘焦点沿钮原生序,无 roving tabindex——弹窗内两 Tab 小集,
  *  Tab 键遍历即可达) */
-export interface ModalTabsProps {
+interface ModalTabsProps {
   readonly tabs: readonly ModalTabItem[];
   readonly active: string;
   readonly onChange: (id: string) => void;
@@ -151,12 +151,12 @@ export function ModalTabs({ tabs, active, onChange, ariaLabel }: ModalTabsProps)
 }
 
 /** SearchBar 防抖窗(毫秒)——键入停顿 200ms 才上抛 onChange */
-export const SEARCH_DEBOUNCE_MS = 200;
+const SEARCH_DEBOUNCE_MS = 200;
 
 /** SearchBar props(防抖契约):受控 value 是过滤真值源;键入即时回显输入框,onChange 防抖
  *  200ms(自最后一次键起算,窗内连击合并单次终值);value 外部变更(资源切换清空等)即时镜像
  *  回输入框并撤销在途未抛窗。消费方零再防抖 */
-export interface SearchBarProps {
+interface SearchBarProps {
   readonly value: string;
   readonly placeholder?: string;
   readonly onChange: (v: string) => void;
@@ -212,7 +212,7 @@ export function SearchBar({ value, placeholder, onChange }: SearchBarProps): JSX
  *  body=直显卡身(2026-10-31 用户裁定:描述等内容不折「详情」,直接展示);children=折叠详情
  *  (<details>,summary「Details/详情」)。根元素 <li>——置于 ul.sx-rc-list(或既有 sx-mcp-list
  *  语言)列表内消费 */
-export interface ResourceCardProps {
+interface ResourceCardProps {
   readonly icon?: ReactNode;
   readonly title: string;
   readonly subtitle?: string;
@@ -269,7 +269,7 @@ export function ResourceCard({ icon, title, subtitle, chips, badge, enabled, onT
 /** ModalField props:label(+hint)标签行 + 控件行(纵向两段;hint 可选=字段说明,同主设置面
  *  desc 语义)。纯容器:children 原样透传(输入/Select/textarea 全由消费方持 aria-label 与
  *  受控态),零逻辑 */
-export interface ModalFieldProps {
+interface ModalFieldProps {
   readonly label: ReactNode;
   readonly hint?: ReactNode;
   readonly children: ReactNode;
@@ -293,7 +293,7 @@ export function ModalField({ label, hint, children }: ModalFieldProps): JSX.Elem
 
 /** EditorModal props:open=false 恒 null;onClose=遮罩点击/Cancel/×/Esc 统一闭面;onSubmit=Save
  *  (form submit 路径,preventDefault 由本件承担);children=弹窗体字段面 */
-export interface EditorModalProps {
+interface EditorModalProps {
   readonly open: boolean;
   readonly title: string;
   readonly onClose: () => void;
@@ -381,11 +381,11 @@ export function ErrorBanner({ text }: { readonly text: string }): JSX.Element {
 }
 
 /** 两段式删除确认钮武装时长(毫秒):超时未确认自动解除回「删除」 */
-export const DELETE_CONFIRM_MS = 3000;
+const DELETE_CONFIRM_MS = 3000;
 
 /** ConfirmDeleteButton props:ariaLabel 恒定(两段同名——测试/读屏按资源名寻钮不因换段漂移);
  *  dataTip 直通(不可写 tip 等);onConfirm 仅在武装段二次点击时触发 */
-export interface ConfirmDeleteButtonProps {
+interface ConfirmDeleteButtonProps {
   readonly ariaLabel: string;
   readonly disabled?: boolean;
   readonly dataTip?: string;

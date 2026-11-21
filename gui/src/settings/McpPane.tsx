@@ -92,7 +92,7 @@ type DrawerState =
 
 const EMPTY_FORM: DrawerForm = { name: '', transport: 'stdio', command: '', url: '', argsText: '', envRows: [], tab: 'config', jsonText: '' };
 
-export interface McpPaneProps {
+interface McpPaneProps {
   readonly conn: McpPaneConn;
   /** 作用域目标项目 root(壳下发 targetRoot——下拉选哪个项目即锚哪个;'' = 全局作用域) */
   readonly root: string;

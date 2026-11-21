@@ -81,7 +81,7 @@ interface AgentFormState {
  *  的 source 与壳作用域一致，见 canWrite） */
 type DrawerState = { mode: 'add' | 'edit'; source: 'project' | 'global'; id: string };
 
-export interface AgentsPaneProps {
+interface AgentsPaneProps {
   readonly conn: AgentsPaneConn;
   /** 作用域目标项目 root（壳下发 targetRoot——下拉选哪个项目即锚哪个；'' = 全局作用域） */
   readonly root: string;

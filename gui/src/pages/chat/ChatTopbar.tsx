@@ -88,7 +88,7 @@ function ChatDynButtons({ blocks, onOpenTab }: {
   );
 }
 
-export interface ChatTopbarProps {
+interface ChatTopbarProps {
   readonly fixedTitle: string | undefined;
   readonly titleEditing: boolean;
   readonly titleDraft: string;

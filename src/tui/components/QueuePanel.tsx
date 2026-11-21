@@ -4,7 +4,7 @@ import { theme } from '../theme';
 import type { SteerItem } from '../../session/kernel';
 
 /** 每页窗口行数（BrowseList 同口径：每页 8 个窗口，超出即翻页） */
-export const QUEUE_PAGE_ROWS = 8;
+const QUEUE_PAGE_ROWS = 8;
 
 /** 等待队列管理面板（P5 spec §12.3，Ctrl+Q 开合；键分发收编 use-queue-keys，本组件纯渲染）：
  *  查看（序号 + 插入发送标记 + 文本）/ 编辑 E（draft 行内联，Enter 提交）/ 删除 D / 插入 I /

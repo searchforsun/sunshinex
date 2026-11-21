@@ -7,7 +7,7 @@
  */
 import { notifyUiPref } from './ui-pref-sync';
 
-export type DarkSurfaceKey = 'bubbles' | 'code';
+type DarkSurfaceKey = 'bubbles' | 'code';
 
 const LS_KEYS: Record<DarkSurfaceKey, string> = {
   bubbles: 'sunshinex.dark-bubbles',

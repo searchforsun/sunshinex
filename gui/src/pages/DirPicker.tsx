@@ -16,7 +16,7 @@ export interface DirPickerConn {
   dirpicker(path?: string): Promise<DirPickerResp>;
 }
 
-export interface DirPickerProps {
+interface DirPickerProps {
   conn: DirPickerConn;
   /** 确认:回抛所选目录绝对路径(自定义输入优先,缺省当前浏览路径)+ 审批勾选态(G6 mode 面) */
   onConfirm: (path: string, mode: 'acceptEdits' | 'full-access') => void;

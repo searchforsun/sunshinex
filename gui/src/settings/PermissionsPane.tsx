@@ -32,7 +32,7 @@ const permLabel = (lv: (typeof PERM_LEVELS)[number]): string => (lv === 'merged'
 const PERM_LISTS = ['deny', 'allow', 'additionalDirs'] as const;
 type PermList = (typeof PERM_LISTS)[number];
 
-export interface PermissionsPaneProps {
+interface PermissionsPaneProps {
   readonly conn: PermissionsPaneConn;
   /** 项目上下文('' = 仅全局:permissions 仅全局面,project 列退只读) */
   readonly root: string;

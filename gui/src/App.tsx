@@ -3,16 +3,14 @@ import { t } from './i18n';
 import { t as tLabel } from './i18n';
 import { GitCompare, Globe, MessageCircle, SquareTerminal, type LucideIcon } from 'lucide-react';
 import type { CSSProperties, MutableRefObject } from 'react';
-import type { Connection, ConnectionState, RewindResult, SnapshotResponse } from './connection';
+import type { Connection, ConnectionState, SnapshotResponse } from './connection';
 import type { TodoItem } from '../../src/types';
 import type { SessionProjection } from './projection';
-import { normalizePins, type PinEntry } from './sidebar/pin-store';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import { Chat } from './pages/Chat';
 import { DirOpenerContext } from './pages/chat/md-render';
 import { ChatScrollbar } from './pages/chat/ChatScrollbar';
 import type { ChatSink } from './pages/Chat';
-import type { RewindRequest } from './pages/chat/chat-types';
 import { ProjectMenu } from './sidebar/ProjectMenu';
 import { PanelLeft } from 'lucide-react';
 import { SettingsShell } from './settings/SettingsShell';
@@ -25,7 +23,7 @@ import type { WebPoolItem } from './tabs/WebTabPool';
 import { tabEntry, registryProbe } from './tabs/registry';
 import { TabSkeleton } from './tabs/TabSkeleton';
 import { REFRESHABLE_TAB_TYPES } from './tabs/sidebar-refresh';
-import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, patchTurndiffAddressing, emptyTabSession, reopenClosed, rewindSeat, adoptStaleSeats, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
+import { ensureSession, openTab, closeTab, setActive, cycleTab, reorderTab, setCollapsed, patchTabMeta, patchTurndiffAddressing, emptyTabSession, reopenClosed, adoptStaleSeats, stripTabType, addSideDismissed, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates, TabTypeId, TabParams } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
 import { WelcomeComposer } from './welcome/WelcomeComposer';
@@ -48,6 +46,8 @@ import { IS_SHELL, WindowControls, useWindowDrag } from './window-shell';
 import { usePtyRegistry } from './use-pty-registry';
 import { useAppLinks } from './use-app-links';
 import { useAppServices } from './use-app-services';
+import { useAppPins } from './use-app-pins';
+import { useAppRewind } from './use-app-rewind';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
 import { prefetchEditorIcons } from './ui-util';
 import { useCollapseTransition } from './use-collapse-transition';
@@ -300,36 +300,6 @@ function AppShell(): JSX.Element {
   /** 单连接装配(use-connection-wiring 单点):onEvent 路由/onReset 重建/挂起转投/生命周期迁
    *  钩子,依赖注入面见 ConnectionWiringDeps——装配一次([]),闭包取首渲染值,会话切换经
    *  sessionRef 与各 ref 免陈旧(原口径) */
-  /** 置顶档单源(2026-11-07 用户实测「置顶卡一下」根修轮):乐观态直更零往返;持久化双写——
-   *  本地镜像(瞬时)+gui/pins.json(服务端,重启不丢)。此前慢/Failed to fetch 真凶=daemon
-   *  keepAliveTimeout 5s 关空闲连接,浏览器池中旧 socket 上 PUT 不重试直接炸(服务端已加长 65s);
-   *  网络失败走本地镜像兜底,置顶标记永不因网络丢失 */
-  const [pins, setPins] = useState<PinEntry[]>(() => normalizePins((() => {
-    try {
-      return JSON.parse(localStorage.getItem('sunshinex.pins') ?? '[]');
-    } catch {
-      return [];
-    }
-  })()));
-  const pendingPinsRef = useRef<PinEntry[] | null>(null);
-  const persistPins = useCallback((next: PinEntry[]): void => {
-    setPins(next);
-    try {
-      localStorage.setItem('sunshinex.pins', JSON.stringify(next));
-    } catch {
-      /* 隐私模式静默 */
-    }
-    void connRef.current?.saveAppPins(next).then(
-      () => {
-        try {
-          localStorage.removeItem('sunshinex.pins'); // 服务端落库成功:本地镜像使命完成
-        } catch {
-          /* 静默 */
-        }
-      },
-      () => undefined, // 网络失败:本地镜像已在,重启读档兜底
-    );
-  }, []);
   // journal 铸造即回填(主动推送;recents 对账为断线兜底 belt):openJournalId 暂=sessionId(升级链
   // 临时身份)时,本会话铸造帧即刻换真身份——已读压读/草稿键零窗口
   const onJournalMinted = useCallback((sessionId: string, journalId: string): void => {
@@ -341,22 +311,12 @@ function AppShell(): JSX.Element {
     reopenBoardSeedWindow, bumpActs, setRecentVersion, setRunningIds, setProjection,
     setTodoBatches, setConnState, setBgTasks, setCatalogTick,
   });
+  /** 置顶档单源(pins/persistPins/服务端读档)收口 use-app-pins(D62 批H 二段一段);连接就位读档 effect 在钩子内 */
+  const { pins, persistPins } = useAppPins(connRef, connInstance);
   // 编辑器图标启动预取(2026-11-07 用户裁定「应用启动时就加载」):模块级缓存暖上,
   // 会话首帧顶栏主钮直显真图标,不再 1/4 字形→真图标跳变
   useEffect(() => {
     if (connInstance !== null) prefetchEditorIcons(connInstance);
-  }, [connInstance]);
-  // 置顶读档:服务端 gui/pins.json 权威(重启不丢),失败/缺档回落本地镜像;PUT 在途跳过防闪屏。
-  // 连接就位读一次——置顶态单源在 App,此后只经 persistPins 乐观直更,切会话不重拉
-  useEffect(() => {
-    if (connInstance === null || pendingPinsRef.current !== null || typeof connInstance.appPins !== 'function') return;
-    void connInstance.appPins().then(
-      (r) => {
-        const serverPins = normalizePins(r.pins);
-        if (serverPins.length > 0 || pendingPinsRef.current === null) setPins(serverPins);
-      },
-      () => undefined, // 网络失败:本地镜像已在初值
-    );
   }, [connInstance]);
   // 开会话播种后台任务账本(GET 一次带 outputTail;之后靠 bg-task 直播,撤 5s 轮询)
   useEffect(() => {
@@ -873,53 +833,8 @@ function AppShell(): JSX.Element {
     [agentTeamsOn],
   );
 
-  /** G14.211 onFork 跳板:实体逻辑挂 ref(每渲染刷新,无过期闭包),回调整体零依赖恒稳 */
-  const forkLatestRef = useRef((_turn?: number) => {});
-  forkLatestRef.current = (turn?: number): void => {
-    if (connInstance === null) return;
-    void connInstance
-      .sessionAnchors(openSessionId)
-      .then(async (a) => {
-        // 逐轮 fork(2026-11-04 用户裁定「fork 显示点击点之上所有记录」):turn 在场=点击 run 的
-        // 轮序位(点哪轮,分档切在该轮锚点前=新会话时间线即其上全部记录);缺省=最近轮(原行为)
-        const last = turn ?? (a.length > 0 ? a[a.length - 1]!.turn : 1);
-        const r = await connInstance.forkSession(openSessionId, last);
-        // 侧栏内容随 fork 复制(2026-11-04 用户裁定):父座位页签克隆到子座位——旁路对话页签除外
-        // (sidechat 语义绑定父档),终端剥 ptyId(pty 归父会话进程,子会话点开即新开);active 不
-        // 还原(「侧栏不必还原成父会话的打开状态」)——子座位空 active,页签条全在
-        setTabStates((s) => {
-          const p = s[openSessionId];
-          if (p === undefined || p.tabs.length === 0) return s;
-          const tabs = p.tabs
-            .filter((t) => t.type !== 'sidechat')
-            .map((t) => (t.params.ptyId !== undefined ? { ...t, params: { ...t.params, ptyId: undefined } } : t));
-          return { ...s, [r.sessionId]: { ...emptyTabSession(), tabs, activeUid: null } };
-        });
-        openSession(r.sessionId, openRoot);
-      })
-      .catch(showOpError);
-  };
-  const onForkStable = useCallback((turn: number): void => { forkLatestRef.current(turn); }, []);
-  /** 回退(2026-11-05 编辑重发/回到此轮):daemon 挂新会话对象+截短档,此处换座——正文与动态侧栏
-   *  (板/待办/子智能体/后台任务)由 openSession+快照播种按新档重建,静态页签按回退点迁座;
-   *  编辑文本走 pendingGoal 接力(播种落定才提交,回显不被整替冲掉),纯回退则原文回填新座草稿 */
-  const rewindLatestRef = useRef((_req: RewindRequest): Promise<void> => Promise.resolve());
-  rewindLatestRef.current = async ({ target, restoreFiles, resend }): Promise<void> => {
-    if (connInstance === null) return;
-    const from = openSessionId;
-    let r: RewindResult;
-    try {
-      r = await connInstance.rewindSession(from, target, restoreFiles);
-    } catch (err) {
-      showOpError(err);
-      throw err;
-    }
-    setTabStates((s) => rewindSeat(s, from, r.sessionId, r.atTs)); // 座档随 spread 带走 sideDismissed(关闭记忆随座迁移)
-    setWelcomeGoal({ root: openRoot, goal: resend.text, ...(resend.images !== undefined ? { images: resend.images } : {}) });
-    setRecentVersion((v) => v + 1);
-    openSession(r.sessionId, openRoot, r.journalId);
-  };
-  const onRewindStable = useCallback((req: RewindRequest): Promise<void> => rewindLatestRef.current(req), []);
+  /** fork/回退换座簇(forkLatestRef/rewindLatestRef 跳板+零依赖恒稳回调)收口 use-app-rewind(D62 批H 二段一段) */
+  const { onForkStable, onRewindStable } = useAppRewind({ connInstance, openSessionId, openRoot, setTabStates, openSession, showOpError, setWelcomeGoal, setRecentVersion });
 
   /** pty 记账(use-pty-registry 单点,2026-10-27 技术债轮 D53 批F 外提):terminal 标签 uid→ptyId */
   const { handlePtyAllocated, ptyIdFor, takePtyId } = usePtyRegistry(isWelcome ? WELCOME_TAB_SEAT : openSessionId, setTabStates);

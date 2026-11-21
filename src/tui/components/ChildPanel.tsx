@@ -5,7 +5,7 @@ import { formatTokens, formatDuration } from '../format';
 import { Spinner } from './Spinner';
 import { theme } from '../theme';
 
-export interface ChildRow {
+interface ChildRow {
   label: string;
   startedAt: number;
   /** 当前任务标题(teammate 委派带;行渲染「名 · 任务」,2026-10-06 用户定版)。fork 行不带 */

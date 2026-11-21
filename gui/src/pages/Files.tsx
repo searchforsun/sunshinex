@@ -27,7 +27,7 @@ import { buildMdComponents, keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from
  * web 链接仍新窗浏览器。
  */
 
-export interface FilesProps {
+interface FilesProps {
   conn: Connection;
   /** 当前会话（:id 寻址维） */
   sessionId: string;

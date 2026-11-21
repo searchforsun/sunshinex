@@ -31,7 +31,7 @@ interface ClosedHit {
 }
 type TabHit = OpenHit | ClosedHit;
 
-export interface TabSearchPopProps {
+interface TabSearchPopProps {
   readonly tabs: readonly TabInstance[];
   readonly activeUid: string | null;
   readonly recentClosed: readonly ClosedTab[];

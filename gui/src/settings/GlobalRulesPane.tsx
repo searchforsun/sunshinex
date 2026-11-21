@@ -24,7 +24,7 @@ export interface GlobalRulesPaneConn {
   sunshinePut(content: string): Promise<void>;
 }
 
-export interface GlobalRulesPaneProps {
+interface GlobalRulesPaneProps {
   readonly conn: GlobalRulesPaneConn;
   /** config-changed 'sunshine' tick（壳下发）：变化即自动重读磁盘（外部/他窗改动信号） */
   readonly refreshTick?: number;

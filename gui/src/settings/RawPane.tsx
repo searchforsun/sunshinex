@@ -45,7 +45,7 @@ export interface RawPaneConn {
 }
 
 
-export interface RawPaneProps {
+interface RawPaneProps {
   readonly conn: RawPaneConn;
   /** 已退役注入面(2026-10-31 用户裁定恒全局):壳仍下发 scope/root 但本面不再消费——
    *  字段留置保壳层接线零变化;refreshTick 不由壳下发(raw 跨 settings+mcp 两资源——

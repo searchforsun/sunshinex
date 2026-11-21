@@ -126,7 +126,7 @@ function removeMermaidTemp(id: string): void {
 
 /** G14.86 语法容错:未加引号的节点标签含 < / > / ? 时自动补双引号(模型产出高频病——
  *  裸标签遇 HTML 敏感字符 mermaid 解析必炸回退源码);已引号标签(含 <br>)不动 */
-export function repairMermaid(chart: string): string {
+function repairMermaid(chart: string): string {
   return chart.replace(
     /(\[\[|\[|\(|\(\()([^"[\()<>]*[<>?][^"[\()<>]*)(\]\]|\]|\)|\)\))/g,
     (_m, open, label, close) => `${open}"${label.trim().replace(/"/g, '#quot;')}"${close}`,

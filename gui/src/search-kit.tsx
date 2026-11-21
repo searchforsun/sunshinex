@@ -9,7 +9,7 @@ import { t } from './i18n';
  */
 
 /** 分类条单项 */
-export interface SearchCatDef {
+interface SearchCatDef {
   readonly id: string;
   readonly en: string;
   readonly zh: string;
@@ -51,7 +51,7 @@ export function SearchSectionHead(props: { readonly label: string }): JSX.Elemen
   );
 }
 
-export interface SearchListNav<T extends HTMLElement> {
+interface SearchListNav<T extends HTMLElement> {
   /** 键盘选中下标(0 起;列表空时恒 0) */
   readonly active: number;
   readonly setActive: (index: number) => void;

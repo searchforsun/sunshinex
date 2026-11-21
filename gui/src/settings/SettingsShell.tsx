@@ -97,7 +97,7 @@ const ADVANCED_IDS = new Set(SETTINGS_GROUPS.filter((g) => g.advanced === true).
 
 /** 错误文案归一:G8e-T2 抽共享 ui-util */
 
-export interface SettingsShellProps {
+interface SettingsShellProps {
   readonly conn: SettingsShellConn;
   /** 隐式项目上下文('' = 仅全局;App 快照打开设置时的活动工作区,无切换面) */
   readonly root: string;

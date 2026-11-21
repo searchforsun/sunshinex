@@ -21,7 +21,7 @@ import { SearchCatBar, useSearchListNav } from '../search-kit';
  * 文件行点击 = openTab('file', { path })。会话切换整体重置(G8b-T7 评审 #1)。
  */
 
-export interface DirectoryTabProps {
+interface DirectoryTabProps {
   readonly conn: Connection;
   /** 当前会话（:id 寻址维） */
   readonly sessionId: string;

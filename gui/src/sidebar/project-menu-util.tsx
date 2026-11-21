@@ -210,7 +210,7 @@ function ArchiveConfirmButton(props: {
 
 /** 会话行悬浮卡数据(2026-10-26 用户裁定四段制):完整会话名/分支/轮次步数/建档时刻;
  *  2026-10-27 增补:rootPath=所属项目根路径(名下细分割线后换行展示) */
-export interface SessionRowInfo {
+interface SessionRowInfo {
   readonly branch?: string;
   readonly runs?: number;
   readonly steps?: number;
@@ -491,8 +491,8 @@ function CardCopy(props: { text: string; label: string }): JSX.Element {
 }
 
 /** 组头排序弹层 zIndex 单点（D75 收敛,2026-11-16：两处直写魔数退役）——遮罩在下、弹层在上 */
-export const SORT_OVERLAY_Z = 44;
-export const SORT_POP_Z = 45;
+const SORT_OVERLAY_Z = 44;
+const SORT_POP_Z = 45;
 
 /** 组头排序钮+radio 弹层共用件（D75 收敛,2026-11-16：sunx 二选与 projects 三选近逐字双写
  *  收编单点）——遮罩点击即收（不挡弹层自身,z 序在弹层之下）、选中项 Check 徽标、选项面经

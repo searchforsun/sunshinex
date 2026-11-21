@@ -6,7 +6,7 @@ import { createContext } from 'react';
 import { loadTurnUndone, markPathUndone, markRunUndone, runUndone, undonePaths } from './turn-undone-store';
 export { loadTurnUndone, undonePaths };
 
-export interface TurnUndoApi {
+interface TurnUndoApi {
   /** 当前打开会话的 journal id(缺场=新座,不持久化) */
   readonly journalId: string;
   isRunUndone(journalId: string, run: number): boolean;

@@ -98,7 +98,7 @@ function mergeMembers(checked: string[], extraText: string): string[] {
   return merged;
 }
 
-export interface TeamsPaneProps {
+interface TeamsPaneProps {
   readonly conn: TeamsPaneConn;
   /** 作用域目标项目 root（壳下发 targetRoot——下拉选哪个项目即锚哪个；'' = 全局作用域） */
   readonly root?: string;

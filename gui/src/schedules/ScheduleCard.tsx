@@ -7,7 +7,7 @@ import type { ScheduleJobView } from '../connection';
  * 内容两行截断、倒计时行(停用=已暂停/ended=已结束)。工作区/强度/上次运行徽标不落卡面。
  * 卡体点击进执行记录;开关/⋯/菜单项各自 stopPropagation,不误触卡体跳转。
  */
-export interface ScheduleCardProps {
+interface ScheduleCardProps {
   readonly job: ScheduleJobView;
   readonly now: number;
   readonly busy: boolean;

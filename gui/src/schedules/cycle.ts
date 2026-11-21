@@ -32,7 +32,7 @@ export function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-export function hhmm(hour: number, minute: number): string {
+function hhmm(hour: number, minute: number): string {
   return `${pad2(hour)}:${pad2(minute)}`;
 }
 

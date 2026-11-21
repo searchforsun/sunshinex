@@ -30,7 +30,7 @@ import { useDeveloperMode } from '../developer-mode';
  * 一 pane 实例一过滤态;过滤激活时特例行(theme/zoom/font)一并滤除,全不命中显空态。
  */
 
-export interface SettingsFieldDef {
+interface SettingsFieldDef {
   readonly key: string;
   /** text/number=自由输入;select=闭集弹层;combo=自由文本+动态建议;path=文本+右侧选择钮(pick 定目录/文件);
    *  switch=布尔开关(2026-11-17 用户裁定「有开关的下拉都换开关,默认值开或关」——未设置显 SELECT_DEFAULT_VALUES 默认档,拨动写 on/off) */
@@ -159,7 +159,7 @@ const num = (key: string, limits?: { min?: number; max?: number; step?: number; 
   ...(limits ?? {}),
 });
 /** 闭集选项(lz=中文标签,渲染期 t 求值——选项标签曾于模块加载期 t() 冻结,切中文后仍显英文) */
-export type SettingsOption = SelectOption & { readonly lz?: string };
+type SettingsOption = SelectOption & { readonly lz?: string };
 const sel = (key: string, options: readonly SettingsOption[]): SettingsFieldDef => ({ key, control: 'select', options });
 /** 布尔开关行(2026-11-17 用户裁定):on/off 二态键统一换 Switch——未设置按 SELECT_DEFAULT_VALUES 默认档显态 */
 const sw = (key: string): SettingsFieldDef => ({ key, control: 'switch' });
@@ -274,7 +274,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
 
 
 
-export interface SettingsFormProps {
+interface SettingsFormProps {
   readonly conn: SettingsFormConn;
   /** 项目上下文('' = 仅全局;读面归一为省参;source='project' 行的写回锚) */
   readonly root: string;

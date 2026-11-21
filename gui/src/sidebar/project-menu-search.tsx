@@ -41,7 +41,7 @@ function scheduleMetaOf(job: ScheduleJobView): string {
  *  + Enter 直达;宽度参考整体应用宽度(不绑主会话列宽)。覆盖类型:
  *  项目/会话/SUNX/定时任务(内容) + 设置项/快捷键说明(设置页直达行锚) + 操作(菜单动作)——
  *  「不用单独点击设置页、菜单、侧栏的东西」全部从搜索框直达。 */
-export interface ProjectSearchProps {
+interface ProjectSearchProps {
   readonly rows: WorkspaceRow[] | null;
   readonly allSessions: ReadonlyArray<SessionHit> | null;
   /** SUNX 域会话全域枚举(null=装载中) */

@@ -251,7 +251,7 @@ export function messageTimeMs(ms: number, now: number = Date.now()): string {
 }
 
 /** G14.69 原生工作区选择结果:null=用户取消;字符串态=降级原因(GUI 回退自建目录浏览) */
-export type WorkspacePickResult = { path: string } | 'unsupported' | 'denied' | 'timeout' | null;
+type WorkspacePickResult = { path: string } | 'unsupported' | 'denied' | 'timeout' | null;
 
 interface PickDirHandle {
   requestPermission(opts: { mode: 'read' | 'readwrite' }): Promise<PermissionState>;

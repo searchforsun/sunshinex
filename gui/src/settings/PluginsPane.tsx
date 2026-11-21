@@ -48,7 +48,7 @@ export interface PluginsPaneConn {
   putPlugin(root: string | undefined, id: string, patch: { enabled?: boolean; config?: Record<string, unknown> }): Promise<void>;
 }
 
-export interface PluginsPaneProps {
+interface PluginsPaneProps {
   readonly conn: PluginsPaneConn;
   /** 作用域目标项目 root(壳下发 targetRoot——下拉选哪个项目即锚哪个;'' = 全局作用域) */
   readonly root: string;

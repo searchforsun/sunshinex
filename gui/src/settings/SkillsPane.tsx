@@ -69,7 +69,7 @@ interface SkillRow {
   readonly disabled?: boolean;
 }
 
-export interface SkillsPaneProps {
+interface SkillsPaneProps {
   readonly conn: SkillsPaneConn;
   /** 快照项目上下文(缺省选项面兜底——scopeOptions 未接时缺省 全局+当前 root;数据面不消费:
    *  target 三态各走各的取参,见头注) */

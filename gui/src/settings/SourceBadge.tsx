@@ -8,7 +8,7 @@
  */
 
 import { t } from '../i18n';
-export type SettingsSource = 'env' | 'project' | 'global' | 'default' | 'builtin' | 'user';
+type SettingsSource = 'env' | 'project' | 'global' | 'default' | 'builtin' | 'user';
 
 /** 非默认五态的文案与说明(default 无徽标不载;双语对渲染期 t() 求值——G14.213 设置面 i18n) */
 const BADGES: Record<Exclude<SettingsSource, 'default'>, { en: string; zh: string; titleEn: string; titleZh: string }> = {

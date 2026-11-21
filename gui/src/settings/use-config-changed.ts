@@ -23,7 +23,7 @@ export type { ConfigChangedInfo };
  */
 
 /** 合并窗(毫秒):同 resource 帧到达间隔小于此值合并为单次 tick 递增 */
-export const CONFIG_CHANGED_DEBOUNCE_MS = 200;
+const CONFIG_CHANGED_DEBOUNCE_MS = 200;
 
 /** 订阅源窄面(Connection 结构满足即收;pane conn 面未含时经 SettingsShellConn 并入) */
 export interface ConfigChangedSource {

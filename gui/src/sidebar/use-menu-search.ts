@@ -3,13 +3,13 @@ import type { ScheduleJobView, SessionRow, WorkspaceRow } from '../connection';
 import { visibleWorkspaces } from './project-menu-util';
 
 /** 聚合搜索连接面(结构满足即收;App 实传整只 Connection 运行时满足) */
-export interface MenuSearchConn {
+interface MenuSearchConn {
   sessionsOf(root: string): Promise<SessionRow[]>;
   /** 定时任务面(GET /schedules):搜索分类用;旧桩缺名=不出定时任务分类 */
   schedules?(): Promise<{ jobs: ScheduleJobView[] }>;
 }
 
-export type MenuSearchRow = SessionRow & { root: string; slug: string };
+type MenuSearchRow = SessionRow & { root: string; slug: string };
 
 /**
  * 侧栏聚合搜索簇(ProjectMenu 外提,D62 批J):查找面板开合态+查询词+全部工作区会话扁平集

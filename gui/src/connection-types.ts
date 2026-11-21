@@ -34,7 +34,7 @@ import type { Delegation } from '../../src/delegation/projection';
 /** 粗粒度转录条目(对齐主仓 src/serve/transcript.ts TranscriptEntry;G4 对齐五 kind——
  *  notice/error 归档面在档,三 kind 子集声明会静默窄化种子数据)。images=user 条随行图片附件
  *  (dataURL 形态,daemon KernelEntry 直映——气泡缩略图数据源) */
-export interface SnapshotMessage {
+interface SnapshotMessage {
   seq: number;
   ts: number;
   kind: 'user' | 'assistant' | 'tool' | 'notice' | 'error';
@@ -656,7 +656,7 @@ export interface PluginRow {
 // ---------- 定时任务面类型（2026-11-20 scheduled-tasks Task 7；字段形与 daemon /schedules* 应答同形） ----------
 
 /** 重复规则单位（对齐 daemon RecurrenceUnit） */
-export type ScheduleRecurrenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
+type ScheduleRecurrenceUnit = 'minute' | 'hour' | 'day' | 'weekday' | 'week' | 'month' | 'year';
 
 /** 存储 recurrence（对齐 daemon ScheduleRecurrence）：at=HH:mm，weekdays=ISO 星期（1=周一..7=周日），
  *  dayOfMonth/month(1-12)/day=各周期锚点字段——cycle.ts 的 recurrenceOf/cycleOf 双映射单点 */

@@ -18,7 +18,7 @@ import { ScheduleRuns } from './ScheduleRuns';
  * 列表 10s 静默重拉、1s 倒计时 tick；保存/取消/记录返回后对应卡 is-focus ~1.6s；
  * Esc 层级：创建下拉/卡片菜单 → 配置/记录 → 列表 → onExit。删除两步确认（首点改文案，再点才发）。
  */
-export interface SchedulePageProps {
+interface SchedulePageProps {
   readonly conn: Connection;
   readonly onOpenSession: (journalId: string, root: string) => void;
   readonly onExit: () => void;

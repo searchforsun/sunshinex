@@ -9,7 +9,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-export interface LiveChangeFile {
+interface LiveChangeFile {
   path: string;
   status: string;
   added: number | null;
@@ -18,7 +18,7 @@ export interface LiveChangeFile {
 }
 
 /** undefined=首拉未落定(汇总条暂不渲染,免闪出已提交项);null=拉取失败(回落轮记录) */
-export type LiveChanges = readonly LiveChangeFile[] | null | undefined;
+type LiveChanges = readonly LiveChangeFile[] | null | undefined;
 
 export const LiveChangesContext = createContext<LiveChanges>(null);
 

@@ -98,7 +98,7 @@ export interface ProjectMenuConn {
   deleteSession(id: string): Promise<void>;
 }
 
-export interface ProjectMenuProps {
+interface ProjectMenuProps {
   readonly conn: ProjectMenuConn;
   readonly connState: string; // 'connecting'|'online'|'offline'|'reconnecting'(显示态)
   readonly activeSessionId: string; // '' = 无会话

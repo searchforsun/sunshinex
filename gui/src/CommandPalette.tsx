@@ -85,7 +85,7 @@ export function filterCommands(
     .sort((a, b) => a.idx - b.idx);
 }
 
-export interface CommandPaletteProps {
+interface CommandPaletteProps {
   readonly items: CmdItem[];
   readonly active: number;
   readonly onHover: (index: number) => void;

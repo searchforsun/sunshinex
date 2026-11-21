@@ -11,7 +11,7 @@ import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView, S
  * 取数单点 conn.scheduleRuns(job.id),挂载/任务切换重取;`tick`(页面轮询计数)变化时静默刷新
  * (旧行保留,不闪加载态——配合列表 10s 重拉,运行中记录到点转终态);空态与取数失败各有独立文案。
  */
-export interface ScheduleRunsProps {
+interface ScheduleRunsProps {
   readonly conn: Connection;
   readonly job: ScheduleJobView;
   readonly onOpenSession: (journalId: string, root: string) => void;
