@@ -52,7 +52,7 @@ src/serve/channels/
     types.ts      # ChannelAdapter SPI（§3）
     dingtalk.ts   # 钉钉 Stream（dingtalk-stream npm）
     feishu.ts     # 飞书长连接（@larksuiteoapi/node-sdk WSClient）
-    wecom.ts      # 企微智能机器人 WS 长连接（自研 ws 客户端，协议见 §8）
+    wecom.ts      # 企微智能机器人 WS 长连接（自研 ws 客户端，协议见 §10）
     telegram.ts   # Telegram long polling（实现量最小，作 SPI 中立性样板/测试夹具）
     mock.ts       # 测试夹具（内存适配器，单测/e2e 用——schedules 测试口径）
 src/config/channels.ts  # settings.json `channels` 语义键装载（providers.ts 模板：形状裁决单点，§4）
@@ -83,9 +83,10 @@ daemon 装配点（全部有 schedules 先例可抄）：
   - 配置 CRUD/启停走 **`GET|PUT /settings/channels` 结构化键写面**（同 `/settings/plugins` :987-988
     先例——settings 语义键的 HTTP 读写既有路径，RawPane/搜索直达/config-changed 全部免费继承）；
   - `/channels` 只留运行时运维面（auth:true）：GET `/channels`（健康快照）、POST `/channels/:id/test`
-    （连接测试）、GET/DELETE `/channels/bindings`（绑定管理）；
+    （连接测试）、GET/DELETE `/channels/bindings`（绑定管理）、GET `/channels/sessions`（通道域会话
+    枚举——扫 channels 容器各域 listSessions 归并，`GET /sunx/sessions` 同构，侧栏「通道」组数据源 §9）；
   - webhook 形态通道的回调端点（auth:false + 适配器自验签，`/healthz` :613 先例；v1 仅长连接
-    形态，webhook 留 §9 P3）。
+    形态，webhook 留 §10 P3）。
 
 ## 3. 平台适配器 SPI（唯一每平台一变的接口）
 
@@ -96,6 +97,7 @@ interface InboundMessage {
   chatId: string;             // 平台会话标识（单聊 cid / 群聊 chatid）
   chatKind: 'direct' | 'group';
   userId: string;             // 平台用户标识（staffId/openid/...）
+  userDisplay?: string;       // 发送者显示名（适配器入站顺手带；群聊定向回复/消息前缀用）
   msgId: string;              // 平台消息 id——幂等去重键（平台重推/长连接重放）
   text?: string;
   images?: string[];          // 规范化为本地文件路径/dataURL——直喂 SessionRuntime.submit images 参
@@ -137,6 +139,11 @@ interface ChannelAdapter {
 - **图片双通道**：入站 `images` 规范化后直喂 `submit(goal, images)`（session.ts:1438 已有 images 参，
   spillImages 落盘链现成）；出站 `OutboundMessage.attachments` 由适配器自行上传平台文件接口。
 - **幂等在引擎/router 不在适配器**：`msgId` 去重表（LRU）由 router 统一维护。
+- **定向回复（群聊 @ 指定人，2026-11-21 用户裁定）**：入站带 `userDisplay`（发送者显示名，适配器
+  入站时顺手取——telegram `from.first_name`、飞书/钉钉事件载荷 sender 名）；出站统一走「文本前缀
+  `@display`」由引擎包装（engine 每 binding 记最近触发发送者——**谁触发这一轮，回复就 @ 谁**）；
+  平台原生语义（telegram `reply_to_message_id`、飞书 `im.message.reply`、钉钉 at 结构）留作适配器
+  增强，P0 统一前缀档，不写平台分支。
 
 ## 4. 入站管线（router.ts，平台无关）
 
@@ -147,15 +154,30 @@ InboundMessage → [msgId 去重] → [准入校验] → [指令解析] → [绑
 1. **去重**：`channel:msgId` LRU 集（如 4096 条），命中即丢弃。
 2. **准入**（§5.2 安全模型）：allowlist 未命中 → 静默丢弃或提示（可配）；群聊且 `!atBot` → 丢弃。
 3. **指令解析**：`/new`、`/stop`、`/status`、`/mode`、`/help` 等**在 router 层短路处理，不进模型**。
-   v1 最小集：`/new`（新建会话并重绑）、`/stop`（interrupt）、`/help`。
+   v1 最小集：`/new`（**同聊天内**新建会话并重绑——binding 覆写指向新 sessionId/journalId，
+   `lockedUserId`/`rootOverride` 等绑定元数据保留；旧 runtime 释放、journal 留盘可回看，
+   同域 `data/sessions/` 下多条会话记录共存）、`/stop`（interrupt）、`/help`。
 4. **绑定解析**：`bindings` 表按 `channel:chatId` 查绑定：
    - 有绑定且运行时在座 → 直接用；
    - 有绑定但 daemon 重启过（运行时不在注册表）→ `io.attach(journalId)` 重开（schedules 记录
      「journal 留盘可重建」同语义）；
-   - 无绑定 → `createSession(binding.root, { activate: false, mode, model })` + `writeSessionMeta`
+   - 无绑定 → **root 解析**：`cfg.root === 'auto'`（缺省）→ 铸造**聊天专属域**（两级，**data 与
+     工作区平级、不嵌套**）：
+     `<channelsContainerDir()>/im-<channelSlug>-<chatSlug>/{workspace,data}`——容器
+     `~/.sunshinex/channels/`（SUNSHINEX_CHANNELS_DIR 覆盖，sunxContainerDir 同款惯例；
+     `src/slug.ts` slugify 单点规则；mkdir 幂等）。**createSession 的 root = `<域>/workspace`**
+     （agent 工作目录，任务文件产出落这里）；`resolveDataDir` 增分支：root 位于 channels 容器内 →
+     dataDir = `<域>/data`（容器内首段即域目录；否则仍走 projectsRoot slug 常规路径）。**data 平级
+     隔离的裁定**（2026-11-21 用户：data 不得嵌在工作区内——full-access 的 agent 不得能一脚踩碎
+     自己的会话账本；常规项目 root 与 data 异树、sunx 域是纯持久化域，均无此问题，channels 不做
+     嵌套形态）。**严格三分容器**（channels 独立容器，不混居 projects——与 sunx 对称；代价 =
+     专用枚举面 + 侧栏专属分组，见 §9）。目录爆炸面由准入管住（first-user=每通道 1 个聊天，
+     list=人工名单）。显式配置真实项目 root = 高级用法（配合 mode 收窄）。
+     → `createSession(root, { activate: false, mode, model })` + `writeSessionMeta`
      （`channel: 'feishu'` 标记，侧栏图标同 `scheduled: true` 先例，§7.4）。
 5. **提交分派**（G3 双态，与 GUI use-chat-submit 同口径）：
-   - `session.status() === 'idle'` → `session.submit(text, images)`——IM 消息就是**普通用户提交**
+   - `session.status() === 'idle'` → `session.submit(text, images)`（**群聊提交注入发送者前缀**
+     `[来自 ${userDisplay}]: ${text}`——多人群聊上下文可归因；单聊不加，一会话一人）——IM 消息就是**普通用户提交**
      （markUserActivity 路径，不新增 submit wake 形态——唤醒轮是「无人驱动」语义，IM 有真人在场，
      不得混入 wake 词汇/唤醒预算）；
    - `running` → `session.steer(text, images)`——运行中插话排队，步边界注入，恒受理。
@@ -185,7 +207,7 @@ settings.json `channels` 键形状（零密钥）：
 ```jsonc
 "channels": [
   { "id": "feishu-main", "platform": "feishu", "enabled": true,
-    "root": "D:/work/proj",         // 绑定工作区（createSession 的 root）
+    "root": "auto",                 // 'auto'=聊天专属工作区（缺省，§4 绑定解析）；显式路径=绑定真实项目（高级）
     "mode": "read-only",            // 该通道建会话的权限模式——安全缺省（§5.3）
     "model": undefined,             // undefined=跟随全局默认
     "allow": { "kind": "first-user" } // 仅首次对话用户 | { "kind": "list", "userIds": [...], "chatIds": [...] } | { "kind": "all" }
@@ -201,6 +223,7 @@ settings.json `channels` 键形状（零密钥）：
   "bindings": [
     { "key": "feishu-main:oc_yyy", "sessionId": "s7", "journalId": "j3",
       "lockedUserId": "ou_xxx",     // allow.kind='first-user' 时首聊锁定
+      "rootOverride": undefined,    // §9.3 聊天信息条「绑定工作区切换」写入；下次 /new 生效
       "updatedAt": 1763700000000 }
   ]
 }
@@ -220,6 +243,9 @@ settings.json `channels` 键形状（零密钥）：
 - **终稿兜底**：`session.onRunEnd`（session.ts:1421，**一次性观察者**——executor.ts:104「每轮注册」
   同款，每轮提交后重新注册）在收尾时投递终稿 + 终态注记（失败/中断附 stopReason——schedules
   finish 的 status 映射同构 ：123）。
+- **定向回复**：投递前缀 `@<lastSender>`（engine 每 binding 记最近触发发送者，router 每次入站经
+  `noteSender` 回写——群聊回复回给 @ 机器人的那个人；display 缺失不加前缀；streaming 全量替换帧
+  不加前缀，分段/终稿 deliver 加）。
 
 ### 5.2 审批 / 提问面映射
 
@@ -240,6 +266,32 @@ settings.json `channels` 键形状（零密钥）：
 - **凭证分离（D6 口径）**：密钥只走 env 槽（`SUNSHINEX_CHANNEL_SECRET_<名>`），settings 语义键与
   凭据分离——channels 键零密钥，settings.json 不因通道新增暴露面；GUI 展示脱敏（`••••`+尾 4）。
 - **channels 键全局豁免**：项目级整键忽略（§4 存储总览 1）——克隆仓库不得借项目档注入外连目标。
+- **userConfigDir 白名单围栏（2026-11-21 用户裁定「好好盘一下」：不影响应用运行的内容性目录
+  放行，方便 agent 协助修改）**：agent 写族在 `~/.sunshinex/` 内**仅白名单放行，其余一律恒拒**
+  （硬底线：full-access 不放行、用户 allow 不可放宽——产品硬底线先于用户规则）。白名单均为
+  内容性目录，写坏不伤应用运行：
+
+  | 白名单 | 内容 | 来源 |
+  |---|---|---|
+  | 自 `<dataDir>/skills/**` | 学习技能写入面 | 既有窄口（skills.ts:37） |
+  | 自 `<dataDir>/memory/**` | 记忆 | 既有窄口（memoryWriteAllowed） |
+  | `~/.sunshinex/skills/**` | 用户级技能库 | 本轮新放行（原保守裁定不放行，按「协助修改」口径升级） |
+  | `~/.sunshinex/agents/**` | 智能体全局目录 | 本轮新放行；项目级 `<root>/.sunshinex/agents` 随 root 信任域天然可写 |
+  | `~/.sunshinex/teams/**` | 预定义智能体团队（team.md 用户级根，userTeamsDir） | 本轮新放行（与 agents 同性质——用户手写内容，协助建团队/改章程；**会话级 `<dataDir>/teams/<journalId>/` 板面运行态不在此列**，仍随 dataDir 围栏只读） |
+  | `~/.sunshinex/SUNSHINE.md` | 全局规范单档 | 本轮新放行（品性高影响面，纯内容、可回改） |
+
+  **恒拒采样（白名单外全部恒拒，fail-closed 防漏）**：settings.json（既有两级硬保护）、
+  mcp.json（MCP 注入面）、serve-token（凭证；读面收紧列后续增强）、schedules.json（引擎独占档，
+  agent 建任务走 create_scheduled_task 工具为合法通道）、channels-bindings.json（router 独享）、
+  pty-replay/**、gui/**（应用私有态）、plugins/**（**篡改 = 下次装配任意代码执行**，
+  最高敏）、projects/*/data/**、sunx/*/data/**、channels/*/data/**——**三容器 data 只读成为
+  白名单围栏的自然子集，不再单列条款**；自 dataDir 的 skills/memory 两窄口在更早求值已放行
+  （白名单判定不覆盖 dataDir 子树内路径，避免双判）。读不设限照旧（只拦写族 WRITE_TOOL_NAMES）。
+
+  落点：chain.ts 写分支——`inUserConfig && !whitelisted → 恒拒` 置于硬底线区（settings.json/.git
+  邻位，先于 worktree 拒写/用户规则），**取代 `inUserConfig` 整根直放**（现序正是洞：整根放行
+  先于数据只读，缺省布局下三容器 data 实际可写）。root 族信任域放行不变（工作区内容本就
+  agent 可写）。landlock 可写根收敛（:324 现含 `~/.sunshinex` 整根）列为增强，工具层守卫为准。
 - **命令面最小化**：router 指令不提供模式提权外的会话操作；`/mode` 提权仅 allowlist 用户可用。
 
 ## 6. 主动外呼：`send_channel_message` 工具（模型可调）
@@ -269,6 +321,9 @@ lifecycleIo，工具面 `send_channel_message(channel?, chat_id, text)`（channe
    分发（全局形态）+ `ChannelsPaneConn` 并入 `SettingsShellConn`（`gui/src/connection.ts`/
    `connection-api.ts` 加 channels 族端点封装）+ `settings-search.ts` 条目
    （config-changed 复用既有 settings resource tick，无新增 resource）。
+7. **侧栏「通道」分组 + Chat 聊天信息条**（§9 全节）：`resolveDataDir` channels 容器分支 +
+   `GET /channels/sessions` 枚举面 + `ChannelsSection`/`use-menu-channels`（project-menu-sunx 先例）
+   + Chat 通道信息条（绑定信息展示 + rootOverride/解绑两可编辑项）。
 
 不动的：session/kernel/steer 语义（零新增 submit 形态）、回环绑定与鉴权模型（出站长连接不触）、
 WS 协议、GUI 会话数据流（Chat.tsx 链路）。
@@ -300,7 +355,7 @@ settings.json 全局 `channels` 结构化语义键（§4 存储总览），读�
 | 字段 | 控件 | 缺省 | 落点 | 说明 |
 |---|---|---|---|---|
 | 启用 | `Switch` | 关 | `enabled` | 开=引擎 start 该适配器；关=stop（单适配器热生效，不动其它通道） |
-| 工作区 | 下拉 | 当前打开项目 | `root` | 选项=GET `/workspaces` 注册表（SettingsShell 已有同源数据源）；`createSession` 的 root |
+| 工作区 | 下拉 | 聊天专属工作区（自动） | `root` | 首选项「聊天专属工作区（自动）」= `root:'auto'`（§4 绑定解析：每聊天铸造专属工作区目录）；其余选项=GET `/workspaces` 注册表（绑定真实项目为高级用法，配合 mode 收窄） |
 | 权限模式 | 下拉 | read-only | `mode` | 三档同 schedules；选 full-access 红字警示（IM 远程驱动写面风险） |
 | 模型 | 下拉 | 跟随全局默认 | `model` | 缺省项「跟随全局默认」+ daemon 模型清单（GET `/model` choices）；undefined=不传 per-session model |
 | 准入 | 下拉 | 仅首次对话用户 | `allow` | 三档：**仅首次对话用户**（首条私聊消息自动锁定该 userId，零手填）/ 自定义白名单（展开粘贴 userId 列表）/ 不限（红字警告） |
@@ -340,7 +395,42 @@ settings.json 全局 `channels` 结构化语义键（§4 存储总览），读�
 - **config-changed**：复用既有 `settings` resource tick（`channels` 是 settings 语义键，外部直改
   settings.json 时面板经现有 use-config-changed 自动重拉，无需新 resource）。
 
-## 9. 平台接入矩阵（适配器实现速查）
+## 9. GUI 侧栏「通道」分组与聊天信息条
+
+通道会话独立容器（§4）后，GUI 侧栏需要专属入口。全部照 sunx 的 GUI 先例平移
+（`project-menu-sunx.tsx`/`use-menu-sunx.ts`/`conn.sunxSessions()`）。
+
+### 9.1 侧栏「通道」分组
+
+- **数据源**：`GET /channels/sessions` → `SessionRow[]`——扫 `channelsContainerDir()` 各域
+  `<domainSlug>/data` 逐域 listSessions 归并（`GET /sunx/sessions` 同构）；行带 root（域目录）。
+- **侧栏组**：ProjectMenu 新「通道」组（`ChannelsSection` + `use-menu-channels`，SunxSection 先例）；
+  行展示 = 平台图标（飞书/钉钉/企微/Telegram）+ 聊天标识（domainSlug 反解/通道名）+ 会话标题。
+- **点击**：`attach(root, journalId)` 直寻址重开（rows 带 root；sunxAttach 同语义）。
+
+### 9.2 用户能否在 GUI 内正常发消息——能（说明）
+
+通道会话就是普通 `SessionRuntime`：侧栏「通道」组点开 = attach 进正常 Chat 视图，输入框
+submit（空闲）/steer（运行中）与 IM 消息进**同一条上下文链**——GUI 和 IM 是同一会话的两个入口。
+差异只有两处：① GUI 提交不带 `[来自 xx]` 前缀（非 IM 消息）；② IM 侧准入与指令（/new /stop）只在
+IM 侧生效。审批卡、计划模式、worktree 等 Chat 全部能力照常可用。
+
+### 9.3 聊天信息条（会话信息 + 可编辑配置）
+
+激活会话属通道域（journalId 命中 `bindings.journalId`）时，Chat 页渲染通道信息条（数据源
+`GET /channels/bindings` join 通道配置）：
+
+- **只读信息**：平台（图标+名）、通道实例名（channel id）、聊天 id + 单聊/群聊、
+  锁定用户（first-user 模式）、绑定时间、**工作区归属**（「沙箱域」/「真实项目: <path>」；
+  rootOverride 在场但未生效时并列「下次 /new 将切至 <目标>」待生效态——三态显示，
+  2026-11-21 用户裁定：会话信息须区分实际工作区是沙箱还是真实工作区）。
+- **可编辑配置（聊天界面特殊项）**：
+  1. **绑定工作区切换**（下拉：聊天专属域（当前）/ 注册项目）→ 写 `bindings.rootOverride`
+     （§4 schema 增列），**下次 /new 或解绑重聊生效**，当前会话不动；
+  2. **解绑**按钮（DELETE `/channels/bindings/:key`）→ 下一条 IM 消息起全新会话（等价 IM 侧 /new）。
+- 会话级 mode/model 编辑复用 Chat 顶部既有控件，不另造。
+
+## 10. 平台接入矩阵（适配器实现速查）
 
 | 平台 | SDK/协议 | 回复语义 | 备注 |
 |---|---|---|---|
@@ -352,7 +442,7 @@ settings.json 全局 `channels` 结构化语义键（§4 存储总览），读�
 | 微信个人号 | —— | —— | **不接入**：无官方 API，非官方协议封号风险 |
 | Slack/Discord | Socket Mode / Gateway（均出站 WS） | 平台 SDK | SPI 即插，无排期 |
 
-## 10. 分期
+## 11. 分期
 
 - **P0 骨架**：`src/serve/channels/` 五件套 + SPI + router/reply 全管线 + mock 适配器 e2e
   （消息→会话→回推全链路断言；daemon.test 的 schedules 用例同口径）。此时已可用 `/channels`
@@ -360,10 +450,11 @@ settings.json 全局 `channels` 结构化语义键（§4 存储总览），读�
 - **P1 首批生产通道**：飞书 + Telegram（一个国内主力 + 一个最简验证）。交付：凭证配置、准入、
   ack、终稿回推、`/new`/`/stop`/`/help`、审批文本回退。
 - **P2**：钉钉（Stream）+ 企微（自研 ws 协议，流式 + 卡片）+ `send_channel_message` 工具 +
-  GUI 设置页通道 pane（§8：每通道一配置组、通用组全下拉、凭证免手填三原则）+ 侧栏通道图标。
+  GUI 设置页通道 pane（§8：每通道一配置组、通用组全下拉、凭证免手填三原则）+ 侧栏「通道」分组与
+  聊天信息条（§9）+ 侧栏通道图标。
 - **P3**：公众号 webhook 形态（daemon route auth:false + 验签）+ 流式投影打磨（飞书卡片更新）。
 
-## 11. 测试策略
+## 12. 测试策略
 
 - **mock 适配器**为唯一权威夹具：`start` 后由测试注入 `InboundMessage`，断言 binding 创建/submit/
   steer 分派、去重、准入拒绝、指令短路；回推断言走 daemon 帧订阅 seam（不必真 IM）。
