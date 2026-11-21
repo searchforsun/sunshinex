@@ -344,6 +344,24 @@ test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调
   assert.deepEqual(h3.noteSenders, [{ sessionId: 's1', display: 'u9' }]);
 });
 
+test('⑮ chatKind 持久化:direct/group 首绑自入站消息落 binding;/new 重绑保留(spec §9.3)', async () => {
+  // direct 消息建绑定 → chatKind==='direct'
+  const hDirect = makeHarness();
+  await hDirect.router.handleInbound(mkMsg({ msgId: 'k1', chatKind: 'direct' }));
+  assert.equal(hDirect.bindings.get(bindingKey('m1', 'c1'))!.chatKind, 'direct');
+  // group 消息(带 atBot)建绑定 → chatKind==='group'
+  const hGroup = makeHarness();
+  await hGroup.router.handleInbound(mkMsg({ msgId: 'k2', chatKind: 'group', atBot: true }));
+  assert.equal(hGroup.bindings.get(bindingKey('m1', 'c1'))!.chatKind, 'group');
+  // /new 重绑 → chatKind 属绑定元数据,保留语义同 lockedUserId/rootOverride(direct 消息不覆写 group)
+  const hNew = makeHarness();
+  hNew.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 'old-k', journalId: 'j-k', chatKind: 'group', updatedAt: 1 });
+  await hNew.router.handleInbound(mkMsg({ msgId: 'k3', chatKind: 'direct', text: '/new' }));
+  const nb = hNew.bindings.get(bindingKey('m1', 'c1'))!;
+  assert.equal(nb.chatKind, 'group');
+  assert.notEqual(nb.sessionId, 'old-k');
+});
+
 test('⑬ 契约:io 异常不击穿 handleInbound,尽力 ack 处理失败', async () => {
   const h = makeHarness();
   h.io.createSession = () => {

@@ -32,6 +32,9 @@ export interface Binding {
   /** 绑定工作区切换覆盖（spec §4 schema rootOverride 列）：聊天信息条写入，下次 /new 生效；
    *  仅类型层存在，不经 parseChannelsKey 解析（bindings 不走 channels 键） */
   rootOverride?: string;
+  /** 聊天形态（spec §9.3 单聊/群聊标）：首绑定时自入站消息取，聊天信息条单聊/群聊标消费；
+   *  绑定元数据，/new 重绑保留语义同 lockedUserId/rootOverride */
+  chatKind?: 'direct' | 'group';
   updatedAt: number;
 }
 

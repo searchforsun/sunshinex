@@ -153,7 +153,7 @@ export class ChannelRouter {
   }
 
   /** /new 语义（⑥）：同聊天新建会话（activate:false）+ 重绑同 key——binding 元数据保留
-   *  （lockedUserId/rootOverride 原样带过，仅覆写 sessionId/journalId/updatedAt；rootOverride
+   *  （lockedUserId/rootOverride/chatKind 原样带过，仅覆写 sessionId/journalId/updatedAt；rootOverride
    *  在此生效，spec §9.3）+ 旧 runtime 释放、旧 journal 留盘可回看 */
   private async cmdNew(msg: InboundMessage, cfg: ChannelConfig, key: string, binding: Binding | undefined): Promise<void> {
     const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg));
@@ -175,6 +175,7 @@ export class ChannelRouter {
       ...(seat.journalId !== undefined ? { journalId: seat.journalId } : {}),
       ...(lock !== undefined ? { lockedUserId: lock } : {}),
       ...(binding?.rootOverride !== undefined ? { rootOverride: binding.rootOverride } : {}),
+      chatKind: binding?.chatKind ?? msg.chatKind, // 绑定元数据：保留优先，首绑自入站消息取（spec §9.3 信息条单聊/群聊标）
       updatedAt: this.nowMs(),
     });
     await this.deps.ack(msg, '已开启新会话，原会话留档可回看');
@@ -216,6 +217,7 @@ export class ChannelRouter {
         ...(seat.journalId !== undefined ? { journalId: seat.journalId } : {}),
         ...(lock !== undefined ? { lockedUserId: lock } : {}),
         ...(existing?.rootOverride !== undefined ? { rootOverride: existing.rootOverride } : {}),
+        chatKind: existing?.chatKind ?? msg.chatKind, // 绑定元数据：保留优先，首绑自入站消息取（spec §9.3 信息条单聊/群聊标）
         updatedAt: this.nowMs(),
       });
     }
