@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Search, X, FileText } from 'lucide-react';
 import { t } from '../i18n';
+import { zoomScale } from '../ui-zoom';
 import { FileIcon, hasFileTypeIcon } from '../file-icon';
 import { TAB_ICONS, tabEntry } from './registry';
 import { disambiguateTabTitles } from './tab-state';
@@ -59,6 +60,52 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
   const [cat, setCat] = useState<TabCat>('all');
   const [now, setNow] = useState(() => Date.now());
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /**
+   * 视口钳制(2026-11-21 用户实测「搜索页面不要超过视口,对应缩窄」):浮层锚在右栏页签条左侧、
+   * 向右展开,窄窗/右栏靠右时右缘越出视口被裁。按「视口右界 − 面板左缘」缩宽(常规宽 360,
+   * 下限 220;可用宽不足时整体左移保读),高度取视口底与 70vh 的较小者;窗口/右栏尺寸变化重算。
+   * 与分支弹层(use-branch fit)同口径:先清旧内联值再量,避免状态回环。
+   */
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (el === null) return;
+    const fit = (): void => {
+      el.style.width = '';
+      el.style.maxHeight = '';
+      el.style.translate = '';
+      const b = el.getBoundingClientRect();
+      if (b.width === 0) return; // jsdom/未布局:保持 CSS 缺省
+      const pad = 8;
+      const z = zoomScale(); // 视觉 px → 本地 px 归一(根 zoom 下 gBCR 是视觉值,样式宽是本地值)
+      const leftBound = pad;
+      const rightBound = window.innerWidth - pad;
+      const leftLocal = b.left / z;
+      const rightBoundLocal = rightBound / z;
+      const available = rightBoundLocal - leftLocal;
+      // 能装下常规宽就 360;否则缩到可用宽(下限 160,再窄则整体左移)
+      let width = Math.min(360, Math.max(160, available));
+      if (available < 160) width = Math.min(360, rightBoundLocal - pad / z);
+      el.style.width = `${Math.round(width)}px`;
+      const r = el.getBoundingClientRect(); // 宽度落定后重测右缘
+      let dx = 0;
+      if (r.right > rightBound) dx = rightBound - r.right;
+      if (r.left + dx < leftBound) dx = leftBound - r.left;
+      if (dx !== 0) el.style.translate = `${Math.round(dx / z)}px 0`;
+      const availH = window.innerHeight - r.top - pad;
+      if (availH > 0) el.style.maxHeight = `${Math.round(Math.max(160, Math.min(window.innerHeight * 0.7, availH)) / z)}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    ro?.observe(document.documentElement);
+    const host = el.closest('.sx-sidebar');
+    if (host !== null) ro?.observe(host);
+    return () => {
+      window.removeEventListener('resize', fit);
+      ro?.disconnect();
+    };
+  }, []);
   // 挂载即聚焦搜索框;开席期 30s tick 刷新相对时间(刚刚→N分 不冻结)
   useEffect(() => {
     inputRef.current?.focus();
@@ -96,7 +143,7 @@ export function TabSearchPop({ tabs, activeUid, recentClosed, onSelect, onCloseT
     return <Icon size={16} strokeWidth={1.75} />;
   };
   return (
-    <div className="sx-tabsearch" role="dialog" aria-label={t('Search tabs', '搜索标签页')}>
+    <div ref={rootRef} className="sx-tabsearch" role="dialog" aria-label={t('Search tabs', '搜索标签页')}>
       <div className="sx-tabsearch-head">
         <Search size={14} strokeWidth={1.75} aria-hidden="true" />
         <input

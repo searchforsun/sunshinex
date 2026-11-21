@@ -4717,8 +4717,12 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-tabsearch-row.sx-kbd-active,
 .sx-tree-row.sx-kbd-active { background: color-mix(in srgb, var(--fg) 10%, transparent); color: var(--fg); }
 
-/* 侧栏聚合搜索:宽度参考整体应用宽度(不再绑主会话列宽)——75vw、封顶 1040、窄窗钳视口 */
-.sx-search-modal { width: min(calc(100vw - 96px), 75vw, 1040px); }
+/* 侧栏聚合搜索:宽度参考整体应用宽度(不再绑主会话列宽)——75vw、封顶 1040、窄窗钳视口;
+   根 zoom 下 vw/vh 是视觉单位、样式值是本地像素,故视口项 / --ui-zoom 归一(同 modal-body 先例) */
+.sx-search-modal {
+  width: min(calc(75vw / var(--ui-zoom, 1)), calc((100vw - 96px) / var(--ui-zoom, 1)), 1040px);
+  height: min(620px, calc((100vh - 112px) / var(--ui-zoom, 1)));
+}
 .sx-search-modal .sx-search-cats { margin: 0 2px; }
 
 /* 标签页搜索:分类条与搜索头同面,浮层随视口收放 */
