@@ -112,13 +112,15 @@ function awaitingByJournal(sessions: Map<string, SessionRuntime>): Set<string> {
  *  `<域>/data`，GUI 以行 root 铸壳 new+attach 即落在正确的域）；kind 钉 'channel'（容器=纯通道域，
  *  不读 meta，杂散目录不误标）；channel=出生 meta 的通道配置 id（SessionSidecarMeta.channel，
  *  Task 13 分组键）随行透出；daemon 注册表匹配补 liveSessionId（running）/awaiting（挂起非空）/
- *  status（在座即标）。空容器（目录不存在/不可读）=空列合法空态；行序 updatedAt 降序 */
+ *  status（在座即标）。应答=裸 SessionRow[]（评审裁定：sunx 先例 handleSunxSessions :177 裸数组
+ *  出行，GUI 既有消费形 getJson<SessionRow[]>('/sunx/sessions') 同款，无信封）。空容器（目录不
+ *  存在/不可读）=空列合法空态；行序 updatedAt 降序 */
 export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerResponse): void {
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(channelsContainerDir(), { withFileTypes: true });
   } catch {
-    io.send(res, 200, { sessions: [] });
+    io.send(res, 200, []);
     return;
   }
   const liveByJournal = liveSessionByJournal(io.sessions);
@@ -156,5 +158,5 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
     }
   }
   out.sort((a, b) => (b.updatedAt as number) - (a.updatedAt as number));
-  io.send(res, 200, { sessions: out });
+  io.send(res, 200, out); // 裸 SessionRow[]（sunx 面同款，GUI 消费形对齐）
 }

@@ -2869,10 +2869,10 @@ describe('通道 HTTP 面(Task 9)', () => {
 
   test('⑥ GET /channels/sessions 空容器 → {sessions:[]};⑦ 捏域档出行(root=域目录/kind=channel)', async () => {
     await withSettingsDaemon(async ({ base, home }) => {
-      // 空容器:HOME 钉 fakeHome,channels 容器缺席=合法空态
+      // 空容器:HOME 钉 fakeHome,channels 容器缺席=合法空态(裸 SessionRow[] 应答,sunx 面同款)
       const empty = await fetch(`${base}/channels/sessions`, { headers: AUTH });
       assert.equal(empty.status, 200);
-      assert.deepEqual(await empty.json(), { sessions: [] });
+      assert.deepEqual(await empty.json(), []);
       // 捏域档(channelsContainerDir 单点=HOME/.sunshinex/channels):出行 root=域目录、kind=channel
       const container = path.join(home, '.sunshinex', 'channels');
       const domain = path.join(container, 'im-m1-c1');
@@ -2882,9 +2882,9 @@ describe('通道 HTTP 面(Task 9)', () => {
       fs.writeFileSync(path.join(sessions, 'j-ch1.meta.json'), JSON.stringify({ channel: 'm1', title: 'IM 聊天' }), 'utf8');
       const r = await fetch(`${base}/channels/sessions`, { headers: AUTH });
       assert.equal(r.status, 200);
-      const body = (await r.json()) as { sessions: Array<Record<string, unknown>> };
-      assert.equal(body.sessions.length, 1, '恰一域一行');
-      const row = body.sessions[0]!;
+      const rows = (await r.json()) as Array<Record<string, unknown>>; // 裸 SessionRow[] 应答
+      assert.equal(rows.length, 1, '恰一域一行');
+      const row = rows[0]!;
       assert.equal(row['id'], 'j-ch1');
       assert.equal(row['root'], domain, '行 root=域目录(GUI attach 直寻址)');
       assert.equal(row['kind'], 'channel');

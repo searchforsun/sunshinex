@@ -115,7 +115,7 @@ describe('通道 handlers(Task 9)', () => {
         await handleChannelsBindingPut(io, {} as http.IncomingMessage, {} as http.ServerResponse, 'm1:c1');
         return replies;
       };
-      // 不存在 → 404(先于 body 校验——写面锚定既有绑定)
+      // 不存在 → 404(先于 rootOverride 字段校验——readJson 形状错仍最前;写面锚定既有绑定)
       assert.equal((await put({ rootOverride: 'x' }))[0]?.status, 404);
       store.upsert(fixtureBinding());
       // 非空串=设置(trim 归一)
@@ -176,10 +176,10 @@ describe('通道 handlers(Task 9)', () => {
     const prev = process.env.SUNSHINEX_CHANNELS_DIR;
     process.env.SUNSHINEX_CHANNELS_DIR = container;
     try {
-      // 空容器(目录不存在)=合法空态
+      // 空容器(目录不存在)=合法空态(裸 SessionRow[] 应答,sunx 面同款无信封)
       const empty = stubIo({ bindings: makeStore(path.dirname(container)) });
       handleChannelsSessions(empty.io, {} as http.ServerResponse);
-      assert.deepEqual(empty.replies, [{ status: 200, body: { sessions: [] } }]);
+      assert.deepEqual(empty.replies, [{ status: 200, body: [] }]);
       // 捏域档:im-m1-c1 带 data(sessions/j-ch-a.jsonl + meta channel/title);im-m1-c2 无 data;
       // 杂散文件不列。j-ch-b mtime 更新置顶(降序断言)
       const domainA = path.join(container, 'im-m1-c1');
@@ -198,7 +198,7 @@ describe('通道 handlers(Task 9)', () => {
       const { io, replies } = stubIo({ bindings: makeStore(path.dirname(container)) });
       handleChannelsSessions(io, {} as http.ServerResponse);
       assert.equal(replies[0]?.status, 200);
-      const rows = (replies[0].body as { sessions: Array<Record<string, unknown>> }).sessions;
+      const rows = replies[0].body as Array<Record<string, unknown>>; // 裸 SessionRow[] 应答
       assert.deepEqual(rows.map((r) => r['id']), ['j-ch-b', 'j-ch-a'], 'updatedAt 降序;无 data 域与杂散文件不列');
       const rowA = rows[1]!;
       assert.equal(rowA['root'], domainA, '行 root=域目录(GUI attach 直寻址)');
