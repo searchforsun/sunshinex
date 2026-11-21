@@ -512,6 +512,11 @@ export function createConnection(opts: ConnectionOpts): Connection {
     channelsView() {
       return getJson<{ channels: ChannelHealthRowMsg[] }>('/channels');
     },
+    // GET /settings/channels（2026-11-21 channels Task 12 修复波补缺）：配置读面——serve
+    // handleChannelsGet 应答 {channels,warnings} 逐字对齐；ChannelsPane 草稿回填数据源
+    settingsChannels() {
+      return getJson<{ channels: ChannelConfigMsg[]; warnings: string[] }>('/settings/channels');
+    },
     putChannels(channels: ChannelConfigMsg[]) {
       // putJson（失败 opError 透出 error/hint——400 校验回显/409 注释档·畸形 引流 raw 编辑面）
       return putJson<{ ok: true; warnings: string[] }>('/settings/channels', { channels });

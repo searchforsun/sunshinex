@@ -5,9 +5,9 @@ import type { ChannelsPaneConn } from './ChannelsPane';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 
 /**
- * ChannelsPane 桩测(channels Task 12,task brief 用例 ①~⑥;conn 桩照 SchedulePage.test.tsx
- * makeConn 模式):conn 六面全桩不出网。测试基准语言钉 en(test-setup G14.104),断言走
- * bi() 双语容忍正则(D37 家族——产品面 t() 化,单语钉必脆)。
+ * ChannelsPane 桩测(channels Task 12,task brief 用例 ①~⑥ + 修复波用例 ⑦;conn 桩照
+ * SchedulePage.test.tsx makeConn 模式):conn 七面全桩不出网。测试基准语言钉 en
+ * (test-setup G14.104),断言走 bi() 双语容忍正则(D37 家族——产品面 t() 化,单语钉必脆)。
  */
 
 /** 双语容忍正则(D37 家族):产品面 t() 化,测试环境钉 en,单语钉必脆 */
@@ -23,16 +23,18 @@ const healthRow = (over: Partial<ChannelHealthRowMsg> = {}): ChannelHealthRowMsg
   ...over,
 });
 
-/** pane conn 桩:六面调用记录(写面返回具名 mock,断言 putChannels 载荷/testChannel 自动试连) */
-function makeConn(chans: ChannelHealthRowMsg[] = []) {
+/** pane conn 桩:七面调用记录(写面返回具名 mock,断言 putChannels 载荷/testChannel 自动试连;
+ *  opts.cfg = GET /settings/channels 配置读面应答——已有通道草稿回填真值用例 ⑦ 数据源) */
+function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfigMsg[] } = {}) {
   const channelsView = vi.fn(async () => ({ channels: chans }));
+  const settingsChannels = vi.fn(async () => ({ channels: opts.cfg ?? [], warnings: [] }));
   const putChannels = vi.fn(async (_channels: ChannelConfigMsg[]) => ({ ok: true as const, warnings: [] }));
   const testChannel = vi.fn(async () => ({ ok: true as const, botId: 'bot-1' }));
   const channelBindings = vi.fn(async () => ({ bindings: [] }));
   const deleteChannelBinding = vi.fn(async () => ({ ok: true as const }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
-  const conn = { channelsView, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces };
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces };
 }
 
 describe('ChannelsPane', () => {
@@ -113,5 +115,27 @@ describe('ChannelsPane', () => {
       { id: 'mock-2', platform: 'mock', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } },
     ]);
     await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
+  });
+
+  /** ⑦ 修复波(计划缺陷补面):settingsChannels 读面已有通道(root 非 auto / mode acceptEdits)
+   *  → 卡草稿回填该真值而非缺省;保存 putChannels 载荷保留该值 */
+  it('backfills draft from settingsChannels and preserves it on save', async () => {
+    const cfg: ChannelConfigMsg = {
+      id: 'telegram-9',
+      platform: 'telegram',
+      enabled: true,
+      root: 'D:/proj/a',
+      mode: 'acceptEdits',
+      allow: { kind: 'first-user' },
+    };
+    const { conn, putChannels } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
+    const { container } = render(<ChannelsPane conn={conn} />);
+    await waitFor(() => expect(container.querySelector('[data-setting-key="channels.telegram-9.root"]')).not.toBeNull());
+    // 草稿回填读面真值(等配置读面到达,而非健康缺省 auto/read-only)
+    await waitFor(() => expect((screen.getByRole('combobox', { name: bi('Workspace', '工作区') }) as HTMLSelectElement).value).toBe('D:/proj/a'));
+    expect((screen.getByRole('combobox', { name: bi('Access mode', '权限模式') }) as HTMLSelectElement).value).toBe('acceptEdits');
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
+    expect(putChannels.mock.calls[0]![0]).toEqual([cfg]);
   });
 });

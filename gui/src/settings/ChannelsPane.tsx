@@ -12,10 +12,11 @@ import type { WorkspaceRow } from '../connection';
  * 「项目档 channels 键整键忽略」同源裁定)——本页无 root/scope 目标选择器,壳层 ProvidersPane
  * 分支同款先例(SettingsShell.renderPane case 'providers')。
  *
- * 读面裁定:conn 六方法无通道配置读端点(Task 11 交付面只有健康快照 channelsView)——卡草稿按
- * 健康行播种(id/platform/enabled 为真值,root/mode/model/allow 等细粒度字段取写面缺省);
- * putChannels 全表读改写为唯一写面。已有通道手调过的细粒度字段读不回,保存整表时按草稿缺省
- * 归一——接口现状限制(Task 12 报告注明),非本页裁断。
+ * 读面裁定(修复波更新):GET /settings/channels 配置读端点已补(conn.settingsChannels,
+ * serve handleChannelsGet 同形状 {channels,warnings})——挂载/打开时双源并行装载:配置读面行
+ * 回填已有通道草稿真值(root/mode/model/allow 逐字段),健康快照行补位缺省播种;用户已改写
+ * (dirty)卡不被回填覆盖,配置读面失败则保持健康缺省播种(缺端点期现状)。putChannels 全表
+ * 读改写仍为唯一写面。
  *
  * 凭证降级裁定(spec §8.2):ProvidersPane 密钥行写机制 = putProviderOp op:'setKey'(providers
  * 专属键存端点),通道无同型端点,且键内零密钥(D6「设置与凭据分离」——serve/channels engine
@@ -38,9 +39,13 @@ import type { WorkspaceRow } from '../connection';
  * channels.secret(凭证说明行)由 settings-search 注册——逐通道 id 运行期生成,索引期不可枚举。
  */
 
-/** 通道页连接面(Task 11 六方法子集,结构满足即收,App 传整只 Connection) */
+/** 通道页连接面(Task 11 六方法 + 修复波 settingsChannels 读端点,结构满足即收,App 传整只
+ *  Connection) */
 export interface ChannelsPaneConn {
   channelsView(): Promise<{ channels: ChannelHealthRowMsg[] }>;
+  /** GET /settings/channels(修复波补面):全局档 channels 配置读端点——已有通道草稿回填
+   *  真值的数据源(Task 11 方法清单漏列,上游裁定补缺;serve handleChannelsGet 同形状) */
+  settingsChannels(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
   channelBindings(): Promise<{ bindings: import('../connection-api').ChannelBindingMsg[] }>;
@@ -68,7 +73,8 @@ const HEALTH_POLL_MS = 5_000;
  *  SUNSHINEX_CHANNEL_SECRET_<大写 id,非字母数字段折叠 '_'> */
 const secretSlot = (id: string): string => 'SUNSHINEX_CHANNEL_SECRET_' + id.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
 
-/** 卡草稿(编辑真值;id 运行期自动生成 platform-<序>,不暴露手填) */
+/** 卡草稿(编辑真值;id 运行期自动生成 platform-<序>,不暴露手填)。dirty=用户已改写——
+ *  配置读面晚到回填时只替换未改写(seed)卡,已改写卡以用户输入为准不覆盖 */
 interface ChannelDraft {
   readonly id: string;
   platform: PlatformValue;
@@ -81,9 +87,11 @@ interface ChannelDraft {
   allowKind: AllowKind;
   /** 白名单粘贴原文(空格/逗号/分号/换行分隔),提交时切分去重 */
   userIdsText: string;
+  dirty: boolean;
 }
 
-/** 健康行 → 卡草稿播种(id/platform/enabled 取真值,其余字段取写面缺省——读面裁定见头注) */
+/** 健康行 → 卡草稿播种(id/platform/enabled 取真值,其余字段取写面缺省——配置读面缺位/失败
+ *  时的回退种子,修复波前唯一种子源) */
 const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   id: row.id,
   platform: row.platform as PlatformValue,
@@ -93,14 +101,59 @@ const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   model: '',
   allowKind: 'first-user',
   userIdsText: '',
+  dirty: false,
 });
 
-/** 本地草稿并入健康清单单点:本地草稿为编辑真值保持不动,健康新现 id 追加播种;
- *  removed=本会话已删 id 墓碑——健康快照晚到/轮询窗口内仍报该行时不复活已删卡
- *  (daemon 真值要等 putChannels 写盘后下轮健康快照才消失,GUI 侧本地墓碑先行) */
-function mergeDrafts(prev: ChannelDraft[], rows: ChannelHealthRowMsg[], removed: ReadonlySet<string>): ChannelDraft[] {
-  const have = new Set(prev.map((d) => d.id));
-  return [...prev, ...rows.filter((r) => !have.has(r.id) && !removed.has(r.id)).map(seedDraft)];
+/** 配置读面行 → 卡草稿(修复波):已有通道细粒度字段(root/mode/model/allow)逐字段回填
+ *  真值——「编辑已有通道必须能读回」裁定落地;userIds 数组粘回分隔原文 */
+const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
+  id: cfg.id,
+  platform: cfg.platform,
+  enabled: cfg.enabled,
+  root: cfg.root,
+  mode: cfg.mode,
+  model: cfg.model ?? '',
+  allowKind: cfg.allow.kind,
+  userIdsText: (cfg.allow.userIds ?? []).join(' '),
+  dirty: false,
+});
+
+/** 读面两源 → 本地草稿并集单点(修复波重写):配置读面行优先回填真值,健康行补位缺省播种;
+ *  本地已改写(dirty)卡不覆盖(用户输入为准);健康新现 id 追加播种;removed=本会话已删 id
+ *  墓碑——健康快照晚到/轮询窗口内仍报该行时不复活已删卡;两源均无且未改写的陈旧卡摘除
+ *  (外部已删真值),dirty 卡保留(在途编辑不丢) */
+function mergeDrafts(
+  prev: ChannelDraft[],
+  healthRows: ChannelHealthRowMsg[],
+  cfgRows: ChannelConfigMsg[],
+  removed: ReadonlySet<string>,
+): ChannelDraft[] {
+  const seeds = new Map<string, ChannelDraft>();
+  for (const c of cfgRows) {
+    if (!removed.has(c.id)) seeds.set(c.id, seedFromConfig(c));
+  }
+  for (const r of healthRows) {
+    if (!seeds.has(r.id) && !removed.has(r.id)) seeds.set(r.id, seedDraft(r));
+  }
+  const out: ChannelDraft[] = [];
+  const have = new Set<string>();
+  for (const d of prev) {
+    if (d.dirty) {
+      out.push(d); // 用户已改写:原样保留
+      have.add(d.id);
+      continue;
+    }
+    const s = seeds.get(d.id);
+    if (s !== undefined) {
+      out.push(s); // 未改写:两源最新种子替换(配置真值回填/健康缺省)
+      have.add(d.id);
+    }
+    // 两源均无且未改写:外部已删的陈旧种子——摘除
+  }
+  for (const [id, s] of seeds) {
+    if (!have.has(id)) out.push(s);
+  }
+  return out;
 }
 
 /** userIds 粘贴文本切分单点:空白/逗号/分号(含全角)分隔,trim 去空去重保首现 */
@@ -156,22 +209,45 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   const [copiedId, setCopiedId] = useState('');
   /** 本会话已删通道 id 墓碑(mergeDrafts 防复活面,见函数注;ref 持有免 useCallback 依赖抖动) */
   const removedRef = useRef<Set<string>>(new Set());
+  /** 配置读面双源 ref(修复波):两响应到达次序不定——各落 ref 后 applySources 单点重算草稿 */
+  const healthRef = useRef<ChannelHealthRowMsg[]>([]);
+  const cfgRef = useRef<ChannelConfigMsg[]>([]);
+  /** 配置读面 warnings(读面宽容语义:warning 跳过不致命——行内提示,不阻断编辑) */
+  const [cfgWarnings, setCfgWarnings] = useState<string[]>([]);
+  /** 双源 → 草稿重算单点(健康/配置 ref 就位后调用;健康徽标源同步刷新) */
+  const applySources = useCallback((): void => {
+    setHealth(healthRef.current);
+    setDrafts((prev) => mergeDrafts(prev ?? [], healthRef.current, cfgRef.current, removedRef.current));
+  }, []);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
   }, []);
 
-  /** 读面装载:健康快照 → 健康徽标源 + 草稿并入播种(本地草稿真值不覆盖) */
+  /** 读面装载(修复波重写):健康快照(channelsView)+ 配置读面(settingsChannels)双源并行,
+   *  各自先落 ref 再统一 applySources 重算草稿——配置读面晚到也能把未改写卡从健康缺省升格
+   *  为配置真值回填(用例 ⑦);配置读面失败静默(保持健康缺省播种=修复前现状,头注裁定) */
   const load = useCallback((): void => {
     conn.channelsView().then(
       (v) => {
-        setHealth(v.channels);
-        setDrafts((prev) => mergeDrafts(prev ?? [], v.channels, removedRef.current));
+        healthRef.current = v.channels;
+        applySources();
         setLoadError('');
       },
       (err: unknown) => setLoadError(errText(err)),
     );
-  }, [conn]);
+    conn.settingsChannels().then(
+      (v) => {
+        cfgRef.current = v.channels;
+        setCfgWarnings(v.warnings);
+        applySources();
+      },
+      () => {
+        /* 配置读面缺位/失败:草稿维持健康缺省播种(修复前现状),不打断编辑主流程 */
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conn, applySources]);
 
   useEffect(() => {
     load();
@@ -180,7 +256,10 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   /** 5s 健康轮询(brief §12):只刷健康徽标,不扰编辑草稿;卸载 clearInterval */
   useEffect(() => {
     const timer = setInterval(() => {
-      conn.channelsView().then((v) => setHealth(v.channels), () => {});
+      conn.channelsView().then((v) => {
+        healthRef.current = v.channels; // ref 同步:后续 applySources 重算不回退到陈旧健康面
+        setHealth(v.channels);
+      }, () => {});
     }, HEALTH_POLL_MS);
     return () => clearInterval(timer);
   }, [conn]);
@@ -212,13 +291,13 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     if (p === undefined || !p.supports) return;
     setDrafts((prev) => {
       const base = prev ?? [];
-      return [...base, { id: `${p.v}-${nextSeq(p.v, base)}`, platform: p.v as PlatformValue, enabled: true, root: 'auto', mode: 'read-only', model: '', allowKind: 'first-user', userIdsText: '' }];
+      return [...base, { id: `${p.v}-${nextSeq(p.v, base)}`, platform: p.v as PlatformValue, enabled: true, root: 'auto', mode: 'read-only', model: '', allowKind: 'first-user', userIdsText: '', dirty: true }];
     });
   };
 
-  /** 草稿字段改写单点(受控行回写) */
+  /** 草稿字段改写单点(受控行回写;置 dirty——配置读面晚到不覆盖用户输入) */
   const patchDraft = (id: string, patch: Partial<ChannelDraft>): void => {
-    setDrafts((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    setDrafts((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, ...patch, dirty: true } : d)));
   };
 
   /** 复制槽名(剪贴板不可用面[老 WebView/jsdom]退化:槽名行内可见,手选复制;回显照常) */
@@ -365,6 +444,10 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       </p>
       {loadError !== '' && <ErrorBanner text={loadError} />}
       {actionError !== '' && <ErrorBanner text={actionError} />}
+      {/* 配置读面 warnings(读面宽容语义——坏条目跳过提示,不阻断编辑) */}
+      {cfgWarnings.map((w) => (
+        <ErrorBanner key={w} text={w} />
+      ))}
       {drafts === null && loadError === '' && <EmptyState text={t('Loading channels…', '加载通道…')} />}
       {drafts !== null && drafts.length === 0 && <EmptyState text={t('No channels yet.', '暂无通道。')} />}
       <ul className="sx-rc-list">

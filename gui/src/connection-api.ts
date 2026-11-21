@@ -84,6 +84,10 @@ export interface Connection {
    *  全封装——健康快照 / 配置整键写（daemon 写盘后 engine.applyConfigs 热生效）/ dry-run 测试 /
    *  绑定档读·解除 / 通道域会话枚举（Task 12 ChannelsPane 与 Task 13 侧栏「通道」组数据源） */
   channelsView(): Promise<{ channels: ChannelHealthRowMsg[] }>;
+  /** GET /settings/channels（2026-11-21 channels Task 12 修复波补缺）：全局档 channels 配置读面
+   *  （serve handleChannelsGet 实装 {channels,warnings}——Task 11 方法清单漏列,上游裁定补缺）；
+   *  ChannelsPane 编辑已有通道的草稿回填数据源（无此读面时细粒度字段 root/mode/allow 读不回） */
+  settingsChannels(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
   /** PUT /settings/channels body {channels}：channels 键全局豁免单档（带 root 一律 400）——成功
    *  200 {ok:true,warnings:[]}（写面校验从严：warnings 非空走 400 error 回显，成功帽恒空列——
    *  serve 实装应答含 warnings 键，契约面按实装形状声明）；409 注释档/畸形引流 raw 编辑面 */
