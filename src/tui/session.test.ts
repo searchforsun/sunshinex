@@ -79,8 +79,7 @@ test('会话控制器：manual 审批挂起可观测，resolveApproval 放行后
       model: new ScriptedAdapter([
         '{"tool":"exec","input":{"command":"touch s-ok.txt"},"done":false}',
         '{"done":true,"reply":"ok"}',
-      ]),
-    });
+      ]) });
     const p = ctrl.submit('跑个命令');
     await waitFor(() => ctrl.getState().status === 'awaiting-approval');
     assert.equal(ctrl.getState().approval?.kind, 'command');
@@ -129,8 +128,7 @@ test('会话控制器：/init 走模型任务生成 SUNSHINE.md（新建）', as
       model: new ScriptedAdapter([
         '{"tool":"write","input":{"path":' + JSON.stringify(path.join(tmp, 'SUNSHINE.md')) + ',"content":"# 项目名称\\ndemo-app\\n"},"done":false}',
         '{"done":true,"reply":"已新建 SUNSHINE.md，写入分区：项目名称"}',
-      ]),
-    });
+      ]) });
     await ctrl.submit('/init');
     await ctrl.waitIdle();
     const s = ctrl.getState();
@@ -161,8 +159,7 @@ test('会话控制器：/init 已有 SUNSHINE.md 走完善语义且不覆盖原�
         '{"tool":"read","input":{"path":"SUNSHINE.md"},"done":false}',
         '{"tool":"write","input":{"path":' + JSON.stringify(path.join(tmp, 'SUNSHINE.md')) + ',"content":"# 项目名称\\n既有项目\\n\\n# 编码规范\\n- 既有规则保持不动\\n\\n# 架构原则\\n- 补充分层说明\\n"},"done":false}',
         '{"done":true,"reply":"已完善 SUNSHINE.md，新增分区：架构原则"}',
-      ]),
-    });
+      ]) });
     await ctrl.submit('/init');
     await ctrl.waitIdle();
     const s = ctrl.getState();
@@ -206,8 +203,7 @@ test('会话控制器：流式答复 markdansi 行级切块增量入档（ansi �
     const reply = '第一段。\n\n```json\n{"a": 1}\n```\n\n收尾段。';
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter([JSON.stringify({ done: true, reply })]),
-    });
+      model: new ScriptedAdapter([JSON.stringify({ done: true, reply })]) });
     const run = ctrl.submit('写点东西');
     // 运行中途即应出现首块入档（不等 done）
     await waitFor(() => ctrl.getState().messages.filter((m) => m.role === 'assistant').length >= 1, 3000);
@@ -233,8 +229,7 @@ test('会话控制器：done 步携带 phase → 不落阶段行（答复正文�
   try {
     const ctrl = new SessionController({
       root: tmp,
-      model: new ScriptedAdapter(['{"done":true,"reply":"完成。","phase":"正在汇总结论"}']),
-    });
+      model: new ScriptedAdapter(['{"done":true,"reply":"完成。","phase":"正在汇总结论"}']) });
     await ctrl.submit('做个任务');
     await ctrl.waitIdle();
     const s = ctrl.getState();
@@ -297,8 +292,7 @@ test('会话控制器：/model 弹卡三档即选即切，Esc 取消零变化；
         return base;
       },
       toolDisplay: {},
-      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
-    };
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); } };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
     const p = ctrl.submit('/model-tier');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
@@ -332,15 +326,13 @@ test('会话控制器：/model 多源选择卡即选即切（切换器换内芯 
       harness,
       runTask: async () => base,
       toolDisplay: {},
-      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
-    };
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); } };
     const sw = new ModelSwitcher({
       choices: [
-        { id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK', contextWindow: 128000 },
-        { id: 'bigmodel/glm-4.7', provider: 'bigmodel', model: 'glm-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKeyEnv: 'SUNSHINEX_API_KEY_BIGMODEL' },
+        { id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', contextWindow: 128000 },
+        { id: 'bigmodel/glm-4.7', provider: 'bigmodel', model: 'glm-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4' },
       ],
-      default: new ScriptedAdapter([]),
-    });
+      default: new ScriptedAdapter([]) });
     const ctrl = new SessionController({ root: tmp, runtime: fake, models: sw });
     const p = ctrl.submit('/model');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
@@ -398,8 +390,7 @@ test('会话控制器：/model-effort 八项单选即选即切，default 清除�
         return base;
       },
       toolDisplay: {},
-      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
-    };
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); } };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
     const p = ctrl.submit('/model-effort');
     await waitFor(() => ctrl.getState().status === 'awaiting-question');
@@ -442,8 +433,7 @@ test('会话控制器：装配级 tier 作为初始档位并下传任务', async
         return { done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' };
       },
     toolDisplay: {},
-    runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
-    };
+    runLoop: async () => { throw new Error('runLoop not exercised in this suite'); } };
     const ctrl = new SessionController({ root: tmp, runtime: fake, tier: 'medium' });
     assert.equal(ctrl.getState().tier, 'medium', '装配档位进入会话状态');
     await ctrl.submit('做事');
@@ -522,8 +512,7 @@ test('spawn 全链归档：children 移除 + 调用行 detail 附转录（恰好
           return JSON.stringify({ done: true, reply: '子任务报告' });
         }
         return JSON.stringify({ done: true, reply: '主链完成' });
-      }),
-    } as ModelAdapter;
+      }) } as ModelAdapter;
     const ctrl = new SessionController({ root: tmp, model });
     const p = ctrl.submit('主任务');
     // CC 模式延迟入档：运行中调用行挂 pendingCalls 不入历史区，运行态唯一显示面是底部活动行
@@ -584,13 +573,10 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
             return {
               finish: 'tool_calls' as const,
               content: '',
-              toolCalls: [{ id: 'call_s', name: 'submit_summary', argsJson: JSON.stringify({ goal: '压缩演示', constraints: '只读', progress: '已折叠', verified: '回执一致', open: '无', rationale: '会话模型路径' }) }],
-            };
+              toolCalls: [{ id: 'call_s', name: 'submit_summary', argsJson: JSON.stringify({ goal: '压缩演示', constraints: '只读', progress: '已折叠', verified: '回执一致', open: '无', rationale: '会话模型路径' }) }] };
           }
           return { finish: 'stop' as const, content: 'ok', toolCalls: [] };
-        },
-      },
-    });
+        } } });
     harness.context.appendChain([
       { action: 'tool-result', observation: 'Y'.repeat(2000) },
       { action: 'tool-result', observation: 'Z'.repeat(2000) },
@@ -599,8 +585,7 @@ test('会话控制器：/compact 补链参与，链折叠且摘要来自会话�
       harness,
       runTask: async () => ({ done: true, reply: 'ok', tokensUsed: 0, stopReason: 'done' }),
       toolDisplay: {},
-      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); },
-    };
+      runLoop: async () => { throw new Error('runLoop not exercised in this suite'); } };
     const ctrl = new SessionController({ root: tmp, runtime: fake });
     await ctrl.submit('/compact');
     const texts = ctrl.getState().messages.filter((m) => m.role === 'system').map((m) => m.text).join('\n');
@@ -642,8 +627,7 @@ function usageModel(frames: Array<{ cache: number; prompt: number; reply: string
       hooks?.onCache?.(f.cache);
       hooks?.onUsage?.(50);
       return f.reply;
-    }),
-  };
+    }) };
 }
 
 test('会话控制器：缓存命中率为会话累计口径——跨任务不清零，轮首 miss 只稀释不砸零', async () => {
@@ -656,8 +640,7 @@ test('会话控制器：缓存命中率为会话累计口径——跨任务不�
         { cache: 0, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务一：单请求轮全量 miss（TTL 形态）
         { cache: 0, prompt: 29_000, reply: '{"tool":"read","input":{"path":"a.txt"}}' }, // 任务二轮首：miss 后调用工具
         { cache: 29_000, prompt: 29_500, reply: '{"done":true,"reply":"ok"}' }, // 任务二次帧：前缀命中
-      ]),
-    });
+      ]) });
     await ctrl.submit('任务一');
     await ctrl.waitIdle();
     let m = ctrl.getState().metrics;
@@ -705,8 +688,7 @@ test('会话控制器：turns/steps 会话累计——跨任务累加、终稿�
         { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务一：直答 = 1 动作轮
         { cache: 900, prompt: 1000, reply: '{"tool":"read","input":{"path":"b.txt"}}' }, // 任务二：工具出牌批 +1
         { cache: 900, prompt: 1000, reply: '{"done":true,"reply":"ok"}' }, // 任务二：终稿轮再 +1
-      ]),
-    });
+      ]) });
     await ctrl.submit('任务一');
     await ctrl.waitIdle();
     let m = ctrl.getState().metrics;

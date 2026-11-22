@@ -96,9 +96,8 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.6.
 {
   "version": 1,
   "providers": [
-    { "name": "bigmodel", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "models": [{ "model": "glm-4.7" }] }
-  ],
-  "env": { "SUNSHINEX_API_KEY": "sk-…" }
+    { "name": "bigmodel", "baseUrl": "https://open.bigmodel.cn/api/paas/v4", "apiKey": "sk-…", "models": [{ "model": "glm-4.7" }] }
+  ]
 }
 ```
 
@@ -199,18 +198,16 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
   // "mcpApprovals": { "<项目slug>": ["github"] },    // 已批准的项目 MCP 服务器（按项目记，见下节）
   // "mcpDenied": { "<项目slug>": ["不可信源"] },     // 已拒绝的：不再询问、装载器直接跳过
 
-  // ── 密钥（只写这里）──────────────────────────────────
+  // ── 密钥（2026-11-22 裁定:providers/通道密钥内联进各自配置项,env 块不再承载;下面仅剩非 provider 密钥）──
   "env": {
-    "SUNSHINEX_API_KEY": "sk-…",                     // 模型密钥（providers 各源缺专用密钥时也回退这里；无 providers 的单模型 env 形态也读它）
-    "SUNSHINEX_API_KEY_DEEPSEEK": "sk-…",            // 按源专用密钥：SUNSHINEX_API_KEY_<大写源名>（有则优先于主密钥；providers key 子命令写这里）
-    "SUNSHINEX_EMBEDDING_API_KEY": "",               // 嵌入密钥；留空 = 回退主密钥
+    "SUNSHINEX_EMBEDDING_API_KEY": "",               // 嵌入密钥；留空 = 回退 SUNSHINEX_API_KEY
     "SUNSHINEX_BING_API_KEY": ""                     // Bing 搜索密钥（websearchProvider=bing 时用）
   }
 }
 ```
 
 - 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`tier` ≡ `SUNSHINEX_TIER`），环境变量仍最高优先。`SUNSHINEX_MODEL` / `SUNSHINEX_BASE_URL` 两个环境槽保持有效——无 `providers` 时直接导出仍按单模型形态装配。
-- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥按 `SUNSHINEX_API_KEY_<大写源名>` 取（缺省回退 `SUNSHINEX_API_KEY`；`sunshinex providers key <源>` 交互写入）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
+- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥内联写在条目 `"apiKey"` 字段（2026-11-22 裁定推翻 env 槽口径,无 env 回退;`sunshinex providers key <源>` 交互写入条目）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
 - 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）（档位标注是 tier 路由的唯一数据源。）
 - 自定义请求参数：models 条目可选 `"params": { "<键>": <JSON 值> }`，键值原样并入每次模型的请求体顶层（值可为 string/number/boolean/null/数组/对象，嵌套上限 8 层）。厂商私有扩展（缓存路由键、思考模板开关、采样扩展等）由此声明，适配器不含任何厂商分支。协议字段 `model` / `messages` / `tools` / `tool_choice` / `stream` / `stream_options` 由适配器装配，`params` 不得占用（写面拒收，手改文件则装载告警忽略该键）；非法值同口径告警忽略、好键保留。

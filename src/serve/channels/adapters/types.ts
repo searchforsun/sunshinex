@@ -36,7 +36,7 @@ export interface ChannelAdapter {
   emit?(msg: InboundMessage): void;
 }
 
-/** 适配器依赖注入:平台密钥(secret,来自 env 槽 SUNSHINEX_CHANNEL_SECRET_*,D6 不经配置)
+/** 适配器依赖注入:平台密钥(secret 来自通道条目内联 secret 字段,2026-11-22 内联裁定)
  *  + 平台非密钥标识(ident,如 feishu appId)+ 可选 fetch 注入(测试替身)与日志钩子。 */
 export interface AdapterDeps {
   secret: string;

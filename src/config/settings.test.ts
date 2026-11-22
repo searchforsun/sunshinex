@@ -12,7 +12,7 @@ import {
   SEMANTIC_KEYS,
 } from './settings';
 
-test('parseSettingsFile：合法文档解析语义键与 env 块；version 缺省视为 1 可载', () => {
+test('parseSettingsFile：合法文档解析语义键；env 分组已退役被忽略；version 缺省视为 1 可载', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-ok-'));
   try {
     const file = path.join(dir, 'settings.json');
@@ -20,14 +20,15 @@ test('parseSettingsFile：合法文档解析语义键与 env 块；version 缺�
       version: 1,
       model: 'glm-5.3-flash',
       tier: 'medium',
-      env: { SUNSHINEX_API_KEY: 'sk-test', SUNSHINEX_SHELL: '/bin/zsh' },
+      env: { SUNSHINEX_API_KEY: 'sk-legacy' },
     }));
     const doc = parseSettingsFile(file);
     assert.ok(doc, '合法文档应解析出结果');
     assert.equal(doc.semantic['model'], 'glm-5.3-flash');
     assert.equal(doc.semantic['tier'], 'medium');
-    assert.equal(doc.env['SUNSHINEX_API_KEY'], 'sk-test', '密钥走 env 块透传（D6）');
-    assert.equal(doc.env['SUNSHINEX_SHELL'], '/bin/zsh', '平台逃生口键走 env 块');
+    // env 透传分组退役（2026-11-22 裁定）：env 键整块忽略，不落 semantic 也不落解析产物
+    assert.equal('env' in doc, false, '解析产物无 env 字段');
+    assert.equal(doc.semantic['env'], undefined, 'env 不落语义键面');
 
     const noVersion = path.join(dir, 'settings-noversion.json');
     fs.writeFileSync(noVersion, JSON.stringify({ model: 'glm-5.3-flash' }));
@@ -107,7 +108,6 @@ test('flattenSettings：语义键→SUNSHINEX_* 槽映射正确（六键抽查�
       maxTokens: 2000000,
       subagentTokenCap: 500000,
     },
-    env: {},
   });
   assert.equal(slots['SUNSHINEX_SHELL'], '/bin/zsh');
   assert.equal(slots['SUNSHINEX_KB_BACKEND'], 'local-json');
@@ -118,27 +118,25 @@ test('flattenSettings：语义键→SUNSHINEX_* 槽映射正确（六键抽查�
   assert.equal(slots['SUNSHINEX_SUBAGENT_TOKEN_CAP'], '500000', '子智能体 token 硬顶槽（独享值）');
 });
 
-test('flattenSettings：同槽语义键 > env 块（D3 语义键是正名，env 块兜底）', () => {
+test('flattenSettings：websearchApiKey/embeddingApiKey 语义键落 BING/EMBEDDING 槽（env 分组退役后的规范载体）', () => {
   const { slots, warnings } = flattenSettings({
-    semantic: { shell: 'from-semantic' },
-    env: { SUNSHINEX_SHELL: 'from-env-block', SUNSHINEX_BING_API_KEY: 'sk-bing' },
+    semantic: { websearchApiKey: 'sk-bing', embeddingApiKey: 'sk-embed' },
   });
-  assert.equal(slots['SUNSHINEX_SHELL'], 'from-semantic');
-  assert.equal(slots['SUNSHINEX_BING_API_KEY'], 'sk-bing', 'env 块独有键照常透传');
+  assert.equal(slots['SUNSHINEX_BING_API_KEY'], 'sk-bing', 'websearchApiKey → 旧 BING 槽名(下游 process.env 读取零改动)');
+  assert.equal(slots['SUNSHINEX_EMBEDDING_API_KEY'], 'sk-embed', 'embeddingApiKey → EMBEDDING 槽');
   assert.deepEqual(warnings, []);
 });
 
 test('flattenSettings：contextWindow 数字或数字字符串均 String() 归一', () => {
-  const num = flattenSettings({ semantic: { contextWindow: 1000000 }, env: {} });
+  const num = flattenSettings({ semantic: { contextWindow: 1000000 } });
   assert.equal(num.slots['SUNSHINEX_CONTEXT_WINDOW'], '1000000');
-  const str = flattenSettings({ semantic: { contextWindow: '128000' }, env: {} });
+  const str = flattenSettings({ semantic: { contextWindow: '128000' } });
   assert.equal(str.slots['SUNSHINEX_CONTEXT_WINDOW'], '128000');
 });
 
 test('flattenSettings：未知语义键进告警清单且不致命', () => {
   const { slots, warnings } = flattenSettings({
     semantic: { language: 'zh', noSuchKey: 'x' },
-    env: {},
   });
   assert.equal(slots['SUNSHINEX_LANGUAGE'], 'zh', '未知键不影响其余键装载');
   assert.equal(warnings.length, 1);
@@ -148,7 +146,6 @@ test('flattenSettings：未知语义键进告警清单且不致命', () => {
 test('flattenSettings：值类型非 string/number 告警并忽略', () => {
   const { slots, warnings } = flattenSettings({
     semantic: { language: 'zh', tier: ['medium'] },
-    env: {},
   });
   assert.equal(slots['SUNSHINEX_LANGUAGE'], 'zh', '非法值不影响其余键装载');
   assert.equal(slots['SUNSHINEX_TIER'], undefined, '非法值被忽略不落槽');
@@ -166,7 +163,7 @@ test('applySettings：只填缺省——已导出环境变量不被覆盖，返�
     fs.writeFileSync(file, JSON.stringify({
       language: 'from-settings',
       tier: 'medium',
-      env: { SUNSHINEX_KB_BACKEND: 'from-env-block' },
+      kbBackend: 'from-semantic',
     }));
     process.env.SUNSHINEX_LANGUAGE = 'from-shell';
     delete process.env.SUNSHINEX_TIER;
@@ -174,8 +171,8 @@ test('applySettings：只填缺省——已导出环境变量不被覆盖，返�
     const { loaded, warnings } = applySettings(file);
     assert.equal(process.env.SUNSHINEX_LANGUAGE, 'from-shell', '已导出环境变量不被覆盖（顺序即优先级）');
     assert.equal(process.env.SUNSHINEX_TIER, 'medium', '缺失槽由语义键填充');
-    assert.equal(process.env.SUNSHINEX_KB_BACKEND, 'from-env-block', 'env 块键照常落槽');
-    assert.equal(loaded, 2, 'loaded 仅计实际写入的缺失槽');
+    assert.equal(process.env.SUNSHINEX_KB_BACKEND, 'from-semantic', '缺失槽由语义键填充');
+    assert.equal(loaded, 2, 'loaded 仅计实际写入的缺失槽(language 被 shell 层占槽不计)');
     assert.deepEqual(warnings, []);
   } finally {
     if (prevLang === undefined) delete process.env.SUNSHINEX_LANGUAGE; else process.env.SUNSHINEX_LANGUAGE = prevLang;
@@ -244,11 +241,11 @@ test('两级 settings 装载·三层优先级链：shell > 项目 settings > 全
     fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({
       language: 'from-project-settings',
     }));
-    // ③ 全局 settings 层：同槽兜底 + env 块独有键验兜底
+    // ③ 全局 settings 层：同槽兜底 + 未配置槽语义键兜底
     fs.mkdirSync(path.join(fakeHome, '.sunshinex'), { recursive: true });
     fs.writeFileSync(path.join(fakeHome, '.sunshinex', 'settings.json'), JSON.stringify({
       tier: 'from-global-settings',
-      env: { SUNSHINEX_LANGUAGE: 'from-global-env', SUNSHINEX_KB_BACKEND: 'from-global-only' },
+      kbBackend: 'from-global-only',
     }));
     // 按入口真实顺序装载（cli/index.ts 与 index.ts 同款）：只填缺省，装载顺序即优先级
     applySettings(loadProjectSettings(proj));
@@ -284,14 +281,13 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：36 键、槽名规范、密钥零进表（D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：38 键、槽名规范、providers/channels 密钥不进表（密钥内联进条目，2026-11-22 推翻 D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 36, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（model 系五键 2026-10-28 退役，2026-10-29 撤专属指引面与未知键同判；2026-11-07 增 disabledSkills 技能加载开关；2026-11-10 增 terminalDock 终端下栏开关；2026-11-15 增 sunxDir Sunx 持久化域容器目录；2026-11-21 增 archiveRetentionDays 归档保留天数）');
+  assert.equal(entries.length, 38, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（2026-11-21 增 archiveRetentionDays；2026-11-22 增 embeddingApiKey/websearchApiKey——env 分组退役，非 provider 密钥转正语义键）');
   assert.equal(SEMANTIC_KEYS['archiveRetentionDays'], 'SUNSHINEX_ARCHIVE_RETENTION_DAYS', '归档保留天数语义键（daemon 每日清扫过期归档，0=永不；2026-11-21）');
   assert.equal(SEMANTIC_KEYS['sunxDir'], 'SUNSHINEX_SUNX_DIR', 'Sunx 持久化域容器目录可指定（2026-11-15 sunx P3：一 Sunx 一持久化项目域）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
-    assert.ok(!slot.includes('API_KEY'), `${key} 不得映射密钥槽（D6：密钥只走 env 块或环境变量）`);
   }
   assert.equal(SEMANTIC_KEYS['shell'], 'SUNSHINEX_SHELL');
   assert.equal(SEMANTIC_KEYS['globalSunshine'], 'SUNSHINEX_GLOBAL_SUNSHINE');
@@ -308,7 +304,11 @@ test('SEMANTIC_KEYS 全表钉子：36 键、槽名规范、密钥零进表（D6�
   assert.equal(SEMANTIC_KEYS['maxTokens'], 'SUNSHINEX_MAX_TOKENS', '长任务终止：主链 token 硬顶（缺省不设，预算是兜底不是限制）');
   assert.equal(SEMANTIC_KEYS['compactionThreshold'], 'SUNSHINEX_COMPACTION_THRESHOLD', '长任务终止：上下文压缩阈值（% 占用，缺省 80，[10,95] 硬限）');
   assert.equal(SEMANTIC_KEYS['subagentTokenCap'], 'SUNSHINEX_SUBAGENT_TOKEN_CAP', '长任务终止：子智能体 token 硬顶（独享值，不继承主链剩余）');
-  assert.equal(SEMANTIC_KEYS['teamTokenCap'], 'SUNSHINEX_TEAM_TOKEN_CAP', '长任务终止：团队 token 硬顶（G8c 终审 C——曾 env-only 致 GET /settings 不报行、面板静默省略，收编进语义键面）');
+  assert.equal(SEMANTIC_KEYS['teamTokenCap'], 'SUNSHINEX_TEAM_TOKEN_CAP', '长任务终止：团队 token 硬顶（G8c 终审 C）');
+  assert.equal(SEMANTIC_KEYS['embeddingApiKey'], 'SUNSHINEX_EMBEDDING_API_KEY', '嵌入密钥语义键（2026-11-22 env 分组退役转正）');
+  assert.equal(SEMANTIC_KEYS['websearchApiKey'], 'SUNSHINEX_BING_API_KEY', '网页搜索密钥语义键（槽名沿用旧 BING 名，下游读取零改动）');
+  assert.equal(SEMANTIC_KEYS['providers'], undefined, 'providers 结构化键不经语义键表（形状裁决在 config/providers）');
+  assert.equal(SEMANTIC_KEYS['channels'], undefined, 'channels 结构化键不经语义键表（形状裁决在 config/channels）');
   assert.equal(SEMANTIC_KEYS['reasoningEffort'], 'SUNSHINEX_REASONING_EFFORT', '思考强度语义键（--effort/--model effort 会话参数链）');
   assert.equal(SEMANTIC_KEYS['dataDir'], undefined, 'dataDir 不存在：不隔离的整目录直指口不进用户配置面（只留环境变量给开发与测试）');
   assert.equal(SEMANTIC_KEYS['structuredOutput'], undefined, 'structuredOutput 不存在：function calling 恒开、无结构化输出开关');
@@ -334,7 +334,7 @@ test('flattenSettings：历史退役键走通用未知键告警、不落槽（�
     ['modelLarge', 'SUNSHINEX_MODEL_LARGE'],
   ] as Array<[string, string]>) {
     assert.equal((SEMANTIC_KEYS as Record<string, unknown>)[key], undefined, `${key} 不在语义键面`);
-    const r = flattenSettings({ semantic: { [key]: 'x' }, env: {} });
+    const r = flattenSettings({ semantic: { [key]: 'x' } });
     assert.equal(r.slots[slot], undefined, `${key} 绝不落槽`);
     assert.equal(r.warnings.length, 1, `${key} 恰一条告警`);
     assert.ok(r.warnings[0]!.includes('未知语义键'), `${key} 告警=通用未知键口径`);
@@ -342,16 +342,15 @@ test('flattenSettings：历史退役键走通用未知键告警、不落槽（�
   }
 });
 
-test('空串等价未配置：语义键与 env 块空串均不落槽（模板占位安全）', () => {
+test('空串等价未配置：语义键空串不落槽（模板占位安全）', () => {
   const { slots, warnings } = flattenSettings({
-    semantic: { shell: '', autoMemory: '', learnedSkillLimit: '' },
-    env: { SUNSHINEX_API_KEY: '', SUNSHINEX_BING_API_KEY: 'sk-bing' },
+    semantic: { shell: '', autoMemory: '', learnedSkillLimit: '', websearchApiKey: '', embeddingApiKey: 'sk-embed' },
   });
   assert.equal(slots['SUNSHINEX_SHELL'], undefined, '语义键空串不落槽');
   assert.equal(slots['SUNSHINEX_AUTO_MEMORY'], undefined, '空串不得触发 on|off fail-fast');
   assert.equal(slots['SUNSHINEX_LEARNED_SKILL_LIMIT'], undefined, '空串不得触发整数 fail-fast');
-  assert.equal(slots['SUNSHINEX_API_KEY'], undefined, 'env 块空串不落槽');
-  assert.equal(slots['SUNSHINEX_BING_API_KEY'], 'sk-bing', '非空 env 块键照常透传');
+  assert.equal(slots['SUNSHINEX_BING_API_KEY'], undefined, 'websearchApiKey 空串不落槽');
+  assert.equal(slots['SUNSHINEX_EMBEDDING_API_KEY'], 'sk-embed', '非空语义键照常落槽');
   assert.deepEqual(warnings, []);
 });
 
@@ -368,10 +367,7 @@ test('parseSettingsFile：JSONC 注释容忍——// 与 /* */ 注释、UTF-8 BO
       '  "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",  // 字符串里的 // 是普通字符，不是注释',
       '  /* 块注释',
       '     可跨行 */',
-      '  "tier": "medium",',
-      '  "env": {',
-      '    "SUNSHINEX_API_KEY": "sk-test"',
-      '  }',
+      '  "tier": "medium"',
       '}',
     ].join('\n'));
     const doc = parseSettingsFile(file);
@@ -383,7 +379,6 @@ test('parseSettingsFile：JSONC 注释容忍——// 与 /* */ 注释、UTF-8 BO
       '字符串内的 // 绝不能被当注释截断（正则剥离式实现的头号事故）',
     );
     assert.equal(doc.semantic['tier'], 'medium', '块注释后的键照常取到');
-    assert.equal(doc.env['SUNSHINEX_API_KEY'], 'sk-test', 'env 块在注释文档中照常解析');
 
     const bomFile = path.join(dir, 'settings-bom.json');
     fs.writeFileSync(bomFile, '\uFEFF' + JSON.stringify({ model: 'glm-5.3-flash' }));

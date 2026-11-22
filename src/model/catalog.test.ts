@@ -8,8 +8,8 @@ import type { ModelAdapter } from './adapter';
 import type { ModelChoice } from '../config/providers';
 
 const CHOICES: ModelChoice[] = [
-  { id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK' },
-  { id: 'bigmodel/glm-4.7', provider: 'bigmodel', model: 'glm-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', apiKeyEnv: 'SUNSHINEX_API_KEY_BIGMODEL' },
+  { id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', },
+  { id: 'bigmodel/glm-4.7', provider: 'bigmodel', model: 'glm-4.7', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', },
 ];
 
 test('缺省态：provider/label 透传主适配器，currentId undefined，choices 原样可读', () => {
@@ -74,8 +74,8 @@ test('每模型窗口：choice.contextWindow 进内芯 cfg（cfg > env）；swit
     assert.equal(new OpenAIAdapter({ provider: 'openai', model: 'm', contextWindow: 128000 }).contextWindow, 128000, 'cfg 优先于 env');
 
     // switcher 透传钉：选择在场随内芯、未选透传缺省内芯
-    const withWindow: ModelChoice = { id: 'x/m1', provider: 'x', model: 'm1', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X', contextWindow: 64000 };
-    const windowless: ModelChoice = { id: 'x/m2', provider: 'x', model: 'm2', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X' };
+    const withWindow: ModelChoice = { id: 'x/m1', provider: 'x', model: 'm1', baseUrl: 'https://x/v1', contextWindow: 64000 };
+    const windowless: ModelChoice = { id: 'x/m2', provider: 'x', model: 'm2', baseUrl: 'https://x/v1', };
     const sw = new ModelSwitcher({ choices: [withWindow, windowless], default: new ScriptedAdapter([]) });
     assert.equal(sw.contextWindow, undefined, '未选 = 缺省内芯（无窗口声明）');
     sw.switchTo('x/m1');
@@ -137,12 +137,7 @@ test('reload：现选择仍在清单 → 保留；被移除 → 回首项；清�
   assert.equal(sw.provider, 'stub');
 });
 
-test('reload：各源密钥按重载时刻解析（启动后才写入的密钥生效，不沿用构造期空值）', () => {
-  const slot = 'SUNSHINEX_API_KEY_DEEPSEEK';
-  const prev = process.env[slot];
-  const prevMain = process.env.SUNSHINEX_API_KEY;
-  delete process.env[slot];
-  delete process.env.SUNSHINEX_API_KEY;
+test('reload：各源密钥按重载时刻解析（2026-11-22 内联裁定：重载 choices 携新 apiKey 即生效，不沿用构造期空值）', () => {
   const seen: string[] = [];
   class SpySwitcher extends ModelSwitcher {
     protected buildAdapter(choice: ModelChoice): ModelAdapter {
@@ -152,52 +147,39 @@ test('reload：各源密钥按重载时刻解析（启动后才写入的密钥�
   }
   try {
     const sw = new SpySwitcher({ choices: [CHOICES[0]!], default: new StubAdapter() });
-    assert.deepEqual(seen, [''], '构造期密钥未就绪');
-    process.env[slot] = 'k-after-start';
-    sw.reload([CHOICES[0]!]);
-    assert.deepEqual(seen, ['', 'k-after-start'], '重载重建内芯即读到新密钥');
+    assert.deepEqual(seen, [''], '构造期密钥未就绪（条目无 apiKey）');
+    sw.reload([{ ...CHOICES[0]!, apiKey: 'k-after-start' }]);
+    assert.deepEqual(seen, ['', 'k-after-start'], '重载重建内芯即读到条目新密钥');
   } finally {
-    if (prev === undefined) delete process.env[slot];
-    else process.env[slot] = prev;
-    if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;
-    else process.env.SUNSHINEX_API_KEY = prevMain;
+    /* 纯条目面用例:无 env 桩需要恢复 */
   }
 });
 
-test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 装配级全局缺省）+ 窗口/密钥槽同源', () => {
-  // 密钥槽隔离：specific 未设回退主槽 SUNSHINEX_API_KEY——开发者 shell 常年带着真实主槽,断言即被污染
-  const prevMain = process.env.SUNSHINEX_API_KEY;
-  const prevX = process.env.SUNSHINEX_API_KEY_X;
-  delete process.env.SUNSHINEX_API_KEY;
-  delete process.env.SUNSHINEX_API_KEY_X;
-  try {
-  const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X' } as const;
+test('choiceAdapterConfig：缺省思考强度两级（条目 reasoningEffort > 装配级全局缺省）+ 窗口透传 + 密钥内联直达（2026-11-22 裁定：无 env 回退,缺席恒空串）', () => {
+  const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', } as const;
   assert.deepEqual(
     choiceAdapterConfig({ ...base, reasoningEffort: 'low' }, { reasoningEffort: 'high' }),
-    { provider: 'openai', baseURL: 'https://x/v1', apiKey: undefined, model: 'm', reasoningEffort: 'low' },
-    '条目级强度压装配级缺省',
+    { provider: 'openai', baseURL: 'https://x/v1', apiKey: '', model: 'm', reasoningEffort: 'low' },
+    '条目级强度压装配级缺省（密钥缺席=空串,非 undefined）',
   );
   assert.deepEqual(
     choiceAdapterConfig({ ...base }, { reasoningEffort: 'high' }),
-    { provider: 'openai', baseURL: 'https://x/v1', apiKey: undefined, model: 'm', reasoningEffort: 'high' },
+    { provider: 'openai', baseURL: 'https://x/v1', apiKey: '', model: 'm', reasoningEffort: 'high' },
     '无条目级强度回装配级缺省（--effort/env 全局）',
   );
   assert.deepEqual(
     choiceAdapterConfig({ ...base }, {}),
-    { provider: 'openai', baseURL: 'https://x/v1', apiKey: undefined, model: 'm' },
+    { provider: 'openai', baseURL: 'https://x/v1', apiKey: '', model: 'm' },
     '两级均未配置 = cfg 零穿参（适配器构造期回退 SUNSHINEX_REASONING_EFFORT）',
   );
   assert.equal(choiceAdapterConfig({ ...base, contextWindow: 128000 }, {}).contextWindow, 128000, '窗口透传');
-  } finally {
-    if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;else process.env.SUNSHINEX_API_KEY = prevMain;
-    if (prevX === undefined) delete process.env.SUNSHINEX_API_KEY_X;else process.env.SUNSHINEX_API_KEY_X = prevX;
-  }
+  assert.equal(choiceAdapterConfig({ ...base, apiKey: 'k-inline' }, {}).apiKey, 'k-inline', '条目内联密钥直达适配器 cfg');
 });
 
 // ── D26 尾巴（2026-10-04）：/model 切换路径接超时旋钮（buildAdapter 装配期经 modelTimeoutMsEnv
 //    解析后由此穿透；env 解析表值钉在 config/termination-config.test.ts）──
 test('choiceAdapterConfig 旋钮穿透钉：defs.timeoutMs 落 LLMConfig.timeoutMs（/model 各源内芯吃到 SUNSHINEX_MODEL_TIMEOUT_MS）', () => {
-  const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_X' } as const;
+  const base = { id: 'x/m', provider: 'x', model: 'm', baseUrl: 'https://x/v1', } as const;
   assert.equal(choiceAdapterConfig({ ...base }, { timeoutMs: 1500 }).timeoutMs, 1500, '装配级旋钮穿透进 cfg');
   assert.equal(choiceAdapterConfig({ ...base }, {}).timeoutMs, undefined, '未设旋钮不落字段（适配器回内建 600s）');
 });

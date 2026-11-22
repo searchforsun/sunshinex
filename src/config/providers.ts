@@ -20,9 +20,7 @@ export interface ModelChoice {
   provider: string;
   model: string;
   baseUrl: string;
-  /** 该源的专用密钥槽名（SUNSHINEX_API_KEY_<大写源名>，解析时查 process.env——env 槽降为回退兼容） */
-  apiKeyEnv: string;
-  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6：providers 条目 apiKey 字段，可回显；缺席=回退 env 槽链） */
+/** 源级内联密钥（2026-11-22 用户裁定推翻 D6：providers 条目 apiKey 字段，可回显；缺席=回退 env 槽链） */
   apiKey?: string;
   /** 该模型最大上下文 tokens（models 条目对象形态 contextWindow > 源级 contextWindow 缺省；
    *  undefined = 回退全局 SUNSHINEX_CONTEXT_WINDOW / 内置 200k） */
@@ -41,16 +39,9 @@ export interface ModelChoice {
   params?: RequestParams;
 }
 
-/** 源名 → 专用密钥槽名：非字母数字段折叠为单下划线（"my-provider" → SUNSHINEX_API_KEY_MY_PROVIDER） */
-export function providerApiKeyEnv(name: string): string {
-  return 'SUNSHINEX_API_KEY_' + name.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
-}
-
-/** 源密钥解析（2026-11-22 内联裁定回退链）：**条目 apiKey 优先**（读全局档 providers 条目——
- *  两级遮蔽下无 root 上下文的解析只锚全局档，与 loadChannels 同口径）→ env 专用槽 → 主槽
- *  SUNSHINEX_API_KEY（settings env 块装载后均落 process.env，老配置 env 直配兼容不炸）；
- *  全链都缺 = 未配置（调用时由适配器报 SUNSHINEX_API_KEY is not configured）。档畸形按缺级处理
- *  （装载链统一上报口径），env 链仍走。 */
+/** 源密钥解析（2026-11-22 内联裁定，**无兼容回退**）：读全局档 providers 条目的 apiKey 字段——
+ *  条目缺/值空 = 未配置（调用时由适配器报 SUNSHINEX_API_KEY is not configured）。档畸形按缺级
+ *  处理（装载链统一上报口径）→ undefined。 */
 export function resolveProviderApiKey(name: string): string | undefined {
   try {
     const doc = parseSettingsFile(loadGlobalSettings());
@@ -60,16 +51,13 @@ export function resolveProviderApiKey(name: string): string | undefined {
       if (typeof item !== 'object' || item === null) continue;
       const rec = item as { name?: unknown; apiKey?: unknown };
       if (typeof rec['name'] !== 'string' || rec['name'].trim() !== label) continue;
-      if (typeof rec['apiKey'] === 'string' && rec['apiKey'].trim() !== '') return rec['apiKey'].trim();
-      break; // 条目命中且无内联值：停止扫表，走 env 回退链
+      const key = rec['apiKey'];
+      return typeof key === 'string' && key.trim() !== '' ? key.trim() : undefined;
     }
   } catch {
-    /* 档畸形/不可读：按缺级处理，env 回退链仍走 */
+    return undefined; // 档畸形/不可读：按缺级处理（装载链统一上报口径）
   }
-  const specific = process.env[providerApiKeyEnv(name)];
-  if (specific !== undefined && specific !== '') return specific;
-  const main = process.env.SUNSHINEX_API_KEY;
-  return main !== undefined && main !== '' ? main : undefined;
+  return undefined;
 }
 
 interface LoadedProviders {
@@ -334,7 +322,6 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         provider: name,
         model,
         baseUrl,
-        apiKeyEnv: providerApiKeyEnv(name),
         ...(providerKey !== undefined ? { apiKey: providerKey } : {}),
         ...(itemWindow !== undefined ? { contextWindow: itemWindow } : providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
         ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),

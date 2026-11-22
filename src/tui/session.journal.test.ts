@@ -153,9 +153,8 @@ test('continueLast：手工 v3 档全词汇还原（seg 转录/链/待办/档位
     const id = j.currentId!;
 
     const sw = new ModelSwitcher({
-      choices: [{ id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK', contextWindow: 128000 }],
-      default: new ScriptedAdapter([]),
-    });
+      choices: [{ id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', contextWindow: 128000 }],
+      default: new ScriptedAdapter([]) });
     const ctrl = new SessionController({ root: tmp, models: sw, continueLast: true });
     assert.equal(ctrl.getState().status, 'idle');
     assert.deepEqual(ctrl.getState().todos, [{ text: '待办甲', status: 'pending' }]);
@@ -178,9 +177,8 @@ test('continueLast：手工 v3 档全词汇还原（seg 转录/链/待办/档位
     j2.log({ t: 'user', text: '漂移档输入' });
     j2.log({ t: 'model', modelId: 'gone/model' });
     const sw2 = new ModelSwitcher({
-      choices: [{ id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_DEEPSEEK' }],
-      default: new ScriptedAdapter([]),
-    });
+      choices: [{ id: 'deepseek/deepseek-chat', provider: 'deepseek', model: 'deepseek-chat', baseUrl: 'https://api.deepseek.com/v1' }],
+      default: new ScriptedAdapter([]) });
     const ctrl2 = new SessionController({ root: tmp, models: sw2, continueLast: true });
     assert.equal(sw2.currentId(), undefined, '漂移 id 不硬切，保持缺省内芯');
     assert.equal(ctrl2.getState().modelId, undefined);

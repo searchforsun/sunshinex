@@ -12,7 +12,7 @@
  * （散键退役后的唯一事实源，不设 enable|disable——agents 族同名子命令不照搬）。
  * key 交互面：process.stdin.setRawMode 最小实现（逐字符读、回显 *，Ctrl+C 中止——仓内无 readline
  * mute 先例，沿 brief 裁定的最小实现；TTY 交互路径手工验收）。test 连通探测：GET <baseUrl>/models
- * 带解析密钥（resolveProviderApiKey 单点，env 块随入口 loadSettingsChain 已落 process.env），10s
+ * 带解析密钥（providers 条目 apiKey 内联），10s
  * 超时（AbortSignal.timeout，harness webfetch 先例；全局 fetch 沿 model/adapter 仓内先例），
  * 成功两行（ok 行 + 模型数行）或错误摘要一行——失败是结果不是异常（mcp test 同款裁定）。
  * 通道即语义（mcp.ts 先例）：结果面（表格/JSON/ok 行）stdout、诊断面（error/[warn]）stderr、
@@ -24,7 +24,6 @@
 import CliTable3 from 'cli-table3';
 import { listProviders, modelAdd, modelMove, modelRemove, removeProvider, setProviderApiKey, upsertProvider } from '../../catalog/providers';
 import type { ProviderModelInput, ProviderUpsertPatch } from '../../catalog/providers';
-import { providerApiKeyEnv, resolveProviderApiKey } from '../../config/providers';
 import { t } from '../../i18n';
 import { PROVIDERS_FLAG_KEYS, entryArg, resolveTarget, runCatalogWrite } from './catalog-common';
 import { settingsPathOf } from '../../catalog/io';
@@ -360,8 +359,7 @@ async function keyCmd(args: string[]): Promise<number> {
     console.error(t(`error: provider not found: ${name}`, `error：找不到 provider：${name}`));
     return 1;
   }
-  const slot = providerApiKeyEnv(name);
-  const key = await readHiddenLine(t(`API key for ${name} (${slot}): `, `${name} 的 API key（${slot}）：`));
+  const key = await readHiddenLine(t(`API key for ${name}: `, `${name} 的 API key：`));
   if (key === undefined) {
     console.error(t('aborted; nothing written', '已中止；未写入任何内容'));
     return 1;
@@ -373,8 +371,8 @@ async function keyCmd(args: string[]): Promise<number> {
   }
   const code = runCatalogWrite(() => setProviderApiKey(target.root, target.scope, name, key));
   if (code !== 0) return code;
-  // ok 行只落 env 槽名（非密）；密钥值无任何输出通道
-  console.log(t(`ok: api key stored for ${name} (env ${slot})`, `ok：已存 ${name} 的 API key（env ${slot}）`));
+  // ok 行不带密钥值（密钥无任何输出通道）
+  console.log(t(`ok: api key stored for ${name} (providers entry apiKey)`, `ok：已存 ${name} 的 API key（providers 条目）`));
   return 0;
 }
 
@@ -388,8 +386,8 @@ function fetchErrText(e: unknown): string {
 }
 
 /**
- * 连通探测（probeMcpServer 思路的 OpenAI 端点面）：GET <baseUrl>/models 带解析密钥（专用槽 > 主槽，
- * resolveProviderApiKey 单点）；10s 超时（AbortSignal.timeout）。成功两行：ok 行 + 模型数行
+ * 连通探测（probeMcpServer 思路的 OpenAI 端点面）：GET <baseUrl>/models 带条目 apiKey
+ * （resolveProviderApiKey 单点,内联无回退）；10s 超时（AbortSignal.timeout）。成功两行：ok 行 + 模型数行
  * （OpenAI 兼容 {data:[...]} 取 data 长度；他形态如实报 unknown——2xx 即连通，计数不是连通判据）；
  * 失败是结果不是异常——error 行上屏 + exit 1（CLI 面 CI 可判定）。密钥只进请求头，零回显。
  */
@@ -406,7 +404,7 @@ async function testCmd(args: string[]): Promise<number> {
     return 1;
   }
   const url = `${entry.baseUrl.replace(/\/+$/, '')}/models`;
-  const key = resolveProviderApiKey(name);
+  const key = entry.apiKey; // 条目内联密钥(2026-11-22 裁定,无 env 回退)
   let res: Awaited<ReturnType<typeof fetch>>;
   try {
     res = await fetch(url, {

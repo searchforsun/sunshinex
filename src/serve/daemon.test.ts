@@ -1041,11 +1041,10 @@ describe('G8c T2 /settings 端点', () => {
       fs.writeFileSync(path.join(proj, '.sunshinex', 'settings.json'), JSON.stringify({
         permissions: { deny: ['Bash(rm*)', 'Write(/secret/*)'], additionalDirs: ['C:/extra'] },
         providers: [
-          { name: 'pp', baseUrl: 'https://pp.example', models: [{ model: 'pm1' }, { model: 'pm2' }] },
+          { name: 'pp', baseUrl: 'https://pp.example', apiKey: 'sk-present', models: [{ model: 'pm1' }, { model: 'pm2' }] },
           { name: 'broken', models: [] }, // 坏条目(缺 baseUrl)→warning 且该源跳过
         ],
       }, null, 2), 'utf8');
-      process.env.SUNSHINEX_API_KEY = 'sk-present'; // providers 密钥在场面(apiKeyPresent=true)
 
       const r = await fetch(`${base}/settings?root=${encodeURIComponent(proj)}`, { headers: AUTH });
       assert.equal(r.status, 200);
@@ -1054,7 +1053,7 @@ describe('G8c T2 /settings 端点', () => {
       assert.deepEqual(body.permissions.project, { deny: ['Bash(rm*)', 'Write(/secret/*)'], allow: [], additionalDirs: ['C:/extra'] }, 'project 级原样');
       assert.deepEqual(body.permissions.merged, { deny: ['Bash(rm*)', 'Write(/secret/*)'], allow: ['Read(*)'], additionalDirs: ['C:/extra'] }, 'merged=两级拼接去重(loadPermissions 同口径)');
       assert.deepEqual(body.providers.choices.map((c) => c.id), ['pp/pm1', 'pp/pm2'], '项目 providers 在场即整键遮蔽全局');
-      assert.deepEqual(body.providers.apiKeyPresent, { pp: true }, '密钥在场性=布尔(专用槽>主槽),不显值');
+      assert.deepEqual(body.providers.apiKeyPresent, { pp: true }, '密钥在场性=布尔(条目 apiKey 在场;2026-11-22 内联裁定,值随 entries 回显)');
       assert.equal(body.providers.warnings.length, 1, '坏条目产出一条 warning');
       assert.ok(body.providers.warnings[0]!.includes('broken'), 'warning 指名坏源');
       // Task 27.5 entries origin 归因:项目键在场=整键遮蔽 → 该面全部条目 origin='project'

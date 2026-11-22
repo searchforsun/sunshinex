@@ -13,9 +13,7 @@ function choice(id: string, model: string, tier?: 'small' | 'medium' | 'large'):
     provider: 'p',
     model,
     baseUrl: 'https://p.example/v1',
-    apiKeyEnv: 'SUNSHINEX_API_KEY_P',
-    ...(tier !== undefined ? { tier } : {}),
-  };
+    ...(tier !== undefined ? { tier } : {}) };
 }
 
 test('buildTierRouterFromChoices：tier 标注命中绑定档，未标注档回缺省 choices[0] 适配器', () => {

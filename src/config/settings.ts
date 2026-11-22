@@ -5,7 +5,9 @@ import { t, setLanguage, parseLanguage } from '../i18n';
 
 /**
  * 语义键 → SUNSHINEX_* 环境槽映射表（全仓唯一权威）。
- * - 只有 *API_KEY 不进本表（D6 + 用户裁决「env 块只承载敏感字段」）：密钥只走 env 透传块或环境变量，设置与凭据分离。
+ * - 密钥内联（2026-11-22 用户裁定推翻 D6「env 块只承载敏感字段」）：providers 条目 apiKey / channels
+ *   条目 secret / embedding·websearch 密钥语义键(embeddingApiKey/websearchApiKey)各自承载,settings.json
+ *   的 env 透传分组**完全退役**（原 env 块机制不再解析——语义键 + 真实环境变量两条路保留）。
  * - SUNSHINEX_DATA_DIR 亦不进本表：它是「整目录直指」的**开发与测试专用**重定向口（测试钉数据目录、CI 隔离运行时数据），
  *   留在用户配置面即诱导误用（多工作区共用一份 sessions/memory/runs/skills，记忆索引还会跨项目注入提示词），
  *   故只保留在环境变量面；用户级换盘一律走 projectsDir。
@@ -58,15 +60,17 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   embeddingModel: 'SUNSHINEX_EMBEDDING_MODEL',
   websearchProvider: 'SUNSHINEX_WEBSEARCH_PROVIDER',
   websearchEndpoint: 'SUNSHINEX_WEBSEARCH_ENDPOINT',
+  websearchApiKey: 'SUNSHINEX_BING_API_KEY',
+  embeddingApiKey: 'SUNSHINEX_EMBEDDING_API_KEY',
   readFence: 'SUNSHINEX_READ_FENCE',
   sandbox: 'SUNSHINEX_SANDBOX',
   isolation: 'SUNSHINEX_ISOLATION',
 };
 
-/** settings.json 解析产物：semantic=根级语义键原始值（形状裁决留给 flattenSettings）；env=透传块（键名即 SUNSHINEX_* 原名） */
+/** settings.json 解析产物：semantic=根级语义键原始值（形状裁决留给 flattenSettings）。env 透传分组
+ *  已退役（2026-11-22 用户裁定「env 完全下线」）——解析遇到 env 键按未知顶层键忽略 */
 interface SettingsDoc {
   semantic: Record<string, unknown>;
-  env: Record<string, string>;
   /** permissions 结构化语义键原值（spec 5.2）：形状裁决在 config/permissions.ts，不经 flatten/env 槽 */
   permissions?: unknown;
   /** providers 结构化语义键原值（多源多模型清单，/model 选择卡数据源）：形状裁决在 config/providers.ts，不经 flatten/env 槽 */
@@ -169,7 +173,8 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   let mcpDenied: unknown = undefined;
   let channels: unknown = undefined;
   for (const [key, value] of Object.entries(root)) {
-    if (key === 'version' || key === 'env') continue;
+    if (key === 'version') continue;
+    if (key === 'env') continue; // env 透传分组退役（2026-11-22 裁定）：settings.json 不再承载 SUNSHINEX_* 环境透传,真实环境变量仍有效
     if (key === 'permissions') {
       permissions = root[key] as unknown;
       continue;
@@ -200,18 +205,7 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
     }
     semantic[key] = value;
   }
-  const env: Record<string, string> = {};
-  const envBlock = root['env'];
-  if (envBlock !== undefined) {
-    if (typeof envBlock !== 'object' || envBlock === null || Array.isArray(envBlock)) {
-      throw new Error(`settings.json "env" 块必须是 JSON 对象: ${filePath}`);
-    }
-    for (const [key, value] of Object.entries(envBlock as Record<string, unknown>)) {
-      if (typeof value === 'string') env[key] = value;
-      // 非字符串值静默忽略：env 块定位是环境变量透传，数字/布尔无对应语义
-    }
-  }
-  return { semantic, env, permissions, providers, plugins, imageHistoryLimit, mcpApprovals, mcpDenied, channels };
+  return { semantic, permissions, providers, plugins, imageHistoryLimit, mcpApprovals, mcpDenied, channels };
 }
 
 interface FlattenResult {
@@ -221,8 +215,8 @@ interface FlattenResult {
 }
 
 /**
- * 展平：语义键按映射表落槽 + env 块合并。
- * - 同槽语义键 > env 块（D3）：语义键是设置的正名，env 块只是兜底透传。
+ * 展平：语义键按映射表落槽（env 透传分组已退役,2026-11-22 裁定——settings.json 不再能直设
+ * SUNSHINEX_* 环境变量,语义键 + 真实环境变量两条路保留）。
  * - 槽值统一 String() 归一：contextWindow 数字与数字字符串等价，process.env 是字符串世界。
  * - 未知语义键 / 值类型非 string|number：告警并忽略，不致命；stderr 输出属入口层职责，本层只产出数据。
  * - 空串（或纯空白）等价未配置：模板可用空串占位而不改变行为。
@@ -244,10 +238,6 @@ export function flattenSettings(doc: SettingsDoc): FlattenResult {
     const normalized = String(value);
     if (normalized.trim() === '') continue; // 空串等价未配置（模板占位安全）
     slots[slot] = normalized;
-  }
-  for (const [key, value] of Object.entries(doc.env)) {
-    if (value.trim() === '') continue; // 空串等价未配置
-    if (slots[key] === undefined) slots[key] = value;
   }
   return { slots, warnings };
 }

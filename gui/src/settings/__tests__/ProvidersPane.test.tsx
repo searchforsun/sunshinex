@@ -35,11 +35,9 @@ const entryOf = (over: Partial<ProviderEntry & { apiKey?: string }> = {}): Provi
   name: 'p1',
   baseUrl: 'https://api.p1/v1',
   models: [{ model: 'm1', tier: 'large' }, { model: 'm2' }],
-  apiKeyEnv: 'SUNSHINEX_API_KEY_P1',
   apiKeyPresent: true,
   apiKey: 'sk-old-1',
-  ...over,
-});
+  ...over });
 
 /** 键行构造器(SettingsKeyRow 合法缺省——SettingsForm 行仅渲染 daemon 报键面;
  *  source 钉 'global':内嵌请求参数卡恒全局读) */
@@ -52,21 +50,18 @@ const viewOf = (providers: Partial<SettingsView['providers']> = {}): SettingsVie
   permissions: {
     merged: { deny: [], allow: [], additionalDirs: [] },
     project: { deny: [], allow: [], additionalDirs: [] },
-    global: { deny: [], allow: [], additionalDirs: [] },
-  },
+    global: { deny: [], allow: [], additionalDirs: [] } },
   providers: {
     choices: [
-      { id: 'p1/m1', provider: 'p1', model: 'm1', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
-      { id: 'p1/m2', provider: 'p1', model: 'm2', baseUrl: 'https://api.p1/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P1' },
-      { id: 'p2/m9', provider: 'p2', model: 'm9', baseUrl: 'https://api.p2/v1', apiKeyEnv: 'SUNSHINEX_API_KEY_P2' },
+      { id: 'p1/m1', provider: 'p1', model: 'm1', baseUrl: 'https://api.p1/v1' },
+      { id: 'p1/m2', provider: 'p1', model: 'm2', baseUrl: 'https://api.p1/v1' },
+      { id: 'p2/m9', provider: 'p2', model: 'm9', baseUrl: 'https://api.p2/v1' },
     ],
-    entries: [entryOf(), entryOf({ name: 'p2', baseUrl: 'https://api.p2/v1', models: [{ model: 'm9' }], apiKeyEnv: 'SUNSHINEX_API_KEY_P2', apiKeyPresent: false })],
+    entries: [entryOf(), entryOf({ name: 'p2', baseUrl: 'https://api.p2/v1', models: [{ model: 'm9' }], apiKeyPresent: false })],
     apiKeyPresent: { p1: true, p2: false },
     warnings: ['providers warn line'],
-    ...providers,
-  },
-  warnings: [],
-});
+    ...providers },
+  warnings: [] });
 
 /** conn 桩:三面调用记录(settings 挂载=两笔消费(SettingsForm+卡面)同代答 initial,重拉答
  *  next——未给 next 重拉仍答 initial);opError 在场=putProviderOp 首调即拒(错误透出钉测) */
@@ -101,12 +96,10 @@ const connOf = (
         return opts.opError !== undefined ? Promise.reject(opts.opError) : Promise.resolve();
       },
       probeProvider: () => Promise.resolve({ ok: true }),
-      memoryStats: () => Promise.resolve({ entries: 0, lastWriteAt: null }),
-    },
+      memoryStats: () => Promise.resolve({ entries: 0, lastWriteAt: null }) },
     settingsCalls,
     putSettingsCalls,
-    opCalls,
-  };
+    opCalls };
 };
 
 
@@ -219,9 +212,7 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
             maxOutputTokens: 8192,
             supportsImages: true,
             supportsVideo: true,
-            params: { cache: true },
-          },
-        },
+            params: { cache: true } } },
       ]),
     );
   });

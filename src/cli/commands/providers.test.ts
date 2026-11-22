@@ -30,8 +30,7 @@ interface Fixture {
 function makeFixture(tag: string): Fixture {
   return {
     home: fs.mkdtempSync(path.join(os.tmpdir(), `provcli-${tag}-home-`)),
-    proj: fs.mkdtempSync(path.join(os.tmpdir(), `provcli-${tag}-proj-`)),
-  };
+    proj: fs.mkdtempSync(path.join(os.tmpdir(), `provcli-${tag}-proj-`)) };
 }
 
 function cleanup(f: Fixture): void {
@@ -53,8 +52,7 @@ function cliEnv(f: Fixture, extraEnv: Record<string, string> = {}): NodeJS.Proce
     SUNSHINEX_API_KEY: '',
     SUNSHINEX_API_KEY_P1: '',
     SUNSHINEX_API_KEY_LIVE: '',
-    ...extraEnv,
-  };
+    ...extraEnv };
 }
 
 /** spawn dist CLI（同步形态）：cwd = 临时项目（project 作用域锚） */
@@ -63,8 +61,7 @@ function runCli(f: Fixture, args: string[], extraEnv: Record<string, string> = {
     cwd: f.proj,
     timeout: 60_000,
     encoding: 'utf8',
-    env: cliEnv(f, extraEnv),
-  });
+    env: cliEnv(f, extraEnv) });
 }
 
 /**
@@ -82,8 +79,7 @@ function runCliAsync(f: Fixture, args: string[], extraEnv: Record<string, string
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(REPO_ROOT, 'dist', 'cli', 'index.js'), 'providers', ...args], {
       cwd: f.proj,
-      env: cliEnv(f, extraEnv),
-    });
+      env: cliEnv(f, extraEnv) });
     let stdout = '';
     let stderr = '';
     child.stdout!.on('data', (d: Buffer) => { stdout += d.toString('utf8'); });
@@ -116,7 +112,7 @@ function readProjSettings(f: Fixture): ProjSettings {
 
 /** list --json 双视图解析（providers=源级分组文件镜像 + choices=展平生效值） */
 interface ListView {
-  providers: Array<{ name: string; baseUrl: string; apiKeyPresent: boolean; apiKeyEnv: string; models: Array<{ model: string; tier?: string }> }>;
+  providers: Array<{ name: string; baseUrl: string; apiKeyPresent: boolean; apiKey?: string; models: Array<{ model: string; tier?: string }> }>;
   choices: Array<{ id: string; provider: string; model: string; tier?: string; contextWindow?: number }>;
 }
 
@@ -142,8 +138,7 @@ test('① add 全旗标（--base-url --models=a,b --context-window --reasoning-e
     const view = listJson(f);
     assert.equal(view.providers.length, 1);
     assert.deepEqual(view.providers[0]!.models.map((m) => m.model), ['a', 'b'], 'models 序 = 逗号清单序');
-    assert.equal(view.providers[0]!.apiKeyPresent, false, '未配密钥应标 false（值不回传）');
-    assert.equal(view.providers[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_P1');
+    assert.equal(view.providers[0]!.apiKeyPresent, false, '未配密钥应标 false');
     assert.deepEqual(view.choices.map((c) => c.id), ['p1/a', 'p1/b'], 'choices 序 = providers 序 × models 序');
     assert.equal(view.choices[0]!.contextWindow, 32000, 'choices 继承源级 contextWindow');
     // 表格面：名称与 baseUrl 可见（非 JSON 通道）
@@ -236,18 +231,21 @@ test('⑥ key 非 TTY spawn → exit 1 + 提示走 GUI/raw；零盘上副作用'
   }
 });
 
-test('⑦ 密钥零回显钉：专用槽 env 桩 → list --json apiKeyPresent 翻转且输出无键值', () => {
+test('⑦ 密钥回显钉（2026-11-22 内联裁定推翻「值不回传」）：条目 apiKey 落盘 → list --json apiKeyPresent 翻转且条目回显值', () => {
   const f = makeFixture('noecho');
   try {
     assert.equal(runCli(f, ['add', 'p1', '--base-url=https://api.example.com/v1', '--models=a']).status, 0, '前置 add 应成功');
     const view = listJson(f);
     assert.equal(view.providers[0]!.apiKeyPresent, false, '清场态应 false');
-    const r = runCli(f, ['list', '--json'], { SUNSHINEX_API_KEY_P1: 'supersecret-key-value' });
+    // 条目 apiKey 直写盘(key 子命令交互写入同字段;此处直写盘避免交互桩)
+    const doc = readProjSettings(f);
+    (doc.providers![0] as { apiKey?: string }).apiKey = 'supersecret-key-value';
+    fs.writeFileSync(path.join(f.proj, '.sunshinex', 'settings.json'), JSON.stringify(doc, null, 2));
+    const r = runCli(f, ['list', '--json']);
     assert.equal(r.status, 0, `list --json 应 exit 0，stderr：${r.stderr}`);
-    const out = r.stdout ?? '';
-    assert.ok(!out.includes('supersecret-key-value'), `密钥值不得出现在任何输出通道：${JSON.stringify(out)}`);
-    const v2 = JSON.parse(out) as ListView;
-    assert.equal(v2.providers[0]!.apiKeyPresent, true, '专用槽有值应标 present（只标布尔不回值）');
+    const v2 = JSON.parse(r.stdout ?? '{}') as ListView;
+    assert.equal(v2.providers[0]!.apiKeyPresent, true, '条目有 key 应标 present');
+    assert.equal(v2.providers[0]!.apiKey, 'supersecret-key-value', '条目回显 apiKey 值(2026-11-22 用户裁定:密钥可回显)');
   } finally {
     cleanup(f);
   }
@@ -289,9 +287,12 @@ test('⑨ test 真 HTTP 探测：本地 /models 200 → ok 两行 + Bearer 头�
   const port = (server.address() as net.AddressInfo).port;
   const f = makeFixture('probe');
   try {
-    const addEnv = { SUNSHINEX_API_KEY_LIVE: 'sk-live-secret' };
-    assert.equal(runCli(f, ['add', 'live', `--base-url=http://127.0.0.1:${port}/v1`, '--models=m1,m2'], addEnv).status, 0, '前置 add 应成功');
-    const ok = await runCliAsync(f, ['test', 'live'], addEnv);
+    assert.equal(runCli(f, ['add', 'live', `--base-url=http://127.0.0.1:${port}/v1`, '--models=m1,m2']).status, 0, '前置 add 应成功');
+    // 条目 apiKey 直写盘(2026-11-22 内联裁定:key 随 providers 条目存放,无 env 槽)
+    const doc = readProjSettings(f);
+    (doc.providers![0] as { apiKey?: string }).apiKey = 'sk-live-secret';
+    fs.writeFileSync(path.join(f.proj, '.sunshinex', 'settings.json'), JSON.stringify(doc, null, 2));
+    const ok = await runCliAsync(f, ['test', 'live']);
     assert.equal(ok.status, 0, `test 应 exit 0，stderr：${ok.stderr}`);
     const lines = ok.stdout.trim().split('\n');
     assert.equal(lines.length, 2, `结果两行：${JSON.stringify(ok.stdout)}`);

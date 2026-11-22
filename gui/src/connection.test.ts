@@ -565,7 +565,7 @@ describe('gui connection 状态机(会话维;WS/fetch/计时三桩)', () => {
       },
       providers: {
         choices: [
-          { id: 'openai/gpt', provider: 'openai', model: 'gpt', baseUrl: 'https://api.x', apiKeyEnv: 'SUNSHINEX_API_KEY_OPENAI' },
+          { id: 'openai/gpt', provider: 'openai', model: 'gpt', baseUrl: 'https://api.x' },
         ],
         apiKeyPresent: { openai: true },
         warnings: ['provider "local" has no models'],

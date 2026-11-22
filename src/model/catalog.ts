@@ -8,7 +8,6 @@
 import { ModelAdapter, OpenAIAdapter, UsageHooks, LLMConfig } from './adapter';
 import type { ChatRequest, ChatResult, ReasoningEffort } from '../types';
 import type { ModelChoice } from '../config/providers';
-import { resolveProviderApiKey } from '../config/providers';
 import { modelTimeoutMsEnv } from '../config/termination-config';
 
 interface ModelSwitcherOpts {
@@ -37,8 +36,8 @@ export function choiceAdapterConfig(
   return {
     provider: 'openai',
     baseURL: choice.baseUrl,
-    // 密钥解析（2026-11-22 内联裁定）：条目 apiKey 优先，env 槽链降为回退兼容（resolveProviderApiKey）
-    apiKey: choice.apiKey ?? resolveProviderApiKey(choice.provider),
+    // 密钥（2026-11-22 内联裁定,无兼容回退）：条目 apiKey 即密钥;缺席=未配置(适配器报错) */
+    apiKey: choice.apiKey ?? '',
     model: choice.model,
     ...(defs.timeoutMs !== undefined ? { timeoutMs: defs.timeoutMs } : {}),
     ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),

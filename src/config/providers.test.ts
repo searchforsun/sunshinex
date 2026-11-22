@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseProvidersSpec, loadProviders, loadProvidersFull, providerApiKeyEnv, resolveProviderApiKey } from './providers';
+import { parseProvidersSpec, loadProviders, loadProvidersFull, resolveProviderApiKey } from './providers';
 import { parseSettingsFile, flattenSettings } from './settings';
 import { loadProjectSettings } from './settings';
 
@@ -21,9 +21,7 @@ test('parseProvidersSpec：合法清单逐源展开为 源/模型 条目，同�
   assert.deepEqual(r.warnings, []);
   assert.deepEqual(r.choices.map((c) => c.id), ['deepseek/deepseek-chat', 'deepseek/deepseek-reasoner', 'bigmodel/glm-4.7']);
   assert.equal(r.choices[0]!.baseUrl, 'https://api.deepseek.com/v1');
-  assert.equal(r.choices[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_DEEPSEEK');
-  assert.equal(r.choices[2]!.apiKeyEnv, 'SUNSHINEX_API_KEY_BIGMODEL');
-});
+    });
 
 test('parseProvidersSpec：非数组/条目非对象/缺 name/缺 baseUrl/models 空或条目形态坏 → warning 跳过，不致命', () => {
   const r = parseProvidersSpec([
@@ -111,28 +109,34 @@ test('loadProviders：项目级 providers 键整键遮蔽全局；项目缺键�
   }
 });
 
-test('源密钥槽（回退链）：专用槽 SUNSHINEX_API_KEY_<大写名> > 主槽 SUNSHINEX_API_KEY；槽名非字母数字段折叠', () => {
-  assert.equal(providerApiKeyEnv('deepseek'), 'SUNSHINEX_API_KEY_DEEPSEEK');
-  assert.equal(providerApiKeyEnv('my-provider'), 'SUNSHINEX_API_KEY_MY_PROVIDER');
-  // HOME 桩隔离：resolveProviderApiKey 条目内联查找走两级 settings 装载——须钉空家目录防真实全局档串入
+test('源密钥解析（2026-11-22 内联裁定,无 env 回退）：读全局档条目 apiKey——条目缺/值空 = 未配置', () => {
+  // HOME 桩隔离：resolveProviderApiKey 条目内联查找走全局 settings 装载——须钉空家目录防真实全局档串入
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'providers-key-'));
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
   process.env.HOME = fakeHome;
   process.env.USERPROFILE = fakeHome;
-  const prevSpecific = process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
   const prevMain = process.env.SUNSHINEX_API_KEY;
   try {
+    // env 槽直配(老形态)不再被解析——密钥只认条目内联字段
     process.env.SUNSHINEX_API_KEY = 'main-key';
     process.env.SUNSHINEX_API_KEY_MY_PROVIDER = 'specific-key';
-    assert.equal(resolveProviderApiKey('my-provider'), 'specific-key', '专用槽优先');
-    delete process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
-    assert.equal(resolveProviderApiKey('my-provider'), 'main-key', '缺专用槽回退主槽');
-    process.env.SUNSHINEX_API_KEY = '';
-    assert.equal(resolveProviderApiKey('my-provider'), undefined, '主槽空串 = 未配置');
+    fs.mkdirSync(path.join(fakeHome, '.sunshinex'), { recursive: true });
+    fs.writeFileSync(path.join(fakeHome, '.sunshinex', 'settings.json'), JSON.stringify({
+      version: 1,
+      providers: [{ name: 'my-provider', baseUrl: 'https://p/v1', apiKey: 'inline-key', models: [{ model: 'm' }] }],
+    }), 'utf8');
+    assert.equal(resolveProviderApiKey('my-provider'), 'inline-key', '条目内联密钥直达');
+    // 条目值空串 = 未配置(env 槽在场也不回退)
+    fs.writeFileSync(path.join(fakeHome, '.sunshinex', 'settings.json'), JSON.stringify({
+      version: 1,
+      providers: [{ name: 'my-provider', baseUrl: 'https://p/v1', apiKey: '', models: [{ model: 'm' }] }],
+    }), 'utf8');
+    assert.equal(resolveProviderApiKey('my-provider'), undefined, '条目空串 = 未配置(无 env 回退)');
+    // 条目缺席 = 未配置
+    fs.writeFileSync(path.join(fakeHome, '.sunshinex', 'settings.json'), JSON.stringify({ version: 1 }), 'utf8');
+    assert.equal(resolveProviderApiKey('my-provider'), undefined, '条目缺席 = 未配置');
   } finally {
-    if (prevSpecific === undefined) delete process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
-    else process.env.SUNSHINEX_API_KEY_MY_PROVIDER = prevSpecific;
     if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;
     else process.env.SUNSHINEX_API_KEY = prevMain;
     if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
@@ -182,7 +186,7 @@ test('providers 条目 apiKey 内联解析：收口（trim/空串=缺席/非串�
   }
 });
 
-test('resolveProviderApiKey 回退链：条目 apiKey 优先 → env 专用槽 → 主槽；都无 undefined（老配置 env 直配不炸）', () => {
+test('resolveProviderApiKey（2026-11-22 内联裁定，无 env 回退）：读全局档条目 apiKey——条目缺/值空 = 未配置', () => {
   const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'providers-chain-'));
   const prevHome = process.env.HOME;
   const prevUserProfile = process.env.USERPROFILE;
@@ -197,20 +201,18 @@ test('resolveProviderApiKey 回退链：条目 apiKey 优先 → env 专用槽 �
       fs.writeFileSync(path.join(globalDir, 'settings.json'), JSON.stringify({ version: 1, providers }), 'utf8');
     };
     const models = [{ model: 'm' }];
-    // ① 条目 apiKey 优先：env 槽在场也不盖条目值
+    // ① 条目 apiKey 在场：直达（env 槽在场也不回退——env 槽机制退役）
     writeProviders([{ name: 'my-provider', baseUrl: 'https://p/v1', apiKey: 'inline-key', models }]);
     process.env.SUNSHINEX_API_KEY_MY_PROVIDER = 'env-key';
-    assert.equal(resolveProviderApiKey('my-provider'), 'inline-key', '条目 apiKey 优先于 env 槽');
-    // ② 条目无 apiKey → env 专用槽回退（老配置兼容）
+    assert.equal(resolveProviderApiKey('my-provider'), 'inline-key', '条目 apiKey 直达,env 槽在场不盖');
+    // ② 条目 apiKey 空串 = 未配置（env 槽在场也不回退）
     writeProviders([{ name: 'my-provider', baseUrl: 'https://p/v1', models }]);
-    assert.equal(resolveProviderApiKey('my-provider'), 'env-key', '条目无 apiKey 走 env 专用槽');
+    assert.equal(resolveProviderApiKey('my-provider'), undefined, '条目无 apiKey = 未配置（env 槽退役）');
     delete process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
-    // ③ env 专用槽也无 → 主槽
-    process.env.SUNSHINEX_API_KEY = 'main-key';
-    assert.equal(resolveProviderApiKey('my-provider'), 'main-key', '无专用槽回退主槽');
-    // ④ 都无 → undefined
     delete process.env.SUNSHINEX_API_KEY;
-    assert.equal(resolveProviderApiKey('my-provider'), undefined, '全链无值 = 未配置');
+    // ③ 条目缺席 = 未配置
+    writeProviders([]);
+    assert.equal(resolveProviderApiKey('my-provider'), undefined, '条目缺席 = 未配置');
   } finally {
     if (prevSpecific === undefined) delete process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
     else process.env.SUNSHINEX_API_KEY_MY_PROVIDER = prevSpecific;

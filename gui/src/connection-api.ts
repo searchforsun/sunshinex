@@ -112,7 +112,7 @@ export interface Connection {
    *  {ok:false,error}（诊断面失败即结果非错误码，mcp probe 同裁定），成功 {ok:true,botId} */
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
   /** PUT /channels/:id/secret body {secret}（2026-11-22 终形态修复波）：通道密钥写面——写全局
-   *  settings.json env 块 SUNSHINEX_CHANNEL_SECRET_<ID> 槽（D6：密钥不进 channels 键；providers
+   *  settings.json channels 条目 secret 字段（2026-11-22 内联裁定：密钥随配置项存放；providers
    *  setKey 同机制）；空串=删除该 env 键；响应恰 {ok:true} 零回显。ChannelsPane 弹窗保存链密钥腿
    *  （putChannels → token 非空时 setChannelSecret → testChannel） */
   setChannelSecret(id: string, secret: string): Promise<{ ok: true }>;

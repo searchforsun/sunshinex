@@ -42,8 +42,7 @@ test('listProviders 两级整键遮蔽：项目 providers 键在场（含空数�
   withHome((fakeHome, proj) => {
     writeJson(path.join(fakeHome, '.sunshinex', 'settings.json'), {
       version: 1,
-      providers: [{ name: 'global-src', baseUrl: 'https://g/v1', models: [{ model: 'gm' }] }],
-    });
+      providers: [{ name: 'global-src', baseUrl: 'https://g/v1', models: [{ model: 'gm' }] }] });
     fs.mkdirSync(path.join(proj, '.sunshinex'), { recursive: true });
 
     const onlyGlobal = listProviders(proj);
@@ -52,13 +51,11 @@ test('listProviders 两级整键遮蔽：项目 providers 键在场（含空数�
 
     writeJson(path.join(proj, '.sunshinex', 'settings.json'), {
       version: 1,
-      providers: [{ name: 'proj', baseUrl: 'https://p/v1', models: [{ model: 'pm1' }, { model: 'pm2' }] }],
-    });
+      providers: [{ name: 'proj', baseUrl: 'https://p/v1', models: [{ model: 'pm1' }, { model: 'pm2' }] }] });
     const shadowed = listProviders(proj);
     assert.deepEqual(shadowed.providers.map((p) => p.name), ['proj'], '项目键在场整键遮蔽全局');
     assert.deepEqual(shadowed.choices.map((c) => c.id), ['proj/pm1', 'proj/pm2']);
     assert.equal(shadowed.providers[0]!.baseUrl, 'https://p/v1');
-    assert.equal(shadowed.providers[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_PROJ');
 
     writeJson(path.join(proj, '.sunshinex', 'settings.json'), { version: 1, providers: [] });
     const empty = listProviders(proj);
@@ -81,8 +78,7 @@ test('parseProvidersSpec tier 解析：对象形态合法档位进 ModelChoice.t
         { model: 'm-large', tier: 'large' },
         { model: 'm-plain' }, // 对象形态未声明 tier
         { model: 'm-bad', tier: 'huge' }, // 非法档位：warning、模型保留、tier 不落
-      ],
-    },
+      ] },
   ], 'test.json');
   assert.deepEqual(r.warnings, [
     'settings.json providers.p models 条目 tier 须为 small|medium|large（test.json），该档位已忽略',
@@ -96,30 +92,22 @@ test('parseProvidersSpec tier 解析：对象形态合法档位进 ModelChoice.t
   assert.equal(r.choices.length, 5, '坏档位不连坐，五个模型全保留（字符串简写已退役不入列）');
 });
 
-test('listProviders apiKeyPresent：专用 env 槽有值 true、无值 false（env 桩注入，不写真键）', () => {
+test('listProviders apiKeyPresent：条目 apiKey 在场 true、缺席 false（2026-11-22 内联裁定,env 槽退役）', () => {
   withHome((_fakeHome, proj) => {
     writeJson(path.join(proj, '.sunshinex', 'settings.json'), {
       version: 1,
-      providers: [{ name: 'stubprov', baseUrl: 'https://s/v1', models: [{ model: 'sm' }] }],
-    });
-    // env 桩保存/恢复：先清场防真实环境串入（专用槽与主槽都钉，禁真实密钥）
-    const prevSpecific = process.env.SUNSHINEX_API_KEY_STUBPROV;
-    const prevMain = process.env.SUNSHINEX_API_KEY;
-    delete process.env.SUNSHINEX_API_KEY_STUBPROV;
-    delete process.env.SUNSHINEX_API_KEY;
+      providers: [{ name: 'stubprov', baseUrl: 'https://s/v1', models: [{ model: 'sm' }] }] });
     try {
       const absent = listProviders(proj);
-      assert.equal(absent.providers[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_STUBPROV');
-      assert.equal(absent.providers[0]!.apiKeyPresent, false, '槽无值 = 未配置');
+      assert.equal(absent.providers[0]!.apiKeyPresent, false, '条目无 apiKey = 未配置');
 
-      process.env.SUNSHINEX_API_KEY_STUBPROV = 'stub-value-not-a-real-key';
+      writeJson(path.join(proj, '.sunshinex', 'settings.json'), {
+        version: 1,
+        providers: [{ name: 'stubprov', baseUrl: 'https://s/v1', apiKey: 'stub-value-not-a-real-key', models: [{ model: 'sm' }] }] });
       const present = listProviders(proj);
-      assert.equal(present.providers[0]!.apiKeyPresent, true, '槽有值 = 已配置');
+      assert.equal(present.providers[0]!.apiKeyPresent, true, '条目有 apiKey = 已配置');
     } finally {
-      if (prevSpecific === undefined) delete process.env.SUNSHINEX_API_KEY_STUBPROV;
-      else process.env.SUNSHINEX_API_KEY_STUBPROV = prevSpecific;
-      if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;
-      else process.env.SUNSHINEX_API_KEY = prevMain;
+      /* 纯条目写面用例:无 env 桩需要恢复 */
     }
   });
 });
@@ -131,8 +119,7 @@ test('listProviders choices 序 = providers 序 × models 序；providers 面镜
       providers: [
         { name: 'p1', baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', contextWindow: 128000 }] },
         { name: 'p2', baseUrl: 'https://p2/v1', models: [{ model: 'm3' }] },
-      ],
-    });
+      ] });
     const r = listProviders(proj);
     assert.deepEqual(
       r.choices.map((c) => c.id),
@@ -162,11 +149,9 @@ test('upsertProvider add：不存在则建（baseUrl+非空 models 必备），l
     upsertProvider(proj, 'project', 'prov-a', {
       baseUrl: 'https://a/v1',
       contextWindow: 32000,
-      models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }],
-    });
+      models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }] });
     const view = listProviders(proj);
     assert.deepEqual(view.providers.map((p) => p.name), ['prov-a'], '写后装载口径立即可见');
-    assert.equal(view.providers[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_PROV_A', '槽名经 providerApiKeyEnv 单点生成');
     assert.deepEqual(view.choices.map((c) => c.id), ['prov-a/m1', 'prov-a/m2'], 'choices 序 = providers 序 × models 序');
 
     const projFile = loadProjectSettings(proj);
@@ -205,14 +190,12 @@ test('upsertProvider update：存在则增量——未提字段不动、patch.mo
     const projFile = loadProjectSettings(proj);
     upsertProvider(proj, 'project', 'p', {
       baseUrl: 'https://p/v1', contextWindow: 64000, supportsImages: false,
-      models: [{ model: 'm1', contextWindow: 1000 }, { model: 'm2', tier: 'medium' }],
-    });
+      models: [{ model: 'm1', contextWindow: 1000 }, { model: 'm2', tier: 'medium' }] });
     upsertProvider(proj, 'project', 'p', { supportsImages: true });
     let doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { providers: Array<Record<string, unknown>> };
     assert.deepEqual(doc.providers, [{
       name: 'p', baseUrl: 'https://p/v1', contextWindow: 64000, supportsImages: true,
-      models: [{ model: 'm1', contextWindow: 1000 }, { model: 'm2', tier: 'medium' }],
-    }], '只动 supportsImages；baseUrl/contextWindow/models 原样不动');
+      models: [{ model: 'm1', contextWindow: 1000 }, { model: 'm2', tier: 'medium' }] }], '只动 supportsImages；baseUrl/contextWindow/models 原样不动');
 
     upsertProvider(proj, 'project', 'p', { models: [{ model: 'm9' }] });
     doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { providers: Array<Record<string, unknown>> };
@@ -380,8 +363,7 @@ test('models[].params 写面：upsertProvider add/update 持久化键值（JSON 
   withHome((_fakeHome, proj) => {
     upsertProvider(proj, 'project', 'bigmodel', {
       baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
-      models: [{ model: 'glm-5.3-flash', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } }],
-    });
+      models: [{ model: 'glm-5.3-flash', params: { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false } }] });
     const r1 = listProviders(proj);
     assert.deepEqual(r1.providers[0]!.models[0]!.params, { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false }, 'entries 面镜像');
     assert.deepEqual(r1.choices[0]!.params, { prompt_cache_key: 'sess-a', temperature: 0.6, enable_thinking: false }, 'choices 面生效值');

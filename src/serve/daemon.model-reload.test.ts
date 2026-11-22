@@ -27,8 +27,7 @@ class SpySwitcher extends ModelSwitcher {
 
 const SETTINGS = JSON.stringify({
   version: 1,
-  env: { SUNSHINEX_API_KEY_A: 'k-after-start' },
-  providers: [{ name: 'a', baseUrl: 'https://a/v1', models: [{ model: 'm1' }] }],
+  providers: [{ name: 'a', baseUrl: 'https://a/v1', apiKey: 'k-after-start', models: [{ model: 'm1' }] }],
 });
 
 async function withEmptyDaemon(fn: (ctx: { sw: SpySwitcher; base: string; home: string; proj: string }) => Promise<void>): Promise<void> {

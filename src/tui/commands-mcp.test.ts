@@ -261,7 +261,7 @@ test('/plugins：面板列内置插件（id/启停/平台可用）；enable 写�
   });
 });
 
-test('/providers：清单卡含源名/模型数/密钥槽状态/默认标记 + 编辑引导行；未配置给指引', async () => {
+test('/providers：清单卡含源名/模型数/密钥在场状态/默认标记 + 编辑引导行；未配置给指引', async () => {
   await withFixture(async ({ root, ctrl }) => {
     // 未配置 providers → 配置指引（与 /model 无卡同款引导）
     await ctrl.submit('/providers');
@@ -283,7 +283,7 @@ test('/providers：清单卡含源名/模型数/密钥槽状态/默认标记 + �
     const text = sysTexts(ctrl2).join('\n');
     assert.ok(/alpha.*2/.test(text), `alpha 行应含模型数 2：${JSON.stringify(text)}`);
     assert.ok(/beta.*1/.test(text), 'beta 行应含模型数 1');
-    assert.ok(/SUNSHINEX_API_KEY_ALPHA/.test(text), '密钥槽名应上屏');
+    assert.ok(/key: missing|密钥：未配置/.test(text), '密钥在场状态应上屏(夹具未配密钥→未配置;内联裁定不再显示 env 槽名)');
     assert.ok(/default|默认/.test(text), 'choices[0] 所属源应带默认标记');
     assert.ok(/sunshinex providers|\$EDITOR/.test(text), '编辑引导行（CLI/$EDITOR，TUI 不做表单）');
   });

@@ -42,7 +42,7 @@ import type { ProviderEntry, ProviderEntryModel, ProviderOpInput, SettingsView }
  *
  * 读面 T9 拆分(daemon handler 注释口径):entries=文件显式值(编辑回显走此面)、生效值看
  * choices(条目级 > 源级缺省)——卡片默认标记走 choices,抽屉播种走 entries;密钥面
- * (apiKeyEnv/apiKeyPresent)直读 entries 行富化字段(catalog listProviders 单点——含 models
+ * (apiKey/apiKeyPresent)直读 entries 行富化字段(catalog listProviders 单点——含 models
  * 全畸形被跳过、choices 无行的源,密钥点不因呈现面缺行误灰)。
  *
  * 错误面三分 + saving 门单点(T22 同款):loadError(读)/actionError(卡写面)/formError(抽屉
@@ -429,7 +429,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
             {entries.map((e) => (
               <li key={e.name} className="sx-rc">
                 <div className="sx-rc-head">
-                  <span className={`sx-api-dot ${e.apiKeyPresent ? 'present' : 'missing'}`} data-tip={e.apiKeyEnv} aria-hidden="true" />
+                  <span className={`sx-api-dot ${e.apiKeyPresent ? 'present' : 'missing'}`} data-tip={e.apiKeyPresent ? t('Key configured', '已配置密钥') : t('No key configured', '未配置密钥')} aria-hidden="true" />
                   <span className="sx-rc-title">{e.name}</span>
                   <span className="sx-rc-subtitle">{e.baseUrl}</span>
                   {/* 操作簇(2026-11-17 用户裁定「删除放第一个位置,贴右侧编辑/开关」):删除→编辑→启用开关 */}

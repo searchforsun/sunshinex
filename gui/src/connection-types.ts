@@ -314,7 +314,6 @@ export interface ProviderChoice {
   provider: string;
   model: string;
   baseUrl: string;
-  apiKeyEnv: string;
   contextWindow?: number;
   reasoningEffort?: string;
 }
@@ -340,7 +339,7 @@ export interface ProviderEntryModel {
 }
 
 /** GET /settings providers.entries 行（Task 16 增量消费 listProviders 源级分组——文件结构镜像，
- *  对齐主仓 ParsedProviderEntry + catalog listProviders 密钥面富化（每行 apiKeyEnv/apiKeyPresent
+ *  对齐主仓 ParsedProviderEntry + catalog listProviders 密钥面富化（每行 apiKey/apiKeyPresent
  *  恒在场）。T9 拆分语义（daemon handler 注释）：entries=文件显式值（GUI 编辑回显走此面——
  *  非继承源级缺省）、生效值看 choices（条目级 > 源级缺省）。
  *  可选防旧 daemon（无该字段时 ProvidersPane 按空清单处理） */
@@ -356,9 +355,7 @@ export interface ProviderEntry {
   reasoningEffort?: string;
   supportsImages?: boolean;
   models: ProviderEntryModel[];
-  /** 专用密钥槽名（catalog providerApiKeyEnv 单点——GUI 零本地镜像/零 choices 派生） */
-  apiKeyEnv: string;
-  /** 密钥槽在场布尔（resolveProviderApiKey 判存——含 choices 无行的畸形源，密钥状态点单点数据源） */
+  /** 密钥在场布尔（条目 apiKey 在场判存——含 choices 无行的畸形源，密钥状态点单点数据源） */
   apiKeyPresent: boolean;
   /** 来源级归因（Task 27.5 富化）：项目 providers 键在场整键遮蔽 → 该面全部条目 'project'
    *  （全局源不可能混列），否则 'global'。可选防旧 daemon（未富化 daemon 无该键） */

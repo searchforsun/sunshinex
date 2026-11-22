@@ -12,8 +12,8 @@ import { SessionRuntime } from './session';
 /** G10-C1b 运行中切换面:model switchTo 透传 + snapshot 回显 + mode 重建(idle)。 */
 
 const CHOICES: ModelChoice[] = [
-  { id: 'a/m1', provider: 'openai', model: 'm1', baseUrl: 'http://localhost:9', apiKeyEnv: 'X1' },
-  { id: 'a/m2', provider: 'openai', model: 'm2', baseUrl: 'http://localhost:9', apiKeyEnv: 'X2' },
+  { id: 'a/m1', provider: 'openai', model: 'm1', baseUrl: 'http://localhost:9' },
+  { id: 'a/m2', provider: 'openai', model: 'm2', baseUrl: 'http://localhost:9' },
 ];
 
 class FakeSwitcher extends ModelSwitcher {
@@ -26,8 +26,7 @@ function makeSession(): SessionRuntime {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-g10-switch-'));
   const sw = new FakeSwitcher({
     default: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
-    choices: CHOICES,
-  });
+    choices: CHOICES });
   return new SessionRuntime({
     id: 's1',
     root,
@@ -38,8 +37,7 @@ function makeSession(): SessionRuntime {
       return () => ++n;
     })(),
     broadcast: () => {},
-    mintPid: () => 'p1',
-  });
+    mintPid: () => 'p1' });
 }
 
 test('model 切换:switchTo 透传 + snapshot 回显;unknown id false 不动现状', () => {
@@ -91,8 +89,7 @@ test('2026-11-03 轻量切档:运行中切真档不再 busy——guard 活改即
   const writeCall = (): { finish: 'tool_calls'; content: string; toolCalls: Array<{ id: string; name: string; argsJson: string }> } => ({
     finish: 'tool_calls',
     content: '',
-    toolCalls: [{ id: `call_${round}`, name: 'write', argsJson: JSON.stringify({ path: 'mid-run.txt', content: 'x' }) }],
-  });
+    toolCalls: [{ id: `call_${round}`, name: 'write', argsJson: JSON.stringify({ path: 'mid-run.txt', content: 'x' }) }] });
   const model: ModelAdapter = {
     provider: 'gated',
     async chat() {
@@ -100,16 +97,14 @@ test('2026-11-03 轻量切档:运行中切真档不再 busy——guard 活改即
       if (round === 1) return writeCall();
       if (round === 2) { await gate2; return writeCall(); }
       return { finish: 'stop', content: '收尾', toolCalls: [] };
-    },
-  } as unknown as ModelAdapter;
+    } } as unknown as ModelAdapter;
   const s = new SessionRuntime({
     id: 's1',
     root,
     model,
     nextSeq: (() => { let n = 0; return () => ++n; })(),
     broadcast: () => {},
-    mintPid: () => 'p1',
-  });
+    mintPid: () => 'p1' });
   const chainText = (): string => JSON.stringify(s.runtime.harness.context.chainView());
   try {
     assert.deepEqual(s.submit('写个文件'), { ok: true });

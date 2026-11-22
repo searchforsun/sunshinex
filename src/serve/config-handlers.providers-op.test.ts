@@ -22,8 +22,7 @@ import {
   getSelfFilledSlots,
   loadGlobalSettings,
   loadProjectSettings,
-  resetSelfFilledSlots,
-} from '../config/settings';
+  resetSelfFilledSlots } from '../config/settings';
 
 /** fake io：send 回执收集 + readJson 回放预设 body；reloadSettingsChain 为 daemon 同款复刻
  *  （configIo 注入的 reloadSettingsChain 在 daemon 里即此语义——测试内联复刻使 env 面翻转可断言） */
@@ -42,8 +41,7 @@ function fakeIo(body: unknown): { io: ConfigHandlerIo; sends: Array<{ status: nu
           // 测试夹具文件恒干净——防御分支照 daemon 形态保留
         }
       }
-    },
-  };
+    } };
   return { io, sends };
 }
 
@@ -112,8 +110,7 @@ test('providers op 七值正例：add 落盘/update 增量/modelAdd/modelMove �
     // add：name=身份、provider=条目补丁（baseUrl+非空 models 必备）→ 200 {ok:true} + 盘上条目
     let r = await providersOp({
       op: 'add', scope: 'project', root: proj, name: 'p1',
-      provider: { baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }] },
-    });
+      provider: { baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }] } });
     assert.equal(r.status, 200, 'add 应 200');
     assert.deepEqual(r.body, { ok: true }, '成功响应恰 {ok:true}');
     let doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as Record<string, unknown>;
@@ -162,13 +159,12 @@ test('providers op 七值正例：add 落盘/update 增量/modelAdd/modelMove �
   });
 });
 
-test('setKey 后 GET /settings：apiKeyPresent 翻转且 entries 回显条目 apiKey（2026-11-22 用户裁定：密钥内联可回显）；GET providers 面消费 catalog（entries 含 tier/apiKeyEnv/explicit models + choices 序）', async () => {
+test('setKey 后 GET /settings：apiKeyPresent 翻转且 entries 回显条目 apiKey（2026-11-22 用户裁定：密钥内联可回显）；GET providers 面消费 catalog（entries 含 tier/explicit models + choices 序）', async () => {
   await withFakeHome(async (home) => {
     const proj = path.join(home, 'proj');
     await providersOp({
       op: 'add', scope: 'project', root: proj, name: 'p1',
-      provider: { baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }] },
-    });
+      provider: { baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }] } });
 
     // setKey 前：apiKeyPresent.p1 = false（条目无 apiKey、env 槽无值）
     let g = settingsGet(proj);
@@ -180,7 +176,6 @@ test('setKey 后 GET /settings：apiKeyPresent 翻转且 entries 回显条目 ap
     assert.equal(face.choices[1]!.contextWindow, 8000, 'choices 面 contextWindow = 条目级 > 源级缺省');
     // T9 评审移交语义：entries.models = 文件显式值——m2 的 tier/contextWindow 为条目显式位、m1 无继承
     assert.deepEqual(face.entries[0]!.models, [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }], 'entries.models = 条目显式值（源级 64000 不继承进 m1）');
-    assert.equal(face.entries[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_P1', 'entries 携带槽名（env 回退兼容面的标识）');
     assert.equal(face.entries[0]!.apiKeyPresent, false, 'entries.apiKeyPresent 与 apiKeyPresent 映射同源');
 
     // setKey（写条目 apiKey 字段——不再依赖 env 链重载）
