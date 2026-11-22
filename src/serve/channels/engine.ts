@@ -165,10 +165,26 @@ export class ChannelsEngine {
       let h: { connected: boolean; detail?: string };
       try {
         h = adapter.health();
-      } finally {
-        await adapter.stop();
+      } catch (e) {
+        await adapter.stop().catch(() => {});
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
-      return h.connected ? { ok: true, botId: h.detail } : { ok: false, error: h.detail ?? '适配器报告未连接' };
+      if (!h.connected) {
+        await adapter.stop().catch(() => {});
+        return { ok: false, error: h.detail ?? '适配器报告未连接' };
+      }
+      // bot 身份:适配器提供 botName 面则取真名(飞书 bot/v3/info),否则退化为通用健康文案
+      const withBotName = adapter as { botName?: () => Promise<string | undefined> };
+      let botId: string | undefined;
+      if (typeof withBotName.botName === 'function') {
+        try {
+          botId = await withBotName.botName();
+        } catch {
+          botId = undefined;
+        }
+      }
+      await adapter.stop().catch(() => {});
+      return { ok: true, ...(botId !== undefined ? { botId } : {}) };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
