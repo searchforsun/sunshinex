@@ -63,6 +63,20 @@ const NAME_PLACEHOLDERS: Record<string, { en: string; zh: string }> = {
   mock: { en: 'My Mock bot', zh: '我的 Mock 机器人' },
 };
 
+const MODE_LABELS: Record<ModeValue, { en: string; zh: string }> = {
+  'read-only': { en: 'Read-only', zh: '只读' },
+  acceptEdits: { en: 'Accept edits', zh: '接受编辑' },
+  'full-access': { en: 'Full access', zh: '完全访问' },
+};
+const modeLabel = (m: ModeValue): string => t(MODE_LABELS[m].en, MODE_LABELS[m].zh);
+
+const allowLabel = (d: ChannelDraft): string => {
+  if (d.allowKind === 'first-user') return t('First respondent only', '仅首次对话用户');
+  if (d.allowKind === 'all') return t('Open to everyone', '不限');
+  const n = splitUserIds(d.userIdsText).length;
+  return `${t('Allow-list', '白名单')}(${n})`;
+};
+
 /** 卡片展示名(应用名称缺省回退平台名;仅展示——写面 name 缺席即省键) */
 const displayNameOf = (d: ChannelDraft): string => (d.name !== '' ? d.name : platformLabel(d.platform));
 
@@ -237,8 +251,14 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   const [actionError, setActionError] = useState('');
   /** 写面在途门(单通道在途:保存/删除/试连/Switch 共用——禁再发) */
   const [savingId, setSavingId] = useState('');
-  /** 试连结果行内提示(id → 结果;保存成功自动试连与手动测试同槽) */
-  const [testMap, setTestMap] = useState<Record<string, { ok: boolean; detail: string }>>({});
+  /** 测试结果 toast(2026-11-22 用户裁定:居中黄色 toast,3s 自隐;报错简洁) */
+  const [testToast, setTestToast] = useState<{ ok: boolean; text: string } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (ok: boolean, text: string): void => {
+    setTestToast({ ok, text });
+    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setTestToast(null), 3_000);
+  };
   const [modal, setModal] = useState<ChannelModal | null>(null);
   const [form, setForm] = useState<ChannelForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
@@ -327,9 +347,21 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     writeAll(next, id);
   };
 
-  /** 试连结果落槽单点(手动测试与保存后自动试连同路径) */
-  const recordTest = (id: string, r: { ok: boolean; botId?: string; error?: string }): void => {
-    setTestMap((m) => ({ ...m, [id]: { ok: r.ok, detail: r.ok ? r.botId ?? '' : r.error ?? '' } }));
+  /** 试连结果落槽单点(手动测试与保存后自动试连同路径;成功回显 botId,失败简洁化——去内部细节) */
+  const recordTest = (_id: string, r: { ok: boolean; botId?: string; error?: string }): void => {
+    if (r.ok) {
+      showToast(true, `${t('Test passed', '测试通过')} · ${r.botId ?? ''}`);
+    } else {
+      const raw = r.error ?? '';
+      const brief = raw.includes('密钥未配置')
+        ? t('No secret configured', '未配置密钥')
+        : raw.includes('App ID')
+          ? t('Invalid App ID', 'App ID 无效')
+          : raw.includes('长连接未建立')
+            ? t('Connection failed', '连接失败')
+            : raw.split('——')[0]!.split('（')[0]!;
+      showToast(false, `${t('Test failed', '测试失败')}：${brief}`);
+    }
   };
 
   /** 卡头「测试连接」(dry-run,不动在座表) */
@@ -469,6 +501,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                 <span className="sx-rc-title">{displayNameOf(d)}</span>
                 <span className="sx-rc-subtitle">{platformLabel(d.platform)}</span>
                 <span className="sx-rc-head-acts">
+                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${d.id}`} disabled={busy} onConfirm={() => removeCard(d.id)} />
                   <button
                     type="button"
                     className="sx-iconbtn"
@@ -479,7 +512,6 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                   >
                     <PlugZap size={14} strokeWidth={1.75} aria-hidden="true" />
                   </button>
-                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${d.id}`} disabled={busy} onConfirm={() => removeCard(d.id)} />
                   <button
                     type="button"
                     className="sx-iconbtn"
@@ -493,13 +525,18 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                   <Switch on={d.enabled} onToggle={() => toggleCard(d)} ariaLabel={`${t('Enable', '启用')} ${d.id}`} disabled={busy} />
                 </span>
               </div>
-              {testMap[d.id] !== undefined && (
-                <p role="status" className={testMap[d.id]!.ok ? 'sx-provider-hint' : 'sx-provider-warn'}>
-                  {testMap[d.id]!.ok
-                    ? `${t('Test passed', '测试通过')}${testMap[d.id]!.detail !== '' ? ` · ${testMap[d.id]!.detail}` : ''}`
-                    : `${t('Test failed', '测试失败')}: ${testMap[d.id]!.detail}`}
-                </p>
-              )}
+              {/* 卡片信息体(2026-11-22 用户裁定:创建后显示较大的信息卡,非单独一行) */}
+              <div className="sx-rc-info">
+                {d.platform === 'feishu' && d.appId !== '' && (
+                  <div className="sx-rc-info-row"><span>{t('App ID', 'App ID')}</span><span>{d.appId}</span></div>
+                )}
+                <div className="sx-rc-info-row">
+                  <span>{t('Workspace', '工作区')}</span>
+                  <span>{d.rootText === '' ? t('Default workspace', '默认工作区') : d.rootText}</span>
+                </div>
+                <div className="sx-rc-info-row"><span>{t('Access mode', '权限模式')}</span><span>{modeLabel(d.mode)}</span></div>
+                <div className="sx-rc-info-row"><span>{t('Admission', '准入')}</span><span>{allowLabel(d)}</span></div>
+              </div>
             </li>
           );
         })}
@@ -645,6 +682,11 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
+      )}
+      {testToast !== null && (
+        <div className="sx-toast sx-toast-yellow" role="status">
+          {testToast.text}
+        </div>
       )}
     </section>
   );

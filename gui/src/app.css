@@ -2553,6 +2553,25 @@ input.sx-setting-input { width: 100%; }
   top: auto;
   bottom: calc(100% + 4px);
 }
+
+/* 通道卡片信息体(2026-11-22 用户裁定「创建后显示较大的卡片」):App ID/工作区/权限模式/准入
+   标签值两列小行;密钥/测试结果走 toast(黄字) */
+.sx-rc-info {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-top: 8px; padding: 6px 10px;
+  border-top: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+}
+.sx-rc-info-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: calc(12px * var(--fz)); color: var(--fg-secondary);
+}
+.sx-rc-info-row > span:last-child {
+  color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 70%;
+}
+/* 测试结果 toast 黄字(2026-11-22 用户裁定「可以使用黄色字体」) */
+.sx-toast-yellow { color: #e6c163; }
+.sx-toast-yellow.sx-toast { border-color: color-mix(in srgb, #e6c163 35%, var(--border)); }
 .sx-dd-opt {
   display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;
   padding: 6px 10px; border-radius: var(--radius-sm); text-align: left;

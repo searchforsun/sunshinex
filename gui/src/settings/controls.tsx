@@ -56,9 +56,10 @@ export function Select(props: {
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  /** 开弹层即激活当值行并滚入视口（键盘导航起点=当前值）+ 翻转测量：弹层底缘越出视口
-   *  （下方空间不足）即翻转向上——弹窗内下拉贴底时的截断根治（2026-11-22 用户裁定）。
-   *  jsdom 无布局(全 0 rect)不触发翻转,测试面零影响 */
+  /** 开弹层即激活当值行并滚入视口（键盘导航起点=当前值）+ 翻转测量（2026-11-22 用户裁定
+   *  「下拉显示不全就翻转显示到上面」）:按**最近的滚动容器**(弹窗体/设置主区)量上下空间——
+   *  下放不下且上空间更大即翻转。按打开瞬间的容器位置判定,不随滚动抖动;jsdom 无布局
+   *  (全 0 rect)不触发,测试面零影响 */
   useEffect(() => {
     if (!open) return;
     const idx = options.findIndex((o) => o.v === value);
@@ -66,10 +67,30 @@ export function Select(props: {
     activeRef.current?.scrollIntoView?.({ block: 'nearest' }); // jsdom 无此 API——可选调用(真实浏览器内滚动定位)
     setDropUp(false);
     const raf = requestAnimationFrame(() => {
+      const wrap = wrapRef.current;
       const pop = popRef.current;
-      if (pop === null) return;
-      const rect = pop.getBoundingClientRect();
-      if (rect.height > 0 && rect.bottom > window.innerHeight - 8) setDropUp(true);
+      if (wrap === null || pop === null) return;
+      // 最近的可滚动祖先(弹窗体/设置主区)——弹层被谁裁切就对谁量空间
+      let scroller: HTMLElement | null = null;
+      let el: HTMLElement | null = wrap.parentElement;
+      while (el !== null && el !== document.body) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll') { scroller = el; break; }
+        el = el.parentElement;
+      }
+      const wrapRect = wrap.getBoundingClientRect();
+      const estH = Math.min(pop.scrollHeight, 264) + 16;
+      let spaceBelow: number;
+      let spaceAbove: number;
+      if (scroller !== null) {
+        const cRect = scroller.getBoundingClientRect();
+        spaceBelow = cRect.bottom - wrapRect.bottom;
+        spaceAbove = wrapRect.top - cRect.top;
+      } else {
+        spaceBelow = window.innerHeight - wrapRect.bottom;
+        spaceAbove = wrapRect.top;
+      }
+      setDropUp(spaceBelow < estH && spaceAbove > spaceBelow);
     });
     return () => cancelAnimationFrame(raf);
     // options/value 在场期不变（弹层开着上层不改值），只随 open 跑一次
