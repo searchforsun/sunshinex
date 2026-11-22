@@ -260,8 +260,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  setSunxReload——workspaces 未变(rows 保引用)时既有驱动点全不触发,nonce 即时缝兜底 */
   const [sunxReload, setSunxReload] = useState(0);
   const sunxRows = useMenuSunx(conn, rows, sunxReload);
-  /** 「通道」组行集(channels Task 13,spec §9.1;域枚举拉取收口 use-menu-channels):空容器=组整块不渲染(组内自守卫) */
-  const channelRows = useMenuChannels(conn, rows);
+  /** 「通道」组行集(channels Task 13,spec §9.1;域枚举拉取收口 use-menu-channels):空容器=组整块不渲染(组内自守卫);
+   *  recentVersion 作重拉 nonce(2026-11-22 根修:通道会话 IM 侧外来创建,rows 引用不动它——run 起跑
+   *  bump 即时重拉,内置 30s tick 兜底) */
+  const channelRows = useMenuChannels(conn, rows, recentVersion);
   // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
   // RO 盯滚动容器(拖栏宽度变化即重测)。2026-11-16 流畅轮:补数据依赖(原无 deps=每次渲染全量
   // DOM 扫描+重建 RO,App 壳高频态即触发);数据引用不变时零扫描,宽变仍由 RO 兜底。

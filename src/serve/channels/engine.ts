@@ -6,8 +6,9 @@
  *  裁定引用:
  *  - 裁定 1(router 接缝):ChannelRouterDeps.onSubmitted 可选回调——router 在 submit/steer 分派成功后
  *    回调,engine 据此武装终态观察(armed-once,见 armRunEnd)。
- *  - 裁定 2(engine 装配三线):① 定向回复——lastSender 表(router.noteSender 写入)命中 → deliver 的
- *    OutboundMessage.text 前缀 @<display>(streaming 全量替换帧不加前缀,streamDeliver 不走前缀路);
+ *  - 裁定 2(engine 装配三线):① 定向回复——lastSender 表(router.noteSender 写入)命中且**群聊**
+ *    才注入 OutboundMessage.mention(结构化,适配器按平台语法渲染;caps.mention 缺席=文本前缀退化;
+ *    单聊回执式回复天然指向本人不加 @,streaming 全量替换帧不加,streamDeliver 不走 mention 路);
  *    ② 审批/提问接线——projector.resolveApproval ← io.resolveApproval、projector.resolveAsk ←
  *    io.resolveAsk(终审修复波 F1 第 8 面),router.pendingReply ← projector.pendingReply;
  *    ③ 终态观察——runEndArmed 武装位,onSubmitted 首次回调即注册一次性 onRunEnd;终审修复波 F2
@@ -54,8 +55,9 @@ export class ChannelsEngine {
   private readonly knownConfigs = new Map<string, ChannelConfig>();
   /** 当前生效配置快照(router configs() 配置门与 test(id) 查档消费) */
   private snapshot: ChannelConfig[] = [];
-  /** 定向回复表(裁定 2①):sessionId → 最近发送者展示名(router.noteSender 写入,deliver 前缀消费) */
-  private readonly lastSender = new Map<string, string>();
+  /** 定向回复表(裁定 2①):sessionId → 最近发送者(router.noteSender 写入,deliver 群聊 @ 消费;
+   *  chatKind 群聊限定——单聊回执式回复天然指向本人不加 @,2026-11-22 用户裁定) */
+  private readonly lastSender = new Map<string, { display: string; userId: string; chatKind: 'direct' | 'group' }>();
   /** 终态观察武装位(裁定 2③ armed-once):sessionId → 已注册 onRunEnd(跑完即拆,下一轮重武装) */
   private readonly runEndArmed = new Map<string, boolean>();
   /** 最近入站表:`${channelId}:${chatId}` → 最近一条 InboundMessage——回执式 adapter.reply(inbound)
@@ -89,12 +91,27 @@ export class ChannelsEngine {
       io: this.io,
       bindings: this.bindings,
       configs: () => this.snapshot,
-      ack: async (m, text) => {
+      ack: async (m, text, kind) => {
+        const adapter = this.adapters.get(m.channel);
+        const inbound = this.lastInbound.get(`${m.channel}:${m.chatId}`);
+        // 平台 ack 面(2026-11-22 用户裁定「受理不用自动弹出来,用官方处理中 icon」):飞书
+        // OnIt「处理中」表情回应——accepted 免文本;queued 表情+文本并存(排队需文字说明);
+        // 无 ack 面/无最近入站(表情无从贴)/贴失败 → 文本回退,router 语义零分叉
+        let acked = false;
+        if (kind !== undefined && adapter !== undefined && adapter.ack !== undefined && inbound !== undefined) {
+          try {
+            await adapter.ack(inbound, kind);
+            acked = true;
+          } catch (e) {
+            this.log(`ack(${kind}) 平台面失败,文本回退: ${e instanceof Error ? e.message : String(e)}`);
+          }
+          if (acked && kind === 'accepted') return; // 受理=纯表情免文本;排队/失败继续发说明文本
+        }
         await this.deliver({ channelId: m.channel, chatId: m.chatId }, { text });
       },
       pendingReply: (sessionId, text) => this.projector.pendingReply(sessionId, text),
-      noteSender: (sessionId, display) => {
-        this.lastSender.set(sessionId, display);
+      noteSender: (sessionId, sender) => {
+        this.lastSender.set(sessionId, sender);
       },
       onSubmitted: (sessionId, target) => this.armRunEnd(sessionId, target),
     });
@@ -174,6 +191,7 @@ export class ChannelsEngine {
         return { ok: false, error: h.detail ?? '适配器报告未连接' };
       }
       // bot 身份:适配器提供 botName 面则取真名(飞书 bot/v3/info),否则退化为通用健康文案
+      // (无 botName 适配器——mock 等——ok 载荷不空尾,engine.test ③ 口径)
       const withBotName = adapter as { botName?: () => Promise<string | undefined> };
       let botId: string | undefined;
       if (typeof withBotName.botName === 'function') {
@@ -184,7 +202,7 @@ export class ChannelsEngine {
         }
       }
       await adapter.stop().catch(() => {});
-      return { ok: true, ...(botId !== undefined ? { botId } : {}) };
+      return { ok: true, botId: botId ?? 'OK' };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -241,16 +259,20 @@ export class ChannelsEngine {
     void this.router.handleInbound(msg).catch(() => {});
   }
 
-  /** 出站投递(裁定 2①):lastSender 查表命中(经绑定反解 sessionId)→ text 前缀 @<display>;
-   *  适配器分派 reply 优先(回执式,需原始入站),退 send。router.ack 与 projector 共用此路 */
+  /** 出站投递(裁定 2①):lastSender 查表命中(经绑定反解 sessionId)且**群聊**才注入定向 @——
+   *  结构化 mention 交适配器按平台语法渲染(feishu `<at user_id>` 服务端渲人名,caps.mention);
+   *  无平台提及面 → 文本前缀 @<display> 退化(telegram 等);单聊零 @(回执式回复天然指向本人,
+   *  2026-11-22 用户裁定)。适配器分派 reply 优先(回执式,需原始入站),退 send */
   private async deliver(t: ReplyTarget, msg: OutboundMessage): Promise<void> {
     const adapter = this.adapters.get(t.channelId);
     if (adapter === undefined) throw new Error(`通道 ${t.channelId} 未启动,投递丢弃`);
     const sid = this.sessionIdFor(t);
-    const display = sid !== undefined ? this.lastSender.get(sid) : undefined;
+    const sender = sid !== undefined ? this.lastSender.get(sid) : undefined;
     const out =
-      display !== undefined && !msg.text.startsWith(`@${display} `)
-        ? { ...msg, text: `@${display} ${msg.text}` }
+      sender !== undefined && sender.chatKind === 'group'
+        ? adapter.caps().mention === true
+          ? { ...msg, mention: { userId: sender.userId, display: sender.display } }
+          : { ...msg, text: `@${sender.display} ${msg.text}` }
         : msg;
     const inbound = this.lastInbound.get(`${t.channelId}:${t.chatId}`);
     if (adapter.reply !== undefined && inbound !== undefined) await adapter.reply(inbound, out);

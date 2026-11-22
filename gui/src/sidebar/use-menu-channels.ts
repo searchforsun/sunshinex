@@ -50,9 +50,13 @@ export function platformMeta(platform?: string): { Icon: LucideIcon; en: string;
  * 域容器全域枚举单点(独立容器专属枚举面,宿主 /sessions 不扫通道域)。行携出生 root(域目录)
  * 直寻址;平台图标信息从 SessionRow.channel 反查 settingsChannels() 取得(配置读面失败静默
  * 降级=platform undefined,行面退中性图标,侧栏计数面非权威数据)。拉取失败按空清单降级;
- * rows 变化即重拉(30s tick/聚焦/config-changed 全走 loadWorkspaces→rows 换引用,与既有刷新
- * 节奏同拍;浅等守卫内容未变保旧引用)。空列=空容器合法空态(组整块不渲染,组内自守卫)。
+ * 刷新驱动(2026-11-22 用户实测「发了消息侧栏没有通道组」根修):通道会话由 IM 侧外来创建,
+ * 宿主 rows 引用(listShallowEqual 保引用)与 reloadNonce 都不动它——除宿主 nonce 外内置 30s
+ * tick 自驱重拉,组新会话落盘后至迟半分钟现身(与既有侧栏刷新节奏同拍)。浅等守卫内容未变保
+ * 旧引用。空列=空容器合法空态(组整块不渲染,组内自守卫)。
  */
+const CHANNELS_REFRESH_MS = 30_000;
+
 export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | null, reloadNonce = 0): ChannelSessionRow[] | null {
   const [channelRows, setChannelRows] = useState<ChannelSessionRow[] | null>(null);
   useEffect(() => {
@@ -62,28 +66,33 @@ export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | n
       return;
     }
     let alive = true;
-    void Promise.all([
-      conn.channelSessions(),
-      typeof conn.settingsChannels === 'function'
-        ? conn.settingsChannels().catch(() => ({ channels: [], warnings: [] }))
-        : Promise.resolve({ channels: [], warnings: [] }),
-    ])
-      .then(([list, cfgs]) => {
-        if (!alive) return;
-        const byId = new Map(cfgs.channels.map((c) => [c.id, c]));
-        const mapped = list.map((x) => ({
-          ...x,
-          root: x.root ?? '',
-          platform: x.channel !== undefined ? byId.get(x.channel)?.platform : undefined,
-          channelLabel: x.channel !== undefined && x.channel !== '' ? x.channel : pathBasename(x.root ?? ''),
-        }));
-        setChannelRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
-      })
-      .catch(() => {
-        if (alive) setChannelRows([]);
-      });
+    const load = (): void => {
+      void Promise.all([
+        conn.channelSessions!(),
+        typeof conn.settingsChannels === 'function'
+          ? conn.settingsChannels().catch(() => ({ channels: [], warnings: [] }))
+          : Promise.resolve({ channels: [], warnings: [] }),
+      ])
+        .then(([list, cfgs]) => {
+          if (!alive) return;
+          const byId = new Map(cfgs.channels.map((c) => [c.id, c]));
+          const mapped = list.map((x) => ({
+            ...x,
+            root: x.root ?? '',
+            platform: x.channel !== undefined ? byId.get(x.channel)?.platform : undefined,
+            channelLabel: x.channel !== undefined && x.channel !== '' ? x.channel : pathBasename(x.root ?? ''),
+          }));
+          setChannelRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
+        })
+        .catch(() => {
+          if (alive) setChannelRows([]);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, CHANNELS_REFRESH_MS); // IM 侧外来创建自驱重拉(见上注)
     return () => {
       alive = false;
+      window.clearInterval(timer);
     };
   }, [rows, conn, reloadNonce]);
   return channelRows;

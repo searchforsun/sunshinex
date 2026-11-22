@@ -139,11 +139,13 @@ interface ChannelAdapter {
 - **图片双通道**：入站 `images` 规范化后直喂 `submit(goal, images)`（session.ts:1438 已有 images 参，
   spillImages 落盘链现成）；出站 `OutboundMessage.attachments` 由适配器自行上传平台文件接口。
 - **幂等在引擎/router 不在适配器**：`msgId` 去重表（LRU）由 router 统一维护。
-- **定向回复（群聊 @ 指定人，2026-11-21 用户裁定）**：入站带 `userDisplay`（发送者显示名，适配器
-  入站时顺手取——telegram `from.first_name`、飞书/钉钉事件载荷 sender 名）；出站统一走「文本前缀
-  `@display`」由引擎包装（engine 每 binding 记最近触发发送者——**谁触发这一轮，回复就 @ 谁**）；
-  平台原生语义（telegram `reply_to_message_id`、飞书 `im.message.reply`、钉钉 at 结构）留作适配器
-  增强，P0 统一前缀档，不写平台分支。
+- **定向回复（群聊 @ 指定人；2026-11-22 用户裁定改版）**：入站带 `userDisplay`（发送者显示名——
+  飞书走通讯录 API+进程内缓存富化，权限未开静默降级 open_id；telegram `from.first_name`）；出站
+  **仅群聊**注入定向 @——`OutboundMessage.mention` 结构化（userId+display）由引擎包装（engine 每
+  binding 记最近触发发送者——**谁触发这一轮，回复就 @ 谁**），caps.mention=true 的平台按原生语法
+  渲染（飞书 `<at user_id>` 标签**服务端渲染真实姓名**，无需通讯录权限），其余平台退化文本前缀
+  `@display`；**单聊零 @**——回执式回复（`im.message.reply`/`reply_to_message_id`）天然指向本人。
+  streaming 全量替换帧不加 mention。
 
 ## 4. 入站管线（router.ts，平台无关）
 
@@ -182,7 +184,10 @@ InboundMessage → [msgId 去重] → [准入校验] → [指令解析] → [绑
      不得混入 wake 词汇/唤醒预算）；
    - `running` → `session.steer(text, images)`——运行中插话排队，步边界注入，恒受理。
    - `submit` 409（单 run 锁竞态，提交后立刻再发）→ 回退 steer。
-6. **ack**：受理即回执（`reply()` 或 `send()`）：「已受理，正在处理」（运行中则「已加入排队（第 N 条）」）。
+6. **ack**：受理即回执。**平台 ack 面（2026-11-22 用户裁定「受理不用自动弹出来，用官方处理中
+   icon」）**：SPI 可选 `ack(inbound, kind)`——飞书在入站消息上贴官方 OnIt「处理中」表情回应
+   （accepted 免文本；回答送达即自动摘除），失败/无该面的平台退化文本回执「已受理，处理中」；
+   排队态（`已加入排队，当前任务完成后处理`）表情+说明文本并存。
    长连接形态无平台侧 ack 时限，但首字节延迟是体验线——ack 恒即时。
 
 **存储总览（三处，各归其位——2026-11-21 用户裁定「设置页内容直接放 settings」）：**
@@ -415,6 +420,9 @@ env 块，不在此页显示」）。`ChannelConfig` 增 `name?: string`（应�
   `<domainSlug>/data` 逐域 listSessions 归并（`GET /sunx/sessions` 同构）；行带 root（域目录）。
 - **侧栏组**：ProjectMenu 新「通道」组（`ChannelsSection` + `use-menu-channels`，SunxSection 先例）；
   行展示 = 平台图标（飞书/钉钉/企微/Telegram）+ 聊天标识（domainSlug 反解/通道名）+ 会话标题。
+  **刷新驱动（2026-11-22 用户实测「发了消息侧栏没有通道组」根修）**：通道会话由 IM 侧外来创建，
+  宿主 rows 引用（listShallowEqual 保引用）不动它——hook 除 recentVersion nonce（run 起跑 bump
+  即时重拉）外**内置 30s tick 自驱重拉**，新会话落盘后至迟半分钟现身。
 - **点击**：`attach(root, journalId)` 直寻址重开（rows 带 root；sunxAttach 同语义）。
 
 ### 9.2 用户能否在 GUI 内正常发消息——能（说明）

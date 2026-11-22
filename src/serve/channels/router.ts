@@ -40,11 +40,15 @@ export interface ChannelRouterDeps {
   io: ChannelsSessionIo;
   bindings: ChannelsBindingsStore;
   configs: () => ChannelConfig[];
-  ack: (m: InboundMessage, text: string) => Promise<void>;
+  /** 回执:分发面文本(text 语义权威,平台无关);kind 二态受理标(engine 消费——平台 ack 面
+   *  (feishu OnIt 表情)在场时 accepted 免文本,2026-11-22 用户裁定;其余文本恒发) */
+  ack: (m: InboundMessage, text: string, kind?: 'accepted' | 'queued') => Promise<void>;
   /** 审批 y/n 回复判据（engine 接线 projector，Task 6/7）：true=消息已被消费，router 不再走提交分派 */
   pendingReply?: (sessionId: string, text: string) => boolean;
-  /** lastSender 表回写（engine 接线，Task 7 群聊定向回复消费） */
-  noteSender?: (sessionId: string, display: string) => void;
+  /** lastSender 表回写（engine 接线，Task 7 群聊定向回复消费）：结构化 sender——chatKind
+   *  供引擎群聊限定 @（2026-11-22 用户裁定：单聊回执式回复天然指向本人不加 @），
+   *  userId 供平台原生提及语法（feishu `<at user_id>` 服务端渲人名） */
+  noteSender?: (sessionId: string, sender: { display: string; userId: string; chatKind: 'direct' | 'group' }) => void;
   /** 提交分派成功回调（裁定 1，engine 接线）：submit/steer 分派成功后回调一次——engine 据此武装
    *  终态观察（armed-once onRunEnd，Task 7）。target 形同 ReplyTarget（reply.ts 结构同构类型——
    *  router 不 import reply，reply.ts 头注防环裁定） */
@@ -225,7 +229,7 @@ export class ChannelRouter {
         updatedAt: this.nowMs(),
       });
     }
-    this.deps.noteSender?.(sessionId, msg.userDisplay ?? msg.userId); // ⑫ 绑定解析成功即回写
+    this.deps.noteSender?.(sessionId, { display: msg.userDisplay ?? msg.userId, userId: msg.userId, chatKind: msg.chatKind }); // ⑫ 绑定解析成功即回写
     const body = msg.text ?? '';
     const submitText = msg.chatKind === 'group' ? `[来自 ${msg.userDisplay ?? msg.userId}]: ${body}` : body; // ⑫ 单聊原文
     const target = { channelId: cfg.id, chatId: msg.chatId };
@@ -244,7 +248,9 @@ export class ChannelRouter {
       queued = true;
     }
     this.deps.onSubmitted?.(sessionId, target); // 裁定 1：分派成功（submit 直达/409 回退 steer/running steer）即回调
-    await this.deps.ack(msg, queued ? '已加入排队，当前任务完成后处理' : '已受理，处理中');
+    // ack 二态回执（计划 §4 第 6 条）：kind 二态受理标随行（engine 据此走平台 ack 面/文本回退——
+    // 飞书 accepted=OnIt「处理中」表情免文本,2026-11-22 用户裁定;排队态仍发文本说明）
+    await this.deps.ack(msg, queued ? '已加入排队，当前任务完成后处理' : '已受理，处理中', queued ? 'queued' : 'accepted');
   }
 
   /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel})（⑩ 通道标出生写一次，

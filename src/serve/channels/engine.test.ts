@@ -163,7 +163,7 @@ test('③ test(id) dry-run:独立实例 start+health+stop 返回 ok,不起 sink 
   assert.ok(bad.error !== undefined && bad.error.length > 0);
 });
 
-test('④ mockAdapter(id).emit → router 全链路:binding 创建 + ack 进 mock.sent', async () => {
+test('④ mockAdapter(id).emit → router 全链路:binding 创建 + ack 进 mock.sent;单聊零 @', async () => {
   const h = makeHarness();
   h.engine.applyConfigs([mkCfg()]);
   const mock = h.engine.mockAdapter('m1');
@@ -175,7 +175,47 @@ test('④ mockAdapter(id).emit → router 全链路:binding 创建 + ack 进 moc
   assert.ok(h.runtimes.get(b.sessionId)!.submits.length === 1); // 提交真实发生
   assert.ok(mock.sent.length >= 1); // ack 回环进 mock.sent
   assert.ok(mock.sent[0]!.text.includes('已受理'));
-  assert.ok(mock.sent[0]!.text.startsWith('@Alice ')); // 定向回复前缀(裁定 2:deliver 包装查 lastSender)
+  assert.ok(!mock.sent[0]!.text.startsWith('@')); // 单聊零 @:回执式回复天然指向本人(2026-11-22 用户裁定)
+});
+
+test('④b 群聊出站定向 @:caps.mention 缺席=文本前缀 @display 退化(mock),且仅群聊注入', async () => {
+  const h = makeHarness();
+  h.engine.applyConfigs([mkCfg()]);
+  const mock = h.engine.mockAdapter('m1');
+  assert.ok(mock !== undefined);
+  mock.emit(mkMsg({ msgId: 'e2', chatKind: 'group', atBot: true, userId: 'u1', userDisplay: 'Alice', text: '跑起来' }));
+  await drain();
+  assert.ok(mock.sent.length >= 1);
+  assert.ok(mock.sent[0]!.text.startsWith('@Alice ')); // 群聊定向 @ 文本前缀退化(裁定 2①;feishu caps.mention=true 走结构化 mention)
+});
+
+test('⑥ 受理回执平台面(2026-11-22 用户裁定):accepted 走 ack 面免文本;贴失败退文本回执', async () => {
+  // 适配器有 ack 面(实例补丁=feishu 形态):accepted → ack(inbound,'accepted') 单发,零文本
+  const h = makeHarness();
+  h.engine.applyConfigs([mkCfg()]);
+  const mock = h.engine.mockAdapter('m1');
+  assert.ok(mock !== undefined);
+  const ackCalls: Array<{ msgId: string; kind: string }> = [];
+  (mock as unknown as { ack: unknown }).ack = async (inbound: InboundMessage, kind: 'accepted' | 'queued') => {
+    ackCalls.push({ msgId: inbound.msgId, kind });
+  };
+  mock.emit(mkMsg({ msgId: 'a1', text: 'hi' }));
+  await drain();
+  assert.deepEqual(ackCalls, [{ msgId: 'a1', kind: 'accepted' }]);
+  assert.equal(mock.sent.length, 0); // 受理=纯表情免文本(文本零出站)
+
+  // ack 面抛错(如表情无权限 403) → 文本回退,语义不分叉
+  const h2 = makeHarness();
+  h2.engine.applyConfigs([mkCfg()]);
+  const mock2 = h2.engine.mockAdapter('m1');
+  assert.ok(mock2 !== undefined);
+  (mock2 as unknown as { ack: unknown }).ack = async () => {
+    throw new Error('reaction 403');
+  };
+  mock2.emit(mkMsg({ msgId: 'a2', text: 'hi' }));
+  await drain();
+  assert.ok(mock2.sent.length >= 1);
+  assert.ok(mock2.sent[0]!.text.includes('已受理')); // 文本兜底
 });
 
 test('⑤ 终态武装补漏(F2):未武装绑定会话直接来 token 帧(模拟排队续跑轮)→ onRunEnd 被注册,触发即投终态注记', async () => {

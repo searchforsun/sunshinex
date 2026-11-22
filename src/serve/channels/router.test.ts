@@ -83,7 +83,7 @@ function makeHarness(opts: HarnessOpts = {}) {
   const createCalls: Array<{ root: string; opts?: Parameters<ChannelsSessionIo['createSession']>[1] }> = [];
   const released: string[] = [];
   const attached: Array<{ id: string; journalId: string }> = [];
-  const noteSenders: Array<{ sessionId: string; display: string }> = [];
+  const noteSenders: Array<{ sessionId: string; display: string; userId: string; chatKind: 'direct' | 'group' }> = [];
   const runtimes = new Map<string, RtStub>();
   let seq = 0;
   const io: ChannelsSessionIo = {
@@ -117,8 +117,8 @@ function makeHarness(opts: HarnessOpts = {}) {
       acks.push({ msg: m, text });
     },
     ...(opts.pendingReply !== undefined ? { pendingReply: opts.pendingReply } : {}),
-    noteSender: (sessionId, display) => {
-      noteSenders.push({ sessionId, display });
+    noteSender: (sessionId, sender) => {
+      noteSenders.push({ sessionId, ...sender });
     },
   };
   return { router: new ChannelRouter(deps), io, bindings, acks, createCalls, released, attached, noteSenders, runtimes };
@@ -327,22 +327,22 @@ test('⑪ 审批 y/n 回复截胡:pendingReply 命中即消费,不提交不应�
   assert.equal(rt.submits.length, 1);
 });
 
-test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调', async () => {
+test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调(结构化 sender 含 chatKind/userId)', async () => {
   const h = makeHarness();
   await h.router.handleInbound(mkMsg({ msgId: 'g1', chatKind: 'group', atBot: true, userId: 'u1', userDisplay: 'Alice', text: '跑个测试' }));
   assert.equal(rtOf(h, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 Alice]: 跑个测试');
-  assert.deepEqual(h.noteSenders, [{ sessionId: 's1', display: 'Alice' }]);
+  assert.deepEqual(h.noteSenders, [{ sessionId: 's1', display: 'Alice', userId: 'u1', chatKind: 'group' }]);
 
   const h2 = makeHarness();
   await h2.router.handleInbound(mkMsg({ msgId: 'g2', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', text: '原文不加' }));
   assert.equal(rtOf(h2, bindingKey('m1', 'c1')).submits[0]!.text, '原文不加');
-  assert.deepEqual(h2.noteSenders, [{ sessionId: 's1', display: 'Alice' }]);
+  assert.deepEqual(h2.noteSenders, [{ sessionId: 's1', display: 'Alice', userId: 'u1', chatKind: 'direct' }]);
 
   // userDisplay 缺省回退 userId
   const h3 = makeHarness();
   await h3.router.handleInbound(mkMsg({ msgId: 'g3', chatKind: 'group', atBot: true, userId: 'u9', text: 'hi' }));
   assert.equal(rtOf(h3, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 u9]: hi');
-  assert.deepEqual(h3.noteSenders, [{ sessionId: 's1', display: 'u9' }]);
+  assert.deepEqual(h3.noteSenders, [{ sessionId: 's1', display: 'u9', userId: 'u9', chatKind: 'group' }]);
 });
 
 test('⑮ chatKind 持久化:direct/group 首绑自入站消息落 binding;/new 重绑保留(spec §9.3)', async () => {

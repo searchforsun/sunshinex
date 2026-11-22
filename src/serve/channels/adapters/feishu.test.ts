@@ -1,8 +1,9 @@
-/** 飞书适配器单测(纯映射锚点):feishuEventToInbound 的形状归一/字段映射/过滤语义。
+/** 飞书适配器单测(纯函数锚点):feishuEventToInbound 的形状归一/字段映射/过滤语义;
+ *  受理 ack(OnIt 表情)与群聊 @(at 标签)的请求/前缀纯形状(2026-11-22 用户裁定双条)。
  *  SDK 外连面(WS/HTTP)不进单测——适配器经 engine dry-run 链路覆盖。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { feishuEventToInbound } from './feishu';
+import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix } from './feishu';
 
 const p2pText = {
   sender: { sender_id: { open_id: 'ou_1', user_id: 'uid_1' }, sender_type: 'user' },
@@ -65,4 +66,18 @@ test('content 畸形 JSON:降级空文本不抛', () => {
   const m = feishuEventToInbound('fs1', data);
   assert.ok(m !== undefined);
   assert.equal(m.text, '');
+});
+
+test('受理 ack 请求形状:POST reactions emoji_type=OnIt(2026-11-22 用户裁定「官方处理中 icon」)', () => {
+  const p = feishuAckReactionPayload('om_9');
+  assert.equal(p.method, 'POST');
+  assert.equal(p.url, '/open-apis/im/v1/messages/om_9/reactions');
+  assert.deepEqual(p.data, { reaction_type: { emoji_type: 'OnIt' } });
+});
+
+test('群聊 @ 前缀:`<at user_id>` 标签(服务端渲人名);无 mention/空 userId=空串', () => {
+  assert.equal(feishuMentionPrefix({ userId: 'ou_abc' }), '<at user_id="ou_abc"></at> ');
+  assert.equal(feishuMentionPrefix({ userId: 'ou_abc', display: '晟楷' }), '<at user_id="ou_abc"></at> ');
+  assert.equal(feishuMentionPrefix(undefined), '');
+  assert.equal(feishuMentionPrefix({ userId: '' }), '');
 });

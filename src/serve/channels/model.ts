@@ -62,6 +62,10 @@ export interface InboundMessage {
 export interface OutboundMessage {
   text: string;
   markdown?: boolean;
+  /** 定向提及（2026-11-22 用户裁定：@ 人是群聊语义，单聊回执式回复天然指向本人不加 @）——
+   *  引擎按 lastSender.chatKind==='group' 注入，适配器按平台语法渲染（feishu `<at>` 标签
+   *  服务端渲人名）；caps.mention!==true 的适配器由引擎退化为文本前缀 @<display> */
+  mention?: { userId: string; display?: string };
 }
 
 export interface DeliveryCaps {
@@ -69,6 +73,8 @@ export interface DeliveryCaps {
   markdown: boolean;
   card: boolean;
   maxTextLength: number;
+  /** 平台原生提及支持（feishu `<at user_id>` 标签=服务端渲人名）：缺席=引擎文本前缀退化 */
+  mention?: boolean;
 }
 
 const PLATFORMS: readonly ChannelPlatform[] = ['feishu', 'dingtalk', 'wecom', 'telegram', 'mock'];
