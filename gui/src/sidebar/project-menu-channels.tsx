@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { Archive, ChevronRight } from 'lucide-react';
+import { Archive, ChevronRight, Settings } from 'lucide-react';
 import { t, useLanguage } from '../i18n';
 import { SessionRow as SessionRowView, useConfirmOutsideCancel } from './project-menu-util';
 import { platformMeta } from './use-menu-channels';
@@ -32,11 +32,13 @@ interface ChannelsSectionProps {
   /** 归档通道层入口(2026-11-22 用户裁定「通道归档和 sunx 一样单独归档」:组头归档箱钮→宿主
    *  开 archiveScope='channel' 专域;可选——未配时钮不渲染,旧测试桩零牵连) */
   readonly onOpenArchive?: () => void;
+  /** 通道配置页跳转(2026-11-22 用户裁定「具体应用最右侧增加配置图标,跳转对应设置页」) */
+  readonly onOpenSettings?: () => void;
 }
 
 export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSectionProps): JSX.Element | null {
   useLanguage(); // memo 响应面:语言同步(en→zh)强制重渲染,区块头标签随 t() 调用时求值归位
-  const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenArchive } = props;
+  const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenArchive, onOpenSettings } = props;
   /** 分区折叠(本组件自持) */
   const [open, setOpen] = useState(true);
   /** 通道组开合(2026-11-22 项目式布局:缺省全展开,收起集自持——与项目 openSlugs 缺省收起刻意
@@ -92,6 +94,8 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
         <span>{t('Channels', '通道')}</span>
         <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${open ? ' open' : ''}`} />
         <span className="sx-side-head-actions">
+          {/* 计数 chip 在图标钮**左**(2026-11-22 用户裁定「数字显示在行图标按钮前面,和其他保持一致」) */}
+          <span className="sx-sunx-count" aria-label="channel count">{groups.length}</span>
           {/* 归档通道层入口(项目组头归档箱钮同款;2026-11-22 用户裁定「通道归档单独成域」) */}
           {onOpenArchive !== undefined && (
             <button type="button" className="sx-iconbtn" data-tip={t('Archived channels', '归档通道')}
@@ -100,8 +104,6 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
               <Archive size={14} strokeWidth={1.75} />
             </button>
           )}
-          {/* 数量值:通道组数计数 chip(与 SUNX 组头同款) */}
-          <span className="sx-sunx-count" aria-label="channel count">{groups.length}</span>
         </span>
       </div>
       <div className={`sx-collapse sx-collapse-sunx${open ? ' open' : ''}`}>
@@ -124,7 +126,7 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                     </span>
                     <span className="ws-slug sx-ws-name">{g.name}</span>
                   </button>
-                  {/* 计数徽章(项目组头同款):行内均匀项贴 ⋯ 簭位(通道无动作簇,贴行尾);点击同切换组展开 */}
+                  {/* 行尾簇(2026-11-22 用户裁定:计数在图标钮左,最右=通道配置跳转钮) */}
                   <span className="ws-row-actions">
                     <button
                       type="button"
@@ -134,6 +136,21 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                     >
                       {g.sessions.length}
                     </button>
+                    {onOpenSettings !== undefined && (
+                      <button
+                        type="button"
+                        aria-label={`${t('Channel settings', '通道设置')} ${g.key}`}
+                        className="sx-iconbtn"
+                        data-tip={t('Channel settings', '通道设置')}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenSettings();
+                        }}
+                      >
+                        <Settings size={14} strokeWidth={1.75} />
+                      </button>
+                    )}
                   </span>
                 </div>
                 <div className={`sx-collapse${gOpen ? ' open' : ''}`}>
@@ -156,7 +173,8 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                             runs: sr.runs,
                             steps: sr.steps,
                             createdAt: sr.createdAt,
-                            rootPath: sr.root, // 域目录直寻址(悬浮卡地址段)
+                            chatId: sr.chatId, // 平台聊天会话标识(2026-11-22 用户裁定:hover 显示+复制)
+                            rootPath: sr.root, // 域目录直寻址(悬浮卡地址段;chatId 在场时被替代)
                           }}
                           updatedAt={sr.updatedAt}
                           active={active}

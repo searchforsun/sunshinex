@@ -10,7 +10,7 @@ import type { ChatEntry } from '../../chat-reducer';
 import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
-import { Info } from 'lucide-react';
+import { platformMeta } from '../../sidebar/use-menu-channels';
 import { useUsageStats } from '../../usage-stats';
 import { dayUnitSpans, firstUnitAt, prefixOffsets, reuseUnchangedSpans, sliceRange } from './transcript-units';
 import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
@@ -101,9 +101,11 @@ export interface MessageListProps {
   readonly sideChat?: boolean;
   /** sunx 会话显示名(sunx P2 2026-11-15):在场=空态欢迎语走 Sunx 分支(编排者口径,无技术细节) */
   readonly sunxName?: string;
-  /** 通道域会话(2026-11-22 用户裁定「/new 会话提示显示成普通系统提示,不是欢迎页图标」):
-   *  true=空态走系统提示行分支(不走 hero)——journalId 命中绑定档由 Chat 层 useIsChannelJournal 判定 */
+  /** 通道域会话(2026-11-22 用户裁定「新会话提示改回欢迎页样式,图标随应用」):true=空态走
+   *  通道 hero 分支(平台大图标+「新会话」)——journalId 命中绑定档由 Chat 层钩子判定 */
   readonly channelChat?: boolean;
+  /** 通道平台(2026-11-22 用户裁定「不同应用不同图标」):空态大图标随应用;缺席=中性通道形 */
+  readonly channelPlatform?: string;
   /** 后台补齐目标(2026-11-17 实测卡顿根修):Chat 自 chatMem 注入上次展开宽度——**不是首帧窗口**
    *  (首帧恒入口窗 80,免同步重建整段历史的长帧),而是空闲 pump 的爬升上限;缺省=600 预暖
    *  (冷会话平滑补齐口径不变)。仅挂载读一次(Memo 比较器不列) */
@@ -149,7 +151,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const usageOn = useUsageStats(); // 用量统计开关(2026-11-14):关=运行状态行隐步数+tokens
   // P1 回调稳定化:宿主回调面(callIdOf/onOpen*/taskNameOf/toggleRun/submitText/onEntry*/onFork)
   // 经 propsRef 取用(见下方稳定化块),解构只留渲染直读面
-  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, sunxName, channelChat, onOpenImage, onOpenWeb } = props;
+  const { entries, structureVersion, seedGen, hiddenKeys, conn, sessionId, root, collapsedRuns, runFooterByEntry, onEntryToggleClick, chatScrollRef, onScroll, onWheel, running, liveSteps, liveTokens, sideChat, sunxName, channelChat, channelPlatform, onOpenImage, onOpenWeb } = props;
   /** D48 尾部窗口:窗口外更早条目折叠为头部「显示更早」行;切点回退见下方。
    *  初值恒为入口窗(视口级)——2026-11-17 用户实测「切回会话仍卡顿」量化:同步挂载 80 条
    *  富文本≈214ms、500 条≈1075ms(jsdom;插桩证实元素树缓存 100% 命中也不省,成本在 DOM
@@ -1053,16 +1055,19 @@ export function MessageList(props: MessageListProps): JSX.Element {
         <ChatRail entries={entries} chatScrollRef={chatScrollRef} sideChat={sideChat} onReveal={revealEntry} activeKeyAt={activeUserKeyAt} />
         {/* 空会话=对应欢迎页 hero(2026-11-17 用户裁定「去掉过时空态,空会话直接显示对应欢迎页」:
             标准会话=WelcomeLogo+欢迎标语(与欢迎页同件同尺),Sunx 会话=SunxMark 名片标+目标标语;
-            通道会话=普通系统提示行(2026-11-22 用户裁定「/new 会话提示显示成普通系统提示,不是
-            欢迎页图标」——IM 侧 /new 后 GUI 打开的空通道会话不再展示 hero,只示一行灰提示);
+            通道会话=平台大图标+「新会话」(2026-11-22 用户裁定「改回欢迎页样式,图标随应用」——
+            72px 平台图标占 logo 位,标语=新会话;首条消息后生成会话名,侧栏标题随之归位);
             原居中「给 Sunshinex 一个任务」旧空态(误读为加载态)退役;辅助对话面保留极简标示） */}
         {entries.length === 0 && sideChat !== true && channelChat === true ? (
-          <div className="chat-empty chat-empty-channel" aria-label="chat empty">
-            <div className="chat-empty-note">
-              <Info size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span>{t('New session — messages from the IM chat will appear here', '新会话——IM 聊天消息会显示在这里')}</span>
-            </div>
-          </div>
+          (() => {
+            const ChannelIcon = platformMeta(channelPlatform).Icon;
+            return (
+              <div className="chat-empty chat-empty-welcome chat-empty-channel" aria-label="chat empty">
+                <ChannelIcon size={72} strokeWidth={1.25} className="chat-empty-mark" />
+                <h1 className="welcome-tagline">{t('New session', '新会话')}</h1>
+              </div>
+            );
+          })()
         ) : entries.length === 0 && sideChat !== true && (
           <div className={`chat-empty chat-empty-welcome${sunxName !== undefined ? ' chat-empty-sunx' : ''}`} aria-label="chat empty">
             {sunxName !== undefined ? <SunxMark size={72} className="chat-empty-mark" /> : <WelcomeLogo />}

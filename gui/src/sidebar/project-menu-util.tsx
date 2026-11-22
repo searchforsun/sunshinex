@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { readUsageStats } from '../usage-stats';
 import { useSessionInfoCards } from '../session-info-cards';
 import { zoomScale } from '../ui-zoom';
-import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, ListFilter, Pin } from 'lucide-react';
+import { Archive, Check, CircleHelp, Clock, Copy, Folder, GitBranch, Layers, ListFilter, MessagesSquare, Pin } from 'lucide-react';
 
 /** ProjectMenu 纯助手层（D32 中口径件批 PM-1 平移源,行为零变化）:
  *  模糊匹配/添加工作区图标/已读持久化/显示名与统计行/工作区可见性。 */
@@ -209,13 +209,16 @@ function ArchiveConfirmButton(props: {
 }
 
 /** 会话行悬浮卡数据(2026-10-26 用户裁定四段制):完整会话名/分支/轮次步数/建档时刻;
- *  2026-10-27 增补:rootPath=所属项目根路径(名下细分割线后换行展示) */
+ *  2026-10-27 增补:rootPath=所属项目根路径(名下细分割线后换行展示);
+ *  2026-11-22 用户裁定:chatId=平台聊天会话标识(飞书 oc_ 等)——在场时替代根路径行
+ *  (聊天图标+id+复制钮,「hover 显示飞书会话 id,可复制」) */
 interface SessionRowInfo {
   readonly branch?: string;
   readonly runs?: number;
   readonly steps?: number;
   readonly createdAt?: string;
   readonly rootPath?: string;
+  readonly chatId?: string;
 }
 
 /** 会话行悬浮卡(2026-10-26 用户裁定,文本 data-tip 退役):固定宽 280,仅应用宽度不够时收缩
@@ -236,7 +239,7 @@ function SessionHoverCard(props: {
   // 低应用宽度不越视口:余量不足时收缩,下限 120(2026-10-27 用户裁定「不要超出视口」)
   const avail = (window.innerWidth - props.anchor.menuRight - 12) / z;
   const width = Math.max(120, Math.min(280, avail));
-  const { branch, runs, steps, createdAt, rootPath } = props.info;
+  const { branch, runs, steps, createdAt, rootPath, chatId } = props.info;
   // 用量统计开关(2026-11-14):关=悬停卡隐轮次步数行
   const usageOn = readUsageStats();
   const stats: string[] = [];
@@ -255,8 +258,18 @@ function SessionHoverCard(props: {
       </div>
       {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底);
           2026-11-10 用户裁定:路径/分支行右端复制钮(复制会话名/项目地址/分支名);
-          2026-11-11 用户裁定:路径行补文件夹图标(与分支/轮次行同语言) */}
-      {rootPath !== undefined && rootPath !== '' && (
+          2026-11-11 用户裁定:路径行补文件夹图标(与分支/轮次行同语言);
+          2026-11-22 用户裁定:通道行 chatId 替代根路径行(聊天图标+平台聊天会话 id+复制) */}
+      {chatId !== undefined && chatId !== '' ? (
+        <>
+          <div className="sx-sess-card-divider" role="separator" />
+          <div className="sx-sess-card-path">
+            <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{chatId}</span>
+            <CardCopy text={chatId} label={t('Copy chat ID', '复制聊天 ID')} />
+          </div>
+        </>
+      ) : rootPath !== undefined && rootPath !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
           <div className="sx-sess-card-path">

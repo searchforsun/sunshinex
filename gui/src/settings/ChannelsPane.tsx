@@ -230,15 +230,16 @@ const toMsg = (d: ChannelDraft): ChannelConfigMsg => {
   };
 };
 
-/** 新卡 id 序号单点:platform-<序>,取既有同前缀最大序 +1(不暴露手填) */
-function nextSeq(platform: string, drafts: ChannelDraft[]): number {
-  const re = new RegExp(`^${platform}-(\\d+)$`);
-  let max = 0;
-  for (const d of drafts) {
-    const m = re.exec(d.id);
-    if (m !== null) max = Math.max(max, Number(m[1]));
+/** 新卡 id 生成（2026-11-22 用户裁定「feishu-1 太草率,应该 feishu-{随机字符}」）：
+ *  `<平台>-<5 位小写无混淆字符>`（去 0/1/l/o/i/v），碰撞重掷（同批草稿查重） */
+function newChannelId(platform: string, drafts: ChannelDraft[]): string {
+  const alphabet = 'abcdefghjkmnpqrstuwxyz23456789';
+  for (;;) {
+    let suffix = '';
+    for (let i = 0; i < 5; i++) suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+    const id = `${platform}-${suffix}`;
+    if (!drafts.some((d) => d.id === id)) return id;
   }
-  return max + 1;
 }
 
 /** 弹窗表单(新增/编辑;平台新增可选、编辑锁定) */
@@ -440,7 +441,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       setFormError(t('Allow-list needs at least one user id', '白名单准入至少需要一个 userId'));
       return;
     }
-    const id = modal.mode === 'edit' ? modal.id! : `${platform!.v}-${nextSeq(platform!.v, drafts)}`;
+    const id = modal.mode === 'edit' ? modal.id! : newChannelId(platform!.v, drafts);
     const saved: ChannelDraft = {
       id,
       platform: (modal.mode === 'edit' ? base!.platform : platform!.v) as PlatformValue,

@@ -172,6 +172,7 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
   // ── 目录覆盖（留空即用缺省，见第三节）────────────────
   "projectsDir": "",                                 // 项目数据根（各工作区分目录的父级）；留空 = ~/.sunshinex/projects，可指向任意盘
   "sunxDir": "",                                     // Sunx 持久化域容器（一 Sunx 一子目录）；留空 = ~/.sunshinex/sunx，切换对新建 Sunx 生效
+  "channelsDir": "",                                 // 通道持久化域容器（一聊天一子目录）；留空 = ~/.sunshinex/channels，切换对新建聊天生效
   // "archiveRetentionDays": 30,                      // 归档会话保留天数：daemon 每日后台清理归档超 N 天的会话（真删，含辅助会话）；0 = 永不清理；留空 = 30（设置·存储页可改）
   "userSkillsDir": "",                               // 全局技能目录
   "globalSunshine": "",                              // 全局约定 SUNSHINE.md 所在目录

@@ -202,6 +202,15 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
     const jid = s.attachedJournalId;
     if (jid !== undefined) statusByJournal.set(jid, s.status());
   }
+  // chatId 反查表（2026-11-22 用户裁定「hover 显示飞书会话 id」）：绑定档 journalId → 聊天 id
+  // （key=`<channelId>:<chatId>` 首冒号切分）——平台聊天会话标识（飞书 oc_/Telegram chat id），
+  // GUI 会话悬浮卡显示与复制用；未绑定行（异常）缺席=卡回落根路径行
+  const chatIdByJournal = new Map<string, string>();
+  for (const b of io.bindings.all()) {
+    const i = b.key.indexOf(':');
+    if (i <= 0 || b.journalId === undefined) continue;
+    chatIdByJournal.set(b.journalId, b.key.slice(i + 1));
+  }
   const out: Array<Record<string, unknown>> = [];
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
@@ -220,6 +229,7 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
         updatedAt: r.updatedAt,
         ...(r.archived === true ? { archived: true as const } : {}), // 归档行随列（sunx 面 Fix 4 可达性同款）
         ...(r.channel !== undefined ? { channel: r.channel } : {}), // 通道配置 id（Task 13 分组键）
+        ...(chatIdByJournal.get(r.id) !== undefined ? { chatId: chatIdByJournal.get(r.id) } : {}), // 平台聊天会话标识（悬浮卡显示/复制）
         ...(r.runs !== undefined ? { runs: r.runs } : {}),
         ...(r.steps !== undefined ? { steps: r.steps } : {}),
         ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),

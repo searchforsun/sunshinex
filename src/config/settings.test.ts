@@ -281,11 +281,12 @@ test('language 槽（D9）：settings language:"zh" 填 SUNSHINEX_LANGUAGE；she
   }
 });
 
-test('SEMANTIC_KEYS 全表钉子：38 键、槽名规范、providers/channels 密钥不进表（密钥内联进条目，2026-11-22 推翻 D6）', () => {
+test('SEMANTIC_KEYS 全表钉子：39 键、槽名规范、providers/channels 密钥不进表（密钥内联进条目，2026-11-22 推翻 D6）', () => {
   const entries = Object.entries(SEMANTIC_KEYS);
-  assert.equal(entries.length, 38, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（2026-11-21 增 archiveRetentionDays；2026-11-22 增 embeddingApiKey/websearchApiKey——env 分组退役，非 provider 密钥转正语义键）');
+  assert.equal(entries.length, 39, '可配置变量全量语义化：新增/删除键必须同步本表与 MANUAL.md 模板（2026-11-21 增 archiveRetentionDays；2026-11-22 增 embeddingApiKey/websearchApiKey——env 分组退役，非 provider 密钥转正语义键；增 channelsDir——通道持久化容器目录，2026-11-22 用户裁定）');
   assert.equal(SEMANTIC_KEYS['archiveRetentionDays'], 'SUNSHINEX_ARCHIVE_RETENTION_DAYS', '归档保留天数语义键（daemon 每日清扫过期归档，0=永不；2026-11-21）');
   assert.equal(SEMANTIC_KEYS['sunxDir'], 'SUNSHINEX_SUNX_DIR', 'Sunx 持久化域容器目录可指定（2026-11-15 sunx P3：一 Sunx 一持久化项目域）');
+  assert.equal(SEMANTIC_KEYS['channelsDir'], 'SUNSHINEX_CHANNELS_DIR', '通道持久化容器目录可指定（2026-11-22 用户裁定「路径设置页增加 channels 路径」：一聊天一域，新建域落新容器）');
   for (const [key, slot] of entries) {
     assert.match(slot, /^SUNSHINEX_[A-Z0-9_]+$/, `${key} 槽名须为 SUNSHINEX_* 规范形态`);
   }

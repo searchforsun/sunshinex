@@ -167,6 +167,9 @@ export interface SessionRow {
   /** 通道标(channels Task 9 行透出,meta 读面 SessionSidecarMeta.channel):出生通道配置 id——
    *  侧栏「通道」组平台图标反查键(Task 13,settingsChannels 按 id 对表;缺席=旧会话无标) */
   channel?: string;
+  /** 平台聊天会话标识(2026-11-22 用户裁定「hover 显示飞书会话 id」):绑定档反查——飞书 oc_/
+   *  Telegram chat id 等,悬浮卡显示+复制;缺席=非通道行/未绑定行 */
+  chatId?: string;
   /** 定时任务执行会话(2026-11-21,meta 读面):侧栏会话行相对时间左侧挂定时任务钟面图标 */
   scheduled?: boolean;
   /** 归档标(2026-11-22 通道归档专域):域枚举面(/sunx/sessions、/channels/sessions)归档行随列

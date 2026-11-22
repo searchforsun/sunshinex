@@ -803,6 +803,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             loadArchived();
             setArchiveOpen(true);
           }}
+          onOpenSettings={() => onOpenSettingsItem?.('channels')} // 行尾配置图标跳通道设置页(2026-11-22 裁定)
         />
         )}
         <PinnedSection

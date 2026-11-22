@@ -56,6 +56,10 @@ export const SEMANTIC_KEYS: Readonly<Record<string, string>> = {
   // Sunx 持久化域容器目录(2026-11-15 sunx P3):一 Sunx 一域(sunxDomainDir 单点拼),缺省
   // ~/.sunshinex/sunx/——显式覆盖=装载链写槽,daemon 装载后新建 Sunx 落新容器(既有域不迁移)
   sunxDir: 'SUNSHINEX_SUNX_DIR',
+  // 通道持久化容器目录(2026-11-22 用户裁定「路径设置页增加 channels 路径的配置」):一聊天一域
+  // (channelChatDomainDir 单点拼,channelsContainerDir 读槽),缺省 ~/.sunshinex/channels/——
+  // 显式覆盖对新建聊天域生效(既有域不迁移,与 sunxDir 同纪律)
+  channelsDir: 'SUNSHINEX_CHANNELS_DIR',
   embeddingBaseUrl: 'SUNSHINEX_EMBEDDING_BASE_URL',
   embeddingModel: 'SUNSHINEX_EMBEDDING_MODEL',
   websearchProvider: 'SUNSHINEX_WEBSEARCH_PROVIDER',

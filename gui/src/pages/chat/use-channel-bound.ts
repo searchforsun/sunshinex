@@ -2,34 +2,66 @@ import { useEffect, useState } from 'react';
 import type { ChannelBindingMsg } from '../../connection-api';
 
 /**
- * 通道会话判定(2026-11-22 用户裁定「/new 会话提示显示成普通系统提示,不是欢迎页图标」):
- * journalId 命中绑定档 = 通道域会话——MessageList 空态据此走系统提示行分支(不走 hero)。
- * ChannelInfoBar 同判据自守卫渲染;本钩子供 Chat 层共享该布尔(拉取失败=非通道,静默降级;
- * conn 缺 channelBindings 方法(旧测试桩)同口径)。
+ * 通道会话判定(2026-11-22 用户裁定系列):journalId 命中绑定档 = 通道域会话。返回
+ * { isChannel, chatId, platform }——① MessageList 空态:通道会话走欢迎页样式分支(平台大图标
+ * +「新会话」);② ChatTopbar ⋯ 菜单:通道会话去置顶、复制会话 ID=平台聊天 id(飞书 oc_);
+ * platform=配置读面反查(空态大图标随应用;拉取失败=undefined 走中性图标)。
+ * 拉取失败/conn 缺方法(旧测试桩)=非通道口径静默降级(ChannelInfoBar 同语义)。
  */
-interface ChannelBoundConn {
-  channelBindings?(): Promise<{ bindings: ChannelBindingMsg[] }>;
+export interface ChannelJournalInfo {
+  readonly isChannel: boolean;
+  /** 平台聊天会话标识(飞书 oc_ / Telegram chat id 等;绑定 key=`<channelId>:<chatId>` 尾段) */
+  readonly chatId: string;
+  /** 通道平台(配置读面反查;缺席=未知) */
+  readonly platform?: string;
 }
 
-export function useIsChannelJournal(conn: ChannelBoundConn | null, journalId: string): boolean {
-  const [bound, setBound] = useState(false);
+interface ChannelBoundConn {
+  channelBindings?(): Promise<{ bindings: ChannelBindingMsg[] }>;
+  settingsChannels?(): Promise<{ channels: Array<{ id: string; platform: string }>; warnings: string[] }>;
+}
+
+const EMPTY: ChannelJournalInfo = { isChannel: false, chatId: '' };
+
+export function useChannelJournalInfo(conn: ChannelBoundConn | null, journalId: string): ChannelJournalInfo {
+  const [info, setInfo] = useState<ChannelJournalInfo>(EMPTY);
   useEffect(() => {
     if (conn === null || journalId === '' || typeof conn.channelBindings !== 'function') {
-      setBound(false);
+      setInfo(EMPTY);
       return;
     }
     let alive = true;
     conn.channelBindings().then(
       (r) => {
-        if (alive) setBound(r.bindings.some((b) => b.journalId === journalId));
+        if (!alive) return;
+        const hit = r.bindings.find((b) => b.journalId === journalId);
+        if (hit === undefined) {
+          setInfo(EMPTY);
+          return;
+        }
+        const i = hit.key.indexOf(':');
+        const chatId = i > 0 ? hit.key.slice(i + 1) : '';
+        setInfo({ isChannel: true, chatId, platform: undefined });
+        // 平台反查(配置读面;失败静默=platform 缺席,图标走中性通道形)
+        if (typeof conn.settingsChannels === 'function') {
+          conn.settingsChannels().then(
+            (cfgs) => {
+              if (!alive) return;
+              const channelId = i > 0 ? hit.key.slice(0, i) : '';
+              const platform = cfgs.channels.find((c) => c.id === channelId)?.platform;
+              setInfo({ isChannel: true, chatId, platform });
+            },
+            () => undefined,
+          );
+        }
       },
       () => {
-        if (alive) setBound(false); // 拉取失败=非通道口径(信息条整块 null 同语义)
+        if (alive) setInfo(EMPTY); // 拉取失败=非通道口径(信息条整块 null 同语义)
       },
     );
     return () => {
       alive = false;
     };
   }, [conn, journalId]);
-  return bound;
+  return info;
 }

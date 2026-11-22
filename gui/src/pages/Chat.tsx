@@ -19,10 +19,9 @@ import { t } from '../i18n';
 /** App → Chat 事件转投面:Chat 装配期注册到 sinkRef(卸载注销 null)——连接层回调闭包固定,
  *  App 侧经 ref 转投免闭包陈旧 */
 import { useCommandPalette } from './chat/use-command-palette';
-import { useIsChannelJournal } from './chat/use-channel-bound';
+import { useChannelJournalInfo } from './chat/use-channel-bound';
 import { TerminalDock } from '../tabs/terminal-dock';
 import { ChatTopbar } from './chat/ChatTopbar';
-import { ChannelInfoBar } from './chat/ChannelInfoBar';
 import { useChatDerived, runFooterMapOfStable } from './chat/use-chat-derived';
 import { flushScrollMem, peekScrollAnchor, peekScrollPos, saveScrollPos } from './chat/scroll-mem';
 import { isProgBottom, markProgBottom, syncOverflowAnchor, useChatScroll, chatAnchorOf } from './chat/use-chat-scroll';
@@ -94,9 +93,9 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, todoFocus, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
-  /** 通道域会话判定(2026-11-22 用户裁定「/new 空态显示成普通系统提示」):journalId 命中绑定档
-   *  → MessageList 空态走系统提示行分支(不走 hero);拉取失败/旧桩=非通道口径 */
-  const channelBound = useIsChannelJournal(conn, journalId ?? '');
+  /** 通道会话信息(2026-11-22 用户裁定系列):journalId 命中绑定档 → 空态平台图标 hero、
+   *  顶栏 ⋯ 菜单去置顶/复制聊天 id;拉取失败/旧桩=非通道口径 */
+  const channelInfo = useChannelJournalInfo(conn, journalId ?? '');
   // G14.2xx b 转录内存缓存:挂载命中即直渲缓存态(快照播种落定无缝整替校准),卸载写回最新投影
   const [chat, setChat] = useState<ChatState>(() => chatMem?.get(archiveKey) ?? initialChatState());
   const chatRef = useRef<ChatState>(chat);
@@ -601,6 +600,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         sessionKind={kind}
         onAdoptTitle={adoptTitle}
         sessionId={sessionId}
+        channelChatId={channelInfo.isChannel ? channelInfo.chatId : undefined} // ⋯菜单:通道会话去置顶+复制平台聊天 id(2026-11-22 裁定)
         tokens={chat.tokens}
         steps={chat.steps}
         running={running}
@@ -623,12 +623,11 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         nav={nav}
       />
       ) : null}
-      {/* 聊天信息条(channels Task 13,spec §9.3):通道会话才渲染(journalId 命中绑定档,组件内自守卫) */}
-      {active ? <ChannelInfoBar conn={conn} journalId={journalId} /> : null}
 
       <ChatTranscript
         active={active}
-        channelChat={channelBound} // 通道会话空态=系统提示行(2026-11-22 用户裁定,不走 hero)
+        channelChat={channelInfo.isChannel} // 通道会话空态=平台图标 hero(2026-11-22 用户裁定样式)
+        channelPlatform={channelInfo.platform} // 空态大图标随应用(飞书/Telegram…;缺席=中性通道形)
         restoreAnchor={scrollRestoreAnchorRef.current ?? undefined}
         heightScope={archiveKey}
         history={chat.history}

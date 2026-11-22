@@ -127,6 +127,7 @@ export const KEY_DESCRIPTIONS: Record<string, { label: { en: string; zh: string 
   kbBackend: { label: { en: 'Vector backend', zh: '向量后端' }, en: 'Knowledge-base vector backend', zh: '知识库向量后端' },
   kbDataDir: { label: { en: 'KB data directory', zh: '知识库数据目录' }, en: 'Knowledge-base data directory', zh: '知识库数据目录' },
   sunxDir: { label: { en: 'Sunx data directory', zh: 'Sunx 数据目录' }, en: 'Sunx persistence container directory', zh: 'Sunx 持久化容器目录' },
+  channelsDir: { label: { en: 'Channels data directory', zh: '通道数据目录' }, en: 'Channels persistence container directory', zh: '通道持久化容器目录' },
   embeddingBaseUrl: { label: { en: 'Embedding API URL', zh: 'Embedding API 地址' }, en: 'Embedding API base URL', zh: 'Embedding API 地址' },
   embeddingModel: { label: { en: 'Embedding model', zh: 'Embedding 模型' }, en: 'Embedding model id', zh: 'Embedding 模型 id' },
   websearchProvider: { label: { en: 'Search provider', zh: '搜索提供方' }, en: 'Web search provider', zh: '网页搜索提供方' },
@@ -206,7 +207,7 @@ export const SETTINGS_PANES: readonly SettingsPaneDef[] = [
     groups: [
       {
         title: { en: 'Paths', zh: '路径' },
-        fields: [dirPath('projectsDir'), dirPath('sunxDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')], // 语义键 sunxDir（SUNSHINEX_SUNX_DIR 写槽）：容器切换对新建 Sunx 生效，既有域不迁移
+        fields: [dirPath('projectsDir'), dirPath('sunxDir'), dirPath('channelsDir'), dirPath('userSkillsDir'), dirPath('globalSunshine')], // 语义键 sunxDir（SUNSHINEX_SUNX_DIR 写槽）：容器切换对新建 Sunx 生效，既有域不迁移
       },
       { title: { en: 'Command execution', zh: '命令执行' }, fields: [filePath('shell')] },
     ],

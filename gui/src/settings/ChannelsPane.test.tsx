@@ -76,10 +76,15 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     fireEvent.change(screen.getByLabelText(bi('Bot Token', 'Bot Token')), { target: { value: 'tok-secret' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
     await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
-    expect(putChannels.mock.calls[0]![0]).toEqual([
-      { id: 'telegram-1', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', secret: 'tok-secret', allow: { kind: 'first-user' } },
-    ]);
-    await waitFor(() => expect(testChannel).toHaveBeenCalledWith('telegram-1'));
+    const savedRow = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
+    // id 随机生成(2026-11-22 用户裁定「feishu-1 太草率,应该 feishu-{随机字符}」)
+    expect(savedRow.id).toMatch(/^telegram-[a-z0-9]{5}$/);
+    expect(savedRow.platform).toBe('telegram');
+    expect(savedRow.name).toBe('我的TG');
+    expect(savedRow.secret).toBe('tok-secret');
+    expect(savedRow.root).toBe('auto');
+    expect(savedRow.mode).toBe('read-only');
+    await waitFor(() => expect(testChannel).toHaveBeenCalledWith(savedRow.id));
     // 试连结果行内回显机器人身份
     expect(await screen.findByText(/bot-1/)).toBeDefined();
   });
@@ -251,7 +256,7 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     await waitFor(() => expect(testChannel).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(2));
     const row = (putChannels.mock.calls[1]![0] as ChannelConfigMsg[])[0]!;
-    expect(row.name).toBe('bot-1', '自动取名=第二次全表写回填平台侧应用名');
+    expect(row.name).toBe('bot-1'); // 自动取名=第二次全表写回填平台侧应用名
   });
 
   /** ⑬ 试连 toast 四档色（2026-11-22 用户裁定「正常是绿色字体」）:成功=sx-toast-ok 档 */

@@ -25,7 +25,7 @@
   /* accent 与语义(蓝仅 info/焦点/链接;状态色 dark 300 系/light 500 系) */
   --accent: #339cff;
   --ok: #40c977;
-  --warn: #e6c163; /* 四档提示色规范(2026-11-22 用户裁定「warn 黄色」):原橙改黄,设置页/正文警告统一 */
+  --warn: #ff8549;
   --err: #ff6764;
   --ok-solid: #00a240;
   --err-solid: #e02e2a;
@@ -105,7 +105,7 @@
   --fg-on-solid: #fff;
   --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
   --ok: #00a240;
-  --warn: #8f7414; /* 四档提示色 warn 黄(light 可读档) */
+  --warn: #e25507;
   --err: #e02e2a;
   --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
   --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.08); /* 2026-11-12 用户复裁定「不加边线,只要软阴影」(环线在超椭角下不随形=角部毛刺,除非根治不加):白对白分层靠投影,撤 11-12 提议的 1px 环 */
@@ -4528,17 +4528,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .chat-empty-welcome .welcome-tagline { color: var(--fg-secondary); text-wrap: balance; } /* 窄栏换行均衡(「一个目/标」断行丑) */
 .chat-empty-sunx { gap: 10px; }
 .chat-empty-mark { color: var(--fg-secondary); margin-bottom: 2px; }
-/* 通道会话空态(2026-11-22 用户裁定「/new 会话提示显示成普通系统提示,不是欢迎页图标」):
-   不走 hero——一行系统提示形态(Info 灰,与转录系统提示同语速),居中呼吸距即可 */
-.chat-empty-channel { padding: 24px 40px; }
-.chat-empty-channel .chat-empty-note {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--fg-tertiary);
-  font-size: calc(12.5px * var(--fz));
-}
-.chat-empty-channel .chat-empty-note svg { flex: none; color: var(--fg-tertiary); }
+/* 通道会话空态(2026-11-22 用户裁定「改回欢迎页样式,图标随应用」):72px 平台图标占 logo 位
+   (chat-empty-welcome 同 gap/padding),标语=新会话;平台色微弱化随 .chat-empty-mark 语速 */
+.chat-empty-channel .chat-empty-mark { color: var(--fg-secondary); }
 .sx-sunxboard-mark { color: var(--fg-secondary); margin-bottom: 6px; }
 .sx-sunx-dialog-mark { color: var(--fg-secondary); flex: none; }
 /* 项目行会话计数(2026-11-17 用户实测「普通项目的数字太深了,参考 sunx 的一样浅」):口径对齐

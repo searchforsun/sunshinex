@@ -98,6 +98,9 @@ interface ChatTopbarProps {
   readonly displayTitle: string;
   /** 会话形态(sunx P2 2026-11-15:title GET 随响应透出)——'sunx' 行菜单编辑 Sunx/复制 Sunx ID 分支 */
   readonly sessionKind?: string;
+  /** 通道会话信息(2026-11-22 用户裁定「⋯菜单通道会话去置顶;复制会话 ID=平台聊天 id」):
+   *  chatId=飞书 oc_ 等平台聊天会话标识;isChannel=true 时置顶项退役(通道会话置顶无入口) */
+  readonly channelChatId?: string;
   /** 编辑 Sunx 改名回显通道(2026-11-15 双模式弹窗):弹窗自管 renameSession 落盘,本通道只做
    *  顶栏乐观上屏+侧栏联动(useChatTitle adoptTitle——不再重发 rename,防双尾追同步行) */
   readonly onAdoptTitle?: (title: string) => void;
@@ -137,7 +140,7 @@ interface ChatTopbarProps {
 }
 
 export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, channelChatId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
   /** 「编辑 Sunx」双模式弹窗编辑态(2026-11-15 用户裁定「复用创建弹窗,禁用工作区」;portal 自挂,
    *  挂载点随 header 尾。原 CharterDialog 退役——功能并入 NewSunxDialog 编辑模式) */
   const [charterOpen, setCharterOpen] = useState(false);
@@ -288,10 +291,12 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     void conn.saveAppSeen(seen).then(onSessionsMutated, onSessionsMutated);
   };
   // sunx 会话:置顶/归档会话两件退役(2026-11-15 用户实测裁定「置顶和编辑会话不是已经去掉了吗」
-  // ——Sunx 归档与会话归档彻底分开,唯一归档入口=侧栏 SUNX 组头归档层);standard 三件原样
+  // ——Sunx 归档与会话归档彻底分开,唯一归档入口=侧栏 SUNX 组头归档层);standard 三件原样;
+  // 通道会话:置顶退役(2026-11-22 用户裁定「三个点操作下拉行去掉置顶」——归档走通道组头专域)
   const isSunx = sessionKind === SESSION_KIND_SUNX;
+  const isChannel = channelChatId !== undefined && channelChatId !== '';
   const menuItems = [
-    ...(!isSunx
+    ...(!isSunx && !isChannel
       ? [
           {
             id: 'pin',
@@ -306,11 +311,16 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
               togglePin();
             },
           },
+        ]
+      : []),
+    ...(!isSunx
+      ? [
           {
             id: 'archive',
             label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
             icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
-            // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行
+            // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行;
+            // 通道会话归档保留(2026-11-22 用户裁定只去置顶——归档走「归档通道」专域)
             disabled: false,
             onSelect: () => {
               if (archived) onArchive(false);
@@ -347,7 +357,9 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       label: sessionKind === SESSION_KIND_SUNX ? t('Copy Sunx ID', '复制 Sunx ID') : t('Copy session ID', '复制会话 ID'),
       icon: copiedTag === 'id' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />,
       keepOpen: true,
-      onSelect: () => copyText(sessionId, 'id'),
+      // 通道会话复制**平台聊天 id**(2026-11-22 用户裁定「复制会话 ID 改成飞书的会话 ID」——
+      // oc_ 等;非通道行=内部会话 id 原样)
+      onSelect: () => copyText(isChannel ? channelChatId! : sessionId, 'id'),
     },
     {
       id: 'copy-path',
