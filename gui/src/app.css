@@ -4777,3 +4777,6 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 @media (max-width: 720px) {
   .sx-storage-row { flex-direction: column; align-items: stretch; gap: 8px; }
 }
+/* 弹窗内 proj-pop 高度收敛(2026-11-21 用户实测「最多显示四个,多的内部纵向滚动」):筛选行+4 行
+   可视(每行约 32px),其余内部滚动;欢迎页 dock 版维持 280px 上限不变 */
+.sx-sunx-ws-anchor .proj-pop { max-height: calc(44px + 4 * 32px + 10px); overflow-y: auto; }
