@@ -146,7 +146,15 @@ export class FeishuAdapter implements ChannelAdapter {
     const ws = new lark.WSClient({ appId, appSecret: this.deps.secret, loggerLevel: lark.LoggerLevel.warn });
     this.ws = ws;
     await ws.start({ eventDispatcher: dispatcher });
-    const state = ws.getConnectionStatus().state;
+    // SDK start() 返回时连接仍在建立(state=connecting)——轮询至多 10s 等 connected,
+    // 期间 closed/错误态提前失败;超时给出可读指引(实测约 2s 内连上)
+    let state = ws.getConnectionStatus().state;
+    const deadline = Date.now() + 10_000;
+    while (state !== 'connected' && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 300));
+      state = ws.getConnectionStatus().state;
+      if (state === 'closed' || state.includes('error')) break;
+    }
     if (state !== 'connected') {
       this.connected = false;
       this.detail = `长连接未建立(${state})——检查 App ID/Secret 与开放平台「事件订阅-长连接模式」配置`;
