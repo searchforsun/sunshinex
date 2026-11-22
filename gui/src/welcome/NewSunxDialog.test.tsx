@@ -222,26 +222,17 @@ describe('NewSunxDialog 工作目录(sunx P2 2026-11-15 改版:欢迎页下拉�
     );
   });
 
-  it('添加新工作目录:壳 IPC pickFolder → createWorkspace 登记+选中 → 载荷 root=新目录', async () => {
+  it('浏览文件夹=纯路径选择(2026-11-21 解耦):不登记工作区,载荷 root=所选目录', async () => {
     const conn = makeConn();
-    // 动态桩模拟 daemon 登记:createWorkspace 落库后 /workspaces 即含新行(hook 回源才不会把
-    // picked 洗回默认锚——真实 daemon createWorkspace 注册 workspace.json 同语义)
-    const registered: Array<{ slug: string; root: string; sessionCount: number }> = [
-      { slug: 'ws-sunshinex-default', root: 'D:/tmp/sunshinex-default', sessionCount: 1 },
-    ];
-    conn.workspaces = vi.fn(async () => [...registered]);
-    conn.createWorkspace = vi.fn(async (body: { path?: string }) => {
-      registered.push({ slug: body.path ?? '', root: body.path ?? '', sessionCount: 0 });
-      return { ok: true as const, root: body.path ?? '', slug: body.path ?? '' };
-    });
     (window as unknown as { sunshinex: unknown }).sunshinex = {
       pickFolder: vi.fn(async () => 'D:/new-dir'),
     };
     render(<Harness conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: bi('Choose working directory', '选择工作目录') }));
     fireEvent.click(await screen.findByRole('menuitem', { name: bi('Browse folders…', '浏览文件夹…') }));
-    await waitFor(() => expect(conn.createWorkspace).toHaveBeenCalledWith({ path: 'D:/new-dir' }));
-    expect(await screen.findByText('new-dir')).toBeDefined(); // 登记即选中(显示名=目录 basename)
+    // 纯选择:零 createWorkspace(项目登记留给发送期 createSession;sunx 域整块不进 /workspaces)
+    await waitFor(() => expect(screen.getByText('new-dir')).toBeDefined());
+    expect(conn.createWorkspace).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(bi('Name', '姓名')), { target: { value: '丁' } });
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() =>

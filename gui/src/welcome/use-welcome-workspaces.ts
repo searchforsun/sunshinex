@@ -102,14 +102,13 @@ export function useWelcomeWorkspaces(
    *  workspace.json 同 root 直返 ok)。 */
   /** 登记成功收口单点(三入口共用:桌面壳对话框/浏览器态对话框/DirPicker 确认):
    *  幂等追加(slug 判重)+选中+收项目菜单+静默回源(skills 闸随 picked 重置+列表与侧栏/mtime 对齐) */
-  const adoptWorkspace = (res: { slug: string; root: string }): void => {
-    setRows((prev) => {
-      const list = prev ?? [];
-      return list.some((r) => r.slug === res.slug) ? list : [...list, { slug: res.slug, root: res.root, sessionCount: 0 }];
-    });
-    setPicked(res.root);
+  /** 纯路径收口(2026-11-21 用户裁定「工作目录选择与底层项目解耦:只有真正发送消息/创建 Sunx 时
+   *  才创建项目」):选中即落 picked,不调 createWorkspace、不写 workspace.json——登记由发��期
+   *  createSession(root) 在 daemon 侧完成(standard 才登记;sunx 域整块跳过,不进 /workspaces)。
+   *  候选清单(rows)保持只读:未登记目录选完即用,basename 直接显示 */
+  const adoptPickedPath = (root: string): void => {
+    setPicked(root);
     setProjOpen(false);
-    void refreshRows();
   };
   const browseFolder = async (): Promise<void> => {
     setHint('');
@@ -117,11 +116,7 @@ export function useWelcomeWorkspaces(
     if (typeof shell?.pickFolder === 'function') {
       const p = await shell.pickFolder();
       if (p === null) return;
-      try {
-        adoptWorkspace(await conn.createWorkspace({ path: p }));
-      } catch (err) {
-        setHint(err instanceof Error ? err.message : String(err));
-      }
+      adoptPickedPath(p);
       return;
     }
     // G14.194 浏览器态也走 Win 原生对话框(showDirectoryPicker+标记定位,同侧栏添加工作区);
@@ -129,24 +124,17 @@ export function useWelcomeWorkspaces(
     const picked = await pickWorkspaceFolder((q) => conn.locateWorkspace(q));
     if (picked === null) return;
     if (picked !== 'unsupported' && picked !== 'denied' && picked !== 'timeout') {
-      try {
-        adoptWorkspace(await conn.createWorkspace({ path: picked.path }));
-      } catch (err) {
-        setHint(err instanceof Error ? err.message : String(err));
-      }
+      adoptPickedPath(picked.path);
       return;
     }
     if (picked === 'denied') setHint(t('Folder permission denied', '文件夹写权限被拒'));
     if (picked === 'timeout') setHint(t('Could not locate the picked folder', '未能定位所选文件夹'));
     setDirOpen(true);
   };
-  /** DirPicker 确认:登记所选既有目录为工作区并选中(同桌面壳后段) */
+  /** DirPicker 确认:只选中路径(不登记——同桌面壳后段口径) */
   const registerFolder = (p: string): void => {
     setDirOpen(false);
-    conn
-      .createWorkspace({ path: p })
-      .then(adoptWorkspace)
-      .catch((err: unknown) => setHint(err instanceof Error ? err.message : String(err)));
+    adoptPickedPath(p);
   };
-  return { rows, refreshRows, adoptWorkspace, browseFolder, registerFolder };
+  return { rows, refreshRows, adoptWorkspace: adoptPickedPath, browseFolder, registerFolder };
 }
