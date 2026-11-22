@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseProvidersSpec, loadProviders, providerApiKeyEnv, resolveProviderApiKey } from './providers';
+import { parseProvidersSpec, loadProviders, loadProvidersFull, providerApiKeyEnv, resolveProviderApiKey } from './providers';
 import { parseSettingsFile, flattenSettings } from './settings';
 import { loadProjectSettings } from './settings';
 
@@ -111,9 +111,15 @@ test('loadProviders：项目级 providers 键整键遮蔽全局；项目缺键�
   }
 });
 
-test('源密钥槽：专用槽 SUNSHINEX_API_KEY_<大写名> > 主槽 SUNSHINEX_API_KEY；槽名非字母数字段折叠', () => {
+test('源密钥槽（回退链）：专用槽 SUNSHINEX_API_KEY_<大写名> > 主槽 SUNSHINEX_API_KEY；槽名非字母数字段折叠', () => {
   assert.equal(providerApiKeyEnv('deepseek'), 'SUNSHINEX_API_KEY_DEEPSEEK');
   assert.equal(providerApiKeyEnv('my-provider'), 'SUNSHINEX_API_KEY_MY_PROVIDER');
+  // HOME 桩隔离：resolveProviderApiKey 条目内联查找走两级 settings 装载——须钉空家目录防真实全局档串入
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'providers-key-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
   const prevSpecific = process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
   const prevMain = process.env.SUNSHINEX_API_KEY;
   try {
@@ -129,6 +135,90 @@ test('源密钥槽：专用槽 SUNSHINEX_API_KEY_<大写名> > 主槽 SUNSHINEX_
     else process.env.SUNSHINEX_API_KEY_MY_PROVIDER = prevSpecific;
     if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;
     else process.env.SUNSHINEX_API_KEY = prevMain;
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+// 密钥内联（2026-11-22 用户裁定：推翻 D6 env 分组口径——apiKey 进条目字段、可回显；env 槽降为回退兼容）
+test('providers 条目 apiKey 内联解析：收口（trim/空串=缺席/非串·超 2000 warning 跳字段）+ entries/choices 随装载带出', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'providers-inline-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  try {
+    const globalDir = path.join(fakeHome, '.sunshinex');
+    fs.mkdirSync(globalDir, { recursive: true });
+    fs.writeFileSync(path.join(globalDir, 'settings.json'), JSON.stringify({
+      version: 1,
+      providers: [
+        { name: 'inline', baseUrl: 'https://i/v1', apiKey: '  sk-inline-1  ', models: [{ model: 'm' }] },
+        { name: 'empty', baseUrl: 'https://e/v1', apiKey: '   ', models: [{ model: 'm' }] },
+        { name: 'absent', baseUrl: 'https://a/v1', models: [{ model: 'm' }] },
+        { name: 'badtype', baseUrl: 'https://b/v1', apiKey: 42, models: [{ model: 'm' }] },
+        { name: 'toolong', baseUrl: 'https://t/v1', apiKey: 'x'.repeat(2001), models: [{ model: 'm' }] },
+        { name: 'maxlen', baseUrl: 'https://x/v1', apiKey: 'k'.repeat(2000), models: [{ model: 'm' }] },
+      ],
+    }), 'utf8');
+    const full = loadProvidersFull(null);
+    const byName = new Map(full.providers.map((p) => [p.name, p]));
+    assert.equal(byName.get('inline')!.apiKey, 'sk-inline-1', 'trim 归一落字段');
+    assert.equal(byName.get('empty')!.apiKey, undefined, '空串=缺席');
+    assert.equal(byName.get('absent')!.apiKey, undefined);
+    assert.equal(byName.get('badtype')!.apiKey, undefined, '非串 warning 跳字段');
+    assert.equal(byName.get('toolong')!.apiKey, undefined, '超 2000 warning 跳字段');
+    assert.equal(byName.get('maxlen')!.apiKey, 'k'.repeat(2000), '上限内原样收口');
+    assert.equal(full.warnings.length, 2, '坏字段各一条 warning，条目不连坐');
+    assert.ok(full.warnings.some((w) => w.includes('apiKey')));
+    // choices 同源带出（运行面 choiceAdapterConfig 直取的回显/装配数据基座）
+    const inline = full.choices.find((c) => c.id === 'inline/m')!;
+    assert.equal(inline.apiKey, 'sk-inline-1');
+  } finally {
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+  }
+});
+
+test('resolveProviderApiKey 回退链：条目 apiKey 优先 → env 专用槽 → 主槽；都无 undefined（老配置 env 直配不炸）', () => {
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'providers-chain-'));
+  const prevHome = process.env.HOME;
+  const prevUserProfile = process.env.USERPROFILE;
+  process.env.HOME = fakeHome;
+  process.env.USERPROFILE = fakeHome;
+  const prevSpecific = process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
+  const prevMain = process.env.SUNSHINEX_API_KEY;
+  try {
+    const globalDir = path.join(fakeHome, '.sunshinex');
+    fs.mkdirSync(globalDir, { recursive: true });
+    const writeProviders = (providers: unknown): void => {
+      fs.writeFileSync(path.join(globalDir, 'settings.json'), JSON.stringify({ version: 1, providers }), 'utf8');
+    };
+    const models = [{ model: 'm' }];
+    // ① 条目 apiKey 优先：env 槽在场也不盖条目值
+    writeProviders([{ name: 'my-provider', baseUrl: 'https://p/v1', apiKey: 'inline-key', models }]);
+    process.env.SUNSHINEX_API_KEY_MY_PROVIDER = 'env-key';
+    assert.equal(resolveProviderApiKey('my-provider'), 'inline-key', '条目 apiKey 优先于 env 槽');
+    // ② 条目无 apiKey → env 专用槽回退（老配置兼容）
+    writeProviders([{ name: 'my-provider', baseUrl: 'https://p/v1', models }]);
+    assert.equal(resolveProviderApiKey('my-provider'), 'env-key', '条目无 apiKey 走 env 专用槽');
+    delete process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
+    // ③ env 专用槽也无 → 主槽
+    process.env.SUNSHINEX_API_KEY = 'main-key';
+    assert.equal(resolveProviderApiKey('my-provider'), 'main-key', '无专用槽回退主槽');
+    // ④ 都无 → undefined
+    delete process.env.SUNSHINEX_API_KEY;
+    assert.equal(resolveProviderApiKey('my-provider'), undefined, '全链无值 = 未配置');
+  } finally {
+    if (prevSpecific === undefined) delete process.env.SUNSHINEX_API_KEY_MY_PROVIDER;
+    else process.env.SUNSHINEX_API_KEY_MY_PROVIDER = prevSpecific;
+    if (prevMain === undefined) delete process.env.SUNSHINEX_API_KEY;
+    else process.env.SUNSHINEX_API_KEY = prevMain;
+    if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+    if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
   }
 });
 

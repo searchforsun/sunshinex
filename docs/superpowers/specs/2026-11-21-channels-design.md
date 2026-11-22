@@ -194,11 +194,13 @@ InboundMessage → [msgId 去重] → [准入校验] → [指令解析] → [绑
    主动外连的执行面，项目档若能定义通道，等于克隆一个仓库就能注入「外连攻击者机器人 +
    full-access 会话」的供应链攻击面。SettingsShell 对本 pane 不下发 root/scope（ProvidersPane
    「提供方页即全局」先例）。
-2. **凭证 → env 槽（D6 用户裁决「env 块只承载敏感字段」「设置与凭据分离」延续）**：
-   `channels` 键里**没有任何密钥字段**；每个通道按名取
-   `SUNSHINEX_CHANNEL_SECRET_<大写通道名>`（`providerApiKeyEnv` 同派生规则，providers.ts:40），
-   settings env 块或真实环境变量皆可；适配器 start 时解析，缺失=该通道拒绝启用（fail-closed）。
-   设置页凭证行写 env 块键（ProvidersPane 密钥行同机制）。
+2. **密钥内联进配置项（2026-11-22 用户裁定，**推翻** 2026-09-19 的 D6「设置与凭据分离」口径——
+   env 分组承载密钥的维护成本过高，且密钥不可回显导致 GUI 配置不闭环）**：`channels` 每条目增
+   `secret?: string` 字段，密钥直接存在配置项里、**GET 可回显**（GUI 密码框带显隐切换）；
+   写面 = `PUT /channels/:id/secret`（写条目字段，守卫族同 PUT /settings/channels）。env 槽
+   `SUNSHINEX_CHANNEL_SECRET_<名>` 退役。settings.json 的 agent 写保护（chain 硬底线）不受影响
+   ——密钥放配置项与放 env 块在同一文件内，暴露面等价。providers 的 apiKey 同裁定内联
+   （`providers[i].apiKey`），env 槽 `SUNSHINEX_API_KEY_*` 降为回退兼容。
 3. **会话映射（运行时状态）→ `<userConfigDir>/channels-bindings.json`**：router 自动维护、用户不碰，
    不进 settings（settings 是用户手写的声明，运行时高频改写会污染档面 + 触发 config-changed 回声）。
 

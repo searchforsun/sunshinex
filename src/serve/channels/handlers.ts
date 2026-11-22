@@ -23,7 +23,7 @@ import { writeJsonAtomic } from '../../catalog/io';
 import { liveSessionByJournal } from '../sessions-list-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
-import { channelSecretEnv } from './model';
+import { parseChannelsKey } from './model';
 
 /** HTTP 面触点（daemon 单点注入；engine/bindings 单例；sessions 表供枚举活跃标注与解除回收判据） */
 export interface ChannelsHandlerIo {
@@ -50,20 +50,17 @@ export async function handleChannelsTest(io: ChannelsHandlerIo, res: http.Server
   io.send(res, 200, await io.engine.test(id));
 }
 
-/** PUT /channels/:id/secret body {secret: string}（2026-11-22 终形态修复波，spec §8.2）：通道密钥写面
- *  ——把该通道密钥写进**全局 settings.json 的 env 块**键 SUNSHINEX_CHANNEL_SECRET_<大写通道 id>
- *  （channelSecretEnv 派生单点）。D6「设置与凭据分离」语义不变：channels 键内零密钥，密钥只进 env 块；
- *  本端点是 GUI 弹窗保存链的密钥腿（putChannels → setChannelSecret → testChannel），.providers setKey
- *  同机制（providers 键存 env 槽走 op 端点，通道同诉求此前无端点——GUI 凭证输入空转的裁定修复）。
+/** PUT /channels/:id/secret body {secret: string}（2026-11-22 内联裁定，推翻 D6）：通道密钥写面
+ *  ——把密钥写进**全局 settings.json 的 channels 键对应条目**的 secret 字段（密钥随配置项存放、
+ *  GET /settings/channels 可回显；env 块不再承载密钥）。本端点是 GUI 弹窗保存链的密钥腿。
  *  守卫族照 config-handlers.handleChannelsPut 同款（settings 结构化写面既有口径）：文件不可读 409 /
  *  注释档 409 引流 raw（hint 'use raw editor'）/ 畸形 JSON 409 / 根非对象 409 / version≠1 409 /
  *  BOM 容忍（0xfeff 剥除，装载口径一致）/ 原子写（writeJsonAtomic，新档补 version:1）。
- *  操作对象 = root['env'] 块：缺席补 {}；在场非对象 409（结构化写不越权处置畸形块）；块内该键覆写、
- *  其余键零触碰、env 外顶层键零触碰；secret 空串 = 删除该 env 键（删缺席键 = 幂等零写）。
+ *  操作对象 = root['channels'] 数组中 id 匹配的条目：无键/无条目 404（GUI 只以真实配置 id 调用，
+ *  引擎面校验属 testChannel 职责）；条目其余字段零触碰（解析归一后的形状——重写前用 parseChannelsKey
+ *  归一回写，防手编档混入畸形字段）；secret 空串 = 删除该字段（删缺席字段 = 幂等零写）。
  *  响应与日志**永不回显 secret**——成功回执恰 {ok:true}，错误回执零键值。写后 afterWrite 注入
- *  （daemon：reloadSettingsChain(null)——env 槽落 process.env，紧随其后的 testChannel dry-run 与
- *  适配器下次启动取新值；providers setKey 链重载同语义）。通道 id 不做在座校验（env 槽派生为全函数，
- *  GUI 只以真实配置 id 调用；引擎面校验属 testChannel 职责） */
+ *  （daemon：settings 链重载 + config-changed 广播，同 handleChannelsPut 收尾）。 */
 export async function handleChannelsSecretPut(io: ChannelsHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string, afterWrite?: () => void): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
@@ -105,26 +102,20 @@ export async function handleChannelsSecretPut(io: ChannelsHandlerIo, req: http.I
     }
     obj = existing;
   }
-  // env 块手术：缺席补 {}；在场非对象 409；该键覆写/空串删除，块内其余键与 env 外顶层键零触碰
-  const envRaw = obj['env'];
-  if (envRaw !== undefined && (typeof envRaw !== 'object' || envRaw === null || Array.isArray(envRaw))) {
-    io.send(res, 409, { error: 'settings env block must be a JSON object' });
-    return;
-  }
-  const env = (envRaw ?? {}) as Record<string, unknown>;
-  const key = channelSecretEnv(id);
-  if (secret === '') {
-    if (!(key in env)) {
-      io.send(res, 200, { ok: true }); // 删缺席键 = 幂等零写（不落 env:{} 空块）
-      return;
-    }
-    delete env[key];
-  } else {
-    env[key] = secret;
-  }
-  obj['env'] = env;
+  // channels 条目手术：定位 id 匹配条目（无键/无条目 404，catalog 写面同文案）；条目经 parseChannelsKey
+  // 归一后回写（防手编档混入畸形字段随写固化）；secret 覆写/空串删除字段；条目外键与数组其余条目零触碰
+  const listRaw = obj['channels'];
+  if (!Array.isArray(listRaw)) return io.send(res, 404, { error: `channel not found: ${id}` });
+  const parsedList = parseChannelsKey(listRaw);
+  const entry = parsedList.value.find((c) => c.id === id);
+  if (entry === undefined) return io.send(res, 404, { error: `channel not found: ${id}` });
+  const { secret: _prev, ...rest } = entry; // 先剥旧密钥再按入场值落（缺席/空串=清除）
+  const nextEntry: Record<string, unknown> = { ...rest, ...(secret !== '' ? { secret } : {}) };
+  const idx = listRaw.findIndex((item) => (item as { id?: unknown } | null)?.['id'] === id);
+  listRaw[idx] = nextEntry;
+  obj['channels'] = listRaw;
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
-  afterWrite?.(); // daemon 注入：reloadSettingsChain(null)——env 槽落 process.env（providers setKey 同语义）
+  afterWrite?.(); // daemon 注入：settings 链重载 + config-changed 广播（handleChannelsPut 收尾同语义）
   io.send(res, 200, { ok: true }); // 回执恰 {ok:true}——secret 值不出现在响应/日志任何位置
 }
 

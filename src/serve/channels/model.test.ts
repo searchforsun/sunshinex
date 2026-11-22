@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChannelsKey, channelSecretEnv, bindingKey } from './model';
+import { parseChannelsKey, bindingKey } from './model';
 
 test('parseChannelsKey: 合法条目收口、非法条目 warning 跳过', () => {
   const r = parseChannelsKey([
@@ -44,7 +44,38 @@ test('parseChannelsKey: name 非串/超 80 字 → warning 跳过该字段不致
   assert.equal(r.value[1]!.name, undefined);
 });
 
-test('channelSecretEnv: 非字母数字折叠单下划线', () => {
-  assert.equal(channelSecretEnv('feishu-main'), 'SUNSHINEX_CHANNEL_SECRET_FEISHU_MAIN');
+// 密钥内联（2026-11-22 用户裁定：推翻 D6 env 分组口径——密钥进条目 secret 字段、可回显；
+// env 槽 SUNSHINEX_CHANNEL_SECRET_<ID> 退役）
+test('parseChannelsKey: secret 合法收口（trim 落字段；空串=缺席零告警）', () => {
+  const r = parseChannelsKey([
+    { id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', secret: '  tok-abc  ', allow: { kind: 'first-user' } },
+    { id: 'tg2', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', secret: '   ', allow: { kind: 'first-user' } },
+    { id: 'tg3', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', allow: { kind: 'first-user' } },
+  ]);
+  assert.equal(r.warnings.length, 0);
+  assert.equal(r.value[0]!.secret, 'tok-abc');
+  assert.equal(r.value[1]!.secret, undefined, '空串=缺席');
+  assert.equal(r.value[2]!.secret, undefined);
+});
+
+test('parseChannelsKey: secret 非串/超 2000 字 → warning 跳过该字段不致命', () => {
+  const r = parseChannelsKey([
+    { id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', secret: 'x'.repeat(2001), allow: { kind: 'first-user' } },
+    { id: 'tg2', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', secret: 42, allow: { kind: 'first-user' } },
+  ]);
+  assert.equal(r.value.length, 2, '条目本身不受 secret 坏值牵连');
+  assert.equal(r.warnings.length, 2);
+  assert.equal(r.value[0]!.secret, undefined);
+  assert.equal(r.value[1]!.secret, undefined);
+});
+
+test('parseChannelsKey: secret 长密钥（2000 上限内）原样收口', () => {
+  const long = 'k'.repeat(2000);
+  const r = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', secret: long, allow: { kind: 'first-user' } }]);
+  assert.equal(r.warnings.length, 0);
+  assert.equal(r.value[0]!.secret, long);
+});
+
+test('bindingKey: 通道:聊天惯例键', () => {
   assert.equal(bindingKey('feishu-main', 'oc_yyy'), 'feishu-main:oc_yyy');
 });

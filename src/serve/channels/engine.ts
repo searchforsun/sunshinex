@@ -18,12 +18,11 @@
  *
  *  调和纪律(幂等,键=cfg.id):新增/启用且在座未起 → createChannelAdapter + start(失败→health
  *  error 记 detail,绝不抛);移除/停用 → stop + 删表;fail-closed(spec §4 存储总览 2):密钥门
- *  secretGateError 单点——非免密平台(现仅 mock)缺 env 槽密钥(resolveChannelSecret)拒绝启用,
- *  launch(health detail)与 test(dry-run error)双路同源不分叉。
+ *  secretGateError 单点——非免密平台(现仅 mock)缺条目内联密钥(cfg.secret,2026-11-22 内联裁定)
+ *  拒绝启用,launch(health detail)与 test(dry-run error)双路同源不分叉。
  *  出站分派:每通道包一层 deliver/streamDeliver(adapter.reply? 优先退 send;stream 同理),router.ack
  *  与 projector 共用同款包装。 */
-import { loadChannels, resolveChannelSecret } from '../../config/channels';
-import { channelSecretEnv } from './model';
+import { loadChannels } from '../../config/channels';
 import type { ChannelConfig, ChannelPlatform, InboundMessage, OutboundMessage } from './model';
 import type { ChannelsBindingsStore } from './store';
 import { ChannelRouter } from './router';
@@ -161,7 +160,7 @@ export class ChannelsEngine {
     try {
       const gate = this.secretGateError(cfg); // fail-closed 密钥门(单点,与 launch 同源)
       if (gate !== undefined) return { ok: false, error: gate };
-      const adapter = createChannelAdapter(cfg, { secret: resolveChannelSecret(cfg.id) ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
+      const adapter = createChannelAdapter(cfg, { secret: cfg.secret ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
       await adapter.start(() => {});
       let h: { connected: boolean; detail?: string };
       try {
@@ -186,7 +185,7 @@ export class ChannelsEngine {
    *  双路消费不分叉;undefined=放行,否则返回 detail 文案 */
   private secretGateError(cfg: ChannelConfig): string | undefined {
     if (cfg.platform === 'mock') return undefined; // mock 免密(测试夹具无外连)
-    return resolveChannelSecret(cfg.id) === undefined ? `密钥未配置(${channelSecretEnv(cfg.id)}),通道拒绝启用` : undefined;
+    return (cfg.secret ?? '') === '' ? '密钥未配置,通道拒绝启用' : undefined;
   }
 
   /** 起(调和正路):fail-closed 密钥门(secretGateError 单点,spec §4 存储总览 2)→ create+start;
@@ -198,7 +197,7 @@ export class ChannelsEngine {
       return;
     }
     try {
-      const adapter = createChannelAdapter(cfg, { secret: resolveChannelSecret(cfg.id) ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
+      const adapter = createChannelAdapter(cfg, { secret: cfg.secret ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
       this.adapters.set(cfg.id, adapter);
       this.startErrors.delete(cfg.id);
       void adapter.start((msg) => this.onInbound(msg)).catch((e) => {

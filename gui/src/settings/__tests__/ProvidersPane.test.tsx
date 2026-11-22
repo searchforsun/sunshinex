@@ -9,7 +9,8 @@ import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '..
  * 请求参数卡散键行退役):conn 全桩(settings/putSettings/putProviderOp 三面,不出网),
  * 用例沿 task brief——①卡片渲染含默认标记(choices[0]=默认模型)+密钥状态点+warnings;
  * ②删除调 op remove+成功重拉;③models 上移下移提交 modelMove(文件级手术+行重播种);
- * ④apiKey 提交走 setKey 且输入框清空(关弹窗)、重拉响应无键值回显;⑤新增提交 op add
+ * ④apiKey 提交走 setKey(服务端写条目 apiKey 字段);编辑回显已存值+眼睛显隐切换+「获取 API Key」
+ * 链接,未改动零 setKey、清空保存=setKey 空串(2026-11-22 用户裁定:密钥内联可回显,推翻零回显口径);⑤新增提交 op add
  * (密钥留空零 setKey);⑥请求参数卡无「API 地址」行/模型散键 Combo 退役;⑦请求参数卡
  * 恒全局写钉测(2026-10-29 用户裁定豁免:root 恒 ''——PUT /settings 无 root 即缺省全局,
  * 断言 putSettings 首参 global/second undefined);⑧refreshTick 重拉;⑨表单校验(空名/空
@@ -29,13 +30,14 @@ import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '..
 type ProviderOpInputShape = Parameters<Connection['putProviderOp']>[0];
 
 /** GET /settings providers.entries 行构造器(daemon listProviders 富化行形合法缺省——
- *  apiKeyEnv/apiKeyPresent 恒在场,Task 26 评审修补后 GUI 密钥点直读本行字段) */
-const entryOf = (over: Partial<ProviderEntry> = {}): ProviderEntry => ({
+ *  apiKeyEnv/apiKeyPresent 恒在场;apiKey=条目内联密钥回显值,2026-11-22 用户裁定推翻「值永不回传」) */
+const entryOf = (over: Partial<ProviderEntry & { apiKey?: string }> = {}): ProviderEntry & { apiKey?: string } => ({
   name: 'p1',
   baseUrl: 'https://api.p1/v1',
   models: [{ model: 'm1', tier: 'large' }, { model: 'm2' }],
   apiKeyEnv: 'SUNSHINEX_API_KEY_P1',
   apiKeyPresent: true,
+  apiKey: 'sk-old-1',
   ...over,
 });
 
@@ -110,7 +112,7 @@ const connOf = (
 
 /** 2026-11-17 拆分改版用例(提供方弹窗只建源、模型列表+模型弹窗独立):
  *  ①卡渲染(名/baseUrl/模型列表/chips/密钥点/warnings/请求参数卡)
- *  ②新增提供方=op add(models 空起点)+ setKey;③编辑=op update + setKey;密钥零回显
+ *  ②新增提供方=op add(models 空起点)+ setKey;③编辑=op update;密钥回显已存值+眼睛切换+获取链接(2026-11-22 裁定)
  *  ④模型弹窗新增=op modelAdd(entry 含窗口/最大输出/视觉/视频/强度/等级/JSON 参数)
  *  ⑤模型弹窗编辑=op update 整组 models 原位替换;⑥模型开关=update enabled false
  *  ⑦测试连接=probeProvider 调用与结果行内;⑧更多参数非法 JSON 拦截零 op;⑨删除=remove */
@@ -151,21 +153,46 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New provider' })).toBeNull());
   });
 
-  it('编辑提供方:密钥框恒空不回显 → op update(不含 models)+ setKey', async () => {
+  it('编辑提供方:密钥回显(entries apiKey)+眼睛显隐切换+「获取 API Key」链接;未改动零 setKey、改动才 setKey', async () => {
     const { conn, opCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
     await screen.findByRole('dialog', { name: 'Edit p1' });
-    const keyInput = screen.getByLabelText('API key') as HTMLInputElement;
-    expect(keyInput.value).toBe('');
-    fireEvent.change(keyInput, { target: { value: 'sk-new' } });
+    // 回显(2026-11-22 用户裁定:密钥可回显,推翻「编辑播种恒空串」):值从 GET entries 带出
+    const keyInput = () => screen.getByLabelText('API key') as HTMLInputElement;
+    expect(keyInput().value).toBe('sk-old-1');
+    expect(keyInput().type).toBe('password');
+    // 眼睛显隐切换:显示 → text,再切回 password
+    fireEvent.click(screen.getByRole('button', { name: 'Show API key' }));
+    expect(keyInput().type).toBe('text');
+    expect(screen.getByRole('button', { name: 'Hide API key' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide API key' }));
+    expect(keyInput().type).toBe('password');
+    // 「获取 API Key」链接(回显形态配套):指向 baseUrl 源站
+    const link = screen.getByRole('link', { name: 'Get API key' }) as HTMLAnchorElement;
+    expect(link.href).toContain('https://api.p1');
+    // 未改动保存:只 update,零 setKey(同值不重写)
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
-      expect(opCalls).toEqual([
-        { op: 'update', scope: 'global', name: 'p1', provider: { baseUrl: 'https://api.p1/v1' } },
-        { op: 'setKey', scope: 'global', name: 'p1', apiKey: 'sk-new' },
-      ]),
+      expect(opCalls).toEqual([{ op: 'update', scope: 'global', name: 'p1', provider: { baseUrl: 'https://api.p1/v1' } }]),
     );
+    // 改动保存:setKey 落新值(服务端写条目 apiKey 字段)
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
+    fireEvent.change(await screen.findByLabelText('API key'), { target: { value: 'sk-new' } });
+    fireEvent.click(screen.getByText('Save'));
+    // setKey 链在 update resolve 之后的下一拍落账——直接对目标位重试断言(防中间态竞态)
+    // setKey 链在 update resolve 之后的下一拍落账,且前次未改保存的 update 占 [0]——断言末位(防中间态竞态)
+    await waitFor(() => expect(opCalls[opCalls.length - 1]).toEqual({ op: 'setKey', scope: 'global', name: 'p1', apiKey: 'sk-new' }));
+  });
+
+  it('编辑提供方:清空密钥保存 → setKey 空串(清除条目 apiKey 字段)', async () => {
+    const { conn, opCalls } = connOf(viewOf());
+    render(<ProvidersPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
+    await screen.findByRole('dialog', { name: 'Edit p1' });
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: '' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(opCalls[opCalls.length - 1]).toEqual({ op: 'setKey', scope: 'global', name: 'p1', apiKey: '' }));
   });
 
   it('新增模型:纵向字段 → op modelAdd(entry 含窗口/最大输出/视觉+视频/强度/等级/JSON 参数)', async () => {

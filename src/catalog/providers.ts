@@ -21,21 +21,22 @@ import type { readJsoncDoc } from './io';
 
 /** 单个源条目：config 解析面的源级分组（name/baseUrl/源级显式字段/models 条目显式值）+ 密钥面 */
 export interface ProviderEntry extends ParsedProviderEntry {
-  /** 该源专用密钥槽名（SUNSHINEX_API_KEY_<大写源名>） */
+  /** 该源专用密钥槽名（SUNSHINEX_API_KEY_<大写源名>）——env 槽降为回退兼容（2026-11-22 D6 推翻） */
   apiKeyEnv: string;
-  /** 专用槽或主槽 SUNSHINEX_API_KEY 任一有值 = true（resolveProviderApiKey 判存，值不回传） */
+  /** 密钥在场判定：条目内联 apiKey（2026-11-22 裁定，值随 ProviderEntry.apiKey 回显）或 env 槽回退任一有值 */
   apiKeyPresent: boolean;
 }
 
 /** providers 读面：root:null 仅全局（loadProvidersFull 同语义）；providers 与 choices 同源同序，
- *  warnings 为装载告警单（形状裁决逐条跳过/忽略的告知面） */
+ *  warnings 为装载告警单（形状裁决逐条跳过/忽略的告知面）。密钥**回显**（2026-11-22 用户裁定推翻
+ *  D6「值不回传」——apiKey 随条目透出，GUI 密钥框带显隐切换） */
 export function listProviders(root: string | null): { providers: ProviderEntry[]; choices: ModelChoice[]; warnings: string[] } {
   const full = loadProvidersFull(root);
   return {
     providers: full.providers.map((g) => ({
       ...g,
       apiKeyEnv: providerApiKeyEnv(g.name),
-      apiKeyPresent: resolveProviderApiKey(g.name) !== undefined,
+      apiKeyPresent: (g.apiKey ?? '') !== '' || resolveProviderApiKey(g.name) !== undefined,
     })),
     choices: full.choices,
     warnings: full.warnings,
@@ -406,37 +407,29 @@ export function modelMove(root: string | null, scope: Scope, provider: string, m
 }
 
 /**
- * 置源专用密钥：写目标 scope settings env[providerApiKeyEnv(provider)] = apiKey（槽名经单点生成，
- * 绝不手工拼接）；空串 = 删除该 env 行（清空语义）。provider 必须在该 scope 装载视图可见
- * （listProviders：project=项目或全局、global=仅全局），否则 INVALID——env 槽属装载语义，凡不可
- * 装载的源无从落密钥；定位在文件守卫之后（plugins 定位同序）。返回 void 且全程零打印零日志：
- * 密钥值在本面无任何回显路径。
+ * 置源密钥（2026-11-22 内联裁定推翻 D6 env 槽写法）：写目标 scope settings **providers 条目的
+ * apiKey 字段**（密钥随配置项存放、读面回显）；空串 = 删除该字段（清空语义）。provider 必须在
+ * 目标文件 providers 数组内（写面按文件定位——密钥已是条目字段，不再借「装载可见性」语义），
+ * 否则 INVALID；定位在文件守卫之后（plugins 定位同序）。返回 void 且全程零打印零日志：
+ * 密钥值在本面无任何回显路径（回显只发生在读面 GET，属用户裁定允许面）。
  */
 export function setProviderApiKey(root: string | null, scope: Scope, provider: string, apiKey: string): void {
   const { file, read } = readWriteDoc(root, scope);
   const label = providerLabel(provider);
-  if (typeof apiKey !== 'string') throw new CatalogWriteError('INVALID', 'apiKey 须为字符串（空串 = 删除该 env 行）');
-  // provider 在场判定（文件守卫后）：走该 scope 装载视图（loadProvidersFull 对他级畸形按缺级处理，不抛）
-  const viewRoot = scope === 'project' ? root : null;
-  if (!listProviders(viewRoot).providers.some((p) => p.name === label)) {
-    throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
-  }
+  if (typeof apiKey !== 'string') throw new CatalogWriteError('INVALID', 'apiKey 须为字符串（空串 = 删除该字段）');
   const doc = read.doc;
-  const env = asRecord(doc['env']);
-  const slot = providerApiKeyEnv(label);
-  if (env === undefined) {
-    // env 块缺失（或形状坏）：删不存在的行 = 零变化不落盘；落值则整键重建（形状坏不保留垃圾）
-    if (apiKey === '') return;
-    doc['env'] = { [slot]: apiKey };
-    finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
-    return;
-  }
+  const arr = providersArrayOf(doc);
+  const idx = entryIndexByName(arr, label);
+  if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
+  const cur = arr[idx] as Record<string, unknown>;
+  const next = { ...cur };
   if (apiKey === '') {
-    if (env[slot] === undefined) return; // 零变化不落盘
-    delete env[slot];
+    if (next['apiKey'] === undefined) return; // 零变化不落盘
+    delete next['apiKey'];
   } else {
-    if (env[slot] === apiKey) return; // 零变化不落盘
-    env[slot] = apiKey;
+    if (next['apiKey'] === apiKey) return; // 零变化不落盘
+    next['apiKey'] = apiKey;
   }
+  arr[idx] = next;
   finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }

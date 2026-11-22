@@ -20,8 +20,10 @@ export interface ModelChoice {
   provider: string;
   model: string;
   baseUrl: string;
-  /** 该源的专用密钥槽名（SUNSHINEX_API_KEY_<大写源名>，解析时查 process.env） */
+  /** 该源的专用密钥槽名（SUNSHINEX_API_KEY_<大写源名>，解析时查 process.env——env 槽降为回退兼容） */
   apiKeyEnv: string;
+  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6：providers 条目 apiKey 字段，可回显；缺席=回退 env 槽链） */
+  apiKey?: string;
   /** 该模型最大上下文 tokens（models 条目对象形态 contextWindow > 源级 contextWindow 缺省；
    *  undefined = 回退全局 SUNSHINEX_CONTEXT_WINDOW / 内置 200k） */
   contextWindow?: number;
@@ -44,9 +46,26 @@ export function providerApiKeyEnv(name: string): string {
   return 'SUNSHINEX_API_KEY_' + name.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
 }
 
-/** 源密钥解析：专用槽 > 主槽 SUNSHINEX_API_KEY（settings env 块装载后均落 process.env）；
- *  都缺 = 未配置（与单模型口径一致：调用时由适配器报 SUNSHINEX_API_KEY is not configured） */
+/** 源密钥解析（2026-11-22 内联裁定回退链）：**条目 apiKey 优先**（读全局档 providers 条目——
+ *  两级遮蔽下无 root 上下文的解析只锚全局档，与 loadChannels 同口径）→ env 专用槽 → 主槽
+ *  SUNSHINEX_API_KEY（settings env 块装载后均落 process.env，老配置 env 直配兼容不炸）；
+ *  全链都缺 = 未配置（调用时由适配器报 SUNSHINEX_API_KEY is not configured）。档畸形按缺级处理
+ *  （装载链统一上报口径），env 链仍走。 */
 export function resolveProviderApiKey(name: string): string | undefined {
+  try {
+    const doc = parseSettingsFile(loadGlobalSettings());
+    const list = doc !== null && Array.isArray(doc.providers) ? doc.providers : [];
+    const label = name.trim();
+    for (const item of list) {
+      if (typeof item !== 'object' || item === null) continue;
+      const rec = item as { name?: unknown; apiKey?: unknown };
+      if (typeof rec['name'] !== 'string' || rec['name'].trim() !== label) continue;
+      if (typeof rec['apiKey'] === 'string' && rec['apiKey'].trim() !== '') return rec['apiKey'].trim();
+      break; // 条目命中且无内联值：停止扫表，走 env 回退链
+    }
+  } catch {
+    /* 档畸形/不可读：按缺级处理，env 回退链仍走 */
+  }
   const specific = process.env[providerApiKeyEnv(name)];
   if (specific !== undefined && specific !== '') return specific;
   const main = process.env.SUNSHINEX_API_KEY;
@@ -66,6 +85,9 @@ interface LoadedProviders {
 export interface ParsedProviderEntry {
   name: string;
   baseUrl: string;
+  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6）：条目 apiKey 字段直接承载、读面回显；
+   *  非串/trim 超 2000 warning 跳字段不致命；空串=缺席。env 槽降为回退兼容（resolveProviderApiKey） */
+  apiKey?: string;
   /** 源启停（2026-11-17 用户裁定「provider 加开关,默认开」）：absent/true=启用,false=停用——
    *  停用源条目保留（设置页可见可拨回）但其 models 不进 choices（/model 选择卡不可见） */
   enabled?: boolean;
@@ -123,7 +145,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       warnings.push(`settings.json providers 条目须为对象（${origin}），已跳过`);
       continue;
     }
-    const e = entry as { name?: unknown; baseUrl?: unknown; enabled?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; models?: unknown };
+    const e = entry as { name?: unknown; baseUrl?: unknown; apiKey?: unknown; enabled?: unknown; contextWindow?: unknown; reasoningEffort?: unknown; supportsImages?: unknown; models?: unknown };
     const name = typeof e.name === 'string' ? e.name.trim() : '';
     if (name === '') {
       warnings.push(`settings.json providers 条目缺 name（${origin}），已跳过`);
@@ -177,6 +199,22 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
     }
     // 源级分组先于 models 遍历入列（引用共享）：条目全坏该源仍以 models:[] 留列（文件结构如实镜像）
     const models: ParsedProviderEntry['models'] = [];
+    // 条目内联密钥（2026-11-22 D6 推翻裁定）：串 trim 后 1..2000 收口；空串=缺席；非串/超长 warning 跳字段
+    let providerKey: string | undefined;
+    if (e.apiKey !== undefined) {
+      if (typeof e.apiKey !== 'string') {
+        warnings.push(`settings.json providers.${name} apiKey 须为字符串（${origin}），已忽略`);
+      } else {
+        const trimmed = e.apiKey.trim();
+        if (trimmed === '') {
+          providerKey = undefined; // 空串=缺席
+        } else if (trimmed.length > 2000) {
+          warnings.push(`settings.json providers.${name} apiKey 超 2000 字（${origin}），已忽略`);
+        } else {
+          providerKey = trimmed;
+        }
+      }
+    }
     providers.push({
       name,
       baseUrl,
@@ -185,6 +223,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
       ...(providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
       ...(providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
       ...(providerImages !== undefined ? { supportsImages: providerImages } : {}),
+      ...(providerKey !== undefined ? { apiKey: providerKey } : {}),
     });
     for (const item of e.models as unknown[]) {
       let model: string | undefined;
@@ -296,6 +335,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
         model,
         baseUrl,
         apiKeyEnv: providerApiKeyEnv(name),
+        ...(providerKey !== undefined ? { apiKey: providerKey } : {}),
         ...(itemWindow !== undefined ? { contextWindow: itemWindow } : providerWindow !== undefined ? { contextWindow: providerWindow } : {}),
         ...(itemEffort !== undefined ? { reasoningEffort: itemEffort } : providerEffort !== undefined ? { reasoningEffort: providerEffort } : {}),
         ...(itemImages !== undefined ? { supportsImages: itemImages } : providerImages !== undefined ? { supportsImages: providerImages } : {}),

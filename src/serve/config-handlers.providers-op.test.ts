@@ -3,8 +3,8 @@
  *  覆盖：providers op 七值各一正例（add/update/remove/modelAdd/modelRemove/modelMove/setKey）+
  *  INVALID/COMMENTS 409（CatalogWriteError→409，T15 裁定同映射；hint 按 code 分流——COMMENTS 带 hint
  *  引流 raw、INVALID 无 hint）+ 请求形状 400 + setKey 后
- *  GET /settings providers 面 apiKeyPresent 翻转且响应无键值 + permissions op add/remove 落对应
- *  数组、add 去重、remove 缺失 409。
+ *  GET /settings providers 面 apiKeyPresent 翻转且 entries 回显条目 apiKey（2026-11-22 用户裁定：
+ *  密钥内联可回显）+ permissions op add/remove 落对应数组、add 去重、remove 缺失 409。
  *  T9 评审移交（providers 读面语义）：ProviderEntry.models = 文件显式值（非继承源级缺省），生效值
  *  看 choices——GET 面 entries.models 断言按 explicit 语义（tier/contextWindow 逐条直取文件显式位），
  *  生效序/生效值断言走 choices 面。
@@ -146,12 +146,13 @@ test('providers op 七值正例：add 落盘/update 增量/modelAdd/modelMove �
     doc = JSON.parse(fs.readFileSync(projFile, 'utf8'));
     assert.deepEqual((doc['providers'] as Array<{ models: Array<Record<string, unknown>> }>)[0]!.models.map((m) => m.model), ['m3', 'm2'], 'm1 已摘');
 
-    // setKey：落 env 专用槽；成功响应恰 {ok:true}——apiKey 值零回显
+    // setKey：写条目 apiKey 字段（2026-11-22 用户裁定：密钥内联可回显，env 块退役）；成功响应恰 {ok:true}
     r = await providersOp({ op: 'setKey', scope: 'project', root: proj, name: 'p1', apiKey: 'stub-value-not-a-real-key' });
     assert.equal(r.status, 200, 'setKey 应 200');
-    assert.deepEqual(r.body, { ok: true }, 'setKey 响应不含 apiKey 值');
+    assert.deepEqual(r.body, { ok: true }, 'setKey 成功响应恰 {ok:true}');
     doc = JSON.parse(fs.readFileSync(projFile, 'utf8'));
-    assert.equal((doc['env'] as Record<string, string>)['SUNSHINEX_API_KEY_P1'], 'stub-value-not-a-real-key', 'env 专用槽落盘');
+    assert.equal(((doc['providers'] as Array<Record<string, unknown>>)[0]!)['apiKey'], 'stub-value-not-a-real-key', '条目 apiKey 字段落盘');
+    assert.equal(doc['env'], undefined, 'env 块不再承载密钥');
 
     // remove：源整条摘除
     r = await providersOp({ op: 'remove', scope: 'project', root: proj, name: 'p1' });
@@ -161,7 +162,7 @@ test('providers op 七值正例：add 落盘/update 增量/modelAdd/modelMove �
   });
 });
 
-test('setKey 后 GET /settings：apiKeyPresent 翻转（env 链重载语义）且响应全文无键值；GET providers 面消费 catalog（entries 含 tier/apiKeyEnv/explicit models + choices 序）', async () => {
+test('setKey 后 GET /settings：apiKeyPresent 翻转且 entries 回显条目 apiKey（2026-11-22 用户裁定：密钥内联可回显）；GET providers 面消费 catalog（entries 含 tier/apiKeyEnv/explicit models + choices 序）', async () => {
   await withFakeHome(async (home) => {
     const proj = path.join(home, 'proj');
     await providersOp({
@@ -169,7 +170,7 @@ test('setKey 后 GET /settings：apiKeyPresent 翻转（env 链重载语义）�
       provider: { baseUrl: 'https://p1/v1', contextWindow: 64000, models: [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }] },
     });
 
-    // setKey 前：apiKeyPresent.p1 = false（env 槽无值）
+    // setKey 前：apiKeyPresent.p1 = false（条目无 apiKey、env 槽无值）
     let g = settingsGet(proj);
     assert.equal(g.status, 200);
     let face = g.body.providers as unknown as ProvidersFace;
@@ -179,23 +180,24 @@ test('setKey 后 GET /settings：apiKeyPresent 翻转（env 链重载语义）�
     assert.equal(face.choices[1]!.contextWindow, 8000, 'choices 面 contextWindow = 条目级 > 源级缺省');
     // T9 评审移交语义：entries.models = 文件显式值——m2 的 tier/contextWindow 为条目显式位、m1 无继承
     assert.deepEqual(face.entries[0]!.models, [{ model: 'm1' }, { model: 'm2', tier: 'small', contextWindow: 8000 }], 'entries.models = 条目显式值（源级 64000 不继承进 m1）');
-    assert.equal(face.entries[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_P1', 'entries 携带槽名（值永不回传）');
+    assert.equal(face.entries[0]!.apiKeyEnv, 'SUNSHINEX_API_KEY_P1', 'entries 携带槽名（env 回退兼容面的标识）');
     assert.equal(face.entries[0]!.apiKeyPresent, false, 'entries.apiKeyPresent 与 apiKeyPresent 映射同源');
 
-    // setKey（fake io 的 reloadSettingsChain = daemon 同款复刻：env 块落 process.env）
+    // setKey（写条目 apiKey 字段——不再依赖 env 链重载）
     const r = await providersOp({ op: 'setKey', scope: 'project', root: proj, name: 'p1', apiKey: 'stub-value-not-a-real-key' });
     assert.equal(r.status, 200);
 
-    // setKey 后：apiKeyPresent 翻转 true；GET 响应全文（choices/entries/keys/warnings）不含键值
+    // setKey 后：apiKeyPresent 翻转 true；GET 响应回显条目 apiKey 值（回显面）
     g = settingsGet(proj);
     face = g.body.providers as unknown as ProvidersFace;
     assert.equal(face.apiKeyPresent['p1'], true, 'setKey 后 apiKeyPresent 翻转');
     assert.equal((face.entries[0] as { apiKeyPresent: boolean }).apiKeyPresent, true, 'entries 面同步翻转');
     assert.equal(
       JSON.stringify(g.body).includes('stub-value-not-a-real-key'),
-      false,
-      'GET 响应无 apiKey 值（密钥永不回传——只有槽名与在场布尔）',
+      true,
+      'GET 响应回显条目 apiKey（2026-11-22 用户裁定：密钥可回显，entries 面带值）',
     );
+    assert.equal((face.entries[0] as unknown as Record<string, unknown>)['apiKey'], 'stub-value-not-a-real-key', 'entries 条目回显 apiKey 值');
   });
 });
 

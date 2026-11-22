@@ -37,7 +37,8 @@ export function choiceAdapterConfig(
   return {
     provider: 'openai',
     baseURL: choice.baseUrl,
-    apiKey: resolveProviderApiKey(choice.provider),
+    // 密钥解析（2026-11-22 内联裁定）：条目 apiKey 优先，env 槽链降为回退兼容（resolveProviderApiKey）
+    apiKey: choice.apiKey ?? resolveProviderApiKey(choice.provider),
     model: choice.model,
     ...(defs.timeoutMs !== undefined ? { timeoutMs: defs.timeoutMs } : {}),
     ...(choice.contextWindow !== undefined ? { contextWindow: choice.contextWindow } : {}),

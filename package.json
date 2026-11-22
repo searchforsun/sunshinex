@@ -27,6 +27,7 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.76.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "cli-table3": "0.6.5",
     "highlight.js": "^11.12.0",

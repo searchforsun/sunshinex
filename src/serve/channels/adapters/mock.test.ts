@@ -18,6 +18,9 @@ test('mock 适配器: emit→sink 直达 + send 日志 + health', async () => {
   await ad.stop();
 });
 
-test('注册表: 未实现平台抛错 + secret 缺失经 deps 透传', () => {
-  assert.throws(() => createChannelAdapter(cfg({ id: 'f1', platform: 'feishu' }), { secret: '', ident: {} }), /not implemented/);
+test('注册表: 未实现平台抛错(dingtalk/wecom);feishu 已落地(Task 15 追加)构造成功', () => {
+  assert.throws(() => createChannelAdapter(cfg({ id: 'd1', platform: 'dingtalk' }), { secret: '', ident: {} }), /not implemented/);
+  assert.throws(() => createChannelAdapter(cfg({ id: 'w1', platform: 'wecom' }), { secret: '', ident: {} }), /not implemented/);
+  const fs1 = createChannelAdapter(cfg({ id: 'f1', platform: 'feishu' }), { secret: 's', ident: {} });
+  assert.equal(fs1.id, 'f1');
 });

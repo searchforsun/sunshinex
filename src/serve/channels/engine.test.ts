@@ -1,6 +1,7 @@
 /** 通道引擎测试(spec 2026-11-21-channels §2/§8.3,Task 7 简报四用例逐条):io 桩(桩 SessionRuntime
  *  含 onRunEnd 观察面)+ 临时档 ChannelsBindingsStore + configs 注入;① applyConfigs 调和(起→connected,
- *  空表→全停 disconnected);② secret 缺失 fail-closed(telegram + 无 env,存/删 + try/finally);
+ *  空表→全停 disconnected);② secret 缺失 fail-closed(telegram + 条目无 secret 字段;2026-11-22
+ *  用户裁定:密钥内联条目可回显,env 槽退役);
  *  ③ test(id) dry-run 独立实例;④ mockAdapter(id).emit 全链路(binding 创建 + ack 进 mock.sent +
  *  定向回复 @前缀,裁定 2 deliver 包装面)。域容器钉 SUNSHINEX_CHANNELS_DIR 临时目录(防污染真实
  *  ~/.sunshinex,router.test.ts 同款)。⑤ 终审修复波 F2:未武装绑定会话直接来 token 帧(模拟排队
@@ -13,7 +14,7 @@ import * as path from 'node:path';
 import { ChannelsEngine } from './engine';
 import type { ChannelsSessionIo } from './router';
 import { ChannelsBindingsStore } from './store';
-import { bindingKey, channelSecretEnv } from './model';
+import { bindingKey } from './model';
 import type { ChannelConfig, InboundMessage } from './model';
 import type { SessionRuntime } from '../session';
 import type { DaemonFrame } from '../daemon-wire';
@@ -127,22 +128,27 @@ test('① applyConfigs 调和:启用 mock → health connected;再 applyConfigs 
   assert.equal(down[0]!.connected, false);
 });
 
-test('② secret 缺失:telegram 平台 + 无 SUNSHINEX_CHANNEL_SECRET_<名> env → health detail 含「密钥」', () => {
-  const envName = channelSecretEnv('tg1');
-  const saved = process.env[envName];
-  delete process.env[envName];
-  try {
-    const h = makeHarness();
-    h.engine.applyConfigs([mkCfg({ id: 'tg1', platform: 'telegram' })]);
-    const rows = h.engine.health();
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0]!.enabled, true);
-    assert.equal(rows[0]!.connected, false); // fail-closed:密钥未配置拒绝启用,不抛
-    assert.ok(rows[0]!.detail !== undefined && rows[0]!.detail.includes('密钥'));
-  } finally {
-    if (saved !== undefined) process.env[envName] = saved;
-    else delete process.env[envName];
-  }
+// 密钥门读 cfg.secret（2026-11-22 用户裁定：密钥内联条目可回显，env 槽退役）
+test('② secret 缺失:telegram 平台 + 条目无 secret 字段 → health detail 含「密钥」;条目带 secret → 密钥门放行', () => {
+  const h = makeHarness();
+  h.engine.applyConfigs([mkCfg({ id: 'tg1', platform: 'telegram' })]); // 无 secret 字段
+  const rows = h.engine.health();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.enabled, true);
+  assert.equal(rows[0]!.connected, false); // fail-closed:密钥未配置拒绝启用,不抛
+  assert.ok(rows[0]!.detail !== undefined && rows[0]!.detail.includes('密钥'));
+
+  // 条目 secret 在场:密钥门放行(非 mock 平台无落地适配器 → 记 detail——detail 不再含「密钥」,
+  // 证明门已过、失败点在适配器装配)。放行证明平台选 feishu 且不带 appId——适配器 start 同步抛
+  // 「App ID 缺失」(零网络;telegram 在此会启动真长轮询,测试进程被网络句柄钉死不退)
+  const h2 = makeHarness();
+  h2.engine.applyConfigs([mkCfg({ id: 'fs1', platform: 'feishu', secret: 'tok-inline' })]);
+  const rows2 = h2.engine.health();
+  assert.equal(rows2[0]!.connected, false);
+  assert.ok(
+    rows2[0]!.detail === undefined || !rows2[0]!.detail.includes('密钥'),
+    `条目 secret 在场不应再报密钥门,detail=${rows2[0]!.detail}`,
+  );
 });
 
 test('③ test(id) dry-run:独立实例 start+health+stop 返回 ok,不起 sink 路由', async () => {

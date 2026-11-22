@@ -5,7 +5,7 @@ import { errText } from '../ui-util';
 import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch } from './components';
-import { Select } from './controls';
+import { SecretInput, Select } from './controls';
 import { sanitizeRequestParams } from '../../../src/model/request-params';
 import type { ProviderEntry, ProviderEntryModel, ProviderOpInput, SettingsView } from '../connection';
 
@@ -26,7 +26,7 @@ import type { ProviderEntry, ProviderEntryModel, ProviderOpInput, SettingsView }
  * 与 SearchBar 撤除,只留「+ 新增提供方」钮;页面不再提供项目切换,项目级 providers 整键遮蔽
  * 语义仍在存储层但 GUI 不再触达);读恒省参(仅全局清单),新增/编辑/删除恒写全局(op scope=
  * 'global' 省参 root)。添加/编辑 → EditorModal 居中模态(2026-10-29 用户裁定:弹窗替换右滑
- * 抽屉;名称/Base URL/API key password 输入——写走 setKey op、密钥零回显(编辑播种恒空串,
+ * 抽屉;名称/Base URL/API key password 输入——写走 setKey op(2026-11-22 内联裁定:密钥随 providers 条目 apiKey 存放,读面回显——编辑播种已存值,
  * 留空=不动键)/models 行编辑(模型名/contextWindow/reasoningEffort/tier select/自定义请求参数
  * 键值对/上移下移钮
  * ——上移下移=文件级手术即时提交 modelMove op,成功后重拉+行重播种:以文件真值为基底按模型
@@ -254,19 +254,24 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
       });
   };
 
+  /** 编辑播种的原始密钥(按键值变化判定是否发 setKey——未改动零 setKey,2026-11-22 回显裁定配套) */
+  const originalKeyRef = useRef('');
   /** 打开提供方弹窗 */
   const openProviderModal = (e: ProviderEntry | null): void => {
     setFormError('');
     if (e === null) {
+      originalKeyRef.current = '';
       setProviderForm(EMPTY_PROVIDER);
       setProviderModal({ mode: 'add' });
       return;
     }
-    setProviderForm({ name: e.name, baseUrl: e.baseUrl, apiKey: '' });
+    originalKeyRef.current = e.apiKey ?? '';
+    setProviderForm({ name: e.name, baseUrl: e.baseUrl, apiKey: e.apiKey ?? '' });
     setProviderModal({ mode: 'edit', original: e.name });
   };
 
-  /** 保存提供方:add=op add(models 空起点);edit=op update(改名带 patch.name);apiKey 非空追加 setKey */
+  /** 保存提供方:add=op add(models 空起点)+apiKey 非空 setKey;edit=op update(改名带 patch.name)
+   *  +**键值变化才 setKey**(2026-11-22 内联可回显:空串=清条目字段,未改动零 setKey) */
   const submitProvider = (): void => {
     if (providerModal === null || saving) return;
     const name = providerForm.name.trim();
@@ -291,7 +296,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
     first
       .then(() => {
         const key = providerForm.apiKey.trim();
-        return key === '' ? undefined : conn.putProviderOp(opInput({ op: 'setKey', name, apiKey: key }));
+        return key === originalKeyRef.current ? undefined : conn.putProviderOp(opInput({ op: 'setKey', name, apiKey: key }));
       })
       .then(() => {
         setSaving(false);
@@ -539,15 +544,10 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
             <input className="sx-setting-input" aria-label={t('Base URL', 'Base URL')} value={providerForm.baseUrl} onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })} spellCheck={false} />
           </ModalField>
           <ModalField label={t('API key', 'API 密钥')}>
-            <input
-              type="password"
-              className="sx-setting-input"
-              aria-label={t('API key', 'API 密钥')}
-              value={providerForm.apiKey}
-              autoComplete="new-password"
-              onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
-              spellCheck={false}
-            />
+            <SecretInput ariaLabel={t('API key', 'API 密钥')} value={providerForm.apiKey} autoComplete="new-password" onChange={(v) => setProviderForm({ ...providerForm, apiKey: v })} />
+            <a className="sx-provider-hint" href={providerForm.baseUrl || '#'} target="_blank" rel="noreferrer">
+              {t('Get API key', '获取 API Key')}
+            </a>
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>

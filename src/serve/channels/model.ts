@@ -1,8 +1,9 @@
 /** 通道配置模型（spec 2026-11-21-channels §4 存储总览；§8 2026-11-22 终形态加 name）：settings.json `channels`
- *  结构化语义键形状裁决单点——非法条目 warning 跳过不致命（providers 键同语义）；键内零密钥
- *  （D6「设置与凭据分离」），密钥按通道名走 env 槽 SUNSHINEX_CHANNEL_SECRET_<大写通道名>
- *  （派生规则同 config/providers.ts providerApiKeyEnv）。`name` = 应用名称（用户自定义展示名，
- *  1..80 trim，缺省由 UI 回退平台名）——非串/超长 warning 跳过该字段不致命（ident 同款宽容口径）。 */
+ *  结构化语义键形状裁决单点——非法条目 warning 跳过不致命（providers 键同语义）。`secret` = 通道密钥
+ *  **内联进条目**（2026-11-22 用户裁定推翻 D6「设置与凭据分离」：env 分组承载密钥维护成本过高、且
+ *  不可回显导致 GUI 配置不闭环——密钥随配置项存放、GET 可回显；settings.json 对 agent 的写保护
+ *  硬底线不受影响，暴露面与原 env 块同文件等价）。`name` = 应用名称（用户自定义展示名，1..80 trim，
+ *  缺省由 UI 回退平台名）——非串/超长 warning 跳过该字段不致命（ident 同款宽容口径）。 */
 
 export type ChannelPlatform = 'feishu' | 'dingtalk' | 'wecom' | 'telegram' | 'mock';
 export type ChannelAccessMode = 'read-only' | 'acceptEdits' | 'full-access';
@@ -20,10 +21,12 @@ export interface ChannelConfig {
   enabled: boolean;
   /** 应用名称（spec §8 2026-11-22 终形态）：用户自定义展示名，1..80，trim；缺席=UI 回退平台名 */
   name?: string;
+  /** 通道密钥（2026-11-22 内联裁定）：直接存条目字段、GET /settings/channels 可回显；缺席=未配置 */
+  secret?: string;
   root: string;
   mode: ChannelAccessMode;
   model?: string;
-  /** 平台非密钥标识（feishu appId / wecom botId 等）——密钥不在此（D6），env 槽承载 */
+  /** 平台非密钥标识（feishu 自建应用 URL 等扩展位） */
   ident?: Record<string, string>;
   allow: ChannelAllowConfig;
 }
@@ -76,10 +79,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
-export function channelSecretEnv(id: string): string {
-  return 'SUNSHINEX_CHANNEL_SECRET_' + id.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
-}
-
 export function bindingKey(channelId: string, chatId: string): string {
   return `${channelId}:${chatId}`;
 }
@@ -130,11 +129,30 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
     const ident = isRecord(identRaw)
       ? Object.fromEntries(Object.entries(identRaw).filter(([, v]) => typeof v === 'string')) as Record<string, string>
       : undefined;
+    // secret 内联解析（2026-11-22 裁定）：串即收（trim，上限 2000——密钥可长）；空串=缺席；
+    // 非串/超长 warning 跳字段不致命
+    let secret: string | undefined;
+    const secretRaw = item['secret'];
+    if (secretRaw !== undefined && secretRaw !== null) {
+      if (typeof secretRaw !== 'string') {
+        warnings.push(`channels[${i}](${id}) secret 非串，跳过该字段`);
+      } else {
+        const trimmed = secretRaw.trim();
+        if (trimmed === '') {
+          secret = undefined; // 空串=未配置
+        } else if (trimmed.length > 2000) {
+          warnings.push(`channels[${i}](${id}) secret 超 2000 字，跳过该字段`);
+        } else {
+          secret = trimmed;
+        }
+      }
+    }
     value.push({
       id,
       platform: platform as ChannelPlatform,
       enabled: item['enabled'] === true,
       ...(name !== undefined ? { name } : {}),
+      ...(secret !== undefined ? { secret } : {}),
       root: (item['root'] as string).trim(),
       mode: mode as ChannelAccessMode,
       ...(model !== undefined ? { model } : {}),

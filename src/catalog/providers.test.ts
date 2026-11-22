@@ -271,23 +271,35 @@ test('modelMove：相邻互换且 choices 序随之；已在边界/缺模型 →
   });
 });
 
-/** ⑤ setProviderApiKey：env 块写专用槽（providerApiKeyEnv 生成）、空串删行、返回 void（无回显路径）；缺源 → INVALID */
-test('setProviderApiKey：写 env 专用槽、空串删行、返回 void（无回显路径）；缺源 → INVALID', () => {
+/** ⑤ setProviderApiKey：写条目 apiKey 字段（2026-11-22 用户裁定：密钥内联可回显，env 块退役）、
+ *  空串清字段、返回 void；缺源 → INVALID */
+test('setProviderApiKey：写条目 apiKey 字段、空串清字段、返回 void；缺源 → INVALID', () => {
   withHome((_fakeHome, proj) => {
     const projFile = loadProjectSettings(proj);
     upsertProvider(proj, 'project', 'my-prov', { baseUrl: 'https://p/v1', models: [{ model: 'm1' }] });
     const ret = setProviderApiKey(proj, 'project', 'my-prov', 'stub-value-not-a-real-key');
     assert.equal(ret, undefined, '返回 void：本面无任何响应/回显路径');
-    let doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { env?: Record<string, string> };
-    assert.equal(doc.env?.['SUNSHINEX_API_KEY_MY_PROV'], 'stub-value-not-a-real-key', '槽名经 providerApiKeyEnv（非字母数字折叠 _）');
+    let doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { providers?: Array<Record<string, unknown>>; env?: Record<string, string> };
+    assert.equal(doc.providers![0]!['apiKey'], 'stub-value-not-a-real-key', '条目 apiKey 字段落盘（内联可回显）');
+    assert.equal(doc.env, undefined, 'env 块不再承载密钥（零触碰）');
+
+    // 读面回显：listProviders 条目带出 apiKey 值（回显面——2026-11-22 用户裁定推翻「值永不回传」）
+    const view = listProviders(proj);
+    assert.equal((view.providers[0] as unknown as Record<string, unknown>)['apiKey'], 'stub-value-not-a-real-key', 'listProviders 条目回显 apiKey');
+    assert.equal(view.providers[0]!.apiKeyPresent, true, 'apiKeyPresent 与内联值同源翻转');
+
+    // 覆写同字段
+    setProviderApiKey(proj, 'project', 'my-prov', 'stub-value-2');
+    doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { providers?: Array<Record<string, unknown>> };
+    assert.equal(doc.providers![0]!['apiKey'], 'stub-value-2', '同字段覆写');
 
     setProviderApiKey(proj, 'project', 'my-prov', '');
-    doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { env?: Record<string, string> };
-    assert.equal(doc.env?.['SUNSHINEX_API_KEY_MY_PROV'], undefined, '空串 = 删除该 env 行');
-    assert.deepEqual(doc.env, {}, 'env 块保留（空对象）');
+    doc = JSON.parse(fs.readFileSync(projFile, 'utf8')) as { providers?: Array<Record<string, unknown>> };
+    assert.equal('apiKey' in doc.providers![0]!, false, '空串 = 清除条目 apiKey 字段');
+    assert.equal(doc.providers![0]!['baseUrl'], 'https://p/v1', '清除时条目其余字段保留');
 
     const invalid = (e: unknown): boolean => e instanceof CatalogWriteError && e.code === 'INVALID';
-    assert.throws(() => setProviderApiKey(proj, 'project', 'ghost', 'stub-value-not-a-real-key'), invalid, 'provider 不在该 scope 装载视图 → INVALID');
+    assert.throws(() => setProviderApiKey(proj, 'project', 'ghost', 'stub-value-not-a-real-key'), invalid, 'provider 不在该 scope 文件 → INVALID');
     assert.equal(fs.existsSync(loadGlobalSettings()), false, 'project 拒写零盘上副作用（全局文件零触碰）');
   });
 });

@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
+import { t } from '../i18n';
 
 /**
  * 设置页自绘控件（设置重构轮）：下拉 Select 与建议 Combo——弹层制（非原生 <select>），
@@ -7,6 +9,8 @@ import { useEffect, useId, useRef, useState } from 'react';
  *   check 标），键面 ↑↓ 移动/Enter 选中/Esc 收、外点收；disabled（env 覆盖行）禁触发。
  * - Combo：自由文本输入+动态建议面（模型 id 等开放值集——建议自 providers 动态来，自由
  *   键入恒合法）；过滤大小写不敏感包含序，点击建议即落值，Esc/外点收。
+ * - SecretInput：密钥回显输入（2026-11-22 用户裁定「密钥可回显」）——password/明文显隐切换
+ *   （Eye/EyeOff），值受控上层持。布局复用 sx-setting-path（输入+右缘钮，路径行同款）。
  * 两件皆纯受控（值与 onChange 全由上层持——表单引擎统一 values 表），弹层内滚
  * （max-height+overflow）不出设置主区滚动面。
  */
@@ -216,6 +220,45 @@ export function Combo(props: {
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** SecretInput 密钥回显输入（2026-11-22 用户裁定「密钥可回显」）：password/明文显隐切换（眼睛钮）；
+ *  值受控上层持——回显已存值由上层播种。布局复用路径行 sx-setting-path（输入+右缘钮） */
+export function SecretInput(props: {
+  readonly value: string;
+  readonly ariaLabel: string;
+  readonly placeholder?: string;
+  readonly disabled?: boolean;
+  readonly autoComplete?: string;
+  readonly onChange: (v: string) => void;
+}): JSX.Element {
+  const { value, ariaLabel, placeholder, disabled = false, autoComplete = 'off', onChange } = props;
+  const [shown, setShown] = useState(false);
+  return (
+    <div className="sx-setting-path">
+      <input
+        type={shown ? 'text' : 'password'}
+        className="sx-setting-input"
+        aria-label={ariaLabel}
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoComplete={autoComplete}
+        spellCheck={false}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        className="sx-setting-path-btn"
+        aria-label={`${shown ? t('Hide', '隐藏') : t('Show', '显示')} ${ariaLabel}`}
+        aria-pressed={shown}
+        disabled={disabled}
+        onClick={() => setShown((s) => !s)}
+      >
+        {shown ? <EyeOff size={14} strokeWidth={1.75} aria-hidden="true" /> : <Eye size={14} strokeWidth={1.75} aria-hidden="true" />}
+      </button>
     </div>
   );
 }

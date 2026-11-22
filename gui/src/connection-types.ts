@@ -347,6 +347,9 @@ export interface ProviderEntryModel {
 export interface ProviderEntry {
   name: string;
   baseUrl: string;
+  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6：密钥随条目存放、读面回显——GUI 密钥框显隐切换）；
+   *  可选防旧 daemon（无该字段时按未配置处理，env 槽回退仍在） */
+  apiKey?: string;
   /** 源启停（2026-11-17 用户裁定）：absent/true=启用,false=停用——停用源 models 不进 choices（/model 不可见） */
   enabled?: boolean;
   contextWindow?: number;

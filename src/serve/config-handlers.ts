@@ -116,7 +116,10 @@ export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage
   // 透传，本 handler 零改动）
   const view = listProviders(root ?? null);
   const apiKeyPresent: Record<string, boolean> = {};
-  for (const choice of view.choices) apiKeyPresent[choice.provider] = resolveProviderApiKey(choice.provider) !== undefined;
+  for (const entry of view.providers) {
+    // 密钥在场（2026-11-22 内联裁定）：条目 apiKey 优先,env 槽链(resolveProviderApiKey)回退兼容
+    apiKeyPresent[entry.name] = (entry.apiKey ?? '') !== '' || resolveProviderApiKey(entry.name) !== undefined;
+  }
   // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知键）项目先行拼全局——GET /settings
   // 透出（RawPane 顶部告警列表消费）；降级语义沿 fileSlots（缺文件/畸形按空）
   const warnings = [...(root !== undefined ? fileWarnings(loadProjectSettings(root)) : []), ...fileWarnings(loadGlobalSettings())];
