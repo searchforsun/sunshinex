@@ -124,7 +124,7 @@ export class FeishuAdapter implements ChannelAdapter {
     const appId = this.deps.ident['appId'] ?? '';
     if (!APP_ID_RE.test(appId)) {
       this.connected = false;
-      this.detail = 'App ID 缺失或格式非法(cli_ 开头 16 位十六进制)';
+      this.detail = 'App ID 无效';
       throw new Error(this.detail);
     }
     const log = this.deps.log ?? (() => {});
@@ -157,7 +157,7 @@ export class FeishuAdapter implements ChannelAdapter {
     }
     if (state !== 'connected') {
       this.connected = false;
-      this.detail = `长连接未建立(${state})——检查 App ID/Secret 与开放平台「事件订阅-长连接模式」配置`;
+      this.detail = `长连接未建立(${state})`;
       throw new Error(this.detail);
     }
     this.connected = true;
