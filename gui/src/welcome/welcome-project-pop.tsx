@@ -53,6 +53,8 @@ export function WelcomeProjectPop({
           }}
         />
       </div>
+      {/* 工作区行滚动区(2026-11-21 用户裁定「最多显示四个,筛选/浏览固定」):仅此层纵向滚动 */}
+      <div className="proj-rows-scroll">
       {projRows.map((r) => (
         <button
           key={r.slug}
@@ -69,6 +71,7 @@ export function WelcomeProjectPop({
           })()}
         </button>
       ))}
+      </div>
       {projRows.length === 0 && <div className="proj-empty">{t('No matching project', '无匹配项目')}</div>}
       <button type="button" role="menuitem" className="sx-menuitem proj-browse" onClick={onBrowse}>
         <FolderAddIcon size={14} /> {t('Browse folders…', '浏览文件夹…')}

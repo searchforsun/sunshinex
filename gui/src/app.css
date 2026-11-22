@@ -4777,6 +4777,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 @media (max-width: 720px) {
   .sx-storage-row { flex-direction: column; align-items: stretch; gap: 8px; }
 }
-/* 弹窗内 proj-pop 高度收敛(2026-11-21 用户实测「最多显示四个,多的内部纵向滚动」):筛选行+4 行
-   可视(每行约 32px),其余内部滚动;欢迎页 dock 版维持 280px 上限不变 */
-.sx-sunx-ws-anchor .proj-pop { max-height: calc(44px + 4 * 32px + 10px); overflow-y: auto; }
+/* 弹窗内 proj-pop 高度收敛(2026-11-21 用户实测「最多显示四个,多的内部纵向滚动」;二轮修正:
+   滚动区=工作区行列表本体——筛选行(上)与浏览文件夹(下)固定不滚,pop 自身不限高由内容撑)。
+   行高 32px×4+间距 ≈ 138px 可视;欢迎页 dock 版 280px 上限不变 */
+.sx-sunx-ws-anchor .proj-pop { max-height: none; overflow: visible; }
+.sx-sunx-ws-anchor .proj-pop > .proj-pop-scroll,
+.sx-sunx-ws-anchor .proj-pop .proj-rows-scroll { max-height: 138px; overflow-y: auto; }

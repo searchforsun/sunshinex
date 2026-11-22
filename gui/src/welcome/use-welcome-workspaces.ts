@@ -10,7 +10,7 @@ import type { WelcomeComposerConn } from './welcome-conn';
 export function useWelcomeWorkspaces(
   /** 结构子集(P2 2026-11-15 NewSunxDialog 复用放宽):数据面只消费这四成员——原 WelcomeComposerConn
    *  整面要求会把弹窗 conn 桩逼成全量;Pick 保留 onConfigChanged 的可选性 */
-  conn: Pick<WelcomeComposerConn, 'workspaces' | 'createWorkspace' | 'locateWorkspace' | 'onConfigChanged'>,
+  conn: Pick<WelcomeComposerConn, 'workspaces' | 'createWorkspace' | 'locateWorkspace' | 'onConfigChanged'> & { dirpicker?: WelcomeComposerConn['dirpicker'] },
   presetRoot: string | undefined,
   presetSeq: number | undefined,
   io: {
@@ -31,7 +31,7 @@ export function useWelcomeWorkspaces(
     if (list.length === 0) return;
     let alive = true;
     void Promise.all(
-      list.map(async (p2) => ({ p2, ok: await conn.dirpicker(p2).then(() => true, () => false) })),
+      list.map(async (p2) => ({ p2, ok: conn.dirpicker !== undefined ? await conn.dirpicker(p2).then(() => true, () => false) : true })),
     ).then((hits) => {
       if (!alive) return;
       const aliveSet = new Set(hits.filter((h) => h.ok).map((h) => h.p2.toLowerCase()));
