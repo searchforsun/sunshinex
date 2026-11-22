@@ -25,7 +25,7 @@
   /* accent 与语义(蓝仅 info/焦点/链接;状态色 dark 300 系/light 500 系) */
   --accent: #339cff;
   --ok: #40c977;
-  --warn: #ff8549;
+  --warn: #e6c163; /* 四档提示色规范(2026-11-22 用户裁定「warn 黄色」):原橙改黄,设置页/正文警告统一 */
   --err: #ff6764;
   --ok-solid: #00a240;
   --err-solid: #e02e2a;
@@ -105,7 +105,7 @@
   --fg-on-solid: #fff;
   --bubble-user: color-mix(in srgb, var(--fg) 5%, transparent);
   --ok: #00a240;
-  --warn: #e25507;
+  --warn: #8f7414; /* 四档提示色 warn 黄(light 可读档) */
   --err: #e02e2a;
   --elev-card: 0 4px 16px rgba(0, 0, 0, 0.05);
   --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.08); /* 2026-11-12 用户复裁定「不加边线,只要软阴影」(环线在超椭角下不随形=角部毛刺,除非根治不加):白对白分层靠投影,撤 11-12 提议的 1px 环 */
@@ -2570,8 +2570,13 @@ input.sx-setting-input { width: 100%; }
   max-width: 70%;
 }
 /* 测试结果 toast 黄字(2026-11-22 用户裁定「可以使用黄色字体」) */
-.sx-toast-yellow { color: #e6c163; }
-.sx-toast-yellow.sx-toast { border-color: color-mix(in srgb, #e6c163 35%, var(--border)); }
+/* toast 四档色(2026-11-22 用户裁定「提示分四档:异常红/警告黄/普通黑白/成功绿」,见 CLAUDE.md) */
+.sx-toast-ok { color: var(--ok); }
+.sx-toast-ok.sx-toast { border-color: color-mix(in srgb, var(--ok) 35%, var(--border)); }
+.sx-toast-err { color: var(--err); }
+.sx-toast-err.sx-toast { border-color: color-mix(in srgb, var(--err) 35%, var(--border)); }
+.sx-toast-warn { color: var(--warn); }
+.sx-toast-warn.sx-toast { border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
 .sx-dd-opt {
   display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;
   padding: 6px 10px; border-radius: var(--radius-sm); text-align: left;
@@ -2580,6 +2585,10 @@ input.sx-setting-input { width: 100%; }
 .sx-dd-opt:hover, .sx-dd-opt.active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-dd-opt-check { flex: none; color: var(--accent); font-size: calc(14px * var(--fz)); }
 .sx-combo-pop { max-height: 220px; }
+/* MultiSelect 勾选框(2026-11-22 聊天命令多选):几何方框构造,勾选 accent 面白勾,未选描边空盒 */
+.sx-dd-multi-box { flex: none; width: 14px; height: 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); display: inline-flex; align-items: center; justify-content: center; }
+.sx-dd-opt.selected .sx-dd-multi-box, .sx-dd-multi-box.on { background: var(--accent); border-color: var(--accent); }
+.sx-dd-multi-check { color: #fff; font-size: calc(11px * var(--fz)); line-height: 1; }
 
 /* ---- 保存条:改动分桶计数(全局/项目 ×N)+主钮 ---- */
 .sx-save-bar { display: flex; align-items: center; gap: 12px; margin-top: 4px; }

@@ -229,6 +229,36 @@ test('⑥ 指令:/help 不进模型;/stop 调 interrupt;/new 重绑保留元数�
   assert.equal(hNew2.createCalls.length, 1);
   assert.equal(hNew2.createCalls[0]!.root, channelChatWorkspaceRoot('m1', 'c1'));
   assert.ok(hNew2.acks[0]!.text.includes('新会话'));
+  // ⑥b /status:一句话任务状态(2026-11-22 用户裁定「还有其他可以暴露给聊天的命令吗?可以加一下」)
+  const hSt = makeHarness();
+  await hSt.router.handleInbound(mkMsg({ msgId: 'st1', text: '/status' })); // 无绑定=未建立
+  assert.ok(hSt.acks[0]!.text.includes('发送任意消息即可开始'));
+  const hSt2 = makeHarness({ runtimeFactory: () => makeRuntime({ status: 'running' }) });
+  await hSt2.router.handleInbound(mkMsg({ msgId: 'st2', text: '先聊一句' }));
+  await hSt2.router.handleInbound(mkMsg({ msgId: 'st3', text: '/status' }));
+  assert.ok(hSt2.acks[1]!.text.includes('任务进行中'), '运行中=/status 报进行中(acks[0]=首条受理回执)');
+  assert.equal(rtOf(hSt2, bindingKey('m1', 'c1')).submits.length, 0); // 首条消息运行中走 steer;/status 未提交
+  assert.equal(rtOf(hSt2, bindingKey('m1', 'c1')).steers.length, 1);
+});
+
+test('⑥c 命令门控(2026-11-22 用户裁定「配置可以给聊天执行的命令」):cfg.commands 子集外的命令不进模型,一句未开启提示', async () => {
+  const h = makeHarness({ configs: [mkCfg({ commands: ['/help'] })] });
+  await h.router.handleInbound(mkMsg({ msgId: 'g0', text: '先聊一句' })); // 建绑定
+  const rt = rtOf(h, bindingKey('m1', 'c1'));
+  await h.router.handleInbound(mkMsg({ msgId: 'g1', text: '/stop' }));
+  await h.router.handleInbound(mkMsg({ msgId: 'g2', text: '/new' }));
+  assert.equal(rt.interrupts, 0); // /stop 被关:不中断
+  assert.equal(rt.submits.length, 1); // 两条命令都未提交
+  assert.equal(h.createCalls.length, 1); // /new 被关:不新建
+  assert.equal(h.acks.length, 3);
+  assert.ok(h.acks[1]!.text.includes('该命令未开启'));
+  assert.ok(h.acks[2]!.text.includes('该命令未开启'));
+  // 开放命令照常:/help 在子集内 → 帮助文案(只列开放命令)
+  await h.router.handleInbound(mkMsg({ msgId: 'g3', text: '/help' }));
+  const help = h.acks[3]!.text;
+  assert.ok(help.includes('/help — 显示本帮助'));
+  assert.ok(!help.includes('/stop'), '关闭的命令不进帮助列表');
+  assert.ok(help.includes('其余消息直接发送给助手'), '提交语义一句话(无内部术语)');
 });
 
 test('⑦ 无绑定:新建会话(auto root/mode/activate:false/model)+upsert 绑定+submit+ack 已受理', async () => {

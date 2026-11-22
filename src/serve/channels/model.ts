@@ -28,8 +28,22 @@ export interface ChannelConfig {
   model?: string;
   /** 平台非密钥标识（feishu 自建应用 URL 等扩展位） */
   ident?: Record<string, string>;
+  /** 开放的聊天命令（2026-11-22 用户裁定「配置可以给聊天执行的命令，一个下拉多选」）：
+   *  子集出自 CHANNEL_COMMANDS 目录；缺席=全部开放；router 门控与 /help 列举共用此目录 */
+  commands?: string[];
   allow: ChannelAllowConfig;
 }
+
+/** 聊天命令目录（2026-11-22 用户裁定，单一目录点）：cmd=聊天侧触发词；desc=人性化说明
+ *  （/help 输出与 GUI 多选下拉共用——不透露底层实现，只说作用）。新增命令在此登记一处 */
+export const CHANNEL_COMMANDS: ReadonlyArray<{ cmd: string; desc: string }> = [
+  { cmd: '/help', desc: '显示本帮助' },
+  { cmd: '/stop', desc: '停止当前任务' },
+  { cmd: '/new', desc: '开始新对话（聊天设置保留）' },
+  { cmd: '/status', desc: '查看任务状态' },
+];
+
+const COMMAND_WORDS: ReadonlySet<string> = new Set(CHANNEL_COMMANDS.map((c) => c.cmd));
 
 export interface Binding {
   key: string;
@@ -135,6 +149,27 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
     const ident = isRecord(identRaw)
       ? Object.fromEntries(Object.entries(identRaw).filter(([, v]) => typeof v === 'string')) as Record<string, string>
       : undefined;
+    // commands 开放命令解析（2026-11-22 用户裁定）：字符串数组，元素限目录内命令（未知 warning
+    // 跳过该元素不致命）；缺席=全部开放；显式空数组=全不开放（仅自由聊天）
+    let commands: string[] | undefined;
+    const commandsRaw = item['commands'];
+    if (commandsRaw !== undefined && commandsRaw !== null) {
+      if (!Array.isArray(commandsRaw) || !commandsRaw.every((x) => typeof x === 'string')) {
+        warnings.push(`channels[${i}](${id}) commands 须为字符串数组，已忽略该字段`);
+      } else {
+        const list: string[] = [];
+        for (const raw of commandsRaw as string[]) {
+          const c = raw.trim();
+          if (c === '') continue;
+          if (!COMMAND_WORDS.has(c)) {
+            warnings.push(`channels[${i}](${id}) commands 未知命令 ${c}，已跳过`);
+            continue;
+          }
+          if (!list.includes(c)) list.push(c);
+        }
+        commands = list;
+      }
+    }
     // secret 内联解析（2026-11-22 裁定）：串即收（trim，上限 2000——密钥可长）；空串=缺席；
     // 非串/超长 warning 跳字段不致命
     let secret: string | undefined;
@@ -163,6 +198,7 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
       mode: mode as ChannelAccessMode,
       ...(model !== undefined ? { model } : {}),
       ...(ident !== undefined && Object.keys(ident).length > 0 ? { ident } : {}),
+      ...(commands !== undefined ? { commands } : {}),
       allow: {
         kind: allowCfg['kind'] as AllowKind,
         ...(strArr(allowCfg['userIds']) !== undefined ? { userIds: strArr(allowCfg['userIds']) } : {}),

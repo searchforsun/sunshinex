@@ -216,4 +216,52 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     const row = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
     expect('secret' in row).toBe(false);
   });
+
+  /** ⑩ 编辑弹窗标题=应用名称（2026-11-22 用户裁定「应用名称是飞书1,编辑 feishu-1 是什么」） */
+  it('titles the edit modal with the app name, not the internal id', async () => {
+    const cfg: ChannelConfigMsg = { id: 'telegram-9', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } };
+    const { conn } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
+    render(<ChannelsPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    expect(await screen.findByText(bi('Edit 我的TG', '编辑 我的TG'))).toBeDefined();
+  });
+
+  /** ⑪ 聊天命令多选（2026-11-22 用户裁定「配置可以给聊天执行的命令,一个下拉多选」）:
+   *  弹层行=命令+说明；去掉 /stop 保存 → putChannels 行 commands=子集（全选省键） */
+  it('writes the chat commands subset via the multi-select', async () => {
+    const cfg: ChannelConfigMsg = { id: 'telegram-9', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } };
+    const { conn, putChannels } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
+    render(<ChannelsPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    fireEvent.click(await screen.findByRole('button', { name: bi('Chat commands', '聊天命令') })); // 开弹层
+    fireEvent.click(await screen.findByRole('option', { name: bi('/stop — Stop the current task', '/stop — 停止当前任务') }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
+    const row = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
+    expect(row.commands).toEqual(['/help', '/new', '/status']);
+  });
+
+  /** ⑫ 自动取名（2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」）:应用名称留空
+   *  且自动试连拿到平台侧应用名 → 第二次 putChannels 静默回填 name=botId */
+  it('auto-fills the app name from the bot identity when left empty on save', async () => {
+    const { conn, putChannels, testChannel } = makeConn([]);
+    render(<ChannelsPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: bi('+ New channel', '+ 新增通道') }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(testChannel).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(2));
+    const row = (putChannels.mock.calls[1]![0] as ChannelConfigMsg[])[0]!;
+    expect(row.name).toBe('bot-1', '自动取名=第二次全表写回填平台侧应用名');
+  });
+
+  /** ⑬ 试连 toast 四档色（2026-11-22 用户裁定「正常是绿色字体」）:成功=sx-toast-ok 档 */
+  it('shows the test toast with the success tone class', async () => {
+    const { conn, testChannel } = makeConn([healthRow()]);
+    const { container } = render(<ChannelsPane conn={conn} />);
+    await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: bi('Test connection telegram-1', '测试连接 telegram-1') }));
+    await waitFor(() => expect(testChannel).toHaveBeenCalledWith('telegram-1'));
+    expect(await screen.findByText(/bot-1/)).toBeDefined();
+    expect(container.querySelector('.sx-toast-ok')).not.toBeNull();
+  });
 });

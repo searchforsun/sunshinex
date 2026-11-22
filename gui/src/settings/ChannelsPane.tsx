@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch } from './components';
-import { SecretInput, Select } from './controls';
+import { MultiSelect, SecretInput, Select } from './controls';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 import type { WorkspaceRow } from '../connection';
 
@@ -63,6 +63,16 @@ const NAME_PLACEHOLDERS: Record<string, { en: string; zh: string }> = {
   mock: { en: 'My Mock bot', zh: '我的 Mock 机器人' },
 };
 
+/** 聊天命令目录（镜像 serve/channels/model.ts CHANNEL_COMMANDS——2026-11-22 用户裁定
+ *  「配置可以给聊天执行的命令,一个下拉多选(每项的命令以及说明)」):label=命令+一句说明 */
+const COMMAND_OPTIONS: ReadonlyArray<{ v: string; en: string; zh: string }> = [
+  { v: '/help', en: '/help — Show this help', zh: '/help — 显示本帮助' },
+  { v: '/stop', en: '/stop — Stop the current task', zh: '/stop — 停止当前任务' },
+  { v: '/new', en: '/new — Start a new conversation', zh: '/new — 开始新对话' },
+  { v: '/status', en: '/status — Check task status', zh: '/status — 查看任务状态' },
+];
+const COMMAND_KEYS: readonly string[] = COMMAND_OPTIONS.map((o) => o.v);
+
 const MODE_LABELS: Record<ModeValue, { en: string; zh: string }> = {
   'read-only': { en: 'Read-only', zh: '只读' },
   acceptEdits: { en: 'Accept edits', zh: '接受编辑' },
@@ -77,8 +87,9 @@ const allowLabel = (d: ChannelDraft): string => {
   return `${t('Allow-list', '白名单')}(${n})`;
 };
 
-/** 卡片展示名(应用名称缺省回退平台名;仅展示——写面 name 缺席即省键) */
-const displayNameOf = (d: ChannelDraft): string => (d.name !== '' ? d.name : platformLabel(d.platform));
+/** 卡片展示名（2026-11-22 用户裁定「应用名称是飞书1,编辑 feishu-1 是什么」:显示名=应用名称,
+ *  缺省回退通道 id(内部标识如实示人)——不再回退平台名(与副标重复成「飞书 飞书」) */
+const displayNameOf = (d: ChannelDraft): string => (d.name !== '' ? d.name : d.id);
 
 const platformLabel = (v: string): string => {
   const p = PLATFORMS.find((x) => x.v === v);
@@ -105,6 +116,8 @@ interface ChannelDraft {
   appId: string;
   /** 平台其余非密钥标识(raw 配置既有值原样携带,编辑不丢) */
   ident?: Record<string, string>;
+  /** 开放的聊天命令(2026-11-22 裁定命令配置化):子集;落盘=全选省键(absent=全部开放) */
+  commands: string[];
   allowKind: AllowKind;
   /** 白名单粘贴原文(空格/逗号/分号/换行分隔),提交时切分去重 */
   userIdsText: string;
@@ -122,12 +135,15 @@ const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   mode: 'read-only',
   model: '',
   appId: '',
+  ident: undefined,
+  commands: [...COMMAND_KEYS],
   allowKind: 'first-user',
   userIdsText: '',
   dirty: false,
 });
 
-/** 配置读面行 → 卡草稿:已有通道细粒度字段逐字段回填真值;userIds 数组粘回分隔原文 */
+/** 配置读面行 → 卡草稿:已有通道细粒度字段逐字段回填真值;userIds 数组粘回分隔原文;
+ *  commands 缺席(旧档)=全开放 */
 const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
   id: cfg.id,
   platform: cfg.platform,
@@ -139,6 +155,7 @@ const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
   model: cfg.model ?? '',
   appId: cfg.ident?.appId ?? '',
   ident: cfg.ident,
+  commands: cfg.commands ?? [...COMMAND_KEYS],
   allowKind: cfg.allow.kind,
   userIdsText: (cfg.allow.userIds ?? []).join(' '),
   dirty: false,
@@ -195,6 +212,9 @@ const toMsg = (d: ChannelDraft): ChannelConfigMsg => {
   const ident: Record<string, string> = { ...(d.ident ?? {}) };
   if (d.appId !== '') ident.appId = d.appId;
   else delete ident.appId;
+  // commands:全选=省键(absent=全部开放,后端缺省语义);子集/空数组=显式落键
+  const commands = [...d.commands];
+  const allSelected = COMMAND_KEYS.every((k) => commands.includes(k)) && commands.length === COMMAND_KEYS.length;
   return {
     id: d.id,
     platform: d.platform,
@@ -205,6 +225,7 @@ const toMsg = (d: ChannelDraft): ChannelConfigMsg => {
     mode: d.mode,
     ...(d.model !== '' ? { model: d.model } : {}),
     ...(Object.keys(ident).length > 0 ? { ident } : {}),
+    ...(allSelected ? {} : { commands }),
     allow: d.allowKind === 'list' ? { kind: 'list', userIds: splitUserIds(d.userIdsText) } : { kind: d.allowKind },
   };
 };
@@ -228,11 +249,12 @@ interface ChannelForm {
   appId: string;
   rootText: string;
   mode: ModeValue;
+  commands: string[];
   allowKind: AllowKind;
   userIdsText: string;
 }
 
-const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定)
+const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', commands: [...COMMAND_KEYS], allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定);命令缺省全开放
 
 /** 弹窗开合态:add=新增(平台待选);edit=编辑(锁定 original id) */
 interface ChannelModal {
@@ -251,7 +273,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   const [actionError, setActionError] = useState('');
   /** 写面在途门(单通道在途:保存/删除/试连/Switch 共用——禁再发) */
   const [savingId, setSavingId] = useState('');
-  /** 测试结果 toast(2026-11-22 用户裁定:居中黄色 toast,3s 自隐;报错简洁) */
+  /** 测试结果 toast(2026-11-22 用户裁定:居中 toast 3s 自隐;四档色——成功绿/异常红,四档
+   *  提示色规范见 CLAUDE.md) */
   const [testToast, setTestToast] = useState<{ ok: boolean; text: string } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = (ok: boolean, text: string): void => {
@@ -390,7 +413,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       setModal({ mode: 'add' });
       return;
     }
-    setForm({ platform: d.platform, name: d.name, secret: d.secret, appId: d.appId, rootText: d.rootText, mode: d.mode, allowKind: d.allowKind, userIdsText: d.userIdsText });
+    setForm({ platform: d.platform, name: d.name, secret: d.secret, appId: d.appId, rootText: d.rootText, mode: d.mode, commands: d.commands, allowKind: d.allowKind, userIdsText: d.userIdsText });
     setModal({ mode: 'edit', id: d.id });
   };
 
@@ -429,6 +452,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       model: base?.model ?? '',
       appId: form.appId.trim(),
       ident: base?.ident,
+      commands: form.commands,
       allowKind: form.allowKind,
       userIdsText: form.userIdsText,
       dirty: false, // 已落盘:读面真值即本地值,回拉重播种不回退
@@ -444,8 +468,24 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         setModal(null);
         setForm(EMPTY_FORM);
         load();
+        // 自动取名(2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」):应用名称留空
+        // 且试连拿到平台侧应用名 → 静默回填 name=botId 再落一次(全表写,单门复用)
         return conn.testChannel(id).then(
-          (r) => recordTest(id, r),
+          (r) => {
+            recordTest(id, r);
+            const botName = r.ok && saved.name === '' ? r.botId?.trim() : undefined;
+            if (botName !== undefined && botName !== '' && botName.length <= NAME_MAX) {
+              const named = next.map((d) => (d.id === id ? { ...d, name: botName } : d));
+              setDrafts(named);
+              setSavingId(id);
+              conn
+                .putChannels(named.map(toMsg))
+                .then(() => {
+                  setSavingId('');
+                  load();
+                }, () => setSavingId(''));
+            }
+          },
           (err: unknown) => recordTest(id, { ok: false, error: errText(err) }),
         );
       })
@@ -501,7 +541,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                 <span className="sx-rc-title">{displayNameOf(d)}</span>
                 <span className="sx-rc-subtitle">{platformLabel(d.platform)}</span>
                 <span className="sx-rc-head-acts">
-                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${d.id}`} disabled={busy} onConfirm={() => removeCard(d.id)} />
+                  {/* 裸图标按钮必带 hover 提示(2026-11-22 全局规范,见 CLAUDE.md):删除两段同名 tip */}
+                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${d.id}`} dataTip={t('Delete', '删除')} disabled={busy} onConfirm={() => removeCard(d.id)} />
                   <button
                     type="button"
                     className="sx-iconbtn"
@@ -541,12 +582,17 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
           );
         })}
       </ul>
-      {/* 新增/编辑弹窗:平台/应用名称/凭证/工作区/权限模式/准入;下拉全走共享 Select 弹层控件
-          (2026-11-22 裁定:弃原生 select);工作区=文本框+文件夹钮(路径与执行环境页同款) */}
+      {/* 新增/编辑弹窗:标题=应用名称(2026-11-22 用户裁定「应用名称是飞书1,编辑 feishu-1 是什么」
+          ——显示名回退通道 id);平台/应用名称/凭证/工作区/权限模式/聊天命令/准入;下拉全走共享
+          Select/MultiSelect 弹层控件(2026-11-22 裁定:弃原生 select);工作区=文本框+文件夹钮 */}
       {modal !== null && (
         <EditorModal
           open
-          title={modal.mode === 'add' ? t('New channel', '新增通道') : t(`Edit ${modal.id ?? ''}`, `编辑 ${modal.id ?? ''}`)}
+          title={
+            modal.mode === 'add'
+              ? t('New channel', '新增通道')
+              : t(`Edit ${drafts?.find((d) => d.id === modal.id)?.name || (modal.id ?? '')}`, `编辑 ${drafts?.find((d) => d.id === modal.id)?.name || (modal.id ?? '')}`)
+          }
           onClose={() => setModal(null)}
           onSubmit={submitChannel}
         >
@@ -680,11 +726,21 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
               </p>
             )}
           </ModalField>
+          <ModalField label={t('Chat commands', '聊天命令')} hint={t('Choose which commands work in the chat.', '选择聊天里可以使用的命令。')}>
+            <MultiSelect
+              ariaLabel={t('Chat commands', '聊天命令')}
+              values={form.commands}
+              options={COMMAND_OPTIONS.map((o) => ({ v: o.v, l: t(o.en, o.zh) }))}
+              allLabel={{ en: 'All commands', zh: '全部命令' }}
+              noneLabel={{ en: 'None', zh: '不开启' }}
+              onChange={(next) => setForm({ ...form, commands: next })}
+            />
+          </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}
       {testToast !== null && (
-        <div className="sx-toast sx-toast-yellow" role="status">
+        <div className={`sx-toast ${testToast.ok ? 'sx-toast-ok' : 'sx-toast-err'}`} role="status">
           {testToast.text}
         </div>
       )}

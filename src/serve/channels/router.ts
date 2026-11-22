@@ -11,7 +11,7 @@
  *  io.onFrame/resolveApproval router 自身不消费（engine Task 7 装配 projector/审批回执用），接口面收全。 */
 import { writeSessionMeta } from '../../tui/session-journal';
 import { channelChatWorkspaceRoot } from '../../config/channels';
-import { bindingKey } from './model';
+import { bindingKey, CHANNEL_COMMANDS } from './model';
 import type { Binding, ChannelConfig, InboundMessage } from './model';
 import type { ChannelsBindingsStore } from './store';
 import type { SessionRuntime } from '../session';
@@ -58,13 +58,9 @@ export interface ChannelRouterDeps {
 
 const DEDUP_MAX = 4096;
 
-const HELP_TEXT = [
-  'sunshine 通道命令：',
-  '/help — 显示本帮助',
-  '/stop — 停止当前运行',
-  '/new — 开启新会话（聊天绑定保留）',
-  '其余消息直接提交当前会话；会话运行中时自动转为穿插（steer）。',
-].join('\n');
+/** 命令未开放回执（2026-11-22 用户裁定「配置可以给聊天执行的命令」）：被配置关掉的命令不
+ *  提交模型（/stop 之类当任务发没有意义），一句人性化提示即可——不暴露命令配置细节 */
+const COMMAND_DISABLED_TEXT = '该命令未开启，可直接发送任务描述。';
 
 export class ChannelRouter {
   /** 去重表：Map 插入序即 LRU 序（触达重插刷新、超限逐出最旧） */
@@ -96,19 +92,60 @@ export class ChannelRouter {
     // ⑪ 审批回复截胡：有绑定且 pendingReply 判 true → 消息已被消费，不发 ack
     if (binding !== undefined && msg.text !== undefined && this.deps.pendingReply?.(binding.sessionId, msg.text) === true) return;
     const text = (msg.text ?? '').trim();
-    if (text === '/help') { // ⑥ 指令短路：帮助文案，零会话动作
-      await this.deps.ack(msg, HELP_TEXT);
+    // 命令门（2026-11-22 用户裁定「配置可以给聊天执行的命令」）：cfg.commands 缺席=全部开放，
+    // 在场=子集；被关掉的命令一句提示即返回（不提交模型——/stop 当任务发没有意义）
+    const cmd = CHANNEL_COMMANDS.find((c) => (c.cmd === '/new' ? text.startsWith('/new') : text === c.cmd));
+    if (cmd !== undefined && !this.commandEnabled(cfg, cmd.cmd)) {
+      await this.deps.ack(msg, COMMAND_DISABLED_TEXT);
+      return;
+    }
+    if (text === '/help') { // ⑥ 指令短路：帮助文案（按开放命令列举），零会话动作
+      await this.deps.ack(msg, this.helpText(cfg));
       return;
     }
     if (text === '/stop') {
       await this.cmdStop(msg, key);
       return;
     }
-    if (text.startsWith('/new')) {
+    if (cmd?.cmd === '/status') {
+      await this.cmdStatus(msg, key);
+      return;
+    }
+    if (cmd?.cmd === '/new') {
       await this.cmdNew(msg, cfg, key, binding);
       return;
     }
     await this.dispatch(msg, cfg, key, binding); // ⑦⑧⑨⑫ 绑定解析三态 + 提交分派 + ack
+  }
+
+  /** 命令开放判定（单一目录点 CHANNEL_COMMANDS）：配置缺席=全开放，在场=子集 */
+  private commandEnabled(cfg: ChannelConfig, cmd: string): boolean {
+    return cfg.commands === undefined || cfg.commands.includes(cmd);
+  }
+
+  /** /help 文案（人性化,2026-11-22 用户裁定「提示人性化,不透露底层实现」）：只列开放命令+
+   *  一句提交语义说明——无 steer/绑定/会话等内部术语 */
+  private helpText(cfg: ChannelConfig): string {
+    const lines: string[] = [];
+    for (const c of CHANNEL_COMMANDS) {
+      if (this.commandEnabled(cfg, c.cmd)) lines.push(`${c.cmd} — ${c.desc}`);
+    }
+    lines.push('其余消息直接发送给助手；任务进行中时会自动接续当前进度。');
+    return lines.join('\n');
+  }
+
+  /** /status：一句话报任务状态（人性化——空闲/进行中/未建立，无内部字段） */
+  private async cmdStatus(msg: InboundMessage, key: string): Promise<void> {
+    const sid = this.deps.bindings.get(key)?.sessionId;
+    const rt = sid !== undefined ? this.deps.io.getSession(sid) : undefined;
+    const st = rt?.status();
+    const text =
+      st === 'running'
+        ? '任务进行中，发送消息会自动接续当前进度。'
+        : st === 'idle'
+          ? '当前空闲，可直接发送任务。'
+          : '发送任意消息即可开始。';
+    await this.deps.ack(msg, text);
   }
 
   /** 去重（①）：(channel,msgId) LRU 4096——触达重插刷新序，超限逐出最旧 */

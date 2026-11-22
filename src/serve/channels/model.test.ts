@@ -79,3 +79,20 @@ test('parseChannelsKey: secret 长密钥（2000 上限内）原样收口', () =>
 test('bindingKey: 通道:聊天惯例键', () => {
   assert.equal(bindingKey('feishu-main', 'oc_yyy'), 'feishu-main:oc_yyy');
 });
+
+test('parseChannelsKey: commands 开放命令解析（2026-11-22 用户裁定命令配置化）——子集收口/未知跳过/坏形态整字段忽略/缺席=全开放', () => {
+  // 子集收口（去重保序）
+  const ok = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', commands: ['/stop', '/bogus', '/stop', '/new'], allow: { kind: 'all' } }]);
+  assert.deepEqual(ok.value[0]!.commands, ['/stop', '/new'], '未知命令跳过+去重');
+  assert.equal(ok.warnings.filter((w) => w.includes('/bogus')).length, 1);
+  // 非字符串元素/非数组 → 整字段忽略
+  const bad = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', commands: ['/stop', 42], allow: { kind: 'all' } }]);
+  assert.equal(bad.value[0]!.commands, undefined);
+  assert.equal(bad.warnings.filter((w) => w.includes('commands')).length, 1);
+  // 显式空数组=全不开放（仅自由聊天）
+  const none = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', commands: [], allow: { kind: 'all' } }]);
+  assert.deepEqual(none.value[0]!.commands, []);
+  // 缺席=全开放（键省略）
+  const absent = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', allow: { kind: 'all' } }]);
+  assert.equal(absent.value[0]!.commands, undefined);
+});

@@ -61,6 +61,9 @@ export interface ChannelConfigMsg {
   mode: 'read-only' | 'acceptEdits' | 'full-access';
   model?: string;
   ident?: Record<string, string>;
+  /** 开放的聊天命令（2026-11-22 用户裁定「聊天命令配置化,下拉多选」）：子集出自
+   *  CHANNEL_COMMANDS 目录；缺席=全部开放（镜像 serve/channels/model.ts ChannelConfig.commands） */
+  commands?: string[];
   allow: { kind: 'first-user' | 'list' | 'all'; userIds?: string[]; chatIds?: string[] };
 }
 export interface ChannelHealthRowMsg { id: string; platform: string; enabled: boolean; connected: boolean; detail?: string }

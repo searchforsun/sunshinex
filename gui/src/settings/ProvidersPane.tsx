@@ -434,7 +434,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                   <span className="sx-rc-subtitle">{e.baseUrl}</span>
                   {/* 操作簇(2026-11-17 用户裁定「删除放第一个位置,贴右侧编辑/开关」):删除→编辑→启用开关 */}
                   <span className="sx-rc-head-acts">
-                    <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${e.name}`} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
+                    <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${e.name}`} dataTip={t('Delete', '删除')} disabled={saving} onConfirm={() => runOp({ op: 'remove', name: e.name })} />
                     <button
                       type="button"
                       className="sx-iconbtn"
@@ -492,6 +492,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
                         <ConfirmDeleteButton
                           icon
                           ariaLabel={`${t('Delete model', '删除模型')} ${m.model}`}
+                          dataTip={t('Delete model', '删除模型')}
                           disabled={saving}
                           onConfirm={() => runOp({ op: 'modelRemove', name: e.name, model: m.model })}
                         />

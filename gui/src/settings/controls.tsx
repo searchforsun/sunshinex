@@ -297,3 +297,120 @@ export function SecretInput(props: {
     </div>
   );
 }
+
+/**
+ * MultiSelect 多选下拉（2026-11-22 用户裁定「聊天命令配置——一个下拉多选（每项的命令以及
+ * 说明）」）：Select 同构弹层克隆——trigger 显摘要（全选=「全部」/空=「不开启」/部分=已选名
+ * 逗号连），弹层 checkbox 行（Check 图标勾选标），点击行即翻转勾选（弹层不收，连续多选）；
+ * 外点收/Esc 收；翻转测量与 Select 同款（最近滚动容器上下空间,jsdom 零 rect 不触发）。纯受控。
+ */
+export function MultiSelect(props: {
+  readonly values: readonly string[];
+  readonly options: readonly SelectOption[];
+  readonly ariaLabel: string;
+  readonly allLabel: { en: string; zh: string };
+  readonly noneLabel: { en: string; zh: string };
+  readonly onChange: (next: string[]) => void;
+}): JSX.Element {
+  const { values, options, ariaLabel, allLabel, noneLabel, onChange } = props;
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const popRef = useRef<HTMLUListElement | null>(null);
+  const [dropUp, setDropUp] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent): void => {
+      if (wrapRef.current !== null && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  /** 翻转测量（Select 同款:最近滚动容器上下空间,开瞬间判定不随滚动抖动） */
+  useEffect(() => {
+    if (!open) return;
+    setDropUp(false);
+    const raf = requestAnimationFrame(() => {
+      const wrap = wrapRef.current;
+      const pop = popRef.current;
+      if (wrap === null || pop === null) return;
+      let scroller: HTMLElement | null = null;
+      let el: HTMLElement | null = wrap.parentElement;
+      while (el !== null && el !== document.body) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll') { scroller = el; break; }
+        el = el.parentElement;
+      }
+      const wrapRect = wrap.getBoundingClientRect();
+      const estH = Math.min(pop.scrollHeight, 264) + 16;
+      let spaceBelow: number;
+      let spaceAbove: number;
+      if (scroller !== null) {
+        const cRect = scroller.getBoundingClientRect();
+        spaceBelow = cRect.bottom - wrapRect.bottom;
+        spaceAbove = wrapRect.top - cRect.top;
+      } else {
+        spaceBelow = window.innerHeight - wrapRect.bottom;
+        spaceAbove = wrapRect.top;
+      }
+      setDropUp(spaceBelow < estH && spaceAbove > spaceBelow);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
+
+  const toggle = (v: string): void => {
+    onChange(values.includes(v) ? values.filter((x) => x !== v) : [...values, v]);
+  };
+  /** trigger 摘要:全选=「全部」/空=「不开启」/部分=已选项名逗号连 */
+  const summary =
+    values.length === options.length
+      ? t(allLabel.en, allLabel.zh)
+      : values.length === 0
+        ? t(noneLabel.en, noneLabel.zh)
+        : options
+            .filter((o) => values.includes(o.v))
+            .map((o) => o.l)
+            .join('、');
+  const listId = useId();
+  return (
+    <div className="sx-dd" ref={wrapRef}>
+      <button
+        type="button"
+        className="sx-dd-trigger"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="sx-dd-value">{summary}</span>
+        <span className={`sx-dd-chevron${open ? ' up' : ''}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <ul ref={popRef} className={`sx-dd-pop${dropUp ? ' sx-dd-pop-up' : ''}`} role="listbox" aria-multiselectable="true" id={listId} aria-label={ariaLabel}>
+          {options.map((o) => {
+            const on = values.includes(o.v);
+            return (
+              <li key={o.v}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  className={`sx-dd-opt${on ? ' selected' : ''}`}
+                  title={o.l} /* 命令+说明双段:原生 title 折行展示说明(data-tip 单例气泡不折行) */
+                  onClick={() => toggle(o.v)}
+                >
+                  <span className={`sx-dd-multi-box${on ? ' on' : ''}`} aria-hidden="true">
+                    {on && <span className="sx-dd-multi-check">✓</span>}
+                  </span>
+                  <span className="sx-dd-opt-label">{o.l}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
