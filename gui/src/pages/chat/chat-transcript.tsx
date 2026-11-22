@@ -122,6 +122,7 @@ export const ChatTranscript = memo(function ChatTranscript(props: Omit<MessageLi
     && a.liveTokens === b.liveTokens
     && a.sideChat === b.sideChat
     && a.sunxName === b.sunxName
+    && a.channelChat === b.channelChat
     && a.initialRenderWindow === b.initialRenderWindow
     && a.restoreAnchor === b.restoreAnchor
     && a.heightScope === b.heightScope,

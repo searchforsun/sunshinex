@@ -252,18 +252,21 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
 
   /** 归档区簇(开合/聚合行/装载)收口 use-menu-sections(D62 批J) */
   const { archiveOpen, setArchiveOpen, archivedRows, loadArchived, openArchivedWithReload, exitArchiveView } = useMenuArchive(conn);
-  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx 不能和归档会话混为一谈」):SUNX 组头入口=
-   *  'sunx' 专域(标题「归档 Sunx」+行只显 sunx);项目组头入口='session'(原通用层,sunx 行滤除) */
-  const [archiveScope, setArchiveScope] = useState<'session' | 'sunx'>('session');
+  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx 不能和归档会话混为一谈」;2026-11-22 用户裁定
+   *  「通道归档和 sunx 一样单独归档,不和普通会话一起」):SUNX 组头入口='sunx' 专域(标题「归档
+   *  Sunx」+行只显 sunx);通道组头入口='channel' 专域(「归档通道」+行只显 channel);项目组头
+   *  入口='session'(原通用层,sunx/channel 行滤除) */
+  const [archiveScope, setArchiveScope] = useState<'session' | 'sunx' | 'channel'>('session');
   /** SUNX 组行集(域枚举拉取收口 use-menu-sunx,D62 批J) */
   /** SUNX 组即时重拉触发(2026-11-16 用户实测「创建后没有立刻显示到 SUNX 下」):新建成功链
    *  setSunxReload——workspaces 未变(rows 保引用)时既有驱动点全不触发,nonce 即时缝兜底 */
   const [sunxReload, setSunxReload] = useState(0);
   const sunxRows = useMenuSunx(conn, rows, sunxReload);
   /** 「通道」组行集(channels Task 13,spec §9.1;域枚举拉取收口 use-menu-channels):空容器=组整块不渲染(组内自守卫);
-   *  recentVersion 作重拉 nonce(2026-11-22 根修:通道会话 IM 侧外来创建,rows 引用不动它——run 起跑
-   *  bump 即时重拉,内置 30s tick 兜底) */
-  const channelRows = useMenuChannels(conn, rows, recentVersion);
+   *  recentVersion+channelReload 作重拉 nonce(2026-11-22 根修:通道会话 IM 侧外来创建,rows 引用不动它——run 起跑
+   *  bump/归档动作链 bump 即时重拉,内置 30s tick 兜底) */
+  const [channelReload, setChannelReload] = useState(0);
+  const channelRows = useMenuChannels(conn, rows, recentVersion + channelReload);
   // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
   // RO 盯滚动容器(拖栏宽度变化即重测)。2026-11-16 流畅轮:补数据依赖(原无 deps=每次渲染全量
   // DOM 扫描+重建 RO,App 壳高频态即触发);数据引用不变时零扫描,宽变仍由 RO 兜底。
@@ -284,7 +287,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     const ro = new ResizeObserver(markSideCut);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [markSideCut, rows, openSessions, recents, sunxRows, archivedRows, pins, openSlugs, showAllBySlug, recentLimit, projectsOpen, archiveOpen, searchOpen]);
+  }, [markSideCut, rows, openSessions, recents, sunxRows, channelRows, archivedRows, pins, openSlugs, showAllBySlug, recentLimit, projectsOpen, archiveOpen, searchOpen]);
 
 
 
@@ -509,6 +512,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         loadWorkspaces();
         loadArchived();
         reloadOpenGroups();
+        setChannelReload((v) => v + 1); // 通道组行即时归位/出列(域枚举 nonce 即时缝,2026-11-22 项目式布局)
+        setSunxReload((v) => v + 1); // sunx 组行对称即时缝(归档 Sunx 专域行集同源 /sunx/sessions)
       }, (err: unknown) => setActionError(errText(err)));
     },
     [conn, loadWorkspaces, loadArchived, reloadOpenGroups],
@@ -520,6 +525,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         loadArchived();
         loadWorkspaces(); // 撤销即回主列表:组计数/Recents 即时归位
         reloadOpenGroups(); // 已开组会话行即时回行(与 archiveRow 对称)
+        setChannelReload((v) => v + 1); // 「归档通道」行集即时出列(域枚举 nonce)
+        setSunxReload((v) => v + 1); // 「归档 Sunx」行集对称即时出列
       }, (err: unknown) => setActionError(errText(err)));
     },
     [conn, loadArchived, loadWorkspaces, reloadOpenGroups],
@@ -535,11 +542,33 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         loadArchived();
         loadWorkspaces();
         persistPins(pins.filter((p) => p.id !== id)); // 真删防悬挂钉(钉档随会话档清除)
+        setChannelReload((v) => v + 1); // 「归档通道」行集即时出列(域枚举 nonce)
+        setSunxReload((v) => v + 1); // 「归档 Sunx」行集对称即时出列
       }, (err: unknown) => setActionError(errText(err)));
     },
     [conn, loadArchived, loadWorkspaces, persistPins, pins],
   );
   const archivedIds = useMemo(() => new Set((archivedRows ?? []).map((r) => r.id)), [archivedRows]);
+  /** 归档层行集按 scope 取源(2026-11-22 用户裁定「通道归档和 sunx 一样单独归档域」):sunx←
+   *  /sunx/sessions、channel←/channels/sessions(各专域枚举随列归档行,daemon.archive.test 钉死
+   *  /sessions/archived 恒 projects 区);行形对齐 ArchivedRow(archivedAt 缺席以 updatedAt 代——
+   *  呈现层只用 updatedAt;rootLabel=来源展示名,通道=应用名,免 domainSlug 长名) */
+  const archiveRows = useMemo(() => {
+    if (archiveScope === 'sunx') {
+      return (sunxRows ?? []).filter((r) => r.archived === true).map((r) => ({
+        id: r.id, slug: '', root: r.root ?? '', ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.updatedAt,
+        kind: 'sunx' as const, ...(r.liveSessionId !== undefined ? { liveSessionId: r.liveSessionId } : {}), ...(r.awaiting === true ? { awaiting: true as const } : {}),
+      }));
+    }
+    if (archiveScope === 'channel') {
+      return (channelRows ?? []).filter((r) => r.archived === true).map((r) => ({
+        id: r.id, slug: '', root: r.root, ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.updatedAt,
+        rootLabel: r.channelName ?? r.channelLabel, kind: 'channel' as const,
+        ...(r.liveSessionId !== undefined ? { liveSessionId: r.liveSessionId } : {}), ...(r.awaiting === true ? { awaiting: true as const } : {}),
+      }));
+    }
+    return archivedRows; // projects 区原样(/sessions/archived 聚合)
+  }, [archiveScope, sunxRows, channelRows, archivedRows]);
   /** journal → daemon 运行标注(置顶组非当前会话的运行/待确认态数据源;最近会话为运行中会话的超集) */
   const liveJournals = useMemo(() => {
     const m = new Map<string, { liveSessionId: string; awaiting: boolean }>();
@@ -768,6 +797,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           isUnseen={isUnseen}
           busy={busy}
           onAttach={attachJournal}
+          onArchiveRow={archiveRow} // 行内归档(2026-11-22 项目式布局裁定:通道会话行=项目会话行同款归档链)
+          onOpenArchive={() => {
+            setArchiveScope('channel'); // 归档通道专域(2026-11-22 用户裁定「和 sunx 一样单独归档」)
+            loadArchived();
+            setArchiveOpen(true);
+          }}
         />
         )}
         <PinnedSection
@@ -821,7 +856,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         {/* 归档层(2026-10-21 用户裁定):整替 Projects 列表体+Recents——无独立分组,组头 X 退出 */}
         {archiveOpen ? (
           <ArchiveSection
-            rows={archivedRows === null ? null : archivedRows.filter((r) => (archiveScope === 'sunx' ? r.kind === 'sunx' : r.kind !== 'sunx'))}
+            rows={archiveRows}
             scope={archiveScope}
             busy={busy}
             onOpenSession={attachJournal}

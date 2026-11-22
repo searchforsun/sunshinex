@@ -68,8 +68,9 @@ interface ProjectsSectionProps {
   readonly onOpenArchived?: () => void;
   /** 2026-10-21 用户裁定:归档层模式——组头改题「归档会话」+X 退出,列表体整替为归档行 */
   readonly archiveMode?: boolean;
-  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」):标题随域——'sunx'=「归档 Sunx」 */
-  readonly archiveScope?: 'session' | 'sunx';
+  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」;2026-11-22 用户裁定「通道归档
+   *  单独成域」):标题随域——'sunx'=「归档 Sunx」,'channel'=「归档通道」 */
+  readonly archiveScope?: 'session' | 'sunx' | 'channel';
   readonly onExitArchive?: () => void;
   /** 置顶(2026-10-21,GUI 专属):已钉 journalId 集(列表滤除)+ 行 hover 状态点位置顶钮。
    *  onPinRow 载荷携 kind 快照(PinEntry 形态字段,菜单分支消费) */
@@ -99,7 +100,7 @@ export const ProjectsSection = memo(function ProjectsSection(props: ProjectsSect
     return (
       <>
         <div className="sx-side-head sx-side-head-row sx-side-head-btn">
-          <span>{archiveScope === 'sunx' ? t('Archive Sunx', '归档 Sunx') : t('Archived sessions', '归档会话')}</span>
+          <span>{archiveScope === 'sunx' ? t('Archive Sunx', '归档 Sunx') : archiveScope === 'channel' ? t('Archive channels', '归档通道') : t('Archived sessions', '归档会话')}</span>
           <span className="sx-side-head-actions">
             <button type="button" className="sx-iconbtn sx-archive-exit" data-tip={t('Exit archive', '退出归档')}
               aria-label="exit archive"

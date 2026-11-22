@@ -418,12 +418,26 @@ env 块，不在此页显示」）。`ChannelConfig` 增 `name?: string`（应�
 
 - **数据源**：`GET /channels/sessions` → `SessionRow[]`——扫 `channelsContainerDir()` 各域
   `<domainSlug>/data` 逐域 listSessions 归并（`GET /sunx/sessions` 同构）；行带 root（域目录）。
-- **侧栏组**：ProjectMenu 新「通道」组（`ChannelsSection` + `use-menu-channels`，SunxSection 先例）；
-  行展示 = 平台图标（飞书/钉钉/企微/Telegram）+ 聊天标识（domainSlug 反解/通道名）+ 会话标题。
+- **侧栏组（2026-11-22 用户裁定「整体布局对齐项目——一个应用通道相当于一个项目，下面展开才
+  显示某个会话，同样支持归档等能力，复用已有的布局，不要自己造」：ProjectsSection 同构克隆）**：
+  ProjectMenu「通道」组（`ChannelsSection`）= 分区头（可折叠+组数 chip+**归档通道箱钮**）+
+  **通道组行**（workspace-row 族：平台图标占目录位+应用名称（配置 `name` 回退通道 id）+会话计数
+  chip，点击展开/收起——缺省全展开）+ 组内会话行=**标准 SessionRowView**（右对齐相对时间/运行·
+  待问·未读圆点/悬浮信息卡/行内归档两段确认，与项目会话行同件零自造）。
   **刷新驱动（2026-11-22 用户实测「发了消息侧栏没有通道组」根修）**：通道会话由 IM 侧外来创建，
   宿主 rows 引用（listShallowEqual 保引用）不动它——hook 除 recentVersion nonce（run 起跑 bump
   即时重拉）外**内置 30s tick 自驱重拉**，新会话落盘后至迟半分钟现身。
 - **点击**：`attach(root, journalId)` 直寻址重开（rows 带 root；sunxAttach 同语义）。
+- **归档（2026-11-22 用户裁定「通道归档和 sunx 一样单独归档域，不和普通会话一起」）**：行内
+  归档走宿主既有 archive 链（daemon journalId 兜底**三扫** projects/sunx/channels 容器，通道
+  会话冷档可达=死态根修）；归档层行集**按 scope 取各专域枚举**（`/sessions/archived` 恒
+  projects 区——daemon.archive.test 钉死的契约「域容器枚举=Task 3」；sunx←/sunx/sessions、
+  channels←/channels/sessions，两者归档行随列携 `archived:true`+kind 钉死）。GUI archiveScope
+  增 `'channel'` 专域——通道组头归档箱钮 →「归档通道」层（来源列=应用名 rootLabel），
+  「归档会话」层恒 projects 区，sunx/channel 行互不混入。
+- **空态（2026-11-22 用户裁定「/new 会话提示显示成普通系统提示，不是欢迎页图标」）**：IM 侧
+  /new 后 GUI 打开的空通道会话不展示 hero——`useIsChannelJournal`（journalId 命中绑定档）判定
+  后 MessageList 空态走一行系统提示（Info 灰「新会话——IM 聊天消息会显示在这里」）。
 
 ### 9.2 用户能否在 GUI 内正常发消息——能（说明）
 

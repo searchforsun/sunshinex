@@ -7,7 +7,7 @@ import { validSessionId } from './session-id';
 import type { SessionHandlerIo } from './session-handlers';
 import { urlOf } from './daemon-wire';
 import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../tui/session-journal';
-import { projectsRoot, resolveDataDir, sunxContainerDir, sunxDomainDir } from '../config/data-dir';
+import { projectsRoot, resolveDataDir, sunxContainerDir, sunxDomainDir, channelsContainerDir } from '../config/data-dir';
 
 /**
  * 会话列表面 + 归档族（D42 端点族拆分自 session-handlers.ts，行搬运零逻辑变化）：
@@ -226,6 +226,25 @@ export function findSunxJournalOwner(jid: string): string | undefined {
   return undefined;
 }
 
+/** journalId → 通道域 dataDir（2026-11-22 侧栏通道行归档可达性）：扫 channels 容器各域
+ *  （`<容器>/<域>/data`）——与 findSunxJournalOwner 同构。通道会话归档/撤销/删除按 journalId
+ *  磁盘寻址必须可达：IM 会话冷档（daemon 重启后不在座）时 GUI 归档链（archive→delete）的
+ *  journalId 兜底若只扫 projects+sunx 两区恒 404=死态。物理三容器独立零歧义，串联兜底同序 */
+export function findChannelsJournalOwner(jid: string): string | undefined {
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(channelsContainerDir(), { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const dataDir = path.join(channelsContainerDir(), ent.name, 'data');
+    if (fs.existsSync(path.join(sessionsDir(dataDir), `${jid}.jsonl`))) return dataDir;
+  }
+  return undefined;
+}
+
 /** POST /session/:id/archive {archived?}(2026-10-21 归档):双寻址——:id 命中 daemon 会话表走运行时
  *  路径(缺 journal 404),否则视作 journalId 走磁盘路径。运行中照常归档(2026-11-07 用户裁定:归档=
  *  切换显示位置,不停运行;删除仍要求先归档,其运行门禁在 delete 侧) */
@@ -241,13 +260,15 @@ export function handleSessionArchive(io: SessionHandlerIo, res: http.ServerRespo
     dataDir = session.dataDir; // 域绑定寻址（P3 Task 2）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   } else {
     if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
-    // journalId 兜底双扫（终审 Fix 4）：projects 区缺席再扫 sunx 容器（归档 sunx 重启后不在座=
-    // 两列表只剩 /sunx/sessions archived 行,unarchive/delete 按 journalId 必须可达=死态根修）
+    // journalId 兜底三扫（终审 Fix 4 + 2026-11-22 通道归档可达性）：projects 区缺席再扫 sunx、
+    // channels 两容器（归档 sunx/通道会话重启后不在座=两列表只剩归档行,unarchive/delete 按
+    // journalId 必须可达=死态根修）
     const owner = findJournalOwner(projectsRoot(), id);
     const sunxDataDir = owner === undefined ? findSunxJournalOwner(id) : undefined;
-    if (owner === undefined && sunxDataDir === undefined) return io.send(res, 404, { error: 'unknown session' });
+    const chanDataDir = owner === undefined && sunxDataDir === undefined ? findChannelsJournalOwner(id) : undefined;
+    if (owner === undefined && sunxDataDir === undefined && chanDataDir === undefined) return io.send(res, 404, { error: 'unknown session' });
     jid = id;
-    dataDir = owner !== undefined ? owner.dataDir : sunxDataDir!;
+    dataDir = owner !== undefined ? owner.dataDir : sunxDataDir !== undefined ? sunxDataDir : chanDataDir!;
   }
   markSessionArchived(dataDir, jid, archived);
   io.send(res, 200, { ok: true, archived });
@@ -288,6 +309,9 @@ export function handleSessionsArchived(io: SessionHandlerIo, res: http.ServerRes
       });
     }
   }
+  // 域容器（sunx/channels）不进本聚合（daemon.archive.test 钉死的契约：「域容器枚举=Task 3」
+  // ——sunx 走 /sunx/sessions、channels 走 /channels/sessions,各自归档行随列携 kind/archived
+  // 标,GUI 归档层按 scope 取对应专域枚举;本聚合恒 projects 区）。
   out.sort((a, b) => b.archivedAt - a.archivedAt);
   io.send(res, 200, out);
 }

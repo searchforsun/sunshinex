@@ -490,7 +490,7 @@ export { handleAppPinsGet, handleAppPinsPut, handleAppSeenGet, handleAppSeenPut,
 /** 会话列表面+归档族:D42 端点族拆分至 sessions-list-handlers.ts(行搬运零变化)——
  *  原路径再导出,daemon 路由与 daemon.gui-state.test 消费零迁移;
  *  sunx 域枚举面（2026-11-15 sunx P3 Task 3 GET /sunx/sessions）同族随拆挂载 */
-export { handleSessionsRecent, handleSessions, handleSunxSessions, liveSessionByJournal, findJournalOwner, findSunxJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
+export { handleSessionsRecent, handleSessions, handleSunxSessions, liveSessionByJournal, findJournalOwner, findSunxJournalOwner, findChannelsJournalOwner, handleSessionArchive, handleSessionsArchived } from './sessions-list-handlers';
 export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });

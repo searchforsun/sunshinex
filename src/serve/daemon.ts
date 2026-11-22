@@ -32,7 +32,7 @@ import { userConfigDir } from '../config/env';
 import { fetchWebMeta } from './web-meta';
 import * as configHandlers from './config-handlers';
 import type { ConfigHandlerIo } from './config-handlers';
-import { findJournalOwner, findSunxJournalOwner, validSessionId } from './session-handlers';
+import { findJournalOwner, findSunxJournalOwner, findChannelsJournalOwner, validSessionId } from './session-handlers';
 import * as sessionHandlers from './session-handlers';
 import * as editorsHandlers from './editors-handlers';
 import type { SessionHandlerIo } from './session-handlers';
@@ -1402,15 +1402,17 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
         return;
       }
       const owner = findJournalOwner(projectsRoot(), id);
-      // journalId 兜底双扫（终审 Fix 4）：projects 区缺席再扫 sunx 容器（归档 sunx 重启后删除
-      // 入口按 journalId 寻址必须可达=死态根修；与 handleSessionArchive 兜底同款）
+      // journalId 兜底三扫（终审 Fix 4 + 2026-11-22 通道归档可达性）：projects 区缺席再扫 sunx、
+      // channels 两容器（归档 sunx/通道会话重启后删除入口按 journalId 寻址必须可达=死态根修；
+      // 与 handleSessionArchive 兜底同款）
       const sunxDataDir = owner === undefined ? findSunxJournalOwner(id) : undefined;
-      if (owner === undefined && sunxDataDir === undefined) {
+      const chanDataDir = owner === undefined && sunxDataDir === undefined ? findChannelsJournalOwner(id) : undefined;
+      if (owner === undefined && sunxDataDir === undefined && chanDataDir === undefined) {
         this.send(res, 404, { error: 'unknown session' });
         return;
       }
       jid = id;
-      dataDir = owner !== undefined ? owner.dataDir : sunxDataDir!;
+      dataDir = owner !== undefined ? owner.dataDir : sunxDataDir !== undefined ? sunxDataDir : chanDataDir!;
     }
     // 归档门禁(2026-10-21):未归档拒删——「下架但留档」职责已由归档态接管,删除即真清
     if (readSessionMeta(dataDir, jid).archived !== true) {

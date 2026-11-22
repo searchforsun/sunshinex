@@ -18,6 +18,8 @@ export interface ArchivedRow {
   archivedAt: number;
   /** 会话形态(sunx P2 Task 7,daemon /sessions/archived meta 读面):'sunx'=编排会话(行徽标) */
   kind?: string;
+  /** 来源展示名(2026-11-22 通道归档专域):通道行=应用名(免 domainSlug 长名);缺席=pathBasename(root) */
+  rootLabel?: string;
   /** daemon 运行标注(运行中可归档,2026-11-07):仅 running 运行时才带 */
   liveSessionId?: string;
   awaiting?: boolean;
@@ -25,8 +27,9 @@ export interface ArchivedRow {
 
 interface ArchiveSectionProps {
   readonly rows: ArchivedRow[] | null;
-  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」):空态文案随域;缺省 'session' */
-  readonly scope?: 'session' | 'sunx';
+  /** 归档层作用域(2026-11-16 用户裁定「归档 Sunx ≠ 归档会话」;2026-11-22 用户裁定「通道归档
+   *  单独成域」):标题/空态文案随域——'sunx'=「归档 Sunx」,'channel'=「归档通道」;缺省 'session' */
+  readonly scope?: 'session' | 'sunx' | 'channel';
   readonly busy: boolean;
   readonly onOpenSession: (root: string, journalId: string, updatedAt?: number) => void;
   /** 撤销归档(宿主落库+重拉归档行/组计数/展开组) */
@@ -55,7 +58,7 @@ export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSection
     <ul className="recent-list sx-archive-list" aria-label="archived sessions">
       {rows === null && <li className="no-sessions">{t('Loading…', '加载中…')}</li>}
       {rows !== null && rows.length === 0 && (
-    <li className="no-sessions">{scope === 'sunx' ? t('No archived Sunx', '暂无归档 Sunx') : t('No archived sessions', '暂无归档会话')}</li>
+    <li className="no-sessions">{scope === 'sunx' ? t('No archived Sunx', '暂无归档 Sunx') : scope === 'channel' ? t('No archived channels', '暂无归档通道') : t('No archived sessions', '暂无归档会话')}</li>
   )}
       {visible.map((r) => {
         const active = activeSessionId !== '' && (r.liveSessionId === activeSessionId || journalOfSession?.get(activeSessionId) === r.id);
@@ -84,7 +87,7 @@ export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSection
             </span>
             <span className="sx-archive-slug-row">
               <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span className="sx-archive-slug">{pathBasename(r.root)}</span>
+              <span className="sx-archive-slug">{r.rootLabel ?? pathBasename(r.root)}</span>
               {/* 动作钮常驻第二行右缘(2026-10-21 用户裁定:非 hover 显隐) */}
               <span className="session-row-actions">
                 {confirmId === r.id ? (

@@ -169,6 +169,9 @@ export interface SessionRow {
   channel?: string;
   /** 定时任务执行会话(2026-11-21,meta 读面):侧栏会话行相对时间左侧挂定时任务钟面图标 */
   scheduled?: boolean;
+  /** 归档标(2026-11-22 通道归档专域):域枚举面(/sunx/sessions、/channels/sessions)归档行随列
+   *  (Fix 4 可达性同款)——GUI 归档层按 scope 取源时滤行;缺席=未归档 */
+  archived?: true;
   createdAt?: string;
   runs?: number;
   steps?: number;

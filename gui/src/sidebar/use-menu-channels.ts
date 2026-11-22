@@ -17,12 +17,14 @@ interface MenuChannelsConn {
   settingsChannels?(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
 }
 
-/** 侧栏「通道」组行形(channels Task 13,spec §9.1):SessionRow 携 root 直寻址行,再富化两列
+/** 侧栏「通道」组行形(channels Task 13,spec §9.1):SessionRow 携 root 直寻址行,再富化三列
  *  ——platform=平台图标反查结果(配置读面失败/通道标缺席=undefined,行退中性图标);
- *  channelLabel=聊天标识(通道配置 id 优先,域目录 basename 兜底) */
+ *  channelLabel=聊天标识(通道配置 id 优先,域目录 basename 兜底);channelName=应用名称
+ *  (2026-11-22 用户裁定「一个应用通道相当于一个项目」:组头展示名=配置 name 优先回退 id) */
 export interface ChannelSessionRow extends SessionRow {
   root: string;
   channelLabel: string;
+  channelName?: string;
   platform?: ChannelConfigMsg['platform'];
 }
 
@@ -80,6 +82,7 @@ export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | n
             ...x,
             root: x.root ?? '',
             platform: x.channel !== undefined ? byId.get(x.channel)?.platform : undefined,
+            channelName: x.channel !== undefined ? byId.get(x.channel)?.name : undefined,
             channelLabel: x.channel !== undefined && x.channel !== '' ? x.channel : pathBasename(x.root ?? ''),
           }));
           setChannelRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
