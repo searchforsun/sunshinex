@@ -55,7 +55,7 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
   it('renders intro, empty state and the + New channel button', async () => {
     const { conn, channelsView } = makeConn([]);
     render(<ChannelsPane conn={conn} />);
-    expect(screen.getByText(bi('Connect Feishu / DingTalk / WeCom / Telegram chats to sunshine sessions.', '把飞书/钉钉/企业微信/Telegram 的聊天接入 sunshine 会话。'))).toBeDefined();
+    expect(screen.getByText(bi('Connect third-party apps (e.g. Feishu, WeCom) to Sunshinex.', '把三方应用（如飞书，企业微信）接入 Sunshinex。'))).toBeDefined();
     expect(await screen.findByText(bi('No channels yet.', '暂无通道。'))).toBeDefined();
     expect(screen.getByRole('button', { name: bi('+ New channel', '+ 新增通道') })).toBeDefined();
     expect(channelsView).toHaveBeenCalled();
@@ -68,7 +68,9 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     const { conn, putChannels, testChannel } = makeConn([]);
     render(<ChannelsPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: bi('+ New channel', '+ 新增通道') }));
-    fireEvent.click(await screen.findByRole('button', { name: bi('Platform', '平台') }));
+    // 平台缺省飞书(2026-11-22 裁定):触发钮初始即显飞书,无需手选
+    expect(screen.getByRole('button', { name: bi('Platform', '平台') }).textContent).toMatch(/Feishu|飞书/);
+    fireEvent.click(screen.getByRole('button', { name: bi('Platform', '平台') }));
     fireEvent.click(await screen.findByRole('option', { name: /Telegram/ }));
     fireEvent.change(screen.getByLabelText(bi('App name', '应用名称')), { target: { value: '我的TG' } });
     fireEvent.change(screen.getByLabelText(bi('Bot Token', 'Bot Token')), { target: { value: 'tok-secret' } });
@@ -155,7 +157,9 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     const { conn } = makeConn([]);
     render(<ChannelsPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: bi('+ New channel', '+ 新增通道') }));
-    fireEvent.click(await screen.findByRole('button', { name: bi('Platform', '平台') }));
+    // 平台缺省飞书(2026-11-22 裁定):触发钮初始即显飞书,无需手选
+    expect(screen.getByRole('button', { name: bi('Platform', '平台') }).textContent).toMatch(/Feishu|飞书/);
+    fireEvent.click(screen.getByRole('button', { name: bi('Platform', '平台') }));
     fireEvent.click(await screen.findByRole('option', { name: /Telegram/ }));
     fireEvent.click(screen.getByRole('button', { name: bi('Access mode', '权限模式') }));
     fireEvent.click(await screen.findByRole('option', { name: bi('Full access', '完全访问') }));

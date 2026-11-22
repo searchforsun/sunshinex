@@ -2547,6 +2547,12 @@ input.sx-setting-input { width: 100%; }
   box-shadow: var(--elev-prominent);
   max-height: 264px; overflow-y: auto;
 }
+/* 下拉翻转(2026-11-22 用户裁定「下拉显示不全就翻转显示到上面」):Select 弹层测得下方空间
+   不足时加 .sx-dd-pop-up——锚定触发钮顶缘向上弹,不再被弹窗/视口底缘截断 */
+.sx-dd-pop.sx-dd-pop-up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
 .sx-dd-opt {
   display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px;
   padding: 6px 10px; border-radius: var(--radius-sm); text-align: left;

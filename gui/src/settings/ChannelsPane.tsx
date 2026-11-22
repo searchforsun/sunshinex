@@ -218,7 +218,7 @@ interface ChannelForm {
   userIdsText: string;
 }
 
-const EMPTY_FORM: ChannelForm = { platform: '', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', allowKind: 'first-user', userIdsText: '' };
+const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定)
 
 /** 弹窗开合态:add=新增(平台待选);edit=编辑(锁定 original id) */
 interface ChannelModal {
@@ -444,7 +444,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       {/* 添加通道工具栏(稳定搜索锚 channels.add) */}
       {/* 一句简介(本页主要作用;2026-11-22 文案精简裁定——仅此一句,无内部术语) */}
       <p className="sx-provider-hint">
-        {t('Connect Feishu / DingTalk / WeCom / Telegram chats to sunshine sessions.', '把飞书/钉钉/企业微信/Telegram 的聊天接入 sunshine 会话。')}
+        {t('Connect third-party apps (e.g. Feishu, WeCom) to Sunshinex.', '把三方应用（如飞书，企业微信）接入 Sunshinex。')}
       </p>
       <div className="sx-res-toolbar" data-setting-key="channels.add">
         <button type="button" className="sx-add-button" onClick={() => openModal(null)}>
@@ -532,7 +532,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
               />
             )}
           </ModalField>
-          <ModalField label={t('App name', '应用名称')} hint={t('Leave empty to use the platform name', '留空缺省平台名')}>
+          <ModalField label={t('App name', '应用名称')}>
             <input
               className="sx-setting-input"
               aria-label={t('App name', '应用名称')}
@@ -546,7 +546,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
           {/* 凭证区(按平台;密钥内联回显——2026-11-22 裁定;SecretInput 眼睛显隐切换) */}
           {form.platform === 'feishu' && (
             <>
-              <ModalField label={t('App ID', 'App ID')} hint={t('Feishu open platform — credentials page', '飞书开放平台 — 凭证与基础信息')}>
+              <ModalField label={t('App ID', 'App ID')}>
                 <input
                   className="sx-setting-input"
                   aria-label={t('App ID', 'App ID')}
@@ -571,14 +571,14 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
               />
             </ModalField>
           )}
-          <ModalField label={t('Workspace', '工作区')} hint={t('Empty = chat-only workspace (auto)', '留空 = 聊天专属工作区(自动)')}>
+          <ModalField label={t('Workspace', '工作区')}>
             <div className="sx-setting-path">
               <input
                 type="text"
                 className="sx-setting-input"
                 aria-label={t('Workspace', '工作区')}
                 value={form.rootText}
-                placeholder={t('Empty = chat-only workspace (auto)', '留空 = 聊天专属工作区(自动)')}
+                placeholder={t('Default workspace', '默认工作区')}
                 onChange={(e) => setForm({ ...form, rootText: e.target.value })}
                 spellCheck={false}
               />
