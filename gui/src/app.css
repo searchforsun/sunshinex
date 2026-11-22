@@ -4791,7 +4791,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-storage-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--fg); font-size: calc(14px * var(--fz)); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter); flex: none; }
 .sx-storage-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-storage-btn:disabled { opacity: 0.5; cursor: default; }
-.sx-storage-btn.danger { background: var(--err-solid); border-color: var(--err-solid); color: var(--fg-on-solid); }
+/* 实色红底两种主题恒白字白图标——fg-on-solid 在暗色主题是深色值(浅色实底用),此处不适用 */
+.sx-storage-btn.danger { background: var(--err-solid); border-color: var(--err-solid); color: #fff; }
 .sx-storage-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--err-solid) 85%, #000); border-color: var(--err-solid); }
 .sx-card-head .sx-storage-headctl { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 12px; }
 .sx-storage-size { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); flex: none; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
