@@ -220,7 +220,12 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
         },
         (err: unknown) => {
           setBusy(false);
-          setError(errText(err));
+          // 工作目录被删(2026-11-21 用户补充「选择后创建时文件夹不存在,提示文件夹不存在」):
+          // daemon 报 root does not exist:<path> → 友好化(目录可能已被移动或删除)
+          const msg = errText(err);
+          setError(/root does not exist/i.test(msg)
+            ? t('Working directory no longer exists — it may have been moved or deleted. Pick another folder.', '工作目录不存在——它可能已被移动或删除,请重新选择文件夹。')
+            : msg);
         },
       );
   };

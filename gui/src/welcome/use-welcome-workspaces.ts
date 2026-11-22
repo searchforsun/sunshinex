@@ -1,5 +1,6 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import { t } from '../i18n';
+import { pruneRecentDirs, readRecentDirs, rememberDir } from './recent-dirs';
 import { pathBasename, pickWorkspaceFolder } from '../ui-util';
 import type { WelcomeComposerConn } from './welcome-conn';
 
@@ -21,6 +22,34 @@ export function useWelcomeWorkspaces(
 ) {
   const { setPicked, setProjOpen, setHint, setDirOpen } = io;
   const [rows, setRows] = useState<Array<{ slug: string; root?: string; sessionCount: number }>>([]);
+  /** 浏览历史（localStorage,非项目登记——2026-11-21）:未登记目录也留在下拉里可选 */
+  const [recents, setRecents] = useState<string[]>(() => readRecentDirs());
+  /** 打开组件时验证历史目录仍存在（2026-11-21 用户补充「文件夹被删除:打开时验证,不存在剔除」）：
+   *  dirpicker 探测失败=已删 → 剪枝落盘（selected 路径的失效由创建期 daemon 校验兜底提示） */
+  useEffect(() => {
+    const list = readRecentDirs();
+    if (list.length === 0) return;
+    let alive = true;
+    void Promise.all(
+      list.map(async (p2) => ({ p2, ok: await conn.dirpicker(p2).then(() => true, () => false) })),
+    ).then((hits) => {
+      if (!alive) return;
+      const aliveSet = new Set(hits.filter((h) => h.ok).map((h) => h.p2.toLowerCase()));
+      setRecents(pruneRecentDirs((x) => aliveSet.has(x.toLowerCase())));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  /** 下拉行 = 已登记项目 + 历史目录（按 root 去重,项目优先保序;slug 用 root 占位,标签仍走 basename） */
+  const displayRows = (() => {
+    const seen = new Set(rows.map((r) => (r.root ?? r.slug).toLowerCase()));
+    const extra = recents
+      .filter((p2) => !seen.has(p2.toLowerCase()))
+      .map((p2) => ({ slug: p2, root: p2, sessionCount: 0 }));
+    return extra.length === 0 ? rows : [...rows, ...extra];
+  })();
   /** 项目列表回源（挂载 + 创建/登记成功后静默重拉——本地 append 只保即时可见,mtime 排序/会话计数/
    *  侧栏对齐都要以 /workspaces 为准;2026-10-30 创建提速后加载缺口收口） */
   const refreshRows = (): void => {
@@ -109,6 +138,7 @@ export function useWelcomeWorkspaces(
   const adoptPickedPath = (root: string): void => {
     setPicked(root);
     setProjOpen(false);
+    if (root.trim() !== '') setRecents(rememberDir(root)); // 浏览/选中的目录进下拉历史（2026-11-21）
   };
   const browseFolder = async (): Promise<void> => {
     setHint('');
@@ -136,5 +166,5 @@ export function useWelcomeWorkspaces(
     setDirOpen(false);
     adoptPickedPath(p);
   };
-  return { rows, refreshRows, adoptWorkspace: adoptPickedPath, browseFolder, registerFolder };
+  return { rows: displayRows, refreshRows, adoptWorkspace: adoptPickedPath, browseFolder, registerFolder };
 }

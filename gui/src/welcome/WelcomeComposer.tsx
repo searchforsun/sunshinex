@@ -297,7 +297,11 @@ export function WelcomeComposer({
           setError('');
           return;
         }
-        setError(err instanceof Error ? err.message : String(err));
+        // 工作目录被删(2026-11-21 用户补充):daemon 报 root does not exist → 友好化
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(/root does not exist/i.test(msg)
+          ? t('Working directory no longer exists — it may have been moved or deleted. Pick another folder.', '工作目录不存在——它可能已被移动或删除,请重新选择文件夹。')
+          : msg);
       });
     };
     if (switchBranch !== undefined) {
