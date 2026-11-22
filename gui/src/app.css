@@ -1215,12 +1215,14 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   box-shadow: none;
   border-radius: var(--radius-md);
   margin: 0;
-}.welcome-dock .choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }.proj-pop {
+}.welcome-dock .choose-project-bar:hover { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: var(--radius-md); }/* 2026-11-21 用户裁定「欢迎页也复用这个」:高度收敛改与弹窗同构——pop 自身不限高,滚动收敛到
+   工作区行列表(.proj-rows-scroll 138px=4 行,筛选行/浏览行固定);max-height:280px+整体滚动退役 */
+.proj-pop {
   position: absolute; bottom: calc(100% + 6px); left: 16px; width: min(440px, calc(100% - 32px)); z-index: 30; /* 右缘 16px 让位:100% 满宽+left16 恒右溢 dock 16px,窄端右缘边框被窗沿剪掉 */
-  max-height: 280px; overflow-y: auto;
   background: var(--surface-elevated); border-radius: var(--radius-lg);
   box-shadow: var(--elev-prominent); padding: 4px;
-}.proj-browse { display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); border-top: 1px solid var(--border-subtle); border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding-top: 6px; margin-top: 4px; }
+}
+.proj-rows-scroll { max-height: 138px; overflow-y: auto; }.proj-browse { display: flex; align-items: center; gap: 8px; color: var(--fg-secondary); border-top: 1px solid var(--border-subtle); border-radius: 0 0 var(--radius-sm) var(--radius-sm); padding-top: 6px; margin-top: 4px; }
 /* (G12:welcome-input-card/foot 退役——输入卡样式单源在 .sx-composer 段) */
 
 /* ===== G10 欢迎页项目弹层(basename 条目/系统对话框提示) ===== */.proj-hint { padding: 6px 10px; font-size: calc(14px * var(--fz)); color: var(--warn); border-top: 1px solid var(--border-subtle); margin-top: 4px; }
