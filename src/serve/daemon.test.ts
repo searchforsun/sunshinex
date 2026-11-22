@@ -2823,41 +2823,48 @@ describe('通道 HTTP 面(Task 9)', () => {
     });
   });
 
-  test('④b PUT /channels/:id/secret:env 块键值写入/覆写/空串删除,旧键零触碰,注释档 409/非串 400,响应零回显', async () => {
+  test('④b PUT /channels/:id/secret:写 channels 条目 secret 字段(覆写/空串清除),GET 回显,env 块与顶层键零触碰,注释档 409/非串 400/缺条目 404,响应零回显 secret', async () => {
     await withSettingsDaemon(async ({ base, home }) => {
       const settingsFile = path.join(home, '.sunshinex', 'settings.json');
-      const readDisk = (): { env: Record<string, unknown>; model?: unknown; version?: unknown } =>
-        JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as { env: Record<string, unknown>; model?: unknown; version?: unknown };
-      // 预置:env 块既有其它键 + env 外顶层键——写入后逐一对账「零触碰」
+      const readDisk = (): { channels?: Array<Record<string, unknown>>; env?: Record<string, unknown>; model?: unknown; version?: unknown } =>
+        JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as { channels?: Array<Record<string, unknown>>; env?: Record<string, unknown>; model?: unknown; version?: unknown };
+      // 预置:channels 条目(enabled:false——telegram 非 mock,避免 daemon 起真适配器外连)+ env 块既有键
+      // + env 外顶层键——写入后逐一对账「零触碰」
+      const entry = { id: 'tg-1', platform: 'telegram', enabled: false, root: 'D:/w', mode: 'read-only', allow: { kind: 'first-user' } };
       fs.writeFileSync(
         settingsFile,
-        JSON.stringify({ version: 1, env: { SUNSHINEX_CHANNEL_SECRET_KEEP: 'keep-v', OTHER_KEY: 'v0' }, model: 'x/y' }, null, 2),
+        JSON.stringify({ version: 1, env: { OTHER_KEY: 'v0' }, model: 'x/y', channels: [entry] }, null, 2),
         'utf8',
       );
       // 写入:200 回执恰 {ok:true}——secret 值零回显
       const put = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-abc' }) });
       assert.equal(put.status, 200, '合法写入应 200');
       assert.deepEqual(await put.json(), { ok: true }, '响应恰 {ok:true},secret 零回显');
-      const onDisk = readDisk();
-      assert.equal(onDisk.env['SUNSHINEX_CHANNEL_SECRET_TG_1'], 'tok-abc', 'env 块新键落盘(channelSecretEnv 派生:非字母数字段折叠 _)');
-      assert.equal(onDisk.env['SUNSHINEX_CHANNEL_SECRET_KEEP'], 'keep-v', 'env 既有键零触碰');
-      assert.equal(onDisk.env['OTHER_KEY'], 'v0', 'env 既有键零触碰');
+      let onDisk = readDisk();
+      const row = onDisk.channels![0]!;
+      assert.equal(row['secret'], 'tok-abc', '条目 secret 字段落盘(2026-11-22 用户裁定:密钥内联可回显)');
+      assert.equal(row['id'], 'tg-1', '条目身份保留');
+      assert.equal(row['platform'], 'telegram', '条目其余字段零触碰');
+      assert.equal(onDisk.env!['OTHER_KEY'], 'v0', 'env 块既有键零触碰(密钥不再写 env)');
       assert.equal(onDisk.model, 'x/y', 'env 外顶层键零触碰');
       assert.equal(onDisk.version, 1, 'version 保留');
-      // 链重载注入生效:env 槽落 process.env(daemon afterWrite=reloadSettingsChain(null);providers setKey 同语义)
-      assert.equal(process.env.SUNSHINEX_CHANNEL_SECRET_TG_1, 'tok-abc', '链重载后 env 槽落 process.env(testChannel 取新值的前提)');
-      // 覆写:同键换值
+      assert.equal('SUNSHINEX_CHANNEL_SECRET_TG_1' in (onDisk.env ?? {}), false, 'env 槽已退役:不落 SUNSHINEX_CHANNEL_SECRET_*');
+      // GET /settings/channels 回显 secret(读面零剥离)
+      const got = (await (await fetch(`${base}/settings/channels`, { headers: AUTH })).json()) as { channels: Array<Record<string, unknown>> };
+      assert.equal(got.channels[0]!['secret'], 'tok-abc', 'GET /settings/channels 回显条目 secret');
+      // 覆写:同条目换值
       const put2 = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-2' }) });
       assert.equal(put2.status, 200);
-      assert.equal(readDisk().env['SUNSHINEX_CHANNEL_SECRET_TG_1'], 'tok-2', '同键覆写');
-      // 空串删除:键摘除,其余键不动;链重载后 process.env 槽同清(自填槽登记语义)
+      assert.equal(readDisk().channels![0]!['secret'], 'tok-2', '同条目覆写');
+      // 空串清除:secret 键摘除,条目其余字段保留;空串重复清除幂等 200
       const del = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: '' }) });
       assert.equal(del.status, 200);
       assert.deepEqual(await del.json(), { ok: true });
       const afterDel = readDisk();
-      assert.equal('SUNSHINEX_CHANNEL_SECRET_TG_1' in afterDel.env, false, '空串=删除该 env 键');
-      assert.equal(afterDel.env['SUNSHINEX_CHANNEL_SECRET_KEEP'], 'keep-v', '删除时其余键零触碰');
-      assert.equal(process.env.SUNSHINEX_CHANNEL_SECRET_TG_1, undefined, '链重载后 process.env 槽同清');
+      assert.equal('secret' in afterDel.channels![0]!, false, '空串=清除条目 secret 字段');
+      assert.equal(afterDel.channels![0]!['id'], 'tg-1', '清除时条目其余字段保留');
+      const del2 = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: '' }) });
+      assert.equal(del2.status, 200, '空串重复清除幂等');
       // 非串 secret → 400(写面从严)
       const bad = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 42 }) });
       assert.equal(bad.status, 400, '非串 secret → 400');
@@ -2866,13 +2873,11 @@ describe('通道 HTTP 面(Task 9)', () => {
       const commented = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-x' }) });
       assert.equal(commented.status, 409, '注释档 409');
       assert.equal(((await commented.json()) as { hint?: string }).hint, 'use raw editor');
-      // 文件缺席 → 新档补 version:1 + env 块补 {} 落键
-      fs.rmSync(settingsFile);
-      const fresh = await fetch(`${base}/channels/mk-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-n' }) });
-      assert.equal(fresh.status, 200);
-      const freshDisk = readDisk();
-      assert.equal(freshDisk.version, 1, '新档补 version:1');
-      assert.equal(freshDisk.env['SUNSHINEX_CHANNEL_SECRET_MK_1'], 'tok-n', '新档 env 块补 {} 后落键');
+      // 缺条目/channels 键缺席 → 404(密钥存条目,无条目无从落)
+      fs.writeFileSync(settingsFile, JSON.stringify({ version: 1, model: 'x/y' }), 'utf8');
+      const missing = await fetch(`${base}/channels/mk-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-n' }) });
+      assert.equal(missing.status, 404, 'channels 键缺席/条目缺失 → 404');
+      assert.equal(((await missing.json()) as { error?: string }).error, 'channel not found: mk-1');
     });
   });
 
