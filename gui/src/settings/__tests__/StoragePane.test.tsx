@@ -99,9 +99,9 @@ describe('StoragePane(存储页)', () => {
     const btn = screen.getByLabelText('clear images-cache');
     expect(btn.textContent).toContain('Clear'); // 统一「图标+清理文字」形态
     fireEvent.click(btn);
-    expect(screen.getByText('Confirm clear?')).toBeDefined();
+    expect(screen.getByText('Confirm clear')).toBeDefined();
     expect(spy.clearCache).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByText('Confirm clear?'));
+    fireEvent.click(screen.getByText('Confirm clear'));
     await waitFor(() => expect(spy.clearCache).toHaveBeenCalledWith(['images-cache']));
   });
 

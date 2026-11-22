@@ -248,7 +248,7 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
                     onClick={() => (c.safe ? clear([c.id]) : clearWithConfirm(c.id))}
                   >
                     <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-                    {confirmId === c.id ? t('Confirm clear?', '确认清理？') : t('Clear', '清理')}
+                    {confirmId === c.id ? t('Confirm clear', '确认清理') : t('Clear', '清理')}
                   </button>
                 </div>
               </div>

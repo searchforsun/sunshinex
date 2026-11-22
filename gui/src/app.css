@@ -4791,7 +4791,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-storage-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--fg); font-size: calc(14px * var(--fz)); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), color var(--dur-basic) var(--ease-enter); flex: none; }
 .sx-storage-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .sx-storage-btn:disabled { opacity: 0.5; cursor: default; }
-.sx-storage-btn.danger { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.sx-storage-btn.danger { background: var(--err-solid); border-color: var(--err-solid); color: var(--fg-on-solid); }
+.sx-storage-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--err-solid) 85%, #000); border-color: var(--err-solid); }
 .sx-card-head .sx-storage-headctl { margin-left: auto; align-self: center; display: inline-flex; align-items: center; gap: 12px; }
 .sx-storage-size { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); flex: none; min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
 /* 存储行:控件组(体积+清理钮)贴右缘对齐——setting-row 定宽控件列在此不适用 */
