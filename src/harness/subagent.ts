@@ -221,6 +221,7 @@ export function normalizeSpawnInput(input: SubagentSpawnInput): SubagentSpawnInp
     agent_id: input.agent_id !== undefined && jsonAbsent(input.agent_id) ? undefined : input.agent_id,
     label: input.label !== undefined && jsonAbsent(input.label) ? undefined : input.label,
     isolation: input.isolation !== undefined && jsonAbsent(input.isolation) ? undefined : input.isolation,
+    resume: input.resume !== undefined && jsonAbsent(input.resume) ? undefined : input.resume,
   };
 }
 
@@ -265,6 +266,10 @@ const TODO_TOOL_NAME = 'todo_write';
  *  并行上限 PARALLEL_TOOLS_LIMIT=16（prompts/shared 单点），本值 8 为同层 fork 上限——每 fork 自身还会
  *  再开完整工具批，半量级收紧防嵌套扇出失控（旧注「与 reactor 并行批上限 8 同量级」把 16 误写为 8，R9 更正） */
 const SUBAGENT_CONCURRENCY_LIMIT = 8;
+
+/** 追加消息保留帽（2026-11-22 用户裁定「spawn 追加消息」）：终态子智能体累计步的保留条目数（label 与
+ *  后台任务 id 双键同映、同数组只读共享）——FIFO 淘汰最旧，防长会话无界增长；条目=键非执行体 */
+const RESUME_HISTORY_CAP = 32;
 
 /** 子智能体预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
  *  只认 SUNSHINEX_SUBAGENT_TOKEN_CAP 显式注入，以 maxSteps/deadline 为护栏） */
@@ -319,6 +324,10 @@ export class SubagentRunner {
   private inFlight = 0;
   /** base label → 在飞计数（同名并发消歧：后到者 #N 后缀，run 结束递减归零删键） */
   private inFlightLabels = new Map<string, number>();
+  /** 终态子智能体累计步保留（追加消息 2026-11-22）：label/后台任务 id → RunResult.steps（含种子行，
+   *  loop 引擎 fork 跨轮接续 state.seedHistory=r.steps 同款）。会话域内存（随 Harness 生命周期）；
+   *  只在终态登记——在飞目标查不到即天然拒绝，无中途穿插面（reactor steer 仅 session 作用域） */
+  private readonly resumeHistory = new Map<string, StepRecord[]>();
 
   /** 活动根提供者引用（deps.rootProvider 缺省 null）：fork 子 Reactor root 经 forkRoot() 单点取活动值 */
   private readonly rootProvider: (() => string | null) | null;
@@ -351,6 +360,33 @@ export class SubagentRunner {
   detachParent(): void {
     this.getBudget = null;
     this.parentSignal = undefined;
+  }
+
+  /** 追加目标三态解析（fail-fast 不静默新建）：在飞 → INVALID_STATE（先 task_wait 等终态）；未知名 →
+   *  INVALID_ARG 带可续跑键清单（前 12 个防长清单击穿观察）；命中 → 累计步。键空间=label ∪ 后台任务 id */
+  private lookupResumable(key: string): Result<StepRecord[]> {
+    if (this.inFlightLabels.has(key) || this.deps.tasks?.get(key)?.status === 'running') {
+      return fail('INVALID_STATE', `"${key}" is still running — wait for it to finish (task_wait) before appending a follow-up task`);
+    }
+    const steps = this.resumeHistory.get(key);
+    if (steps === undefined) {
+      const known = [...this.resumeHistory.keys()];
+      const hint = known.length > 0 ? ` resumable: ${known.slice(0, 12).join(', ')}` : ' nothing has finished in this session yet';
+      return fail('INVALID_ARG', `no finished subagent matched resume="${key}" (use a previous spawn's label or a background task id).${hint}`);
+    }
+    return ok(steps);
+  }
+
+  /** 终态步登记（label + 后台任务 id 双键同映同一数组）：done/failed 皆登（失败史对「修复续跑」同样是上下文）；
+   *  超帽 FIFO 淘汰（Map 插入序=最旧在前；双键同批插入不散龄） */
+  private rememberResume(label: string, taskId: string | undefined, steps: StepRecord[]): void {
+    this.resumeHistory.set(label, steps);
+    if (taskId !== undefined) this.resumeHistory.set(taskId, steps);
+    while (this.resumeHistory.size > RESUME_HISTORY_CAP) {
+      const oldest = this.resumeHistory.keys().next();
+      if (oldest.done === true) break;
+      this.resumeHistory.delete(oldest.value);
+    }
   }
 
   /** fork 子 Reactor 工作目录事实单点：活动根优先（worktree 会话经 rootProvider），缺省回退静态 deps.root */
@@ -415,6 +451,10 @@ export class SubagentRunner {
     if (input.isolation !== undefined && input.isolation !== 'worktree') {
       throw new CodedToolError('INVALID_ARG', `Unknown isolation: ${String(input.isolation)} (only 'worktree')`);
     }
+    // resume 类型守卫（数字/对象等非字符串字面会绕过 jsonAbsent 归一，直落 runSubagent .trim() 即 TypeError）
+    if (input.resume !== undefined && typeof input.resume !== 'string') {
+      throw new CodedToolError('INVALID_ARG', `resume must be a string (finished subagent label or background task id), got: ${typeof input.resume}`);
+    }
   }
 
   /** 子智能体自有记忆（规格 §8）：agent.md 声明 memory:true 且总开关开时给出 { scope, line }——
@@ -460,6 +500,14 @@ export class SubagentRunner {
     if (opts?.context !== undefined && opts.context !== 'clean' && opts.context !== 'chain') {
       throw new CodedToolError('INVALID_ARG', `Unknown context channel: ${String(opts.context)} (only 'clean' | 'chain')`);
     }
+    // 追加消息同步预检（2026-11-22 用户裁定）：resume 目标在提交任务前先过三态校验——在飞/未知名在工具
+    // 回执面内联 fail-fast（模型当轮即可换键重试），不等到异步终态才从任务日志里发现；异步 runSubagent
+    // 内的二次校验为幂等防御（提交与起跑间隙目标态不会 terminal→非 terminal，仅防极端淘汰竞态）
+    const resumeKey = input.resume !== undefined ? input.resume.trim() : undefined;
+    if (resumeKey !== undefined && resumeKey !== '') {
+      const resumed = this.lookupResumable(resumeKey);
+      if (!resumed.ok) throw new CodedToolError(resumed.error.code, resumed.error.message);
+    }
     const clean = opts?.context === 'clean';
     // 账本 label 与 spec.label 同源（input.label ?? agent_id ?? 'subagent'）：旧口径只取 agent_id——
     // 模型按 label 出牌时 /tasks 业务列两行同显 'subagent'（2026-10-03 用户实据）；此 label 亦为 id 业务段语义源
@@ -478,7 +526,7 @@ export class SubagentRunner {
     // fire-and-forget：错误全程 fail-bounded 落日志，绝不冒泡主链
     void (async () => {
       try {
-        ledger.append(task.id, `[spawn background] ${input.agent_id ?? 'inline'}: ${input.prompt ?? ''}\n`);
+        ledger.append(task.id, `[spawn background]${resumeKey !== undefined && resumeKey !== '' ? ` [resume:${resumeKey}]` : ''} ${input.agent_id ?? 'inline'}: ${input.prompt ?? ''}\n`);
         const r = await this.runSubagent(input, {
           ...(effectiveBudget !== undefined ? { budget: effectiveBudget } : {}),
           signal: abort.signal,
@@ -539,6 +587,15 @@ export class SubagentRunner {
         'CONCURRENCY_LIMIT',
         `Subagent concurrency limit reached (${SUBAGENT_CONCURRENCY_LIMIT})`,
       );
+    }
+    // 追加消息（2026-11-22 用户裁定）：resume 在场 = 种子改取目标累计步（复用上下文续跑），不再 fork 新实例；
+    // 三态 fail-fast（在飞 INVALID_STATE / 未知名 INVALID_ARG 带可续跑清单），早退先于在飞计数（零计数污染）
+    const resumeKey = input.resume !== undefined ? input.resume.trim() : undefined;
+    let resumedSteps: StepRecord[] | undefined;
+    if (resumeKey !== undefined && resumeKey !== '') {
+      const resumed = this.lookupResumable(resumeKey);
+      if (!resumed.ok) return fail(resumed.error.code, resumed.error.message);
+      resumedSteps = resumed.value;
     }
     // 同名并发消歧（规格 §7）：后到者按在飞计数加 #N 后缀，事件标识与结论/补丁行前缀随 finalLabel；
     // 并发集内唯一，全部结束后计数归零、后续 spawn 回裸 label
@@ -604,14 +661,22 @@ export class SubagentRunner {
       // cleanFace(2026-11-16 用户裁定):dispatch fork 通道缺省——自有 fresh ContextManager(无品性层,
       // 快照只剩工作区约定族)+standard 身份面(零任何 sunx 旗标);root 锚=活动根(worktree 进出语义与子 Reactor 同源)
       const cleanFace = opts?.cleanFace === true;
-      const base = opts?.bare === true ? [] : this.deps.context.chainView();
+      // 追加轮种子=目标累计步（首派边界/角色/记忆/任务行已随 RunResult.steps 原样保留，loop 引擎
+      // state.seedHistory=r.steps 跨轮接续同款）；首派种子=旧形（bare 干净种子 / 主链快照）
+      const base = resumedSteps !== undefined ? resumedSteps : (opts?.bare === true ? [] : this.deps.context.chainView());
       let step = base.length > 0 ? base[base.length - 1].step + 1 : 1;
       const seedHistory: StepRecord[] = [...base];
-      if (base.length > 0) seedHistory.push({ step: step++, action: 'note', observation: FORK_CONTEXT_BOUNDARY });
-      if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });
-      // 自有记忆（规格 §8）：声明 memory:true 的 agent 在 role/task 行之间注入自有记忆索引行（fork 私有尾块，主链零污染）
+      // 自有记忆（规格 §8）：声明 memory:true 的 agent 给出 scope/索引行——首派注入种子（role/task 行之间），
+      // 追加轮不重注索引行（已在累计步）但 scope 收窄克隆照旧生效
       const own = this.agentMemory(input.agent_id);
-      if (own !== undefined) seedHistory.push({ step: step++, action: 'memory', observation: own.line });
+      if (resumedSteps !== undefined) {
+        // 追加轮只补差异行：边界/记忆行不重注；agent_id 显式在场 = 角色行重述（换角色追加或跨轮再锚定）
+        if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });
+      } else {
+        if (base.length > 0) seedHistory.push({ step: step++, action: 'note', observation: FORK_CONTEXT_BOUNDARY });
+        if (spec.roleLine !== undefined) seedHistory.push({ step: step++, action: 'role', observation: spec.roleLine });
+        if (own !== undefined) seedHistory.push({ step: step++, action: 'memory', observation: own.line });
+      }
       seedHistory.push({ step: step++, action: 'task', observation: spec.taskLine });
 
       // 子链安全链：记忆 scope 收窄克隆；隔离声明在场再换根克隆（withRoot 保 scope，exec cwd 与判界锚专属树）；
@@ -671,6 +736,15 @@ export class SubagentRunner {
             },
           ),
         );
+        // 追加消息登记（2026-11-22）：终态步入保留表——补一行终态闭合行（Teammate closeTaskInChain 同款
+        // 纪律：RunResult.steps 不含收束 reply 行——reply 行只落 session 主链、fork 零回写；缺闭合行则
+        // 续跑轮只见工具史不见结论）。done/failed 皆登（失败史对修复续跑同样是上下文）；续跑轮以新累计
+        // 步覆盖同名键，链式追加自然滚存
+        const lastStep = result.steps.length > 0 ? result.steps[result.steps.length - 1].step : 0;
+        const closure = result.done && result.reply
+          ? `Previous task finished (success) — your conclusion was: ${result.reply.length > 300 ? `${result.reply.slice(0, 300)}…` : result.reply}`
+          : `Previous task ended without completion (${result.stopReason ?? 'unknown'}) — it is closed; the follow-up task below decides whether to retry or continue.`;
+        this.rememberResume(finalLabel, opts?.taskId, [...result.steps, { step: lastStep + 1, action: 'note', observation: closure }]);
         if (result.done && result.reply) {
           // 子智能体返回制：私有步骤零主链污染；隔离树收口先行——脏树保留时补丁行附路径，再落结论行
           const keptNote = this.settleSubagentTree(iso);
@@ -716,7 +790,7 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation'],
+      required: ['prompt', 'agent_id', 'label', 'tools', 'background', 'isolation', 'resume'],
       properties: {
         prompt: { type: ['string', 'null'], description: 'Self-contained subtask brief: goal, key facts, paths, constraints, acceptance (the subagent receives your brief plus a frozen session snapshot taken at dispatch — write the brief so it stands alone)' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role; null spawns an inline subagent' },
@@ -724,11 +798,12 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
         tools: { type: ['array', 'null'], items: { type: 'string' }, description: 'Optional child tool-name allowlist; null defaults to the parent surface minus spawn' },
         background: { type: ['boolean', 'null'], description: 'null/false (default, recommended) = synchronous dispatch: the call blocks and the subagent\'s final report returns inline in this tool result (live dispatch row in the UI). true = two-phase spawn: returns a task id immediately, the subagent runs in the background and its conclusion lands in the task log; reserve it for the rare case where you must keep working while that subagent runs, then block on it with the task_wait tool (or inspect via read)' },
         isolation: { type: ['string', 'null'], enum: ['worktree', null], description: "Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)" },
+        resume: { type: ['string', 'null'], description: 'Follow-up dispatch to a subagent that already finished in this session, by its card label or background task id: instead of forking a fresh instance, the executor reruns with its retained context (its prior brief, tool work and conclusions) as the prefix and your prompt appended as the next task — use it for iterative refinement, fixes and follow-ups on the same working context; a still-running target is rejected (wait for it to finish first) and an unknown key is rejected with the resumable list; null (default) = fresh fork' },
       },
     },
     name: SPAWN_TOOL_NAME,
     description:
-      `Spawn one or more subagents — synchronous by default: each spawn call blocks until its subagent finishes and the final report comes back inline. Independent subtasks = several spawn calls in ONE round; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}) with no background flag needed. Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent works from the brief plus a frozen session snapshot taken at dispatch, so the brief must stand alone; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. Positioning: a one-shot fork executes one self-contained task and finishes — the default for ordinary subtasks. Set background=true only when you must continue your own work while a subagent runs (fire-and-forget); its conclusion is collected later via task_wait or read.`,
+      `Spawn one or more subagents — synchronous by default: each spawn call blocks until its subagent finishes and the final report comes back inline. Independent subtasks = several spawn calls in ONE round; they run concurrently (in-flight cap ${SUBAGENT_CONCURRENCY_LIMIT}) with no background flag needed. Each spawn must carry a self-contained prompt (goal, key facts, paths, constraints, acceptance) — the subagent works from the brief plus a frozen session snapshot taken at dispatch, so the brief must stand alone; agent_id references a registered agent or preset role; tools optionally narrows the child tool surface. Positioning: a one-shot fork executes one self-contained task and finishes — the default for ordinary subtasks. Set background=true only when you must continue your own work while a subagent runs (fire-and-forget); its conclusion is collected later via task_wait or read. For follow-up work that benefits from a subagent's prior run (refine, fix, extend its previous output), set resume to that finished subagent's label or task id: the same executor reruns with its retained context instead of starting over — independent tasks must NOT set resume (keep their contexts separate).`,
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
@@ -752,13 +827,15 @@ export function makeSpawnTool(runner: SubagentRunner): RegisteredTool {
  *  结论只经台账终态唤醒轮回流） */
 export function forkDispatch(
   runner: SubagentRunner,
-  input: { spec?: string; agent_id?: string; label?: string; isolation?: 'worktree'; tier?: ModelTier; context?: 'clean' | 'chain' },
+  input: { spec?: string; agent_id?: string; label?: string; isolation?: 'worktree'; tier?: ModelTier; context?: 'clean' | 'chain'; resume?: string },
 ): { taskId: string; outputFilePath: string; wakeHint?: string; name: string } {
   const specInput: SubagentSpawnInput = {
     prompt: typeof input.spec === 'string' && input.spec.length > 0 ? input.spec : undefined,
     ...(typeof input.agent_id === 'string' && input.agent_id.length > 0 ? { agent_id: input.agent_id } : {}),
     ...(typeof input.label === 'string' && input.label.length > 0 ? { label: input.label } : {}),
     ...(input.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
+    // 追加消息（2026-11-22 用户裁定）：resume 指向会话内已终态分派（label 或任务 id）——复用其累计步续跑
+    ...(typeof input.resume === 'string' && input.resume.trim().length > 0 ? { resume: input.resume.trim() } : {}),
   };
   const spec = normalizeSpawnInput(specInput);
   runner.validateSpawnInput(spec);
@@ -781,7 +858,7 @@ export function makeDispatchTool(runner: SubagentRunner): RegisteredTool {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['spec', 'agent_id', 'label', 'tier', 'isolation', 'context'],
+      required: ['spec', 'agent_id', 'label', 'tier', 'isolation', 'context', 'resume'],
       properties: {
         spec: { type: 'string', description: 'Self-contained task brief for the dispatched subagent: goal, key facts, file paths, constraints, and ACCEPTANCE criteria. The worker sees ONLY this brief in a clean context — no session snapshot, no charter; anything not stated here is unknown to it' },
         agent_id: { type: ['string', 'null'], description: 'Registered agent id or preset role for the subagent; null = inline subagent' },
@@ -789,26 +866,33 @@ export function makeDispatchTool(runner: SubagentRunner): RegisteredTool {
         tier: { type: ['string', 'null'], enum: ['small', 'medium', 'large', null], description: 'Optional model tier override for this dispatch only; null inherits the session tier' },
         isolation: { type: ['string', 'null'], enum: ['worktree', null], description: 'Request an isolated git worktree for this subtask; null runs in the main workspace (silently degraded when the workspace is not a git repository)' },
         context: { type: ['string', 'null'], enum: ['clean', 'chain', null], description: 'Context mode; null = "clean" (default). "clean" = the worker starts from ONLY this brief in a fresh context (no session snapshot, no charter) — put every needed fact in the brief. "chain" = legacy: the brief plus a frozen snapshot of this session taken at dispatch' },
+        resume: { type: ['string', 'null'], description: 'Follow-up dispatch to a previously dispatched subagent of this session, by its task id (from the dispatch receipt) or card label: the worker reruns with its retained context (prior brief, tool work, conclusion) as the prefix and this spec appended as the next task — use for iterative refinement on the same working context; a still-running target is rejected (wait for its terminal wake first) and an unknown key is rejected with the resumable list; null (default) = fresh one-shot worker' },
       },
     },
     name: 'dispatch_task',
     description:
-      'Dispatch one background subagent task and return immediately — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path; no report comes back in this tool result. This tool is for SUBAGENT work only: for agent-team board work use the team tools instead (create_agent_team / create_agent_teammate / create_agent_team_task, update_agent_team_task for assign|depend, agent_team_task_stop, send_agent_team_message, get_agent_team_board). The spec must be a fully self-contained brief (goal, key facts, file paths, constraints, ACCEPTANCE criteria): the worker starts from ONLY the brief in a clean context (default context:"clean" — no session snapshot, no charter; context:"chain" restores the legacy frozen-snapshot behavior) and never sees live updates; agent_id references a registered agent or preset role; tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree. After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait, or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently.',
+      'Dispatch one background subagent task and return immediately — a one-shot subagent runs out-of-band and the receipt names the task id and its output log path; no report comes back in this tool result. This tool is for SUBAGENT work only: for agent-team board work use the team tools instead (create_agent_team / create_agent_teammate / create_agent_team_task, update_agent_team_task for assign|depend, agent_team_task_stop, send_agent_team_message, get_agent_team_board). The spec must be a fully self-contained brief (goal, key facts, file paths, constraints, ACCEPTANCE criteria): the worker starts from ONLY the brief in a clean context (default context:"clean" — no session snapshot, no charter; context:"chain" restores the legacy frozen-snapshot behavior) and never sees live updates; agent_id references a registered agent or preset role; tier optionally overrides the model tier and isolation optionally requests a dedicated git worktree. After dispatching, finish your own current work and end your turn — you will be woken automatically when the task reaches a terminal state (the receipt wake hint confirms this session wakes you); collect the conclusion later via task_status / task_wait, or read the output log directly. Independent work units = several dispatch_task calls in ONE round; they run concurrently. For follow-up work on a task that already reached a terminal state (refine, fix, extend its output), set resume to that task\'s id or label: the same executor reruns with its retained context and the new spec appended — independent tasks must NOT set resume (keep their contexts separate).',
     category: 'subagent',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown; context?: unknown };
+      const raw = input as { spec?: unknown; agent_id?: unknown; label?: unknown; tier?: unknown; isolation?: unknown; context?: unknown; resume?: unknown };
       // context 归一（2026-11-16 用户裁定）：'chain' 字面 → 旧形；'clean'/缺席/null → 缺省（forkDispatch
       // 内 clean 缺省）；其余字面 INVALID_ARG
       if (raw.context !== undefined && !jsonAbsent(raw.context) && raw.context !== 'clean' && raw.context !== 'chain') {
         throw new CodedToolError('INVALID_ARG', `Unknown context: ${String(raw.context)} (only 'clean' | 'chain')`);
       }
       const context = raw.context === 'chain' ? 'chain' as const : raw.context === 'clean' ? 'clean' as const : undefined;
+      // resume 归一：非字符串字面（数字/对象等）INVALID_ARG；空串/null 字面 → 缺席语义（新建一次性 worker）
+      if (raw.resume !== undefined && !jsonAbsent(raw.resume) && typeof raw.resume !== 'string') {
+        throw new CodedToolError('INVALID_ARG', `resume must be a string (task id or label), got: ${typeof raw.resume}`);
+      }
+      const resume = typeof raw.resume === 'string' && raw.resume.trim().length > 0 ? raw.resume.trim() : undefined;
       const specInput: SubagentSpawnInput = {
         prompt: typeof raw.spec === 'string' && raw.spec.length > 0 ? raw.spec : undefined,
         ...(typeof raw.agent_id === 'string' && raw.agent_id.length > 0 ? { agent_id: raw.agent_id } : {}),
         ...(typeof raw.label === 'string' && raw.label.length > 0 ? { label: raw.label } : {}),
         ...(raw.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
+        ...(resume !== undefined ? { resume } : {}),
       };
       const spec = normalizeSpawnInput(specInput);
       runner.validateSpawnInput(spec);
@@ -822,6 +906,7 @@ export function makeDispatchTool(runner: SubagentRunner): RegisteredTool {
         ...(raw.isolation === 'worktree' ? { isolation: 'worktree' as const } : {}),
         ...(tier !== undefined ? { tier } : {}),
         ...(context !== undefined ? { context } : {}),
+        ...(resume !== undefined ? { resume } : {}),
       });
       return { exitCode: 0, stdout: `${started.taskId} started in background — ${started.name} (output: ${started.outputFilePath})${started.wakeHint ?? ''}`, stderr: '', timedOut: false };
     },

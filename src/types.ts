@@ -278,6 +278,10 @@ export interface SubagentSpawnInput {
   isolation?: 'worktree';
   /** 预留语义位：v1 传 true 报 NOT_SUPPORTED（后台两段式后批开通） */
   background?: boolean;
+  /** 追加消息目标（2026-11-22 用户裁定「spawn 追加消息」）：会话内已终态子智能体的 label 或后台任务 id。
+   * 在场 = 不 fork 新实例——新任务行尾追到该执行体的累计步（RunResult.steps 含种子行）作种子续跑，
+   * 复用其上下文；在飞/未知名 fail-fast（不静默降级为新建） */
+  resume?: string;
 }
 
 /** 模型路由决策留痕（tier + reason + 实际承载适配器，随 run 结果可观测） */
