@@ -18,9 +18,12 @@ import * as path from 'node:path';
 import type { SessionRuntime } from '../session';
 import { listSessions } from '../../tui/session-journal';
 import { channelsContainerDir } from '../../config/data-dir';
+import { hasJsonComments, loadGlobalSettings } from '../../config/settings';
+import { writeJsonAtomic } from '../../catalog/io';
 import { liveSessionByJournal } from '../sessions-list-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
+import { channelSecretEnv } from './model';
 
 /** HTTP 面触点（daemon 单点注入；engine/bindings 单例；sessions 表供枚举活跃标注与解除回收判据） */
 export interface ChannelsHandlerIo {
@@ -45,6 +48,84 @@ export function handleChannelsList(io: ChannelsHandlerIo, res: http.ServerRespon
  *  失败面恒 200 {ok:false,error}——测试是诊断面，失败即结果不是错误码（mcp probe 同裁定） */
 export async function handleChannelsTest(io: ChannelsHandlerIo, res: http.ServerResponse, id: string): Promise<void> {
   io.send(res, 200, await io.engine.test(id));
+}
+
+/** PUT /channels/:id/secret body {secret: string}（2026-11-22 终形态修复波，spec §8.2）：通道密钥写面
+ *  ——把该通道密钥写进**全局 settings.json 的 env 块**键 SUNSHINEX_CHANNEL_SECRET_<大写通道 id>
+ *  （channelSecretEnv 派生单点）。D6「设置与凭据分离」语义不变：channels 键内零密钥，密钥只进 env 块；
+ *  本端点是 GUI 弹窗保存链的密钥腿（putChannels → setChannelSecret → testChannel），.providers setKey
+ *  同机制（providers 键存 env 槽走 op 端点，通道同诉求此前无端点——GUI 凭证输入空转的裁定修复）。
+ *  守卫族照 config-handlers.handleChannelsPut 同款（settings 结构化写面既有口径）：文件不可读 409 /
+ *  注释档 409 引流 raw（hint 'use raw editor'）/ 畸形 JSON 409 / 根非对象 409 / version≠1 409 /
+ *  BOM 容忍（0xfeff 剥除，装载口径一致）/ 原子写（writeJsonAtomic，新档补 version:1）。
+ *  操作对象 = root['env'] 块：缺席补 {}；在场非对象 409（结构化写不越权处置畸形块）；块内该键覆写、
+ *  其余键零触碰、env 外顶层键零触碰；secret 空串 = 删除该 env 键（删缺席键 = 幂等零写）。
+ *  响应与日志**永不回显 secret**——成功回执恰 {ok:true}，错误回执零键值。写后 afterWrite 注入
+ *  （daemon：reloadSettingsChain(null)——env 槽落 process.env，紧随其后的 testChannel dry-run 与
+ *  适配器下次启动取新值；providers setKey 链重载同语义）。通道 id 不做在座校验（env 槽派生为全函数，
+ *  GUI 只以真实配置 id 调用；引擎面校验属 testChannel 职责） */
+export async function handleChannelsSecretPut(io: ChannelsHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string, afterWrite?: () => void): Promise<void> {
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const secret = (parsed.body as { secret?: unknown } | null)?.secret;
+  if (typeof secret !== 'string') return io.send(res, 400, { error: 'secret must be a string' });
+  const target = loadGlobalSettings();
+  // 409 守卫族（handleChannelsPut 同款）：不可读/注释/畸形/根非对象/version≠1（结构化写不越权处置）
+  let raw: string | null = null;
+  try {
+    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+  } catch {
+    io.send(res, 409, { error: `settings file not readable: ${target}` });
+    return;
+  }
+  if (raw !== null && hasJsonComments(raw)) {
+    io.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
+    return;
+  }
+  let obj: Record<string, unknown>;
+  if (raw === null) {
+    obj = { version: 1 }; // 新档补 version:1（settings schema 口径，handleChannelsPut 同款）
+  } else {
+    let parsedRoot: unknown;
+    try {
+      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（装载口径一致）
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
+      return;
+    }
+    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+      io.send(res, 409, { error: 'settings root must be a JSON object' });
+      return;
+    }
+    const existing = parsedRoot as Record<string, unknown>;
+    if ((existing['version'] ?? 1) !== 1) {
+      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
+      return;
+    }
+    obj = existing;
+  }
+  // env 块手术：缺席补 {}；在场非对象 409；该键覆写/空串删除，块内其余键与 env 外顶层键零触碰
+  const envRaw = obj['env'];
+  if (envRaw !== undefined && (typeof envRaw !== 'object' || envRaw === null || Array.isArray(envRaw))) {
+    io.send(res, 409, { error: 'settings env block must be a JSON object' });
+    return;
+  }
+  const env = (envRaw ?? {}) as Record<string, unknown>;
+  const key = channelSecretEnv(id);
+  if (secret === '') {
+    if (!(key in env)) {
+      io.send(res, 200, { ok: true }); // 删缺席键 = 幂等零写（不落 env:{} 空块）
+      return;
+    }
+    delete env[key];
+  } else {
+    env[key] = secret;
+  }
+  obj['env'] = env;
+  writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
+  afterWrite?.(); // daemon 注入：reloadSettingsChain(null)——env 槽落 process.env（providers setKey 同语义）
+  io.send(res, 200, { ok: true }); // 回执恰 {ok:true}——secret 值不出现在响应/日志任何位置
 }
 
 /** GET /channels/bindings → 绑定档全列（store.all；行含 rootOverride 供聊天信息条回显） */

@@ -111,7 +111,7 @@ function buildIndex(): SettingsSearchItem[] {
     pane: 'channels',
     paneTitle: channelsTitle,
     row: 'channels.add',
-    label: { en: 'Add channel', zh: '添加通道' },
+    label: { en: 'New channel', zh: '新增通道' },
     desc: {
       en: 'Telegram / Mock today; Feishu, DingTalk and WeCom coming soon',
       zh: '现支持 Telegram/Mock;飞书、钉钉、企业微信即将支持',

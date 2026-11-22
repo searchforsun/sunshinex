@@ -28,11 +28,13 @@ import type { WorkspaceRow } from '../connection';
  * 成功回显机器人身份失败回显平台错误原文);模型字段不在终形态清单内——草稿仍保留 cfg 既有
  * model/ident 值原样回写(编辑不丢 raw 配置的细粒度字段,只是 GUI 不再提供编辑面)。
  *
- * 凭证与 D6(spec §8.2):通道无 providers setKey 同型端点,GUI 写面唯一 putChannels(键内零密钥)
- * ——Bot Token 输入为**本地态**:弹窗草稿持有、本会话回显(重开仍在),不落配置不外发;真值落点
- * = settings.json env 块 SUNSHINEX_CHANNEL_SECRET_<ID> 槽(凭证区一句说明,GUI 不 import
- * src/serve——槽名派生规则本地镜像 channelSecretEnv);「测试连接」是验证 env 槽凭证的手段。
- * 文案裁定:顶部一句简介;旧版 D6/env 槽内部术语段删除,凭证表达只一句。
+ * 凭证与 D6(spec §8.2,2026-11-22 终形态修复波):通道密钥写面 = PUT /channels/:id/secret
+ * (serve handleChannelsSecretPut——写全局 settings.json env 块 SUNSHINEX_CHANNEL_SECRET_<ID> 槽,
+ * providers setKey 同机制;GUI 侧 conn.setChannelSecret)。弹窗保存链:putChannels 全表 → token
+ * 非空时 setChannelSecret(id, token) → 成功自动 testChannel 一次(dry-run,链重载后取新槽值)。
+ * Bot Token 输入零回显(ProvidersPane 密钥行同纪律:播种恒空串,留空=不动 env 键——不调
+ * setChannelSecret);凭证区一句「密钥保存到 settings.json 的 env 块;此处输入不会明文回显」。
+ * 文案裁定:顶部一句简介;旧版 D6/env 槽内部术语段删除。
  *
  * 读面/回填(修复波 mergeDrafts 语义保留):挂载时 channelsView(健康)+ settingsChannels(配置)
  * 双源并行,各落 ref 后 applySources 单点重算——配置行逐字段回填弹窗草稿真值,健康行补位缺省
@@ -52,6 +54,9 @@ export interface ChannelsPaneConn {
   settingsChannels(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
+  /** PUT /channels/:id/secret(2026-11-22 终形态修复波):通道密钥写面——写全局 settings.json env
+   *  块 SUNSHINEX_CHANNEL_SECRET_<ID> 槽(D6:密钥不进 channels 键);空串=删除;响应零回显 */
+  setChannelSecret(id: string, secret: string): Promise<{ ok: true }>;
   channelBindings(): Promise<{ bindings: import('../connection-api').ChannelBindingMsg[] }>;
   deleteChannelBinding(key: string): Promise<{ ok: true }>;
   workspaces(): Promise<WorkspaceRow[]>;
@@ -76,10 +81,6 @@ const HEALTH_POLL_MS = 5_000;
 /** 应用名称长度上限(spec §8 终形态:1..80,trim) */
 const NAME_MAX = 80;
 
-/** 凭证槽名派生(serve/channels/model.ts channelSecretEnv 本地镜像,GUI 不 import src/serve):
- *  SUNSHINEX_CHANNEL_SECRET_<大写 id,非字母数字段折叠 '_'> */
-const secretSlot = (id: string): string => 'SUNSHINEX_CHANNEL_SECRET_' + id.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
-
 /** 应用名称占位随平台(终形态裁定:占位如「我的飞书机器人」) */
 const NAME_PLACEHOLDERS: Record<string, { en: string; zh: string }> = {
   telegram: { en: 'My Telegram bot', zh: '我的 Telegram 机器人' },
@@ -98,8 +99,9 @@ const platformLabel = (v: string): string => {
 };
 
 /** 卡草稿(卡片显示 + 弹窗回填种子;id 运行期自动生成 platform-<序>,不暴露手填)。
- *  dirty=用户已改写——配置读面晚到回填时只替换未改写(seed)卡;token=本地态凭证(D6:零落盘
- *  零外发,仅弹窗回显);model/ident=raw 配置既有值原样携带回写(GUI 无编辑面,保真不丢) */
+ *  dirty=用户已改写——配置读面晚到回填时只替换未改写(seed)卡;token 不入草稿(密钥写面独立走
+ *  setChannelSecret,弹窗输入零回显——播种恒空串,留空=不动 env 键);model/ident=raw 配置既有值
+ *  原样携带回写(GUI 无编辑面,保真不丢) */
 interface ChannelDraft {
   readonly id: string;
   platform: PlatformValue;
@@ -113,8 +115,6 @@ interface ChannelDraft {
   model: string;
   /** 平台非密钥标识(raw 配置既有值原样携带,编辑不丢) */
   ident?: Record<string, string>;
-  /** 本地态凭证(仅弹窗回显;D6——不落配置不外发) */
-  token: string;
   allowKind: AllowKind;
   /** 白名单粘贴原文(空格/逗号/分号/换行分隔),提交时切分去重 */
   userIdsText: string;
@@ -131,7 +131,6 @@ const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   root: 'auto',
   mode: 'read-only',
   model: '',
-  token: '',
   allowKind: 'first-user',
   userIdsText: '',
   dirty: false,
@@ -148,15 +147,13 @@ const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
   mode: cfg.mode,
   model: cfg.model ?? '',
   ident: cfg.ident,
-  token: '',
   allowKind: cfg.allow.kind,
   userIdsText: (cfg.allow.userIds ?? []).join(' '),
   dirty: false,
 });
 
 /** 读面两源 → 本地草稿并集单点(修复波 mergeDrafts 语义保留):配置读面行优先回填真值,健康行
- *  补位缺省播种;本地已改写(dirty)卡不覆盖(用户输入为准);token 为本地态——重播种时从前稿
- *  随行携带(config 无此字段,弹窗重开回显不因回拉丢失);removed=本会话已删 id 墓碑——健康
+ *  补位缺省播种;本地已改写(dirty)卡不覆盖(用户输入为准);removed=本会话已删 id 墓碑——健康
  *  快照晚到/轮询窗口内仍报该行时不复活已删卡;两源均无且未改写的陈旧卡摘除(外部已删真值) */
 function mergeDrafts(
   prev: ChannelDraft[],
@@ -181,7 +178,7 @@ function mergeDrafts(
     }
     const s = seeds.get(d.id);
     if (s !== undefined) {
-      out.push({ ...s, token: d.token }); // 未改写:两源最新种子替换;token 本地态随行携带
+      out.push(s); // 未改写:两源最新种子替换(配置真值回填/健康缺省)
       have.add(d.id);
     }
     // 两源均无且未改写:外部已删的陈旧种子——摘除
@@ -389,7 +386,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   };
 
   /** 打开弹窗:add=写面缺省草稿(平台待选);edit=卡片草稿逐字段回填(settingsChannels 真值
-   *  已经 mergeDrafts 回填进草稿;token 本地态随行) */
+   *  已经 mergeDrafts 回填进草稿;token 恒空串——零回显纪律,留空=不动 env 键) */
   const openModal = (d: ChannelDraft | null): void => {
     setFormError('');
     if (d === null) {
@@ -397,12 +394,14 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       setModal({ mode: 'add' });
       return;
     }
-    setForm({ platform: d.platform, name: d.name, token: d.token, root: d.root, mode: d.mode, allowKind: d.allowKind, userIdsText: d.userIdsText });
+    setForm({ platform: d.platform, name: d.name, token: '', root: d.root, mode: d.mode, allowKind: d.allowKind, userIdsText: d.userIdsText });
     setModal({ mode: 'edit', id: d.id });
   };
 
-  /** 弹窗保存(spec §8.3):putChannels 全表读改写 → 成功关弹窗 + 重拉 + 自动 testChannel 一次。
-   *  id 新增时自动生成 platform-<序>(同前缀最大序 +1,不暴露手填);编辑保留原 id(平台锁定同因) */
+  /** 弹窗保存(spec §8.3 + 2026-11-22 终形态修复波):putChannels 全表读改写 → token 非空时
+   *  setChannelSecret(id, token)(密钥腿——写 env 块槽,留空=不动键)→ 成功关弹窗 + 重拉 +
+   *  自动 testChannel 一次(链重载后 dry-run 取新槽值)。id 新增时自动生成 platform-<序>(同前缀
+   *  最大序 +1,不暴露手填);编辑保留原 id(平台锁定同因) */
   const submitChannel = (): void => {
     if (modal === null || savingId !== '' || drafts === null) return;
     const platform = PLATFORMS.find((p) => p.v === form.platform);
@@ -425,6 +424,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       return;
     }
     const id = modal.mode === 'edit' ? modal.id! : `${platform!.v}-${nextSeq(platform!.v, drafts)}`;
+    const token = form.token;
     const saved: ChannelDraft = {
       id,
       platform: (modal.mode === 'edit' ? base!.platform : platform!.v) as PlatformValue,
@@ -434,7 +434,6 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       mode: form.mode,
       model: base?.model ?? '',
       ident: base?.ident,
-      token: form.token, // 本地态:仅草稿回显(D6 不落配置不外发)
       allowKind: form.allowKind,
       userIdsText: form.userIdsText,
       dirty: false, // 已落盘:读面真值即本地值,回拉重播种不回退
@@ -444,6 +443,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     setFormError('');
     conn
       .putChannels(next.map(toMsg))
+      .then(() => (token !== '' ? conn.setChannelSecret(id, token) : undefined)) // 密钥腿(留空=不动键)
       .then(() => {
         setSavingId('');
         setDrafts(next);
@@ -459,14 +459,6 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         setSavingId('');
         setFormError(errText(err));
       });
-  };
-
-  /** 凭证槽名展示(弹窗凭证区一句;编辑=实 id,新增=平台选定后的预测 id,未选=通配 <ID>) */
-  const prospectiveSlot = (): string => {
-    if (modal === null) return 'SUNSHINEX_CHANNEL_SECRET_<ID>';
-    if (modal.mode === 'edit' && modal.id !== undefined) return secretSlot(modal.id);
-    if (modal.mode === 'add' && form.platform !== '') return secretSlot(`${form.platform}-${nextSeq(form.platform, drafts ?? [])}`);
-    return 'SUNSHINEX_CHANNEL_SECRET_<ID>';
   };
 
   const loading = drafts === null && loadError === '';
@@ -598,8 +590,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
               spellCheck={false}
             />
           </ModalField>
-          {/* 凭证区(按平台;终形态:Telegram Bot Token password + @BotFather 引导 + env 块一句;
-              mock 免密无凭证组;未支持平台不可选到) */}
+          {/* 凭证区(按平台;终形态修复波:Telegram Bot Token password + @BotFather 引导 + 保存去向
+              一句;mock 免密无凭证组;未支持平台不可选到) */}
           {form.platform === 'telegram' && (
             <ModalField label={t('Bot Token', 'Bot Token')} hint={t('Get it from @BotFather on Telegram', '在 Telegram 向 @BotFather 获取')}>
               <input
@@ -613,8 +605,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
               />
               <p className="sx-provider-hint">
                 {t(
-                  `The secret lives in the settings.json env block (${prospectiveSlot()}) and is never shown on this page.`,
-                  `密钥存放于 settings.json 的 env 块（${prospectiveSlot()}），不在此页显示。`,
+                  'The secret is saved to the settings.json env block; what you type here is never echoed back.',
+                  '密钥保存到 settings.json 的 env 块；此处输入不会明文回显。',
                 )}
               </p>
             </ModalField>

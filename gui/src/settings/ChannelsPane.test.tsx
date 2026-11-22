@@ -5,14 +5,15 @@ import type { ChannelsPaneConn } from './ChannelsPane';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 
 /**
- * ChannelsPane 桩测（channels Task 15 终形态重做，spec §8 2026-11-22 用户裁定；conn 桩照
- * SchedulePage.test.tsx makeConn 模式）：conn 七面全桩不出网。测试基准语言钉 en
- * （test-setup G14.104），断言走 bi() 双语容忍正则（D37 家族——产品面 t() 化，单语钉必脆）。
+ * ChannelsPane 桩测（channels Task 15 终形态重做 + 同日修复波：密钥写面接线，spec §8 2026-11-22
+ * 用户裁定；conn 桩照 SchedulePage.test.tsx makeConn 模式）：conn 八面全桩不出网。测试基准语言钉
+ * en（test-setup G14.104），断言走 bi() 双语容忍正则（D37 家族——产品面 t() 化，单语钉必脆）。
  *
- * 七用例（task brief 交付面 D）：①空态+「+ 新增通道」；②新增弹窗（平台/应用名称/token →
- * putChannels 载含 name，保存后自动试连）；③编辑弹窗回填（settingsChannels 真值 + token 本地态）
- * 且保存保留；④卡头 Switch → putChannels enabled 翻转；⑤删除（两段确认）→ 全表少一条；
- * ⑥full-access 红字警示；⑦卡头「测试连接」→ testChannel + 行内结果。
+ * 八用例：①空态+「+ 新增通道」；②新增弹窗（平台/应用名称/token → putChannels 载含 name，保存后
+ * 自动试连）；③编辑弹窗回填（settingsChannels 真值；token 零回显，留空=不动 env 键）；④卡头
+ * Switch → putChannels enabled 翻转；⑤删除（两段确认）→ 全表少一条；⑥full-access 红字警示；
+ * ⑦卡头「测试连接」→ testChannel + 行内结果；⑧保存含 token → setChannelSecret 以 (id, token)
+ * 调用（密钥写面接线，紧随 putChannels）。
  */
 
 /** 双语容忍正则（D37 家族）：产品面 t() 化，测试环境钉 en，单语钉必脆 */
@@ -41,11 +42,12 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
     return { ok: true as const, warnings: [] };
   });
   const testChannel = vi.fn(async () => ({ ok: true as const, botId: 'bot-1' }));
+  const setChannelSecret = vi.fn(async (_id: string, _secret: string) => ({ ok: true as const }));
   const channelBindings = vi.fn(async () => ({ bindings: [] }));
   const deleteChannelBinding = vi.fn(async () => ({ ok: true as const }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
-  const conn = { channelsView, settingsChannels, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, settingsChannels, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces };
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, setChannelSecret, channelBindings, deleteChannelBinding, workspaces } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, setChannelSecret, channelBindings, deleteChannelBinding, workspaces };
 }
 
 describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆）', () => {
@@ -81,7 +83,8 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆）', () => {
   });
 
   /** ③ 编辑：卡片铅笔 → 弹窗回填 settingsChannels 真值（name/工作区/权限模式）+ 平台锁定只读 +
-   *  token 本地态；保存 putChannels 保留原值，重开弹窗 token 仍在（本地态，不落配置） */
+   *  token 零回显（播种恒空串）；留空保存 → setChannelSecret 不调（不动 env 键），putChannels
+   *  保留原值 */
   it('edits a channel: modal backfills from settingsChannels and preserves values on save', async () => {
     const cfg: ChannelConfigMsg = {
       id: 'telegram-9',
@@ -92,7 +95,7 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆）', () => {
       mode: 'acceptEdits',
       allow: { kind: 'first-user' },
     };
-    const { conn, putChannels } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
+    const { conn, putChannels, testChannel, setChannelSecret } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
     const { container } = render(<ChannelsPane conn={conn} />);
     // 卡片标题=应用名称，副标=平台名
     await waitFor(() => expect(container.textContent).toContain('我的TG'));
@@ -101,14 +104,15 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆）', () => {
     expect((screen.getByRole('combobox', { name: bi('Platform', '平台') }) as HTMLSelectElement).disabled).toBe(true);
     expect((screen.getByRole('combobox', { name: bi('Workspace', '工作区') }) as HTMLSelectElement).value).toBe('D:/proj/a');
     expect((screen.getByRole('combobox', { name: bi('Access mode', '权限模式') }) as HTMLSelectElement).value).toBe('acceptEdits');
-    // token 本地态输入（D6：不落配置不外发）
-    fireEvent.change(screen.getByLabelText(bi('Bot Token', 'Bot Token')), { target: { value: 'tok-9' } });
+    // token 零回显（凭证区一句「此处输入不会明文回显」同源纪律）
+    expect((screen.getByLabelText(bi('Bot Token', 'Bot Token')) as HTMLInputElement).value).toBe('');
+    // 留空保存 = 不动 env 键：setChannelSecret 零调用
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
     await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
     expect(putChannels.mock.calls[0]![0]).toEqual([cfg]);
-    // 重开编辑：token 本地态回填仍在
-    fireEvent.click(await screen.findByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
-    expect(((await screen.findByLabelText(bi('Bot Token', 'Bot Token'))) as HTMLInputElement).value).toBe('tok-9');
+    // 等保存链收束（末腿 testChannel 已发）再断言密钥腿零调用
+    await waitFor(() => expect(testChannel).toHaveBeenCalledTimes(1));
+    expect(setChannelSecret).not.toHaveBeenCalled();
   });
 
   /** ④ 卡头 Switch → putChannels 全表写 enabled 翻转（false） */
@@ -163,5 +167,27 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆）', () => {
     fireEvent.click(screen.getByRole('button', { name: bi('Test connection telegram-1', '测试连接 telegram-1') }));
     await waitFor(() => expect(testChannel).toHaveBeenCalledWith('telegram-1'));
     expect(await screen.findByText(/bot-1/)).toBeDefined();
+  });
+
+  /** ⑧ 保存含 token（修复波密钥腿）：弹窗输入 Bot Token 保存 → setChannelSecret 以 (id, token)
+   *  调用（紧随 putChannels，先于 testChannel——daemon 写 env 块槽 + 链重载后 dry-run 取新值）；
+   *  重开弹窗零回显 */
+  it('saves the token via setChannelSecret(id, token) after putChannels', async () => {
+    const cfg: ChannelConfigMsg = { id: 'telegram-9', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } };
+    const { conn, putChannels, testChannel, setChannelSecret } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
+    const { container } = render(<ChannelsPane conn={conn} />);
+    await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    fireEvent.change(await screen.findByLabelText(bi('Bot Token', 'Bot Token')), { target: { value: 'tok-9' } });
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(setChannelSecret).toHaveBeenCalledTimes(1));
+    expect(setChannelSecret).toHaveBeenCalledWith('telegram-9', 'tok-9');
+    // 次序:putChannels 先行(密钥腿在配置表之后)、testChannel 收尾
+    expect(putChannels).toHaveBeenCalled();
+    await waitFor(() => expect(testChannel).toHaveBeenCalledTimes(1));
+    expect(testChannel).toHaveBeenCalledWith('telegram-9');
+    // 重开弹窗:token 零回显(播种恒空串)
+    fireEvent.click(await screen.findByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    expect(((await screen.findByLabelText(bi('Bot Token', 'Bot Token'))) as HTMLInputElement).value).toBe('');
   });
 });

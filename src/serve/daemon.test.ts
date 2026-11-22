@@ -2823,6 +2823,59 @@ describe('通道 HTTP 面(Task 9)', () => {
     });
   });
 
+  test('④b PUT /channels/:id/secret:env 块键值写入/覆写/空串删除,旧键零触碰,注释档 409/非串 400,响应零回显', async () => {
+    await withSettingsDaemon(async ({ base, home }) => {
+      const settingsFile = path.join(home, '.sunshinex', 'settings.json');
+      const readDisk = (): { env: Record<string, unknown>; model?: unknown; version?: unknown } =>
+        JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as { env: Record<string, unknown>; model?: unknown; version?: unknown };
+      // 预置:env 块既有其它键 + env 外顶层键——写入后逐一对账「零触碰」
+      fs.writeFileSync(
+        settingsFile,
+        JSON.stringify({ version: 1, env: { SUNSHINEX_CHANNEL_SECRET_KEEP: 'keep-v', OTHER_KEY: 'v0' }, model: 'x/y' }, null, 2),
+        'utf8',
+      );
+      // 写入:200 回执恰 {ok:true}——secret 值零回显
+      const put = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-abc' }) });
+      assert.equal(put.status, 200, '合法写入应 200');
+      assert.deepEqual(await put.json(), { ok: true }, '响应恰 {ok:true},secret 零回显');
+      const onDisk = readDisk();
+      assert.equal(onDisk.env['SUNSHINEX_CHANNEL_SECRET_TG_1'], 'tok-abc', 'env 块新键落盘(channelSecretEnv 派生:非字母数字段折叠 _)');
+      assert.equal(onDisk.env['SUNSHINEX_CHANNEL_SECRET_KEEP'], 'keep-v', 'env 既有键零触碰');
+      assert.equal(onDisk.env['OTHER_KEY'], 'v0', 'env 既有键零触碰');
+      assert.equal(onDisk.model, 'x/y', 'env 外顶层键零触碰');
+      assert.equal(onDisk.version, 1, 'version 保留');
+      // 链重载注入生效:env 槽落 process.env(daemon afterWrite=reloadSettingsChain(null);providers setKey 同语义)
+      assert.equal(process.env.SUNSHINEX_CHANNEL_SECRET_TG_1, 'tok-abc', '链重载后 env 槽落 process.env(testChannel 取新值的前提)');
+      // 覆写:同键换值
+      const put2 = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-2' }) });
+      assert.equal(put2.status, 200);
+      assert.equal(readDisk().env['SUNSHINEX_CHANNEL_SECRET_TG_1'], 'tok-2', '同键覆写');
+      // 空串删除:键摘除,其余键不动;链重载后 process.env 槽同清(自填槽登记语义)
+      const del = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: '' }) });
+      assert.equal(del.status, 200);
+      assert.deepEqual(await del.json(), { ok: true });
+      const afterDel = readDisk();
+      assert.equal('SUNSHINEX_CHANNEL_SECRET_TG_1' in afterDel.env, false, '空串=删除该 env 键');
+      assert.equal(afterDel.env['SUNSHINEX_CHANNEL_SECRET_KEEP'], 'keep-v', '删除时其余键零触碰');
+      assert.equal(process.env.SUNSHINEX_CHANNEL_SECRET_TG_1, undefined, '链重载后 process.env 槽同清');
+      // 非串 secret → 400(写面从严)
+      const bad = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 42 }) });
+      assert.equal(bad.status, 400, '非串 secret → 400');
+      // 注释档 → 409 引流 raw(handleChannelsPut 同款守卫)
+      fs.writeFileSync(settingsFile, '{\n  // 手注\n  "version": 1\n}\n', 'utf8');
+      const commented = await fetch(`${base}/channels/tg-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-x' }) });
+      assert.equal(commented.status, 409, '注释档 409');
+      assert.equal(((await commented.json()) as { hint?: string }).hint, 'use raw editor');
+      // 文件缺席 → 新档补 version:1 + env 块补 {} 落键
+      fs.rmSync(settingsFile);
+      const fresh = await fetch(`${base}/channels/mk-1/secret`, { method: 'PUT', headers: AUTH, body: JSON.stringify({ secret: 'tok-n' }) });
+      assert.equal(fresh.status, 200);
+      const freshDisk = readDisk();
+      assert.equal(freshDisk.version, 1, '新档补 version:1');
+      assert.equal(freshDisk.env['SUNSHINEX_CHANNEL_SECRET_MK_1'], 'tok-n', '新档 env 块补 {} 后落键');
+    });
+  });
+
   test('⑤ 绑定面:GET 列表;PUT rootOverride 设置/清除;DELETE 解除(GET bindings 少一条)+回收非 active 绑定会话(active 不释放);重复 DELETE 404', async () => {
     await withChannelsDaemon(async ({ daemon, base, tmp, bindingsFile }) => {
       // mock 入站建立绑定(Task 8 e2e 同路径——绑定无独立创建端点,入站即绑定)

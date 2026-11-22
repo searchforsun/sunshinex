@@ -524,6 +524,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     testChannel(id: string) {
       return postJson<{ ok: boolean; botId?: string; error?: string }>(`/channels/${encodeURIComponent(id)}/test`, {});
     },
+    async setChannelSecret(id: string, secret: string): Promise<{ ok: true }> {
+      // PUT /channels/:id/secret（2026-11-22 终形态修复波）：密钥写全局 settings.json env 块
+      // SUNSHINEX_CHANNEL_SECRET_<ID> 槽——响应恰 {ok:true} 零回显；400 非串/409 注释档经 opError 透出
+      await putJson<{ ok: true }>(`/channels/${encodeURIComponent(id)}/secret`, { secret });
+      return { ok: true };
+    },
     channelBindings() {
       return getJson<{ bindings: ChannelBindingMsg[] }>('/channels/bindings');
     },

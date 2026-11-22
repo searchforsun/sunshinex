@@ -1128,6 +1128,10 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'PUT', path: '/settings/channels', auth: true, run: (req, res) => this.handleChannelsPut(req, res) },
     { method: 'GET', path: '/channels', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsList(this.channelsHandlerIo, res) },
     { method: 'POST', path: '/channels/:id/test', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsTest(this.channelsHandlerIo, res, p.id) },
+    // 通道密钥写面(2026-11-22 终形态修复波,spec §8.2):PUT {secret} → 全局 settings.json env 块
+    // SUNSHINEX_CHANNEL_SECRET_<ID> 槽(D6:键内零密钥,密钥只进 env 块;providers setKey 同机制)。
+    // 写后链重载(env 槽落 process.env——紧随的 testChannel/适配器下次启动取新值);响应零回显 secret
+    { method: 'PUT', path: '/channels/:id/secret', auth: true, run: async (req, res, p) => channelsHandlers.handleChannelsSecretPut(this.channelsHandlerIo, req, res, p.id, () => this.reloadSettingsChain(null)) },
     { method: 'GET', path: '/channels/bindings', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsBindingsGet(this.channelsHandlerIo, res) },
     { method: 'PUT', path: '/channels/bindings/:key', auth: true, run: async (req, res, p) => channelsHandlers.handleChannelsBindingPut(this.channelsHandlerIo, req, res, p.key) },
     { method: 'DELETE', path: '/channels/bindings/:key', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsBindingDelete(this.channelsHandlerIo, res, p.key) },
