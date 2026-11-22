@@ -1,50 +1,54 @@
+import { Pencil, PlugZap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
-import { ConfirmDeleteButton, EmptyState, ErrorBanner, ResourceCard, scopeTargetLabel } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch, scopeTargetLabel } from './components';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 import type { WorkspaceRow } from '../connection';
 
 /**
- * ChannelsPane(channels Task 12,spec §8 GUI 面):通道设置页——每通道一张 ResourceCard 配置组。
+ * ChannelsPane(channels Task 15,spec §8 **2026-11-22 终形态裁定**,推翻前两版):通道设置页
+ * **完整克隆「模型与提供方」(ProvidersPane)形态**——保留多实例,卡片列表 + 弹窗编辑。
  *
- * 全局形态裁定:通道是 daemon 主动外连的执行面,channels 键为全局豁免单档(config/channels.ts
- * 「项目档 channels 键整键忽略」同源裁定)——本页无 root/scope 目标选择器,壳层 ProvidersPane
- * 分支同款先例(SettingsShell.renderPane case 'providers')。
+ * 页面结构(ProvidersPane verbatim 克隆):节头「通道」+ 一句人话简介 + 「+ 新增通道」工具栏
+ * (稳定搜索锚 channels.add)+ 凭证一句说明(稳定搜索锚 channels.secret,settings-search.ts 既有
+ * 注册不可改——本文件不在允许改动清单)+ 每通道一张卡片:状态点(sx-api-dot 绿=connected/
+ * 灰=断连,取 channelsView 健康轮询,detail 悬浮)+ 应用名称(粗体 sx-rc-title,缺省回退平台名)
+ * + 平台副标;右侧操作簇(sx-rc-head-acts,ProvidersPane 同款序)= 测试连接(PlugZap 图标钮)
+ * / 删除(ConfirmDeleteButton 两段确认)/ 编辑(Pencil 图标钮)/ 启用 Switch。卡片无内嵌表单——
+ * 全部编辑走弹窗(EditorModal/ModalField,ProvidersPane 2026-10-30 弹窗形态同款)。
  *
- * 读面裁定(修复波更新):GET /settings/channels 配置读端点已补(conn.settingsChannels,
- * serve handleChannelsGet 同形状 {channels,warnings})——挂载/打开时双源并行装载:配置读面行
- * 回填已有通道草稿真值(root/mode/model/allow 逐字段),健康快照行补位缺省播种;用户已改写
- * (dirty)卡不被回填覆盖,配置读面失败则保持健康缺省播种(缺端点期现状)。putChannels 全表
- * 读改写仍为唯一写面。
+ * 新增/编辑弹窗字段(spec §8 终形态字段清单):平台下拉(新增可选 Telegram/Mock(测试),
+ * 飞书/钉钉/企微在「即将支持」optgroup 内 disabled 不可选;编辑锁定只读展示——id 是键不可换)
+ * / 应用名称(text,1..80,占位随平台;留空缺省平台名=落盘省 name 键)/ 按平台凭证字段(Telegram:
+ * Bot Token password + @BotFather 引导;mock 免密无凭证组;未支持平台不可选到故无凭证组)
+ * / 工作区下拉(「聊天专属工作区(自动)」缺省 + conn.workspaces() 注册表)/ 权限模式下拉
+ * (read-only 缺省,full-access 红字警示)/ 准入下拉(仅首次对话用户缺省/自定义白名单 textarea/
+ * 不限红字)。保存 → putChannels 全表读改写 → 成功自动 testChannel 一次(结果行内 role=status,
+ * 成功回显机器人身份失败回显平台错误原文);模型字段不在终形态清单内——草稿仍保留 cfg 既有
+ * model/ident 值原样回写(编辑不丢 raw 配置的细粒度字段,只是 GUI 不再提供编辑面)。
  *
- * 凭证降级裁定(spec §8.2):ProvidersPane 密钥行写机制 = putProviderOp op:'setKey'(providers
- * 专属键存端点),通道无同型端点,且键内零密钥(D6「设置与凭据分离」——serve/channels engine
- * resolveChannelSecret 恒读 env 槽)。GUI 不 import src/serve(G14 house 规矩),槽名派生规则本地
- * 镜像:凭证行只读展示槽名 SUNSHINEX_CHANNEL_SECRET_<ID> + 复制按钮 + 「settings.json env 块或
- * 真实环境变量配置」提示;telegram 引导 @BotFather 创建 Token;mock 免密无凭证组;
- * feishu/dingtalk/wecom 添加选项在场但 disabled 标「即将支持」(引擎适配器未实装,占位可见)。
+ * 凭证与 D6(spec §8.2):通道无 providers setKey 同型端点,GUI 写面唯一 putChannels(键内零密钥)
+ * ——Bot Token 输入为**本地态**:弹窗草稿持有、本会话回显(重开仍在),不落配置不外发;真值落点
+ * = settings.json env 块 SUNSHINEX_CHANNEL_SECRET_<ID> 槽(凭证区一句说明,GUI 不 import
+ * src/serve——槽名派生规则本地镜像 channelSecretEnv);「测试连接」是验证 env 槽凭证的手段。
+ * 文案裁定:顶部一句简介;旧版 D6/env 槽内部术语段删除,凭证表达只一句。
  *
- * 保存裁定(spec §8.3):卡内「保存」→ putChannels(全表读改写,引擎热生效)→ 成功自动
- * testChannel 一次;「测试连接」亦可手动单发(dry-run 独立起停适配器不动在座表;失败即结果
- * 非错误码——mcp probe 同裁定),结果横幅 role=status 行内呈现。
+ * 读面/回填(修复波 mergeDrafts 语义保留):挂载时 channelsView(健康)+ settingsChannels(配置)
+ * 双源并行,各落 ref 后 applySources 单点重算——配置行逐字段回填弹窗草稿真值,健康行补位缺省
+ * 播种;本地已改写(dirty)卡不被回填覆盖;removed 墓碑防已删卡被轮询复活;token 为本地态,
+ * 重播种时从前稿随行携带(config 无此字段)。健康 5s 轮询(brief §12)只刷状态点。
  *
- * 健康徽标:channelsView 5s 轮询一次(brief §12),connected 徽标 + detail 悬浮(data-tip);
- * 停止条件=组件卸载 clearInterval。
- *
- * 模型下拉裁定:conn 无全局模型清单方法(sessionModel 需会话 id,不适用)——只保留
- * 「跟随全局默认」缺省项(Task 12 报告注明);后续接线模型清单时在此扩 options。
- *
- * 搜索行锚:逐字段 data-setting-key=`channels.<id>.<field>`;稳定锚 channels.add(工具栏)与
- * channels.secret(凭证说明行)由 settings-search 注册——逐通道 id 运行期生成,索引期不可枚举。
+ * id 自动生成:platform-<序>(同前缀最大序 +1),不暴露手填;启用 Switch/删除即改即写
+ * (putChannels 全表,ProvidersPane runOp 即写同语义);写面在途单门(savingId)禁再发。
  */
 
 /** 通道页连接面(Task 11 六方法 + 修复波 settingsChannels 读端点,结构满足即收,App 传整只
  *  Connection) */
 export interface ChannelsPaneConn {
   channelsView(): Promise<{ channels: ChannelHealthRowMsg[] }>;
-  /** GET /settings/channels(修复波补面):全局档 channels 配置读端点——已有通道草稿回填
-   *  真值的数据源(Task 11 方法清单漏列,上游裁定补缺;serve handleChannelsGet 同形状) */
+  /** GET /settings/channels(修复波补面):全局档 channels 配置读端点——已有通道弹窗回填
+   *  真值的数据源(serve handleChannelsGet 同形状) */
   settingsChannels(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
@@ -69,21 +73,48 @@ type AllowKind = ChannelConfigMsg['allow']['kind'];
 /** 健康徽标轮询窗(毫秒;brief §12 裁定 5s 一次) */
 const HEALTH_POLL_MS = 5_000;
 
+/** 应用名称长度上限(spec §8 终形态:1..80,trim) */
+const NAME_MAX = 80;
+
 /** 凭证槽名派生(serve/channels/model.ts channelSecretEnv 本地镜像,GUI 不 import src/serve):
  *  SUNSHINEX_CHANNEL_SECRET_<大写 id,非字母数字段折叠 '_'> */
 const secretSlot = (id: string): string => 'SUNSHINEX_CHANNEL_SECRET_' + id.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
 
-/** 卡草稿(编辑真值;id 运行期自动生成 platform-<序>,不暴露手填)。dirty=用户已改写——
- *  配置读面晚到回填时只替换未改写(seed)卡,已改写卡以用户输入为准不覆盖 */
+/** 应用名称占位随平台(终形态裁定:占位如「我的飞书机器人」) */
+const NAME_PLACEHOLDERS: Record<string, { en: string; zh: string }> = {
+  telegram: { en: 'My Telegram bot', zh: '我的 Telegram 机器人' },
+  feishu: { en: 'My Feishu bot', zh: '我的飞书机器人' },
+  dingtalk: { en: 'My DingTalk bot', zh: '我的钉钉机器人' },
+  wecom: { en: 'My WeCom bot', zh: '我的企业微信机器人' },
+  mock: { en: 'My Mock bot', zh: '我的 Mock 机器人' },
+};
+
+/** 卡片展示名(应用名称缺省回退平台名;仅展示——写面 name 缺席即省键,平台名由 UI 回退) */
+const displayNameOf = (d: ChannelDraft): string => (d.name !== '' ? d.name : platformLabel(d.platform));
+
+const platformLabel = (v: string): string => {
+  const p = PLATFORMS.find((x) => x.v === v);
+  return p === undefined ? v : t(p.en, p.zh);
+};
+
+/** 卡草稿(卡片显示 + 弹窗回填种子;id 运行期自动生成 platform-<序>,不暴露手填)。
+ *  dirty=用户已改写——配置读面晚到回填时只替换未改写(seed)卡;token=本地态凭证(D6:零落盘
+ *  零外发,仅弹窗回显);model/ident=raw 配置既有值原样携带回写(GUI 无编辑面,保真不丢) */
 interface ChannelDraft {
   readonly id: string;
   platform: PlatformValue;
+  /** 应用名称(spec §8 终形态);'' = 未命名(卡片回退平台名,落盘省 name 键) */
+  name: string;
   enabled: boolean;
   /** 'auto' = 聊天专属工作区(缺省);其余 = 已注册项目 root */
   root: string;
   mode: ModeValue;
-  /** '' = 跟随全局默认 */
+  /** '' = 跟随全局默认(raw 配置既有值原样携带,GUI 无编辑面) */
   model: string;
+  /** 平台非密钥标识(raw 配置既有值原样携带,编辑不丢) */
+  ident?: Record<string, string>;
+  /** 本地态凭证(仅弹窗回显;D6——不落配置不外发) */
+  token: string;
   allowKind: AllowKind;
   /** 白名单粘贴原文(空格/逗号/分号/换行分隔),提交时切分去重 */
   userIdsText: string;
@@ -91,37 +122,42 @@ interface ChannelDraft {
 }
 
 /** 健康行 → 卡草稿播种(id/platform/enabled 取真值,其余字段取写面缺省——配置读面缺位/失败
- *  时的回退种子,修复波前唯一种子源) */
+ *  时的回退种子) */
 const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   id: row.id,
   platform: row.platform as PlatformValue,
+  name: '',
   enabled: row.enabled,
   root: 'auto',
   mode: 'read-only',
   model: '',
+  token: '',
   allowKind: 'first-user',
   userIdsText: '',
   dirty: false,
 });
 
-/** 配置读面行 → 卡草稿(修复波):已有通道细粒度字段(root/mode/model/allow)逐字段回填
- *  真值——「编辑已有通道必须能读回」裁定落地;userIds 数组粘回分隔原文 */
+/** 配置读面行 → 卡草稿(修复波语义保留):已有通道细粒度字段逐字段回填真值;userIds 数组粘回
+ *  分隔原文;name/model/ident 原样携带(弹窗回填 + 回写保真) */
 const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
   id: cfg.id,
   platform: cfg.platform,
+  name: cfg.name ?? '',
   enabled: cfg.enabled,
   root: cfg.root,
   mode: cfg.mode,
   model: cfg.model ?? '',
+  ident: cfg.ident,
+  token: '',
   allowKind: cfg.allow.kind,
   userIdsText: (cfg.allow.userIds ?? []).join(' '),
   dirty: false,
 });
 
-/** 读面两源 → 本地草稿并集单点(修复波重写):配置读面行优先回填真值,健康行补位缺省播种;
- *  本地已改写(dirty)卡不覆盖(用户输入为准);健康新现 id 追加播种;removed=本会话已删 id
- *  墓碑——健康快照晚到/轮询窗口内仍报该行时不复活已删卡;两源均无且未改写的陈旧卡摘除
- *  (外部已删真值),dirty 卡保留(在途编辑不丢) */
+/** 读面两源 → 本地草稿并集单点(修复波 mergeDrafts 语义保留):配置读面行优先回填真值,健康行
+ *  补位缺省播种;本地已改写(dirty)卡不覆盖(用户输入为准);token 为本地态——重播种时从前稿
+ *  随行携带(config 无此字段,弹窗重开回显不因回拉丢失);removed=本会话已删 id 墓碑——健康
+ *  快照晚到/轮询窗口内仍报该行时不复活已删卡;两源均无且未改写的陈旧卡摘除(外部已删真值) */
 function mergeDrafts(
   prev: ChannelDraft[],
   healthRows: ChannelHealthRowMsg[],
@@ -145,7 +181,7 @@ function mergeDrafts(
     }
     const s = seeds.get(d.id);
     if (s !== undefined) {
-      out.push(s); // 未改写:两源最新种子替换(配置真值回填/健康缺省)
+      out.push({ ...s, token: d.token }); // 未改写:两源最新种子替换;token 本地态随行携带
       have.add(d.id);
     }
     // 两源均无且未改写:外部已删的陈旧种子——摘除
@@ -166,19 +202,21 @@ function splitUserIds(text: string): string[] {
   return out;
 }
 
-/** 草稿 → ChannelConfigMsg(全表写行):model 空=跟随全局省键;allow list 携切分 userIds,
- *  其余 kind 无附加键 */
+/** 草稿 → ChannelConfigMsg(全表写行):name 空=未命名省键(缺省平台名由 UI 决定);model 空=跟随
+ *  全局省键;allow list 携切分 userIds,其余 kind 无附加键;ident 原样携带 */
 const toMsg = (d: ChannelDraft): ChannelConfigMsg => ({
   id: d.id,
   platform: d.platform,
   enabled: d.enabled,
+  ...(d.name !== '' ? { name: d.name } : {}),
   root: d.root,
   mode: d.mode,
   ...(d.model !== '' ? { model: d.model } : {}),
+  ...(d.ident !== undefined && Object.keys(d.ident).length > 0 ? { ident: d.ident } : {}),
   allow: d.allowKind === 'list' ? { kind: 'list', userIds: splitUserIds(d.userIdsText) } : { kind: d.allowKind },
 });
 
-/** 新卡 id 序号单点:platform-<序>,取既有同前缀最大序 +1 */
+/** 新卡 id 序号单点:platform-<序>,取既有同前缀最大序 +1(不暴露手填) */
 function nextSeq(platform: string, drafts: ChannelDraft[]): number {
   const re = new RegExp(`^${platform}-(\\d+)$`);
   let max = 0;
@@ -187,6 +225,25 @@ function nextSeq(platform: string, drafts: ChannelDraft[]): number {
     if (m !== null) max = Math.max(max, Number(m[1]));
   }
   return max + 1;
+}
+
+/** 弹窗表单(新增/编辑;平台新增可选、编辑锁定;token=本地态) */
+interface ChannelForm {
+  platform: string;
+  name: string;
+  token: string;
+  root: string;
+  mode: ModeValue;
+  allowKind: AllowKind;
+  userIdsText: string;
+}
+
+const EMPTY_FORM: ChannelForm = { platform: '', name: '', token: '', root: 'auto', mode: 'read-only', allowKind: 'first-user', userIdsText: '' };
+
+/** 弹窗开合态:add=新增(平台待选);edit=编辑(锁定 original id) */
+interface ChannelModal {
+  mode: 'add' | 'edit';
+  id?: string;
 }
 
 interface ChannelsPaneProps {
@@ -199,34 +256,29 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   const [workspaces, setWorkspaces] = useState<WorkspaceRow[]>([]);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
-  /** 写面在途门(单卡在途:保存/删除/手动测试共用——禁再发) */
+  /** 写面在途门(单通道在途:保存/删除/试连/Switch 共用——禁再发) */
   const [savingId, setSavingId] = useState('');
-  /** 试连结果横幅(id → 结果;保存成功自动试连与手动测试同槽) */
+  /** 试连结果行内提示(id → 结果;保存成功自动试连与手动测试同槽) */
   const [testMap, setTestMap] = useState<Record<string, { ok: boolean; detail: string }>>({});
-  /** 添加通道平台选择面开合 */
-  const [addOpen, setAddOpen] = useState(false);
-  /** 已复制回显(复制按钮 3s 自隐) */
-  const [copiedId, setCopiedId] = useState('');
-  /** 本会话已删通道 id 墓碑(mergeDrafts 防复活面,见函数注;ref 持有免 useCallback 依赖抖动) */
+  /** 弹窗开合态 + 表单 + 弹窗校验错误(EditorModal/ModalField,ProvidersPane 弹窗形态) */
+  const [modal, setModal] = useState<ChannelModal | null>(null);
+  const [form, setForm] = useState<ChannelForm>(EMPTY_FORM);
+  const [formError, setFormError] = useState('');
+  /** 本会话已删通道 id 墓碑(mergeDrafts 防复活面;ref 持有免 useCallback 依赖抖动) */
   const removedRef = useRef<Set<string>>(new Set());
   /** 配置读面双源 ref(修复波):两响应到达次序不定——各落 ref 后 applySources 单点重算草稿 */
   const healthRef = useRef<ChannelHealthRowMsg[]>([]);
   const cfgRef = useRef<ChannelConfigMsg[]>([]);
   /** 配置读面 warnings(读面宽容语义:warning 跳过不致命——行内提示,不阻断编辑) */
   const [cfgWarnings, setCfgWarnings] = useState<string[]>([]);
-  /** 双源 → 草稿重算单点(健康/配置 ref 就位后调用;健康徽标源同步刷新) */
+  /** 双源 → 草稿重算单点(健康/配置 ref 就位后调用;状态点源同步刷新) */
   const applySources = useCallback((): void => {
     setHealth(healthRef.current);
     setDrafts((prev) => mergeDrafts(prev ?? [], healthRef.current, cfgRef.current, removedRef.current));
   }, []);
-  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
-  }, []);
 
-  /** 读面装载(修复波重写):健康快照(channelsView)+ 配置读面(settingsChannels)双源并行,
-   *  各自先落 ref 再统一 applySources 重算草稿——配置读面晚到也能把未改写卡从健康缺省升格
-   *  为配置真值回填(用例 ⑦);配置读面失败静默(保持健康缺省播种=修复前现状,头注裁定) */
+  /** 读面装载(修复波语义保留):健康快照(channelsView)+ 配置读面(settingsChannels)双源并行,
+   *  各自先落 ref 再统一 applySources 重算草稿;配置读面失败静默(保持健康缺省播种) */
   const load = useCallback((): void => {
     conn.channelsView().then(
       (v) => {
@@ -243,7 +295,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         applySources();
       },
       () => {
-        /* 配置读面缺位/失败:草稿维持健康缺省播种(修复前现状),不打断编辑主流程 */
+        /* 配置读面缺位/失败:草稿维持健康缺省播种,不打断编辑主流程 */
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -253,11 +305,11 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     load();
   }, [load]);
 
-  /** 5s 健康轮询(brief §12):只刷健康徽标,不扰编辑草稿;卸载 clearInterval */
+  /** 5s 健康轮询(brief §12):只刷状态点,不扰弹窗草稿;卸载 clearInterval */
   useEffect(() => {
     const timer = setInterval(() => {
       conn.channelsView().then((v) => {
-        healthRef.current = v.channels; // ref 同步:后续 applySources 重算不回退到陈旧健康面
+        healthRef.current = v.channels;
         setHealth(v.channels);
       }, () => {});
     }, HEALTH_POLL_MS);
@@ -279,52 +331,47 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     };
   }, [conn]);
 
-  const platformLabel = (v: string): string => {
-    const p = PLATFORMS.find((x) => x.v === v);
-    return p === undefined ? v : t(p.en, p.zh);
+  /** 全表写收口:统一在途门 + 错误行内 + 成功落草稿并重拉(ProvidersPane runOp 同语义) */
+  const writeAll = (next: ChannelDraft[], opId: string): void => {
+    if (savingId !== '') return;
+    setSavingId(opId);
+    setActionError('');
+    conn
+      .putChannels(next.map(toMsg))
+      .then(() => {
+        setSavingId('');
+        setDrafts(next);
+        load();
+      })
+      .catch((err: unknown) => {
+        setSavingId('');
+        setActionError(errText(err));
+      });
   };
 
-  /** 添加通道:平台下拉选定即建卡(id 自动 platform-<序>;disabled 平台选项不可选到) */
-  const pickPlatform = (v: string): void => {
-    setAddOpen(false);
-    const p = PLATFORMS.find((x) => x.v === v);
-    if (p === undefined || !p.supports) return;
-    setDrafts((prev) => {
-      const base = prev ?? [];
-      return [...base, { id: `${p.v}-${nextSeq(p.v, base)}`, platform: p.v as PlatformValue, enabled: true, root: 'auto', mode: 'read-only', model: '', allowKind: 'first-user', userIdsText: '', dirty: true }];
-    });
+  /** 卡头启停 Switch:即改即写(全表 enabled 翻转;置 dirty——回拉不回退用户操作) */
+  const toggleCard = (d: ChannelDraft): void => {
+    if (savingId !== '' || drafts === null) return;
+    const next = drafts.map((x) => (x.id === d.id ? { ...x, enabled: !x.enabled, dirty: true } : x));
+    setDrafts(next);
+    writeAll(next, d.id);
   };
 
-  /** 草稿字段改写单点(受控行回写;置 dirty——配置读面晚到不覆盖用户输入) */
-  const patchDraft = (id: string, patch: Partial<ChannelDraft>): void => {
-    setDrafts((prev) => (prev ?? []).map((d) => (d.id === id ? { ...d, ...patch, dirty: true } : d)));
+  /** 删卡(两段确认后):本地摘卡 + id 落墓碑(防轮询复活)→ putChannels 全表少一条 → 重拉 */
+  const removeCard = (id: string): void => {
+    if (savingId !== '' || drafts === null) return;
+    const next = drafts.filter((d) => d.id !== id);
+    removedRef.current.add(id);
+    setDrafts(next);
+    writeAll(next, id);
   };
 
-  /** 复制槽名(剪贴板不可用面[老 WebView/jsdom]退化:槽名行内可见,手选复制;回显照常) */
-  const copySlot = (id: string): void => {
-    const done = (): void => {
-      setCopiedId(id);
-      if (copiedTimer.current !== null) clearTimeout(copiedTimer.current);
-      copiedTimer.current = setTimeout(() => setCopiedId(''), 3_000);
-    };
-    try {
-      const clip = navigator.clipboard;
-      if (clip !== undefined) {
-        clip.writeText(secretSlot(id)).then(done, done);
-        return;
-      }
-    } catch {
-      /* 剪贴板面不可用——退化为行内可见手选复制 */
-    }
-    done();
-  };
-
-  /** 试连结果落槽单点(手动测试与保存后自动试连同路径) */
+  /** 试连结果落槽单点(手动测试与保存后自动试连同路径;成功回显 botId,失败回显平台错误) */
   const recordTest = (id: string, r: { ok: boolean; botId?: string; error?: string }): void => {
     setTestMap((m) => ({ ...m, [id]: { ok: r.ok, detail: r.ok ? r.botId ?? '' : r.error ?? '' } }));
   };
 
-  /** 手动测试连接(dry-run,不动在座表) */
+  /** 卡头「测试连接」(dry-run,不动在座表) */
   const testOnly = (id: string): void => {
     if (savingId !== '') return;
     setSavingId(id);
@@ -341,105 +388,107 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       });
   };
 
-  /** 卡保存(spec §8.3):putChannels(全表读改写)→ 成功自动 testChannel 一次。
-   *  白名单准入且 userIds 切分后为空 = 本地拦(daemon 写面 400 同裁定,前端预守卫) */
-  const saveCard = (id: string): void => {
-    if (savingId !== '' || drafts === null) return;
-    const d = drafts.find((x) => x.id === id);
-    if (d === undefined) return;
-    if (d.allowKind === 'list' && splitUserIds(d.userIdsText).length === 0) {
-      setActionError(t('Allow-list needs at least one user id', '白名单准入至少需要一个 userId'));
+  /** 打开弹窗:add=写面缺省草稿(平台待选);edit=卡片草稿逐字段回填(settingsChannels 真值
+   *  已经 mergeDrafts 回填进草稿;token 本地态随行) */
+  const openModal = (d: ChannelDraft | null): void => {
+    setFormError('');
+    if (d === null) {
+      setForm(EMPTY_FORM);
+      setModal({ mode: 'add' });
       return;
     }
-    setSavingId(id);
-    setActionError('');
-    conn
-      .putChannels(drafts.map(toMsg))
-      .then(() => conn.testChannel(id))
-      .then((r) => {
-        setSavingId('');
-        recordTest(id, r);
-        load();
-      })
-      .catch((err: unknown) => {
-        setSavingId('');
-        setActionError(errText(err));
-      });
+    setForm({ platform: d.platform, name: d.name, token: d.token, root: d.root, mode: d.mode, allowKind: d.allowKind, userIdsText: d.userIdsText });
+    setModal({ mode: 'edit', id: d.id });
   };
 
-  /** 删卡(两段确认后):本地摘卡 + id 落墓碑(防健康快照轮询复活)→ putChannels 全表读改写
-   *  少一条 → 成功重拉健康面 */
-  const removeCard = (id: string): void => {
-    if (savingId !== '' || drafts === null) return;
-    const next = drafts.filter((d) => d.id !== id);
-    removedRef.current.add(id);
-    setDrafts(next);
+  /** 弹窗保存(spec §8.3):putChannels 全表读改写 → 成功关弹窗 + 重拉 + 自动 testChannel 一次。
+   *  id 新增时自动生成 platform-<序>(同前缀最大序 +1,不暴露手填);编辑保留原 id(平台锁定同因) */
+  const submitChannel = (): void => {
+    if (modal === null || savingId !== '' || drafts === null) return;
+    const platform = PLATFORMS.find((p) => p.v === form.platform);
+    if (modal.mode === 'add' && (platform === undefined || !platform.supports)) {
+      setFormError(t('Choose a platform', '请选择平台'));
+      return;
+    }
+    const name = form.name.trim();
+    if (name.length > NAME_MAX) {
+      setFormError(t(`App name must be at most ${NAME_MAX} characters`, `应用名称至多 ${NAME_MAX} 字`));
+      return;
+    }
+    if (form.allowKind === 'list' && splitUserIds(form.userIdsText).length === 0) {
+      setFormError(t('Allow-list needs at least one user id', '白名单准入至少需要一个 userId'));
+      return;
+    }
+    const base = modal.mode === 'edit' ? drafts.find((d) => d.id === modal.id) : undefined;
+    if (modal.mode === 'edit' && base === undefined) {
+      setFormError(t('Channel not found', '通道不存在'));
+      return;
+    }
+    const id = modal.mode === 'edit' ? modal.id! : `${platform!.v}-${nextSeq(platform!.v, drafts)}`;
+    const saved: ChannelDraft = {
+      id,
+      platform: (modal.mode === 'edit' ? base!.platform : platform!.v) as PlatformValue,
+      name,
+      enabled: modal.mode === 'edit' ? base!.enabled : true,
+      root: form.root,
+      mode: form.mode,
+      model: base?.model ?? '',
+      ident: base?.ident,
+      token: form.token, // 本地态:仅草稿回显(D6 不落配置不外发)
+      allowKind: form.allowKind,
+      userIdsText: form.userIdsText,
+      dirty: false, // 已落盘:读面真值即本地值,回拉重播种不回退
+    };
+    const next = modal.mode === 'edit' ? drafts.map((d) => (d.id === id ? saved : d)) : [...drafts, saved];
     setSavingId(id);
-    setActionError('');
+    setFormError('');
     conn
       .putChannels(next.map(toMsg))
       .then(() => {
         setSavingId('');
+        setDrafts(next);
+        setModal(null);
+        setForm(EMPTY_FORM);
         load();
+        return conn.testChannel(id).then(
+          (r) => recordTest(id, r),
+          (err: unknown) => recordTest(id, { ok: false, error: errText(err) }),
+        );
       })
       .catch((err: unknown) => {
         setSavingId('');
-        setActionError(errText(err));
+        setFormError(errText(err));
       });
   };
 
-  const healthRowOf = (id: string): ChannelHealthRowMsg | undefined => health.find((r) => r.id === id);
-
-  /** 卡头健康徽标(channelsView;detail 悬浮 data-tip;无行=引擎尚未装载,不渲染徽标) */
-  const healthChip = (id: string): JSX.Element | null => {
-    const row = healthRowOf(id);
-    if (row === undefined) return null;
-    return (
-      <span className={row.connected ? 'sx-chip' : 'sx-chip sx-chip-missing'} data-tip={row.detail ?? ''}>
-        {row.connected ? t('Connected', '已连接') : t('Disconnected', '未连接')}
-      </span>
-    );
+  /** 凭证槽名展示(弹窗凭证区一句;编辑=实 id,新增=平台选定后的预测 id,未选=通配 <ID>) */
+  const prospectiveSlot = (): string => {
+    if (modal === null) return 'SUNSHINEX_CHANNEL_SECRET_<ID>';
+    if (modal.mode === 'edit' && modal.id !== undefined) return secretSlot(modal.id);
+    if (modal.mode === 'add' && form.platform !== '') return secretSlot(`${form.platform}-${nextSeq(form.platform, drafts ?? [])}`);
+    return 'SUNSHINEX_CHANNEL_SECRET_<ID>';
   };
 
+  const loading = drafts === null && loadError === '';
+  const busy = savingId !== '';
   return (
     <section className="sx-settings-form" aria-label="settings pane channels">
       <h2>{t('Channels', '通道')}</h2>
-      {/* 添加通道工具栏(稳定搜索锚 channels.add):按钮 → 平台下拉选定即建卡 */}
+      {/* 一句人话简介(终形态裁定;顶部唯一导语) */}
+      <p className="sx-provider-hint">
+        {t('Connect Feishu / DingTalk / WeCom / Telegram chats to sunshine sessions.', '把飞书/钉钉/企业微信/Telegram 的聊天接入 sunshine 会话。')}
+      </p>
+      {/* 添加通道工具栏(稳定搜索锚 channels.add) */}
       <div className="sx-res-toolbar" data-setting-key="channels.add">
-        {addOpen ? (
-          <>
-            <select className="sx-setting-input" aria-label={t('Platform', '平台')} value="" onChange={(e) => pickPlatform(e.target.value)}>
-              <option value="" disabled>
-                {t('Choose a platform…', '选择平台…')}
-              </option>
-              {PLATFORMS.filter((p) => p.supports).map((p) => (
-                <option key={p.v} value={p.v}>
-                  {t(p.en, p.zh)}
-                </option>
-              ))}
-              <optgroup label={t('Coming soon', '即将支持')}>
-                {PLATFORMS.filter((p) => !p.supports).map((p) => (
-                  <option key={p.v} value={p.v} disabled>
-                    {t(p.en, p.zh)}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
-            <button type="button" onClick={() => setAddOpen(false)}>
-              {t('Cancel', '取消')}
-            </button>
-          </>
-        ) : (
-          <button type="button" className="sx-add-button" onClick={() => setAddOpen(true)}>
-            {t('+ Add channel', '+ 添加通道')}
-          </button>
-        )}
+        <button type="button" className="sx-add-button" onClick={() => openModal(null)}>
+          {t('+ New channel', '+ 新增通道')}
+        </button>
       </div>
-      {/* 凭证说明行(稳定搜索锚 channels.secret;头注降级裁定同源) */}
+      {/* 凭证一句说明(稳定搜索锚 channels.secret——settings-search 既有注册;终形态文案口径) */}
       <p className="sx-provider-hint" data-setting-key="channels.secret">
         {t(
-          'Channel secrets never live in config (D6): each channel reads the SUNSHINEX_CHANNEL_SECRET_<ID> env slot — set it in the settings.json env block or a real environment variable.',
-          '通道密钥不进配置(D6):每通道按 id 读取 env 槽 SUNSHINEX_CHANNEL_SECRET_<ID>——在 settings.json 的 env 块或真实环境变量配置。',
+          'Secrets live in the settings.json env block (SUNSHINEX_CHANNEL_SECRET_<ID>) and are never shown on this page.',
+          '密钥存放于 settings.json 的 env 块（SUNSHINEX_CHANNEL_SECRET_<ID>），不在此页显示。',
         )}
       </p>
       {loadError !== '' && <ErrorBanner text={loadError} />}
@@ -448,163 +497,195 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       {cfgWarnings.map((w) => (
         <ErrorBanner key={w} text={w} />
       ))}
-      {drafts === null && loadError === '' && <EmptyState text={t('Loading channels…', '加载通道…')} />}
-      {drafts !== null && drafts.length === 0 && <EmptyState text={t('No channels yet.', '暂无通道。')} />}
+      {loading && <EmptyState text={t('Loading channels…', '加载通道…')} />}
+      {!loading && drafts !== null && drafts.length === 0 && <EmptyState text={t('No channels yet.', '暂无通道。')} />}
+      {/* 卡片列表(ProvidersPane sx-rc 克隆):状态点+应用名称+平台副标+右侧操作簇 */}
       <ul className="sx-rc-list">
-        {(drafts ?? []).map((d) => (
-          <ResourceCard
-            key={d.id}
-            title={`${platformLabel(d.platform)} · ${d.id}`}
-            chips={healthChip(d.id)}
-            enabled={d.enabled}
-            onToggle={() => patchDraft(d.id, { enabled: !d.enabled })}
-            actions={
-              <>
-                <button type="button" disabled={savingId !== ''} onClick={() => testOnly(d.id)}>
-                  {t('Test connection', '测试连接')}
-                </button>
-                <ConfirmDeleteButton
-                  ariaLabel={`${t('Delete', '删除')} ${d.id}`}
-                  disabled={savingId !== ''}
-                  onConfirm={() => removeCard(d.id)}
-                />
-              </>
-            }
-            body={
-              <>
-                {/* 通用组(spec §8.1,全下拉/开关):工作区/权限模式/模型/准入 */}
-                <div className="sx-modal-field" data-setting-key={`channels.${d.id}.root`}>
-                  <div className="sx-modal-field-label">
-                    <span className="sx-modal-field-name">{t('Workspace', '工作区')}</span>
-                    <span className="sx-modal-field-hint">{t('Chat-only workspace by default; binding a registered project is for advanced use', '缺省聊天专属工作区;绑定真实项目为高级用法')}</span>
-                  </div>
-                  <select
-                    className="sx-setting-input"
-                    aria-label={t('Workspace', '工作区')}
-                    value={d.root}
-                    onChange={(e) => patchDraft(d.id, { root: e.target.value })}
+        {(drafts ?? []).map((d) => {
+          const row = health.find((r) => r.id === d.id);
+          return (
+            <li key={d.id} className="sx-rc">
+              <div className="sx-rc-head">
+                <span className={`sx-api-dot ${row?.connected ? 'present' : 'missing'}`} data-tip={row?.detail ?? ''} aria-hidden="true" />
+                <span className="sx-rc-title">{displayNameOf(d)}</span>
+                <span className="sx-rc-subtitle">{platformLabel(d.platform)}</span>
+                {/* 操作簇(ProvidersPane 同款):测试连接→删除→编辑→启用开关 */}
+                <span className="sx-rc-head-acts">
+                  <button
+                    type="button"
+                    className="sx-iconbtn"
+                    aria-label={`${t('Test connection', '测试连接')} ${d.id}`}
+                    data-tip={t('Test connection', '测试连接')}
+                    disabled={busy}
+                    onClick={() => testOnly(d.id)}
                   >
-                    <option value="auto">{t('Chat-only workspace (auto)', '聊天专属工作区(自动)')}</option>
-                    {workspaces.map((w) => (
-                      <option key={w.root} value={w.root}>
-                        {scopeTargetLabel(w.root!)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="sx-modal-field" data-setting-key={`channels.${d.id}.mode`}>
-                  <div className="sx-modal-field-label">
-                    <span className="sx-modal-field-name">{t('Access mode', '权限模式')}</span>
-                    <span className="sx-modal-field-hint">{t('full-access is flagged in red below', 'full-access 选项红字警示')}</span>
-                  </div>
-                  <select
-                    className="sx-setting-input"
-                    aria-label={t('Access mode', '权限模式')}
-                    value={d.mode}
-                    onChange={(e) => patchDraft(d.id, { mode: e.target.value as ModeValue })}
-                  >
-                    <option value="read-only">{t('Read-only', '只读')}</option>
-                    <option value="acceptEdits">{t('Accept edits', '接受编辑')}</option>
-                    <option value="full-access">{t('Full access', '完全访问')}</option>
-                  </select>
-                  {d.mode === 'full-access' && (
-                    <p className="sx-provider-warn" role="alert">
-                      {t(
-                        'Full access lets chat run commands and write files in this workspace — only for channels you personally use.',
-                        '完全访问允许聊天在该工作区执行命令与写盘——仅建议用于本人使用的通道。',
-                      )}
-                    </p>
-                  )}
-                </div>
-                <div className="sx-modal-field" data-setting-key={`channels.${d.id}.model`}>
-                  <div className="sx-modal-field-label">
-                    <span className="sx-modal-field-name">{t('Model', '模型')}</span>
-                    <span className="sx-modal-field-hint">{t('Follow the global default for now', '暂跟随全局默认')}</span>
-                  </div>
-                  <select
-                    className="sx-setting-input"
-                    aria-label={t('Model', '模型')}
-                    value={d.model}
-                    onChange={(e) => patchDraft(d.id, { model: e.target.value })}
-                  >
-                    <option value="">{t('Follow global default', '跟随全局默认')}</option>
-                  </select>
-                </div>
-                <div className="sx-modal-field" data-setting-key={`channels.${d.id}.allow`}>
-                  <div className="sx-modal-field-label">
-                    <span className="sx-modal-field-name">{t('Admission', '准入')}</span>
-                  </div>
-                  <select
-                    className="sx-setting-input"
-                    aria-label={t('Admission', '准入')}
-                    value={d.allowKind}
-                    onChange={(e) => patchDraft(d.id, { allowKind: e.target.value as AllowKind })}
-                  >
-                    <option value="first-user">{t('First respondent only', '仅首次对话用户')}</option>
-                    <option value="list">{t('Custom allow-list', '自定义白名单')}</option>
-                    <option value="all">{t('Open to everyone', '不限')}</option>
-                  </select>
-                  {d.allowKind === 'list' && (
-                    <textarea
-                      className="sx-setting-input"
-                      aria-label={t('Allowed user IDs', '白名单 userIds')}
-                      rows={3}
-                      value={d.userIdsText}
-                      placeholder={t('User ids separated by spaces, commas or newlines', '空格/逗号/换行分隔的 userId')}
-                      spellCheck={false}
-                      onChange={(e) => patchDraft(d.id, { userIdsText: e.target.value })}
-                    />
-                  )}
-                  {d.allowKind === 'all' && (
-                    <p className="sx-provider-warn" role="alert">
-                      {t(
-                        'Anyone who finds the bot can start sessions — strongly discouraged for public bots.',
-                        '任何发现该机器人的用户都能开启会话——公开机器人强烈不建议。',
-                      )}
-                    </p>
-                  )}
-                </div>
-                {/* 凭证组(spec §8.2):telegram 单平台——降级裁定见头注(槽名只读+复制+env 块指引);
-                    mock 免密无凭证组;disabled 平台无卡(添加面已挡) */}
-                {d.platform === 'telegram' && (
-                  <div className="sx-modal-field" data-setting-key={`channels.${d.id}.secret`}>
-                    <div className="sx-modal-field-label">
-                      <span className="sx-modal-field-name">{t('Bot token (credential)', 'Bot Token(凭证)')}</span>
-                      <span className="sx-modal-field-hint">{t('Create it with @BotFather on Telegram', '在 Telegram 找 @BotFather 创建')}</span>
-                    </div>
-                    <div className="sx-card-actions">
-                      <code className="sx-channel-secret-slot">{secretSlot(d.id)}</code>
-                      <button type="button" aria-label={`${t('Copy', '复制')} ${secretSlot(d.id)}`} onClick={() => copySlot(d.id)}>
-                        {copiedId === d.id ? t('Copied', '已复制') : t('Copy', '复制')}
-                      </button>
-                    </div>
-                    <p className="sx-provider-hint">
-                      {t(
-                        'Read-only slot name — configure the token in the settings.json env block or a real environment variable; it is never written into this config.',
-                        '只读槽名——请在 settings.json 的 env 块或真实环境变量配置 Token;凭证不写入本配置。',
-                      )}
-                    </p>
-                  </div>
-                )}
-                {/* 试连结果横幅(保存后自动试连与手动测试共用;role=status) */}
-                {testMap[d.id] !== undefined && (
-                  <p role="status" className={testMap[d.id]!.ok ? 'sx-provider-hint' : 'sx-provider-warn'}>
-                    {testMap[d.id]!.ok
-                      ? `${t('Test passed', '测试通过')}${testMap[d.id]!.detail !== '' ? ` · ${testMap[d.id]!.detail}` : ''}`
-                      : `${t('Test failed', '测试失败')}: ${testMap[d.id]!.detail}`}
-                  </p>
-                )}
-                <div className="sx-card-actions">
-                  <button type="button" className="sx-add-button" disabled={savingId !== ''} onClick={() => saveCard(d.id)}>
-                    {savingId === d.id ? t('Saving…', '保存中…') : t('Save', '保存')}
+                    <PlugZap size={14} strokeWidth={1.75} aria-hidden="true" />
                   </button>
-                </div>
-                <p className="sx-provider-hint">{t('Changes apply on save (engine hot-reload).', '改动经「保存」生效(引擎热生效)。')}</p>
-              </>
-            }
-          />
-        ))}
+                  <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${d.id}`} disabled={busy} onConfirm={() => removeCard(d.id)} />
+                  <button
+                    type="button"
+                    className="sx-iconbtn"
+                    aria-label={`${t('Edit', '编辑')} ${d.id}`}
+                    data-tip={t('Edit', '编辑')}
+                    disabled={busy}
+                    onClick={() => openModal(d)}
+                  >
+                    <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                  <Switch on={d.enabled} onToggle={() => toggleCard(d)} ariaLabel={`${t('Enable', '启用')} ${d.id}`} disabled={busy} />
+                </span>
+              </div>
+              {/* 试连结果行内提示(保存后自动试连与手动测试共用;role=status) */}
+              {testMap[d.id] !== undefined && (
+                <p role="status" className={testMap[d.id]!.ok ? 'sx-provider-hint' : 'sx-provider-warn'}>
+                  {testMap[d.id]!.ok
+                    ? `${t('Test passed', '测试通过')}${testMap[d.id]!.detail !== '' ? ` · ${testMap[d.id]!.detail}` : ''}`
+                    : `${t('Test failed', '测试失败')}: ${testMap[d.id]!.detail}`}
+                </p>
+              )}
+            </li>
+          );
+        })}
       </ul>
+      {/* 新增/编辑弹窗(EditorModal/ModalField,ProvidersPane 弹窗形态):平台/应用名称/凭证/
+          工作区/权限模式/准入;下拉用原生 select——「即将支持」需 disabled 选项语义 */}
+      {modal !== null && (
+        <EditorModal
+          open
+          title={modal.mode === 'add' ? t('New channel', '新增通道') : t(`Edit ${modal.id ?? ''}`, `编辑 ${modal.id ?? ''}`)}
+          onClose={() => setModal(null)}
+          onSubmit={submitChannel}
+        >
+          <ModalField label={t('Platform', '平台')}>
+            {modal.mode === 'add' ? (
+              <select
+                className="sx-setting-input"
+                aria-label={t('Platform', '平台')}
+                value={form.platform}
+                onChange={(e) => setForm({ ...form, platform: e.target.value })}
+              >
+                <option value="" disabled>
+                  {t('Choose a platform…', '选择平台…')}
+                </option>
+                {PLATFORMS.filter((p) => p.supports).map((p) => (
+                  <option key={p.v} value={p.v}>
+                    {t(p.en, p.zh)}
+                  </option>
+                ))}
+                <optgroup label={t('Coming soon', '即将支持')}>
+                  {PLATFORMS.filter((p) => !p.supports).map((p) => (
+                    <option key={p.v} value={p.v} disabled>
+                      {t(p.en, p.zh)}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            ) : (
+              /* 编辑锁定:id 是键不可换——只读展示平台名 */
+              <select className="sx-setting-input" aria-label={t('Platform', '平台')} value={form.platform} disabled>
+                <option value={form.platform}>{platformLabel(form.platform)}</option>
+              </select>
+            )}
+          </ModalField>
+          <ModalField label={t('App name', '应用名称')} hint={t('Leave empty to use the platform name', '留空缺省平台名')}>
+            <input
+              className="sx-setting-input"
+              aria-label={t('App name', '应用名称')}
+              value={form.name}
+              maxLength={NAME_MAX}
+              placeholder={t(NAME_PLACEHOLDERS[form.platform]?.en ?? 'My bot', NAME_PLACEHOLDERS[form.platform]?.zh ?? '我的机器人')}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              spellCheck={false}
+            />
+          </ModalField>
+          {/* 凭证区(按平台;终形态:Telegram Bot Token password + @BotFather 引导 + env 块一句;
+              mock 免密无凭证组;未支持平台不可选到) */}
+          {form.platform === 'telegram' && (
+            <ModalField label={t('Bot Token', 'Bot Token')} hint={t('Get it from @BotFather on Telegram', '在 Telegram 向 @BotFather 获取')}>
+              <input
+                type="password"
+                className="sx-setting-input"
+                aria-label={t('Bot Token', 'Bot Token')}
+                value={form.token}
+                autoComplete="new-password"
+                onChange={(e) => setForm({ ...form, token: e.target.value })}
+                spellCheck={false}
+              />
+              <p className="sx-provider-hint">
+                {t(
+                  `The secret lives in the settings.json env block (${prospectiveSlot()}) and is never shown on this page.`,
+                  `密钥存放于 settings.json 的 env 块（${prospectiveSlot()}），不在此页显示。`,
+                )}
+              </p>
+            </ModalField>
+          )}
+          <ModalField
+            label={t('Workspace', '工作区')}
+            hint={t('Chat-only workspace by default; binding a registered project is for advanced use', '缺省聊天专属工作区;绑定真实项目为高级用法')}
+          >
+            <select className="sx-setting-input" aria-label={t('Workspace', '工作区')} value={form.root} onChange={(e) => setForm({ ...form, root: e.target.value })}>
+              <option value="auto">{t('Chat-only workspace (auto)', '聊天专属工作区(自动)')}</option>
+              {workspaces.map((w) => (
+                <option key={w.root} value={w.root}>
+                  {scopeTargetLabel(w.root!)}
+                </option>
+              ))}
+            </select>
+          </ModalField>
+          <ModalField label={t('Access mode', '权限模式')}>
+            <select
+              className="sx-setting-input"
+              aria-label={t('Access mode', '权限模式')}
+              value={form.mode}
+              onChange={(e) => setForm({ ...form, mode: e.target.value as ModeValue })}
+            >
+              <option value="read-only">{t('Read-only', '只读')}</option>
+              <option value="acceptEdits">{t('Accept edits', '接受编辑')}</option>
+              <option value="full-access">{t('Full access', '完全访问')}</option>
+            </select>
+            {form.mode === 'full-access' && (
+              <p className="sx-provider-warn" role="alert">
+                {t(
+                  'Full access lets chat run commands and write files in this workspace — only for channels you personally use.',
+                  '完全访问允许聊天在该工作区执行命令与写盘——仅建议用于本人使用的通道。',
+                )}
+              </p>
+            )}
+          </ModalField>
+          <ModalField label={t('Admission', '准入')}>
+            <select
+              className="sx-setting-input"
+              aria-label={t('Admission', '准入')}
+              value={form.allowKind}
+              onChange={(e) => setForm({ ...form, allowKind: e.target.value as AllowKind })}
+            >
+              <option value="first-user">{t('First respondent only', '仅首次对话用户')}</option>
+              <option value="list">{t('Custom allow-list', '自定义白名单')}</option>
+              <option value="all">{t('Open to everyone', '不限')}</option>
+            </select>
+            {form.allowKind === 'list' && (
+              <textarea
+                className="sx-setting-input"
+                aria-label={t('Allowed user IDs', '白名单 userIds')}
+                rows={3}
+                value={form.userIdsText}
+                placeholder={t('User ids separated by spaces, commas or newlines', '空格/逗号/换行分隔的 userId')}
+                spellCheck={false}
+                onChange={(e) => setForm({ ...form, userIdsText: e.target.value })}
+              />
+            )}
+            {form.allowKind === 'all' && (
+              <p className="sx-provider-warn" role="alert">
+                {t(
+                  'Anyone who finds the bot can start sessions — strongly discouraged for public bots.',
+                  '任何发现该机器人的用户都能开启会话——公开机器人强烈不建议。',
+                )}
+              </p>
+            )}
+          </ModalField>
+          {formError !== '' && <ErrorBanner text={formError} />}
+        </EditorModal>
+      )}
     </section>
   );
 }

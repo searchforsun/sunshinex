@@ -1,6 +1,8 @@
-/** 通道配置模型（spec 2026-11-21-channels §4 存储总览）：settings.json `channels` 结构化语义键形状裁决单点——
- *  非法条目 warning 跳过不致命（providers 键同语义）；键内零密钥（D6「设置与凭据分离」），
- *  密钥按通道名走 env 槽 SUNSHINEX_CHANNEL_SECRET_<大写通道名>（派生规则同 config/providers.ts providerApiKeyEnv）。 */
+/** 通道配置模型（spec 2026-11-21-channels §4 存储总览；§8 2026-11-22 终形态加 name）：settings.json `channels`
+ *  结构化语义键形状裁决单点——非法条目 warning 跳过不致命（providers 键同语义）；键内零密钥
+ *  （D6「设置与凭据分离」），密钥按通道名走 env 槽 SUNSHINEX_CHANNEL_SECRET_<大写通道名>
+ *  （派生规则同 config/providers.ts providerApiKeyEnv）。`name` = 应用名称（用户自定义展示名，
+ *  1..80 trim，缺省由 UI 回退平台名）——非串/超长 warning 跳过该字段不致命（ident 同款宽容口径）。 */
 
 export type ChannelPlatform = 'feishu' | 'dingtalk' | 'wecom' | 'telegram' | 'mock';
 export type ChannelAccessMode = 'read-only' | 'acceptEdits' | 'full-access';
@@ -16,6 +18,8 @@ export interface ChannelConfig {
   id: string;
   platform: ChannelPlatform;
   enabled: boolean;
+  /** 应用名称（spec §8 2026-11-22 终形态）：用户自定义展示名，1..80，trim；缺席=UI 回退平台名 */
+  name?: string;
   root: string;
   mode: ChannelAccessMode;
   model?: string;
@@ -107,6 +111,21 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
     const strArr = (v: unknown): string[] | undefined =>
       Array.isArray(v) && v.every((x) => typeof x === 'string') ? (v as string[]) : undefined;
     const model = typeof item['model'] === 'string' && item['model'].trim() !== '' ? item['model'] : undefined;
+    // name 宽容解析（spec §8 2026-11-22 终形态）：非串/trim 后超 80 → warning 跳过该字段不致命；
+    // 缺席/空串=未命名（UI 回退平台名），照 ident 的「坏字段不毁条目」口径
+    let name: string | undefined;
+    const nameRaw = item['name'];
+    if (nameRaw !== undefined && nameRaw !== null) {
+      if (typeof nameRaw !== 'string') {
+        warnings.push(`channels[${i}](${id}) name 非串，跳过该字段`);
+      } else {
+        const trimmed = nameRaw.trim();
+        if (trimmed !== '') {
+          if (trimmed.length > 80) warnings.push(`channels[${i}](${id}) name 超 80 字，跳过该字段`);
+          else name = trimmed;
+        }
+      }
+    }
     const identRaw = item['ident'];
     const ident = isRecord(identRaw)
       ? Object.fromEntries(Object.entries(identRaw).filter(([, v]) => typeof v === 'string')) as Record<string, string>
@@ -115,6 +134,7 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
       id,
       platform: platform as ChannelPlatform,
       enabled: item['enabled'] === true,
+      ...(name !== undefined ? { name } : {}),
       root: (item['root'] as string).trim(),
       mode: mode as ChannelAccessMode,
       ...(model !== undefined ? { model } : {}),

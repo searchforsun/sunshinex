@@ -52,6 +52,9 @@ export interface ChannelConfigMsg {
   id: string;
   platform: 'feishu' | 'dingtalk' | 'wecom' | 'telegram' | 'mock';
   enabled: boolean;
+  /** 应用名称（2026-11-22 spec §8 终形态）：用户自定义展示名，1..80 trim；缺席=UI 回退平台名
+   *  （镜像 serve/channels/model.ts ChannelConfig.name——parseChannelsKey 宽容口径：坏值 warning 跳字段） */
+  name?: string;
   root: string;
   mode: 'read-only' | 'acceptEdits' | 'full-access';
   model?: string;
