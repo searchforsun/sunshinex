@@ -290,6 +290,8 @@ test('⑥d ask 挂起帧投影(F1,spec §5.2 三型裁定 ask 先行):[提问] �
   assert.ok(h.delivered[0]!.msg.text.includes('[提问]'));
   assert.ok(h.delivered[0]!.msg.text.includes('用哪个方案?'));
   assert.ok(h.delivered[0]!.msg.text.includes('1. A 方案'));
+  // 多行格式(2026-11-23 用户裁定「问题一行,每个选项一行」):问题行后选项逐行换行
+  assert.ok(h.delivered[0]!.msg.text.includes('用哪个方案?\n1. A 方案\n2. B 方案\n回复序号或内容'));
   assert.ok(h.delivered[0]!.msg.text.includes('序号')); // 「回复序号或内容」指引
   // ① 选项序号回执(1 起,trim 容忍)
   assert.equal(h.p.pendingReply('s1', ' 2 '), true);

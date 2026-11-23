@@ -10,9 +10,11 @@
  *   入站即贴官方 OnIt「处理中」表情——命令/回执/任务全消息统一已读标记,回答送达(reply)自动
  *   摘除;同消息幂等(重投/受理链路复入不双贴);失败静默(icon 是确认面,不阻断处理);
  *   ack 平台面对飞书即空操作(已读标记已贴,受理免文本/排队文本由 engine 文案路负责)。
- * - 定向 @(2026-11-22 用户裁定「群聊才 @ 人」):caps.mention=true——群聊出站前缀 `<at user_id>`
- *   标签由飞书服务端渲染真实姓名(单聊零 @,回执式回复天然指向本人);发送者姓名富化走通讯录
- *   API+缓存(权限未开静默降级 open_id,不影响 @ 标签渲名)。
+ * - 定向 @(2026-11-22 用户裁定「群聊才 @ 人」):caps.mention=true——群聊出站 @ 标签由飞书服务端
+ *   渲染真实姓名(单聊零 @,回执式回复天然指向本人;text 面 `<at user_id>`/卡片面 `<at id>`
+ *   两套语法各随其面);发送者姓名富化走通讯录 API+缓存(权限未开静默降级 open_id)。
+ * - markdown(2026-11-23 用户裁定「md 文档格式化显示」):caps.markdown/card=true——投影正文
+ *   (带 markdown 标)走 interactive 卡单 markdown 元素渲染;注记/回执类短文案仍纯文本。
  * - 凭证:App ID 走 cfg.ident.appId,App Secret 走 deps.secret（cfg.secret 内联,2026-11-22 裁定）。
  * SDK 靠 start() 内动态 import——加载延迟到首个飞书通道启用;连接保活/断线重连由 SDK 内部负责
  * （Reconnect/pingLoop）,stop() = ws.close() 主动退场。
@@ -42,6 +44,20 @@ export function feishuAckReactionPayload(messageId: string): { method: string; u
 export function feishuMentionPrefix(mention: { userId: string; display?: string } | undefined): string {
   if (mention === undefined || mention.userId === '') return '';
   return `<at user_id="${mention.userId}"></at> `;
+}
+
+/** 纯函数（单测锚点）：markdown 卡片内容 JSON——interactive 卡单 markdown 元素（msg_type=
+ *  interactive,2026-11-23 用户裁定「md 文档格式化显示」:caps.markdown=true 走卡片面,
+ *  markdown 原文交飞书卡片渲染);卡内 at 语法=<at id>(与 text 面 user_id 语法不同) */
+export function feishuCardContent(text: string): string {
+  return JSON.stringify({ elements: [{ tag: 'markdown', content: text }] });
+}
+
+/** 纯函数（单测锚点）：卡片内定向 @ 前缀——卡 markdown 元素的 at 语法是 `<at id>`（官方
+ *  卡片文档口径,与 text 面 `<at user_id>` 不同源）；无 mention → 空串 */
+export function feishuCardMentionPrefix(mention: { userId: string; display?: string } | undefined): string {
+  if (mention === undefined || mention.userId === '') return '';
+  return `<at id="${mention.userId}"></at> `;
 }
 
 /** im.message.receive_v1 事件最小形状(只取消费字段;SDK 全量类型不进本文件) */
@@ -156,7 +172,9 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   caps(): DeliveryCaps {
-    return { streaming: false, markdown: false, card: false, maxTextLength: CHANNEL_MAX_TEXT_LENGTH, mention: true };
+    // markdown/card=true(2026-11-23 用户裁定「md 文档格式化显示」):投影正文走 interactive 卡
+    // 单 markdown 元素,飞书侧渲染格式;注记/回执类短文案仍纯文本
+    return { streaming: false, markdown: true, card: true, maxTextLength: CHANNEL_MAX_TEXT_LENGTH, mention: true };
   }
 
   async start(sink: (msg: InboundMessage) => void): Promise<void> {
@@ -238,21 +256,26 @@ export class FeishuAdapter implements ChannelAdapter {
     }
   }
 
-  private async deliverText(target: ChatRef, text: string, replyMessageId?: string): Promise<void> {
+  private async deliverText(target: ChatRef, text: string, replyMessageId?: string, markdown?: boolean): Promise<void> {
     if (this.client === undefined) throw new Error('feishu adapter not started');
-    const content = JSON.stringify({ text });
+    // markdown 档=interactive 卡单 markdown 元素(2026-11-23 用户裁定「md 文档格式化显示」);
+    // 纯文本档照旧 text 面
+    const content = markdown === true ? feishuCardContent(text) : JSON.stringify({ text });
+    const msgType = markdown === true ? 'interactive' : 'text';
     if (replyMessageId !== undefined && replyMessageId !== '') {
-      await this.client.im.message.reply({ path: { message_id: replyMessageId }, data: { msg_type: 'text', content } });
+      await this.client.im.message.reply({ path: { message_id: replyMessageId }, data: { msg_type: msgType, content } });
       return;
     }
     await this.client.im.message.create({
       params: { receive_id_type: 'chat_id' },
-      data: { receive_id: target.chatId, msg_type: 'text', content },
+      data: { receive_id: target.chatId, msg_type: msgType, content },
     });
   }
 
   async send(target: ChatRef, msg: OutboundMessage): Promise<void> {
-    await this.deliverText(target, feishuMentionPrefix(msg.mention) + (msg.text ?? ''));
+    const md = msg.markdown === true;
+    const prefix = md ? feishuCardMentionPrefix(msg.mention) : feishuMentionPrefix(msg.mention);
+    await this.deliverText(target, prefix + (msg.text ?? ''), undefined, md);
   }
 
   /** 回执式回复:引用入站 message_id(飞书群聊内呈现为楼中楼);raw 缺 id 退化为 send。
@@ -260,7 +283,9 @@ export class FeishuAdapter implements ChannelAdapter {
   async reply(inbound: InboundMessage, msg: OutboundMessage): Promise<void> {
     const raw = inbound.raw as { message?: { message_id?: string } } | undefined;
     const messageId = raw?.message?.message_id;
-    await this.deliverText({ channelId: inbound.channel, chatId: inbound.chatId }, feishuMentionPrefix(msg.mention) + (msg.text ?? ''), messageId);
+    const md = msg.markdown === true;
+    const prefix = md ? feishuCardMentionPrefix(msg.mention) : feishuMentionPrefix(msg.mention);
+    await this.deliverText({ channelId: inbound.channel, chatId: inbound.chatId }, prefix + (msg.text ?? ''), messageId, md);
     if (messageId !== undefined && messageId !== '') void this.unmarkProcessing(messageId);
   }
 

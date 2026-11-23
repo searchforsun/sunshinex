@@ -288,7 +288,8 @@ export class ReplyProjector {
   }
 
   /** 降级链 §5.2 三型之一(F1,ask 先行——plan-approval 随 P3 流式打磨,spec §5.2/§11):
-   *  「[提问] <question>(1. x / 2. y),回复序号或内容」(无选项 → 「,回复内容」)+ 记挂起
+   *  **多行格式**(2026-11-23 用户裁定「ask_question 要问题一行,每个选项一行,格式化展示」):
+   *  `[提问] <question>\n1. x\n2. y\n回复序号或内容`(无选项 → 尾行「回复内容」)+ 记挂起
    *  (同审批:pid 去重卫语句,异 pid 最新覆盖)。回执消费见 pendingReply ask 分支(自由文本
    *  恒受理,序号/原文/custom 铸形)。 */
   private onAskRequest(sessionId: string, pid: string, req: AskUserRequest): void {
@@ -297,9 +298,10 @@ export class ReplyProjector {
     const existed = this.pending.get(sessionId);
     if (existed !== undefined && existed.pid === pid) return;
     this.pending.set(sessionId, { kind: 'ask', pid, target, req });
-    const opts = req.options.length > 0 ? `（${req.options.map((o, i) => `${i + 1}. ${o.label}`).join(' / ')}）` : '';
-    const tail = req.options.length > 0 ? ',回复序号或内容' : ',回复内容';
-    void this.safeDeliver(target, { text: `[提问] ${req.question}${opts}${tail}` });
+    const lines: string[] = [`[提问] ${req.question}`];
+    for (let i = 0; i < req.options.length; i++) lines.push(`${i + 1}. ${req.options[i]!.label}`);
+    lines.push(req.options.length > 0 ? '回复序号或内容' : '回复内容');
+    void this.safeDeliver(target, { text: lines.join('\n') });
   }
 
   /** markdown 降级:caps.markdown 才带标,否则纯文本(注记/审批投影恒纯文本) */
