@@ -231,8 +231,30 @@ test('⑥ 受理回执平台面(2026-11-22 用户裁定):accepted 走 ack 面免
   assert.ok(mock2.sent[0]!.text.includes('已受理')); // 文本兜底
 });
 
-test('⑤ 终态武装补漏(F2):未武装绑定会话直接来 token 帧(模拟排队续跑轮)→ onRunEnd 被注册,触发即投终态注记', async () => {
+test('⑤b GUI 发起轮抑制(2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到」):markGuiRun 后该会话帧全静默,done 清位恢复投影', async () => {
   const h = makeHarness([mkCfg()]);
+  h.engine.start();
+  h.runtimes.set('s1', makeRuntime());
+  h.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 's1', journalId: 'j1', updatedAt: 1 });
+  const mock = h.engine.mockAdapter('m1')!;
+  // 非绑定会话打标=零操作(集不收)
+  h.engine.markGuiRun('s-other');
+  h.pushFrame({ kind: 'event', sessionId: 's-other', seq: 1, e: { type: 'token', text: 'x', ts: 0 } });
+  // 绑定会话打标 → token 帧静默(mock 流式出站零增量)
+  h.engine.markGuiRun('s1');
+  const before = mock.streamed.length;
+  h.pushFrame({ kind: 'event', sessionId: 's1', seq: 1, e: { type: 'token', text: 'GUI 轮输出', ts: 0 } });
+  await drain();
+  assert.equal(mock.streamed.length, before, 'GUI 轮帧不进 IM 投影');
+  // done 帧清位 → 下一轮 token 恢复投影(流式 mock:token 帧即同气泡全量替换出站)
+  h.pushFrame({ kind: 'event', sessionId: 's1', seq: 2, e: { type: 'done', ts: 0 } });
+  h.pushFrame({ kind: 'event', sessionId: 's1', seq: 3, e: { type: 'token', text: 'IM 轮输出', ts: 0 } });
+  await drain();
+  assert.ok(mock.streamed.length > before, 'done 清位后恢复投影');
+  assert.ok(mock.streamed[mock.streamed.length - 1]!.fullText.includes('IM 轮输出'));
+});
+
+test('⑤ 终态武装补漏(F2):未武装绑定会话直接来 token 帧(模拟排队续跑轮)→ onRunEnd 被注册,触发即投终态注记', async () => {  const h = makeHarness([mkCfg()]);
   h.engine.start(); // projector.start() 挂帧泵 → frameSink 就位
   // 绑定 + runtime 预置,不经 router 提交(无 onSubmitted 武装)——session.ts 排队 steer 收尾内部续跑轮形态
   h.runtimes.set('s1', makeRuntime());

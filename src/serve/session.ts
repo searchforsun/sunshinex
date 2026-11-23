@@ -859,7 +859,7 @@ ${this.sessionCharter ?? ''}` }
       const lines = this.kernel.steerDrain();
       for (const line of lines) {
         this.kernel.submit(line.text, line.images); // journal user 条（kernel 事件只走落档面,不广播——帧在下）
-        this.broadcastUserEcho(line.text, line.images);
+        this.broadcastUserEcho(line.text, line.images); // 出队注入即回显气泡(2026-11-23 用户裁定:出队=入对话;入队期只在队列 chips)
       }
       return lines;
     };
@@ -1725,7 +1725,9 @@ ${this.sessionCharter ?? ''}` }
 
   /** 运行中穿插（G3 steer 平移）：队列态在内核(P5)——enqueue 不做运行态检查，运行中步边界
    *  drain 消费、空闲入队下一轮生效（排队语义即承诺，恒 200 由 HTTP 面承担）;steer 行落档与
-   *  queue 帧广播经 onKernelEvent 单槽随发 */
+   *  queue 帧广播经 onKernelEvent 单槽随发。排队期展示=输入框上侧队列 chips（2026-11-23 用户
+   *  裁定「在队列中就仍在队列中,队列显示在输入框上侧」）;出队注入(drain)才回显气泡——agent
+   *  思考/工具回复已出队即入对话,G14.89 入队不回显口径维持 */
   steer(text: string, images?: string[]): void {
     this.kernel.steerEnqueue(text, spillImages(this.root, images)); // 图片落盘点(同 submit 裁定)
   }

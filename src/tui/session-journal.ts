@@ -170,17 +170,20 @@ export interface SessionSidecarMeta {
   /** 通道会话标记(2026-11-21-channels spec §4):IM 通道建会话时出生写一次,值=通道配置 id;
    *  侧栏「通道」分组据此消费(spec §4 Task 13),缺席=普通会话 */
   channel?: string;
+  /** 平台聊天会话标识(2026-11-23):飞书 oc_/Telegram chat id 等——悬浮卡显示+复制用;
+   *  出生写一次(通道建会话时),绑定档反查缺席(旧会话//new 后解绑)时的权威源 */
+  chatId?: string;
 }
 
 const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds', 'root',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
   'archived', 'archivedAt', 'sideCount', 'sideOf', 'sideSeq', 'rewoundTo', 'kind', 'charterRev', 'charterText',
-  'scheduled', 'channel',
+  'scheduled', 'channel', 'chatId',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流）。root（2026-11-11 根修）：
  *  写侧早已落盘、读侧漏列=按数字键校验被丢——列表行/attach 归位恒读不到真根(树会话重启回主分支/hover 主根真根因) */
-const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo', 'root', 'kind', 'charterText', 'channel']);
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo', 'root', 'kind', 'charterText', 'channel', 'chatId']);
 /** 布尔值键（G14.29 side 辅助会话标记 / archived 归档标记 / scheduled 定时任务执行会话标记） */
 const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side', 'archived', 'scheduled']);
 

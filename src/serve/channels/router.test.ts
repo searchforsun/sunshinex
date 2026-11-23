@@ -221,7 +221,9 @@ test('⑥ 指令:/help 不进模型;/stop 调 interrupt;/new 重绑保留元数�
   assert.equal(nb.lockedUserId, 'u1'); // 元数据保留
   assert.equal(nb.rootOverride, '/override/root');
   assert.equal(nb.journalId, 'j-s1');
-  assert.ok(hNew.released.includes('old-s')); // 旧 runtime 释放
+  // 旧 runtime 不释放(2026-11-23 用户裁定「切会话就切会话,就放着就可以」):旧座留注册表,
+  // GUI 开着旧会话的 snapshot/pty 端点不 404
+  assert.ok(!hNew.released.includes('old-s'));
 
   // /new 前缀形态(带参数)与 auto root 推导
   const hNew2 = makeHarness();

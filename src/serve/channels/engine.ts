@@ -67,6 +67,12 @@ export class ChannelsEngine {
   /** 最近入站表:`${channelId}:${chatId}` → 最近一条 InboundMessage——回执式 adapter.reply(inbound)
    *  需要原始入站坐标,sink 记最近一条供 deliver 查用 */
   private readonly lastInbound = new Map<string, InboundMessage>();
+  /** GUI 发起轮抑制集（2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到,两者是隔离的,
+   *  只是同一个显示在上下文中,过滤一下」）:daemon HTTP 提交/穿插面对通道绑定会话打标(markGuiRun)
+   *  ——投影器帧过滤跳过这些会话的全部帧(正文/终态/挂起投影均不进 IM),done 帧清位;同一会话
+   *  上下文共享(GUI 与 IM 同源转录)但出站各回各家。局限(如实):GUI 在 IM 轮进行中穿插时,该轮
+   *  为共享轮,整轮静默到 done */
+  private readonly guiRuns = new Set<string>();
 
   constructor(
     private readonly io: ChannelsSessionIo,
@@ -83,7 +89,16 @@ export class ChannelsEngine {
       capsOf: (channelId) => this.adapters.get(channelId)?.caps(),
       deliver: (t, msg) => this.deliver(t, msg),
       streamDeliver: (t, delta) => this.streamDeliver(t, delta),
-      subscribe: (cb) => this.io.onFrame(cb),
+      subscribe: (cb) =>
+        this.io.onFrame((f) => {
+          // GUI 发起轮过滤(裁定见 guiRuns 字段注):抑制集会话的全部帧不进 IM 投影(config-changed
+          // 帧无 sessionId 直通);done 帧清位(该轮结束,后续 IM 消息照常投影)
+          if ('sessionId' in f && this.guiRuns.has(f.sessionId)) {
+            if (f.kind === 'event' && f.e.type === 'done') this.guiRuns.delete(f.sessionId);
+            return;
+          }
+          cb(f);
+        }),
       resolveApproval: (pid, decision) => this.io.resolveApproval(pid, decision),
       resolveAsk: (pid, answer) => this.io.resolveAsk(pid, answer),
       ensureArmed: (sessionId, target) => this.armRunEnd(sessionId, target),
@@ -131,6 +146,7 @@ export class ChannelsEngine {
   stop(): void {
     for (const id of [...this.adapters.keys()]) this.teardown(id);
     this.projector.stop();
+    this.guiRuns.clear();
   }
 
   /** 配置调和(幂等,键=cfg.id):新增/启用且在座未起 → launch(失败记 health detail 不抛);
@@ -214,8 +230,8 @@ export class ChannelsEngine {
     }
   }
 
-  /** 测试注入面:mock 平台在座适配器(emit/sent),非 mock/未起 → undefined */
-  mockAdapter(id: string): { emit(msg: InboundMessage): void; sent: OutboundMessage[] } | undefined {
+  /** 测试注入面:mock 平台在座适配器(emit/sent/streamed),非 mock/未起 → undefined */
+  mockAdapter(id: string): { emit(msg: InboundMessage): void; sent: OutboundMessage[]; streamed: StreamDelta[] } | undefined {
     const a = this.adapters.get(id);
     return a instanceof MockChannelAdapter ? a : undefined;
   }
@@ -247,6 +263,12 @@ export class ChannelsEngine {
     } catch (e) {
       this.startErrors.set(cfg.id, e instanceof Error ? e.message : String(e)); // 失败→health error 记 detail,不抛
     }
+  }
+
+  /** GUI 发起轮打标（daemon HTTP 提交/穿插面消费，裁定见 guiRuns 字段注）：仅通道绑定会话入集
+   *  （非绑定会话的 GUI 提交与通道无关,不标——投影器过滤零开销面） */
+  markGuiRun(sessionId: string): void {
+    if (this.boundTargets().has(sessionId)) this.guiRuns.add(sessionId);
   }
 
   /** 停(调和逆路):stop 尽力而为吞错 + 删表 + 清起失败痕 */

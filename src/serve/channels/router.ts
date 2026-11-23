@@ -199,7 +199,9 @@ export class ChannelRouter {
 
   /** /new 语义（⑥）：同聊天新建会话（activate:false）+ 重绑同 key——binding 元数据保留
    *  （lockedUserId/rootOverride/chatKind 原样带过，仅覆写 sessionId/journalId/updatedAt；rootOverride
-   *  在此生效，spec §9.3）+ 旧 runtime 释放、旧 journal 留盘可回看 */
+   *  在此生效，spec §9.3）。**旧运行时留在座**（2026-11-23 用户裁定「切会话就切会话，不应该
+   *  影响之前会话的内容，就放着就可以」）：/new 不 release 旧座——GUI 开着旧会话时 snapshot/
+   *  pty 等会话维端点照常寻址（404 根修），旧转录/终端原样可回看，注册表容量交 daemon 既有面 */
   private async cmdNew(msg: InboundMessage, cfg: ChannelConfig, key: string, binding: Binding | undefined): Promise<void> {
     const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg));
     if (!created.ok) {
@@ -207,12 +209,13 @@ export class ChannelRouter {
       return;
     }
     const sessionId = created.value.sessionId;
-    const seat = this.seatAndTag(cfg, sessionId);
+    const seat = this.seatAndTag(cfg, sessionId, msg.chatId);
     if (seat.rt === undefined) {
       await this.deps.ack(msg, '新会话创建失败：运行时未入注册表');
       return;
     }
-    if (binding !== undefined && binding.sessionId !== sessionId) this.deps.io.releaseSession(binding.sessionId);
+    // 旧运行时**不释放**（2026-11-23 用户裁定「就放着就可以」）：旧座留注册表——GUI 开着旧
+    // 会话的 snapshot/pty 等端点不 404
     this.upsertBinding(key, sessionId, seat, cfg, binding, msg);
     await this.deps.ack(msg, '已开启新会话，原会话留档可回看');
   }
@@ -239,7 +242,7 @@ export class ChannelRouter {
         await this.deps.ack(msg, `会话创建失败：${created.error.message}`);
         return;
       }
-      const seat = this.seatAndTag(cfg, created.value.sessionId);
+      const seat = this.seatAndTag(cfg, created.value.sessionId, msg.chatId);
       if (seat.rt === undefined) {
         await this.deps.ack(msg, '会话创建失败：运行时未入注册表');
         return;
@@ -272,10 +275,11 @@ export class ChannelRouter {
     await this.deps.ack(msg, queued ? '已加入排队，当前任务完成后处理' : '已受理，处理中', queued ? 'queued' : 'accepted');
   }
 
-  /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel})（⑩ 通道标出生写一次，
-   *  侧栏「通道」分组消费 Task 13；缺席=普通会话）——各步尽力而为 try/catch；
-   *  返回 runtime 与 journalId 供绑定 upsert */
-  private seatAndTag(cfg: ChannelConfig, sessionId: string): { rt: SessionRuntime | undefined; journalId?: string } {
+  /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel, chatId})（⑩ 通道标出生写一次，
+   *  侧栏「通道」分组消费 Task 13；chatId=平台聊天会话标识出生落档(2026-11-23)——悬浮卡
+   *  显示/复制在绑定反查缺席（旧会话//new 后解绑）时仍可达；缺席=普通会话）——各步尽力而为
+   *  try/catch；返回 runtime 与 journalId 供绑定 upsert */
+  private seatAndTag(cfg: ChannelConfig, sessionId: string, chatId: string): { rt: SessionRuntime | undefined; journalId?: string } {
     const rt = this.deps.io.getSession(sessionId);
     if (rt === undefined) return { rt: undefined };
     try {
@@ -286,7 +290,7 @@ export class ChannelRouter {
     const journalId = rt.attachedJournalId;
     if (journalId !== undefined) {
       try {
-        writeSessionMeta(rt.dataDir, journalId, { channel: cfg.id });
+        writeSessionMeta(rt.dataDir, journalId, { channel: cfg.id, ...(chatId !== '' ? { chatId } : {}) });
       } catch {
         /* 尽力而为：通道标缺席=普通会话 */
       }

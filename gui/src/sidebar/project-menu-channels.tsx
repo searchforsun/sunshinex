@@ -38,8 +38,9 @@ interface ChannelsSectionProps {
 
 /** 域目录 → 聊天工作区完整路径（2026-11-22 用户裁定「悬浮卡既要显示会话 id,也要显示工作目录」）:
  *  `<域目录>/workspace`（channelChatWorkspaceRoot 铸造面;分隔符随行 root 形态）——仅悬浮卡展示,
- *  行 attach 寻址仍用域目录(root,resolveDataDir 归约回 <域>/data) */
-const workspaceOf = (domainDir: string): string => {
+ *  行 attach 寻址仍用域目录(root,resolveDataDir 归约回 <域>/data)。空根守卫=undefined(工作区行缺席) */
+const workspaceOf = (domainDir: string | undefined): string | undefined => {
+  if (domainDir === undefined || domainDir === '') return undefined;
   const sep = domainDir.includes('\\') ? '\\' : '/';
   return domainDir.endsWith('\\') || domainDir.endsWith('/') ? `${domainDir}workspace` : `${domainDir}${sep}workspace`;
 };

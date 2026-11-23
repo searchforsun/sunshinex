@@ -136,6 +136,19 @@ export function handleChannelsBindingDelete(io: ChannelsHandlerIo, res: http.Ser
   io.send(res, 200, { ok: true });
 }
 
+/** 行 chatId 三重兜底（2026-11-23 用户裁定「旧会话也要有会话 id hover」）：
+ *  ① 出生档 meta chatId（seatAndTag 落档，权威源）；② 绑定档 journalId 反查（现行绑定）；
+ *  ③ 域名反查——`<域>=im-<通道slug>-<聊天slug>`，聊天 slug 为已知 id 前缀（oc/ou）时首
+ *  '-' 还原 '_'（slugify 只换 '_'→'-'，oc_/ou_ 形可逆）；都缺=undefined（卡回落根路径行） */
+function rowChatId(r: { id: string; chatId?: string }, domainDir: string, chatIdByJournal: ReadonlyMap<string, string>): string | undefined {
+  if (r.chatId !== undefined && r.chatId !== '') return r.chatId;
+  const viaBinding = chatIdByJournal.get(r.id);
+  if (viaBinding !== undefined) return viaBinding;
+  const base = domainDir.split(/[\\/]/).pop() ?? '';
+  const m = /^im-[a-z0-9]+-((?:oc|ou)-[0-9a-f]+)$/.exec(base);
+  return m !== null ? m[1].replace('-', '_') : undefined;
+}
+
 /** GET /channels/sessions（spec §2 运维面；Task 13 侧栏「通道」数据源）：扫 channels 容器各域
  *  （`<容器>/<域>/data` 逐域 listSessions 归并——GET /sunx/sessions 同构镜像，域列举换成
  *  channelsContainerDir()）。行形白名单同源（剔 charterText 全文与其余旁车超集）；行 root=域目录
@@ -164,7 +177,8 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
     domainColumns: (r, domainDir) => ({
       root: domainDir, // 行 root=域目录（GUI attach 直寻址：resolveDataDir 对容器内路径归约回 <域>/data）
       ...(r.channel !== undefined ? { channel: r.channel } : {}), // 通道配置 id（Task 13 分组键）
-      ...(chatIdByJournal.get(r.id) !== undefined ? { chatId: chatIdByJournal.get(r.id) } : {}), // 平台聊天会话标识（悬浮卡显示/复制）
+      // 平台聊天会话标识（悬浮卡显示/复制）——meta 出生档 → 绑定反查 → 域名反查三重兜底
+      ...(rowChatId(r, domainDir, chatIdByJournal) !== undefined ? { chatId: rowChatId(r, domainDir, chatIdByJournal) } : {}),
     }),
   });
   io.send(res, 200, out); // 裸 SessionRow[]（sunx 面同款，GUI 消费形对齐）

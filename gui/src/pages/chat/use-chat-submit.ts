@@ -87,7 +87,7 @@ const submitText = useCallback(
       : false;
     const dispatch = (): Promise<void> => {
       if (running) return conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
-      if (hasImages) return conn.sessionSubmit(sessionId, trimmed, imgs); // 携图:直走提交面(daemon armed 拦截转 planFlow;命令/旁路面不承载图片)
+      if (hasImages) return conn.sessionSubmit(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {}); // 携图:直走提交面(daemon armed 拦截转 planFlow;命令/旁路面不承载图片);409 回退穿插时 chips 即时现身(2026-11-23 显示时机裁定)
       if (isCommand) {
         // G14.213 skills 回归纯文本:仅「daemon supported 清单内」的 / 词走命令通道,skills/
         // 未知名一律当普通文本提交(系统提示词 skills 清单含「/skill-id 引用优先加载」提示,
@@ -100,9 +100,11 @@ const submitText = useCallback(
             if (!/unsupported|400|bad request/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
             await conn.sessionSubmit(sessionId, trimmed); // 清单过期兜底:命令通道拒即回退纯文本
           })
-          .then(() => undefined);
+          .then(() => refreshQueued()); // 回程刷 chips(同上:409 回退穿插时排队文本即时现身)
       }
-      return conn.sessionSubmit(sessionId, trimmed);
+      // idle 提交也可能被 daemon 409 回退成穿插(提交竞窗)——回程刷队列 chips,排队文本即时
+      // 现身输入框上侧(2026-11-23 用户裁定「显示时机 bug」:回退路不刷=排队文本迟迟不显)
+      return conn.sessionSubmit(sessionId, trimmed).then(() => refreshQueued(), () => {});
     };
     // 计划模式 arm 竞窗收口(2026-11-03):pill 乐观置选与 daemon setMode 异步在途的窗口内提交,
     // 先补 arm(快路径幂等恒 ok)再提交/入队,armed 拦截在 daemon submit 单点兜住;命令词不补。
