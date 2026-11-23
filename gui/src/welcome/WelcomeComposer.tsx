@@ -4,11 +4,12 @@ import { useUiMode } from '../ui-mode';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
 import { WelcomeProjectPop } from './welcome-project-pop';
-import { applyFilePick, dropRefsOf, pathBasename, insertRefBase, insertRefToken } from '../ui-util';
+import { applyFilePick, dropRefsOf, pathBasename, insertRefBase, insertRefPick, insertRefToken } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, hasMentionTokens, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
-import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
-import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
+import { expandRefNames, refPickLabel, refPanelItems as buildRefPanelItems, refTokenAt } from '../pages/chat/ref-palette';
+import type { RefPal } from '../pages/chat/ref-palette';
+import { useRefCatalog } from '../pages/chat/use-chat-ref-entries';
 import { ComposerCard } from '../composer/ComposerCard';
 import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
 import { useWelcomeImages } from './use-welcome-images';
@@ -131,31 +132,12 @@ export function WelcomeComposer({
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const { files: filePalFiles, refresh: refreshFilePalFiles } = useWelcomeFiles(conn, picked);
   const [filePalActive, setFilePalActive] = useState(0);
-  /** $/# 引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——检测/懒加载/键盘/overlays 四件套
-   *  全按 Chat 页同款;数据源缺法(conn 桩未挂)=面板永不触发 */
+  /** $/# 引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——触发态+catalog 装载(useRefCatalog
+   *  单点,D85;欢迎页无会话即无实时段,conn 桩缺 agentsView/teamsView=装载器缺席面板照开仅
+   *  无项;按名注册表/跳转接线全局单主归 Chat) */
   const [refPal, setRefPal] = useState<RefPal | null>(null);
-  const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
   const [refActive, setRefActive] = useState(0);
-  const refEntriesLoadedRef = useRef(false);
-  const loadRefEntries = (): void => {
-    if (refEntriesLoadedRef.current) return;
-    if (conn.agentsView === undefined || conn.teamsView === undefined) return;
-    refEntriesLoadedRef.current = true;
-    const refRoot = picked !== '' ? picked : undefined;
-    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
-      ([a, tv]) => {
-        setRefEntries({
-          // 内置四角色并入候选池+同 id 去重(builtin-first)——与会话页 Chat 同口径
-          agents: [
-            ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
-            ...a.view.entries.filter((e) => e.shadowed !== true).map((e) => ({ id: e.id, name: e.name })),
-          ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
-          teams: tv.view.entries.filter((e) => e.shadowed !== true).map((e) => ({ id: e.id, name: e.name })),
-        });
-      },
-      () => {}, // 失败静默空列(面板照开仅空态引导;不重试——零网络纪律)
-    );
-  };
+  const { refEntries, loadRefEntries } = useRefCatalog({ conn, root: picked });
   // G14.211 @ 面板点外即收(与会话内 Chat 同构):焦点离开输入框后 Esc 不可达,点外须收口
   useEffect(() => {
     // 外点收语义声明(D49,各弹层各表其面):本组四个弹层(项目/分支/模型/plus)同为「容器外
@@ -219,15 +201,19 @@ export function WelcomeComposer({
     onPickedChange?.(picked);
   }, [picked, onPickedChange]);
   const sendRef = useRef<(opts?: { isoRandom?: boolean }) => void>(() => undefined);
-  const send = (opts?: { isoRandom?: boolean }): void => {
-    // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
-    const target = picked !== '' ? picked : (presetRoot ?? '');
-    // G14.124 @短写发送期展开为 md 绝对链接(与会话内 submitText 同口径)
-    const g = expandFileRefs(goal, target, (name) => {
+  /** 草稿发送期展开单点(send/doSend 两份重复,D85 收敛):名称→id(目录已装载才生效,未装载
+   *  原样=R5 纪律) → @短写→相对路径(会话内 submitText 展开为 md 链接) */
+  const expandedGoal = (target: string): string =>
+    expandFileRefs(expandRefNames(goal, refEntries), target, (name) => {
       const picked = pickRelRef.current.get(name);
       if (picked !== undefined) return picked;
       return filePalFiles.find((f) => (pathBasename(f)) === name);
     }).trim();
+  const send = (opts?: { isoRandom?: boolean }): void => {
+    // 提交目标回落 preset(G10-C16 竞态收口:组内 + 的 preset effect 与提交赛跑时,以 preset 为准)
+    const target = picked !== '' ? picked : (presetRoot ?? '');
+    // G14.124 @短写发送期展开为 md 绝对链接(与会话内 submitText 同口径)
+    const g = expandedGoal(target);
     if ((g === '' && images.length === 0) || target === '' || busy) return;
     // 切换确认弹窗在场(统计中/待确认)不重入:2026-11-16 实测回环的引信——弹窗 onSend 曾指回
     // 本函数,拦截条件未变即重开弹窗重拉代价面,永远到不了 doSend(按钮「不可点击」观感根因)
@@ -257,12 +243,7 @@ export function WelcomeComposer({
   };
   /** 真实发送(switchBranch 在场=先提交并切换再建会话) */
   const doSend = (target: string, switchBranch: string | undefined, switchMessage: string | undefined): void => {
-    // G14.124 @短写发送期展开为 md 绝对链接(与会话内 submitText 同口径)
-    const g = expandFileRefs(goal, target, (name) => {
-      const picked = pickRelRef.current.get(name);
-      if (picked !== undefined) return picked;
-      return filePalFiles.find((f) => (pathBasename(f)) === name);
-    }).trim();
+    const g = expandedGoal(target);
     if ((g === '' && images.length === 0) || target === '' || busy) return;
     const imgs = images.length > 0 ? images : undefined;
     const isolateOn = isolate === true && gitBr !== null && gitBr.current !== '';
@@ -599,11 +580,13 @@ export function WelcomeComposer({
               setFilePal(null);
             }
             // $/# 引用面板键分支(2026-11-05;先于 @/命令面板——同 Chat 链序):↑↓ 单域循环、
-            // Esc 收、Enter 插 `$id `/`#id ` 尾随空格并钉光标;锚符号已被改写=面板不拦键
+            // Esc 收、Enter 插入;锚符号已被改写=面板不拦键
             const effRefTok = refTokenAt(goal, caret);
             const effRefPal = effRefTok ?? refPal;
             if (effRefPal !== null && (effRefTok !== null || goal[effRefPal.from] === effRefPal.sym)) {
-              const refItems = flatRefItems(refEntries, effRefPal.query, effRefPal.sym);
+              // 面板行单点(refPanelItems,D85——与新代四面同源;欢迎页 catalog-only 形态,实时段
+              // 全空=旧形单段零回归)
+              const refItems = buildRefPanelItems(refEntries, effRefPal.query, effRefPal.sym);
               if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
                 e.preventDefault();
                 if (refItems.length > 0) {
@@ -619,13 +602,15 @@ export function WelcomeComposer({
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && refItems.length > 0) {
                 e.preventDefault();
                 const item = refItems[Math.min(refActive, refItems.length - 1)];
-                setGoal((prev) => prev.slice(0, effRefPal.from) + `${item.sym}${item.id} ` + prev.slice(Math.max(effRefPal.from + 1 + effRefPal.query.length, effRefPal.from)));
-                setRefPal(null);
-                requestAnimationFrame(() => {
-                  const g = goalRef.current;
-                  if (g === null) return;
-                  const to = Math.min(effRefPal.from + item.id.length + 2, g.value.length);
-                  g.setSelectionRange(to, to);
+                // 键盘路同一份插入件(insertRefPick,D85:分隔守卫/名称显形随单点;名称显形=2026-11-20
+                // 用户裁定,发送期 expandedGoal 按目录还原 id;pinTo=已焦点 textarea,焦点 no-op 钉光标)
+                insertRefPick(setGoal, {
+                  sym: item.sym,
+                  label: refPickLabel(item),
+                  atFrom: effRefPal.from,
+                  queryLen: effRefPal.query.length,
+                  close: () => setRefPal(null),
+                  pinTo: () => goalRef.current,
                 });
                 return;
               }

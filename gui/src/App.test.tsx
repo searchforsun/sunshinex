@@ -617,7 +617,7 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     unmount();
   });
 
-  it('欢迎页 $ 触发引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——内置四角色在列,Enter 插入 $planner', async () => {
+  it('欢迎页 $ 触发引用面板(2026-11-05 用户裁定:欢迎页与会话页同构)——内置四角色在列,Enter 插名称 $Planner(D85 六面收敛)', async () => {
     const { conn } = mount();
     conn.agentsViewResp = {
       builtins: [
@@ -631,7 +631,10 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     const box = await screen.findByRole('listbox', { name: 'Sub-agents and agent teams' }); // App.test 全局 en 语言
     expect([...box.querySelectorAll('.ref-palette-id')].map((el) => el.textContent)).toEqual(['planner', 'developer']);
     fireEvent.keyDown(ta, { key: 'Enter' });
-    expect(ta.value).toBe('$planner '); // 插 `$id ` 尾随空格,面板收
+    // 名称显形(2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」;D85 收敛前欢迎页是
+    // 旧代裸 id 面):插 `$Planner `,发送期 expandedGoal 按目录还原 $planner(ref-palette
+    // expandRefNames 用例锁展开向)。换回裸 id 插入本用例变红
+    expect(ta.value).toBe('$Planner ');
     expect(document.querySelector('.ref-palette')).toBeNull();
   });
 

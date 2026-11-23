@@ -50,7 +50,7 @@ export { baseModelName, ChatEntryView, CollapsibleBubble, ThinkingEntryView } fr
 import { useWorkspaceFiles } from './chat/use-workspace-files';
 import type { AskPick } from './chat/PendingCards';
 import type { RefItem } from './chat/ref-palette';
-import { refPanelItems as buildRefPanelItems, unknownRefTokens } from './chat/ref-palette';
+import { expandRefNames, refPanelItems as buildRefPanelItems, unknownRefTokens } from './chat/ref-palette';
 import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { ChatComposerDock } from './chat/chat-composer-dock';
@@ -408,7 +408,9 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
-  expandRefsRef.current = (text) => expandRefContents(expandFileRefs(text, root, resolveFileRef), refContentsRef.current);
+  // 编辑卡 resend 展开跳板:名称→id(2026-11-20 名称插入口径,编辑卡键面/点击面同插名称——
+  // 不还原则模型收裸名称,主链契约破坏;D85 与 submitText 同序) → @短写 → 片段
+  expandRefsRef.current = (text) => expandRefContents(expandFileRefs(expandRefNames(text, liveRefEntries), root, resolveFileRef), refContentsRef.current);
   /** 2026-10-26 用户裁定:发送即跳底——视口停在上文时发新消息,立即置回贴底跟随
    *  (stick 先置 true:发送回显帧与本轮流式内容随后由既有贴底 effect 接管不脱手) */
   const jumpToBottom = useCallback((): void => {

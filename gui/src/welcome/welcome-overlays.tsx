@@ -1,10 +1,10 @@
-import { applyFilePick } from '../ui-util';
+import { applyFilePick, insertRefPick } from '../ui-util';
 import { type Dispatch, type SetStateAction } from 'react';
 import { t } from '../i18n';
 import { FilePalette, fileHit, rankFileHits, slashTokenAt } from '../pages/Chat';
 import { RefPalette } from '../pages/chat/mention';
 import { CommandPalette, type CmdItem } from '../CommandPalette';
-import { flatRefItems } from '../pages/chat/ref-palette';
+import { refPickLabel, refPanelItems as buildRefPanelItems } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 
@@ -64,7 +64,7 @@ export function WelcomeOverlays({
       {/* $/# 引用面板链首(2026-11-05;与 Chat 同构互斥:在场时 @/+/命令面板一律不渲染) */}
       {refPal !== null && goal[refPal.from] === refPal.sym ? (
         (() => {
-          const items = flatRefItems(refEntries, refPal.query, refPal.sym);
+          const items = buildRefPanelItems(refEntries, refPal.query, refPal.sym);
           const emptyHint =
             refEntries.agents.length === 0 && refEntries.teams.length === 0
               ? t(
@@ -79,16 +79,15 @@ export function WelcomeOverlays({
               active={Math.max(0, Math.min(refActive, items.length - 1))}
               onHover={setRefActive}
               onPick={(item) => {
-                const from = refPal.from;
-                const end = from + 1 + refPal.query.length;
-                setGoal((prev) => prev.slice(0, from) + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from)));
-                setRefPal(null);
-                goalRef.current?.focus();
-                requestAnimationFrame(() => {
-                  const g = goalRef.current;
-                  if (g === null) return;
-                  const to = Math.min(from + item.id.length + 2, g.value.length);
-                  g.setSelectionRange(to, to);
+                // 插入名称而非标识(2026-11-20 用户裁定,主对话同口径;发送期 expandRefNames 还原
+                // id)——insertRefPick 单点(D85;分隔守卫/尾随空格/G14.211 光标钉随单点)
+                insertRefPick(setGoal, {
+                  sym: item.sym,
+                  label: refPickLabel(item),
+                  atFrom: refPal.from,
+                  queryLen: refPal.query.length,
+                  close: () => setRefPal(null),
+                  pinTo: () => goalRef.current,
                 });
               }}
             />

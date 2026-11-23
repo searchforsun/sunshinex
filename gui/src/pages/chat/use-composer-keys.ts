@@ -1,4 +1,4 @@
-import { applyFilePick } from '../../ui-util';
+import { applyFilePick, insertRefPick } from '../../ui-util';
 import type { ClipboardEvent, CompositionEvent, Dispatch, FormEvent, KeyboardEvent, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { CmdItem } from '../../CommandPalette';
@@ -173,14 +173,17 @@ export function useComposerKeys(deps: {
       }
       if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && items.length > 0) {
         e.preventDefault();
-        // R4 裁定:插入 `$id `/`#id `(尾随空格)即终态——无 @ 的 pickRelRef 记账语义,
-        // 发送期零展开;替换区间=from..query 尾(镜像 @ 键控插入面)
         const item = items[Math.min(refActive, items.length - 1)];
-        const from = effRefPal.from;
-        const end = from + 1 + effRefPal.query.length;
-        // 名称插入(2026-11-20 用户裁定「# $ 后面只跟上名称」):发送期 expandRefNames 还原 id
-        setInput((prev) => prev.slice(0, from) + `${item.sym}${refPickLabel(item)} ` + prev.slice(Math.max(end, from)));
-        setRefPal(null);
+        // 键盘路=键面与点击面同一份插入件（insertRefPick 单点,D85:分隔符守卫/尾随空格即终态/
+        // 名称显形三面同式;无 pinTo=textarea 已焦点不钉）。R4 裁定终态+名称显形(2026-11-20
+        // 用户裁定「# $ 后面只跟上名称」):发送期 expandRefNames 还原 id;替换区间=from..query 尾
+        insertRefPick(setInput, {
+          sym: item.sym,
+          label: refPickLabel(item),
+          atFrom: effRefPal.from,
+          queryLen: effRefPal.query.length,
+          close: () => setRefPal(null),
+        });
         return;
       }
     }

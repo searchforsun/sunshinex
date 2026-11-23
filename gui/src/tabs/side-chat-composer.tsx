@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { t } from '../i18n';
 import type { Connection } from '../connection';
@@ -9,8 +9,9 @@ import { CommandPalette, type CmdItem } from '../CommandPalette';
 import { slashItemsFor, useCommandPalette } from '../pages/chat/use-command-palette';
 import { useComposerKeys } from '../pages/chat/use-composer-keys';
 import { useChatComposerSide } from '../pages/chat/use-chat-composer-side';
-import { flatRefItems, refTokenAt, type RefEntries, type RefPal } from '../pages/chat/ref-palette';
-import { applyFilePick, pathBasename } from '../ui-util';
+import { expandRefNames, refPickLabel, refPanelItems as buildRefPanelItems, refTokenAt, type RefPal } from '../pages/chat/ref-palette';
+import { useRefCatalog } from '../pages/chat/use-chat-ref-entries';
+import { applyFilePick, insertRefPick, pathBasename } from '../ui-util';
 import { useWorkspaceFiles } from '../pages/chat/use-workspace-files';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 
@@ -48,9 +49,10 @@ export function SideChatComposer(props: {
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
   const [filePalActive, setFilePalActive] = useState(0);
   const [refPal, setRefPal] = useState<RefPal | null>(null);
-  const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
   const [refActive, setRefActive] = useState(0);
-  const refEntriesLoadedRef = useRef(false);
+  /** 目录装载=useRefCatalog 单点（D85;catalog-only 装配——草稿未 fork 无本会话实时段,
+   *  注册表/跳转接线全局单主归 Chat） */
+  const { refEntries, loadRefEntries } = useRefCatalog({ conn, root });
   const { cmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn, root);
   // 2026-11-07 用户实测「+ 能实时加出来,/ 不实时」:/ 面板在场即现拉技能清单(主对话同款)
   useEffect(() => {
@@ -58,24 +60,6 @@ export function SideChatComposer(props: {
   }, [text, reloadSkills]);
   /** 工作区文件索引(@ 面板数据部;草稿无会话,缓存键传空串=独立缓存,装载口径同主对话) */
   const { resolveFileRef, loadWorkspaceFiles } = useWorkspaceFiles(conn, '', root, pickRelRef);
-  /** agents/teams 引用目录懒加载(Chat.tsx 同款投影:内置并入+shadowed 剔除+去重,失败静默空列) */
-  const loadRefEntries = useCallback((): void => {
-    if (refEntriesLoadedRef.current) return;
-    refEntriesLoadedRef.current = true;
-    const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
-    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
-      ([a, tv]) => {
-        setRefEntries({
-          agents: [
-            ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
-            ...a.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
-          ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
-          teams: tv.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
-        });
-      },
-      () => setRefEntries({ agents: [], teams: [] }),
-    );
-  }, [conn, root]);
   /** insert-ref 片段通道(主对话圈选「添加到辅助会话」):token 落框+账本,芯片态恢复 */
   const { onInputClick } = useChatComposerSide({
     pickRelRef,
@@ -169,7 +153,9 @@ export function SideChatComposer(props: {
   }, [text]);
   const send = (): void => {
     if (busy) return;
-    const trimmed = expandRefContents(expandFileRefs(text, root, resolveFileRef), refContentsRef.current).trim();
+    // 名称→id 发送期还原（D85 与主对话 submitText 同序:名称展开 → @ 展开 → 片段展开——
+    // 键面/点击面插的是名称,不还原则模型收到裸名称,主链契约破坏）
+    const trimmed = expandRefContents(expandFileRefs(expandRefNames(text, refEntries), root, resolveFileRef), refContentsRef.current).trim();
     if (trimmed === '') return;
     onSend(trimmed);
   };
@@ -244,11 +230,14 @@ export function SideChatComposer(props: {
       send();
     }
   };
-  // 面板渲染面数据(Chat.tsx 同款:filePal 锚校验/命令清单=supported 过滤+技能行)
+  // 面板渲染面数据(Chat.tsx 同款:filePal 锚校验/命令清单=supported 过滤+技能行);ref 面板
+  // G14.211 锚校验随 refPanelItems 统一对齐(D85:原面缺锚守卫,程序化删 token 后残锚面板照渲)
   const caret = inputRef.current?.selectionStart ?? text.length;
   const slashToken = slashTokenAt(text, caret);
   const slashPanelItems: CmdItem[] | null = slashToken !== null ? slashItemsFor(cmdData, slashToken, skills) : null;
-  const refItems = refPal !== null ? flatRefItems(refEntries, refPal.query, refPal.sym) : null;
+  const refItems = refPal !== null && (text[refPal.from] === '$' || text[refPal.from] === '#')
+    ? buildRefPanelItems(refEntries, refPal.query, refPal.sym)
+    : null;
   const overlays = (
     <>
       {refPal !== null && refItems !== null ? (
@@ -258,21 +247,15 @@ export function SideChatComposer(props: {
           active={Math.max(0, Math.min(refActive, refItems.length - 1))}
           onHover={setRefActive}
           onPick={(item) => {
-            const from = refPal.from;
-            const end = from + 1 + refPal.query.length;
-            setText((prev) => {
-              const head = prev.slice(0, from);
-              const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
-              return head + sep + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from));
-            });
-            setRefPal(null);
-            inputRef.current?.focus();
-            requestAnimationFrame(() => {
-              const ta = inputRef.current;
-              if (ta !== null) {
-                const to = Math.min(from + item.id.length + 2, ta.value.length);
-                ta.setSelectionRange(to, to);
-              }
+            // 插入名称而非标识(2026-11-20 用户裁定,主对话同口径;发送期 expandRefNames 还原
+            // id)——insertRefPick 单点(D85;分隔守卫/尾随空格/G14.211 光标钉随单点)
+            insertRefPick(setText, {
+              sym: item.sym,
+              label: refPickLabel(item),
+              atFrom: refPal.from,
+              queryLen: refPal.query.length,
+              close: () => setRefPal(null),
+              pinTo: () => inputRef.current,
             });
           }}
         />

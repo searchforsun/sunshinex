@@ -16,7 +16,7 @@ import type { RefEntries, RefPal } from './ref-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './ComposerPills';
 import { useComposerKeys } from './use-composer-keys';
 import type { ChatProps } from './chat-types';
-import { applyFilePick, chaseScrollBottom, dropRefsOf, insertRefBase, insertRefToken } from '../../ui-util';
+import { applyFilePick, chaseScrollBottom, dropRefsOf, insertRefBase, insertRefPick, insertRefToken } from '../../ui-util';
 import { t } from '../../i18n';
 
 type QueuedRow = { seq: number; text: string; images?: string[] };
@@ -264,24 +264,16 @@ export function ChatComposerDock(props: {
                 active={Math.max(0, Math.min(refActive, refPanelItems.length - 1))}
                 onHover={setRefActive}
                 onPick={(item) => {
-                  const from = refPal.from;
-                  const end = from + 1 + refPal.query.length;
-                  // 分隔符守卫(2026-11-05):锚位前贴着 ⟧(芯片尾沿,无空白)时补半角空格——
-                  // 否则 $id/#id 直接粘在芯片后,tokenizer (^|\s) 不识别=引用渲染成白文
-                  setInput((prev) => {
-                    const head = prev.slice(0, from);
-                    const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
-                    // 插入名称而非标识(2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」):
-                    // 发送期由 expandRefNames 按目录还原成 id;含空白名称回落 id(refPickLabel 单点)
-                    return head + sep + `${item.sym}${refPickLabel(item)} ` + prev.slice(Math.max(end, from));
-                  });
-                  setRefPal(null);
-                  inputRef.current?.focus();
-                  requestAnimationFrame(() => {
-                    const ta = inputRef.current;
-                    if (ta === null) return;
-                    const to = Math.min(from + refPickLabel(item).length + 2, ta.value.length);
-                    ta.setSelectionRange(to, to);
+                  // 插入名称而非标识(2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」):
+                  // 发送期 expandRefNames 按目录还原成 id;含空白名称回落 id(refPickLabel 单点)。
+                  // 分隔符守卫/尾随空格/G14.211 光标钉全在 insertRefPick 单点(D85)
+                  insertRefPick(setInput, {
+                    sym: item.sym,
+                    label: refPickLabel(item),
+                    atFrom: refPal.from,
+                    queryLen: refPal.query.length,
+                    close: () => setRefPal(null),
+                    pinTo: () => inputRef.current,
                   });
                 }}
               />

@@ -1,7 +1,8 @@
 /**
  * $ / # 软引用 palette 纯函数域（agents-teams P1 Task 4，spec 2026-11-04 §3.1/§3.2 GUI 面）——
  * 触发令牌解析（refTokenAt，词法与 mention.splitMentionTokens 的 $/# 支同款：词边界起手 +
- * 小写首字符）、目录前缀过滤（filterRefEntries）、双组扁平单游标（flatRefItems）、未知引用
+ * 小写首字符）、目录前缀过滤（filterRefEntries）、面板行单点（refPanelItems，实时段置顶+目录
+ * 在后）、未知引用
  * 聚合（unknownRefTokens，R5：发送前只读对照「已缓存」entries，不拦截不改写）。零 DOM 依赖
  * （ref-palette.test.ts 直测）；面板渲染件在 mention.tsx（RefPalette，FilePalette 同居）、
  * 键盘链在 use-composer-keys.ts、装配与懒加载在 Chat.tsx。
@@ -110,16 +111,10 @@ export function filterRefEntries(entries: RefEntries, query: string): RefEntries
   return { agents: entries.agents.filter(hit), teams: entries.teams.filter(hit) };
 }
 
-/** 过滤 + 单域扁平（2026-11-05 用户裁定：$ 与 # 拆开各弹各的，不再同面板双组混列——
- *  sym 决定取哪组；键盘 ↑↓ 在单组内循环） */
-export function flatRefItems(entries: RefEntries, query: string, sym: '$' | '#'): RefItem[] {
-  const hit = sym === '$' ? filterRefEntries(entries, query).agents : filterRefEntries(entries, query).teams;
-  return hit.map((e) => ({ ...e, sym }));
-}
-
-/** 面板行单点（渲染/键盘共用）：$=目录子智能体（无组头，旧形）；#=本会话团队 → 本会话任务 →
- *  目录团队三段（2026-11-20 用户裁定「直接 $ # 出来当前会话正在运行的或存在的团队及任务」）。
- *  实时段任一在场时目录段补「目录团队」组头以示来源；实时全空=旧形单段无组头（零回归）。 */
+/** 面板行单点（渲染/键盘/四面 composer 共用，D85 统一口径）：$=本会话成员置顶+目录子智能体；
+ *  #=本会话团队 → 本会话任务 → 目录团队（2026-11-20 用户裁定「直接 $ # 出来当前会话正在运行
+ *  的或存在的团队及任务」）。实时段任一在场时目录段补组头以示来源；实时全空=旧形单段无组头
+ *  （catalog-only 装配逐项等价，欢迎页/侧聊/编辑卡即此形态）。 */
 export function refPanelItems(entries: RefEntries, query: string, sym: '$' | '#'): RefItem[] {
   if (sym === '$') {
     // 本会话成员置顶（2026-11-21）：成员名即寻址键，选中插 $名；目录 agents 在后

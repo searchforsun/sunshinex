@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expandRefNames, filterRefEntries, flatRefItems, refPanelItems, refPickLabel, refTokenAt, unknownRefTokens } from './ref-palette';
+import { expandRefNames, filterRefEntries, refPanelItems, refPickLabel, refTokenAt, unknownRefTokens } from './ref-palette';
 import type { RefEntries } from './ref-palette';
 
 /** agents-teams P1 Task 4(spec 2026-11-04 §3.1/§3.2 GUI):$ / # 软引用 palette 纯函数面——
@@ -78,18 +78,6 @@ describe('filterRefEntries(id 前缀过滤)', () => {
   });
   it('无命中=空组(面板不开)', () => {
     expect(filterRefEntries(ENTRIES, 'zzz')).toEqual({ agents: [], teams: [] });
-  });
-});
-
-describe('flatRefItems(单域扁平——2026-11-05 用户裁定:$ / # 拆开各弹各的)', () => {
-  it("sym='$' 只出 agents 行", () => {
-    expect(flatRefItems(ENTRIES, '', '$').map((i) => `${i.sym}${i.id}`)).toEqual(['$devx', '$devops', '$planner']);
-  });
-  it("sym='#' 只出 teams 行", () => {
-    expect(flatRefItems(ENTRIES, '', '#').map((i) => `${i.sym}${i.id}`)).toEqual(['#core-team', '#fullstack-delivery']);
-  });
-  it('过滤+扁平一体(sym=#,query=full 只剩一行)', () => {
-    expect(flatRefItems(ENTRIES, 'full', '#')).toEqual([{ id: 'fullstack-delivery', name: 'Fullstack', sym: '#' }]);
   });
 });
 

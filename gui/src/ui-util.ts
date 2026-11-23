@@ -388,6 +388,33 @@ export function insertRefToken(
   insertRefBase(base, isDir ? `${bare}/` : bare, { ...io, pinCaret: true });
 }
 
+/** $/# 引用面板 pick 插入共用件（D85 收敛：键面 Enter/五处点击「sym+名 token 区间 splice+收
+ *  面板」六份逐字核——insertRefPick 单点后六面同式：分隔符守卫（2026-11-05:锚位前贴芯片尾沿
+ *  无空白时补半角空格,否则 tokenizer (^|\s) 不识别=引用渲染成白文）、尾随空格即终态、名称
+ *  显形（2026-11-20 用户裁定,发送期 expandRefNames 还原 id）。pinTo 缺席=键盘路（textarea 已
+ *  焦点,不钉不focus）;在座=点击路 G14.211 光标钉插入 token 右沿） */
+export function insertRefPick(
+  setText: (updater: (prev: string) => string) => void,
+  opts: { sym: '$' | '#'; label: string; atFrom: number; queryLen: number; close: () => void; pinTo?: () => HTMLTextAreaElement | null },
+): void {
+  const atEnd = opts.atFrom + 1 + opts.queryLen;
+  setText((prev) => {
+    const head = prev.slice(0, opts.atFrom);
+    const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
+    return head + sep + `${opts.sym}${opts.label} ` + prev.slice(Math.max(atEnd, opts.atFrom));
+  });
+  opts.close();
+  const pin = opts.pinTo;
+  if (pin === undefined) return;
+  pin()?.focus();
+  requestAnimationFrame(() => {
+    const ta = pin();
+    if (ta === null) return;
+    const to = Math.min(opts.atFrom + opts.label.length + 2, ta.value.length);
+    ta.setSelectionRange(to, to);
+  });
+}
+
 /** @文件面板 pick 插入共用件（D86 收敛：键盘/点击两路六份「pathBasename+pickRelRef 记账+@token
  *  区间 splice+收面板」逐字核；G14.211 光标钉 ×4 同式随 pinTo 收编——钉在插入 token 右沿
  *  @+名+空格,旧光标位恢复=token 中间）。返回短写 base（入账键=显形名）。 */

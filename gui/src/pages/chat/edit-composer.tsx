@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, MutableRefObject, SetStateAction } from 'react';
 import { ArrowUp, X } from 'lucide-react';
 import { ComposerCard } from '../../composer/ComposerCard';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { CommandPalette } from '../../CommandPalette';
 import type { CmdItem } from '../../CommandPalette';
-import { applyFilePick, dropRefsOf } from '../../ui-util';
+import { applyFilePick, dropRefsOf, insertRefPick } from '../../ui-util';
 import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
 import { FilePalette, RefPalette, fileHit, hasMentionTokens, rankFileHits, refContentRegistry, renderMentionSpans, slashTokenAt, splitMentionTokens } from './mention';
-import { flatRefItems, refTokenAt } from './ref-palette';
-import type { RefEntries, RefItem, RefPal } from './ref-palette';
+import { refPickLabel, refPanelItems as buildRefPanelItems, refTokenAt } from './ref-palette';
+import type { RefItem, RefPal } from './ref-palette';
 import { slashItemsFor, useCommandPalette } from './use-command-palette';
 import { useComposerKeys } from './use-composer-keys';
+import { useRefCatalog } from './use-chat-ref-entries';
 import { useWorkspaceFiles } from './use-workspace-files';
 import type { Connection } from '../../connection';
 
@@ -53,28 +54,11 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
   const [filePalActive, setFilePalActive] = useState(0);
   const [refPal, setRefPal] = useState<RefPal | null>(null);
   const [refActive, setRefActive] = useState(0);
-  const refEntriesLoadedRef = useRef(false);
-  const [refEntries, setRefEntries] = useState<RefEntries>({ agents: [], teams: [] });
+  /** 目录装载=useRefCatalog 单点（D85;catalog-only 装配,编辑卡无本会话实时段——实时项只属
+   *  主对话链,注册表/跳转接线全局单主归 Chat） */
+  const { refEntries, loadRefEntries } = useRefCatalog({ conn, root });
   const [pillOpen, setPillOpen] = useState<'plus' | null>(null);
   const [compRange, setCompRange] = useState<{ start: number; end: number } | null>(null);
-  /** 两目录缓存(agents+teams id/name 投影;首触懒拉,失败静默空列——Chat 同款守卫) */
-  const loadRefEntries = useCallback((): void => {
-    if (refEntriesLoadedRef.current) return;
-    refEntriesLoadedRef.current = true;
-    const refRoot = root !== undefined && root !== '' && root !== 'default' ? root : undefined;
-    void Promise.all([conn.agentsView(refRoot), conn.teamsView(refRoot)]).then(
-      ([a, tv]) => {
-        setRefEntries({
-          agents: [
-            ...a.builtins.map((b) => ({ id: b.role, name: b.name })),
-            ...a.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
-          ].filter((x, i, arr) => arr.findIndex((y) => y.id === x.id) === i),
-          teams: tv.view.entries.filter((e) => !e.shadowed).map((e) => ({ id: e.id, name: e.name })),
-        });
-      },
-      () => {}, // 失败静默:entries 保持空列(面板无项不开;不重试——零网络纪律)
-    );
-  }, [conn, root]);
 
   const composerKeys = useComposerKeys({
     input: value,
@@ -154,7 +138,7 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
   const refPanelItems: RefItem[] | null = (() => {
     if (refPal === null) return null;
     if (value[refPal.from] !== '$' && value[refPal.from] !== '#') return null;
-    return flatRefItems(refEntries, refPal.query, refPal.sym);
+    return buildRefPanelItems(refEntries, refPal.query, refPal.sym);
   })();
 
   const overlay = useMemo(
@@ -167,15 +151,17 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
             active={Math.max(0, Math.min(refActive, refPanelItems.length - 1))}
             onHover={setRefActive}
             onPick={(item) => {
-              const from = refPal.from;
-              const end = from + 1 + refPal.query.length;
-              onChange((prev: string) => {
-                const head = prev.slice(0, from);
-                const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
-                return head + sep + `${item.sym}${item.id} ` + prev.slice(Math.max(end, from));
+              // 插入名称而非标识(2026-11-20 用户裁定,主对话同口径;发送期宿主 expandRefNames
+              // 还原 id)——insertRefPick 单点(D85;分隔守卫/尾随空格/G14.211 光标钉随单点对齐,
+              // 原面漏钉顺带补齐)
+              insertRefPick(onChange, {
+                sym: item.sym,
+                label: refPickLabel(item),
+                atFrom: refPal.from,
+                queryLen: refPal.query.length,
+                close: () => setRefPal(null),
+                pinTo: () => taRef.current,
               });
-              setRefPal(null);
-              taRef.current?.focus();
             }}
           />
         ) : filePal !== null && value[filePal.from] === '@' && filePalFiles.some((f) => fileHit(f, filePal.query)) ? (
