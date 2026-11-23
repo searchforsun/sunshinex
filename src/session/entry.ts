@@ -167,6 +167,25 @@ interface PendingTool {
   name: string;
 }
 
+/** pending 池消费单点（D98 收敛：callId 精确配对与无 callId FIFO 兜底原两份 8 行仅 findIndex
+ *  谓词漂移）：池中首个 pred 命中条按 seq 回填主链并出池；未命中/条目缺失原样返回 sealed
+ *  （调用方以引用不等判定命中短路） */
+function consumePending(sealed: KernelState, pred: (p: PendingTool) => boolean, fill: (cur: KernelEntry, name: string) => KernelEntry): KernelState {
+  const pi = sealed.pending.findIndex(pred);
+  if (pi >= 0) {
+    const p = sealed.pending[pi]!;
+    const idx = sealed.entries.findIndex((x) => x.seq === p.seq);
+    if (idx >= 0) {
+      return {
+        ...sealed,
+        entries: replaceAt(sealed.entries, idx, fill(sealed.entries[idx]!, p.name)),
+        pending: sealed.pending.filter((_, i) => i !== pi),
+      };
+    }
+  }
+  return sealed;
+}
+
 /** reducer 态:条目列 + 流式侧记账。openRun/openSeg = 开启中条目 seq(-1 无):run 跨 run 全程,
  *  正文/思考段轮内轮替——两游标独立,「开启中即流式中」的派生面。stats=会话统计面(P9,
  *  水位/计数唯一权威,变更经 kernel stats 事件外抛;seed 从 run meta 重建) */
@@ -436,18 +455,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       // 收 done:status 删字段(终态行字段省略——undefined 即 done,✗ 面由 result.ok 承载)
       const fill = (cur: KernelEntry, name: string): KernelEntry => ({ ...cur, name, result, status: undefined, ...(hasImgs ? { images: imgs } : {}) });
       if (callId !== undefined) {
-        const pi = sealed.pending.findIndex((p) => p.callId === callId);
-        if (pi >= 0) {
-          const p = sealed.pending[pi]!;
-          const idx = sealed.entries.findIndex((x) => x.seq === p.seq);
-          if (idx >= 0) {
-            return {
-              ...sealed,
-              entries: replaceAt(sealed.entries, idx, fill(sealed.entries[idx]!, p.name)),
-              pending: sealed.pending.filter((_, i) => i !== pi),
-            };
-          }
-        }
+        const consumed = consumePending(sealed, (p) => p.callId === callId, fill);
+        if (consumed !== sealed) return consumed;
         // 迟到配对(2026-10-25 用户报障「等待结果显示在两行,等待行恒运行中」):同 callId 的在列
         // 未决条目原位回填——pending 池是内存态,GUI 重连重播种/daemon 重启后快照条(status running)
         // 不在池,迟到 result 走占位新条即裂两行且原行永卡运行中;按 callId 回寻 heals 重连/重启两面
@@ -461,18 +470,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
         return { ...next, pending: [...next.pending, { seq: next.nextSeq - 1, callId, name: PLACEHOLDER }] };
       }
       // 无 callId:FIFO 兜底配最老的无 callId 未配对条(pendingCalls 同口径)
-      const pi = sealed.pending.findIndex((p) => p.callId === undefined);
-      if (pi >= 0) {
-        const p = sealed.pending[pi]!;
-        const idx = sealed.entries.findIndex((x) => x.seq === p.seq);
-        if (idx >= 0) {
-          return {
-            ...sealed,
-            entries: replaceAt(sealed.entries, idx, fill(sealed.entries[idx]!, p.name)),
-            pending: sealed.pending.filter((_, i) => i !== pi),
-          };
-        }
-      }
+      const consumed = consumePending(sealed, (p) => p.callId === undefined, fill);
+      if (consumed !== sealed) return consumed;
       // 孤儿 result:以 payload.tool 为动词独立成条(完备条,不进 pending)——即刻终态,无 status
       const tool = e.payload?.tool;
       const verb = typeof tool === 'string' && tool.length > 0 ? tool : PLACEHOLDER;

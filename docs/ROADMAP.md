@@ -170,4 +170,4 @@ flowchart TB
 
 ## 7. 目录结构
 
-实装为 src/ 扁平分层（与历史规划中的 src/agent/* 嵌套示意不同，扁平分层为既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/taskboard`、`src/delegation`、`src/serve`、`src/catalog`、`src/storage`、`src/config`、`src/session`、`src/eval`、`src/runtime.ts`、`src/tui`、`src/cli`；GUI 双件为根级 pnpm 工作区包 `gui/`（React 前端，构建产物 dist-gui/）与 `shell/`（Electron 桌面壳）。逐文件说明见根目录 `CLAUDE.md §3`。
+实装为 src/ 扁平分层（既定形态）：`src/harness`（perception/reactor/tools/mcp/subagent/worktree/tasks/prompts/knowledge/security/context/memory/skills）、`src/loop`、`src/graph`、`src/model`、`src/taskboard`、`src/delegation`、`src/serve`、`src/catalog`、`src/storage`、`src/config`、`src/session`、`src/eval`、`src/runtime.ts`、`src/tui`、`src/cli`；GUI 双件为根级 pnpm 工作区包 `gui/`（React 前端，构建产物 dist-gui/）与 `shell/`（Electron 桌面壳）。逐文件说明见根目录 `CLAUDE.md §3`。

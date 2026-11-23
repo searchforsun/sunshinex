@@ -9,7 +9,7 @@ import { resolveKbEnv } from '../config/env';
 import { indexKnowledgeDir } from '../harness/knowledge';
 import type { SessionController } from './session';
 
-// D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：持久存储类命令族——memory 六方法 + kbIndex（知识库同为
+// D17 拆分件步3（docs/superpowers/TECH-DEBT-SURVEY.md H1）：持久存储类命令族——memory 六方法 + kbIndex（知识库同为
 // 持久库族）函数体迁出，handleSlash 骨架留 session 只做分发；经 ctrl 公开成员访问，不为迁出复制状态。
 
 /** /memory：无参列索引（查看态） */

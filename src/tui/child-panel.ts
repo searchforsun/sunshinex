@@ -6,7 +6,7 @@ import { serializeMultiline, pairChildResults } from './chat-model';
 import type { ChildLiveState } from './chat-model';
 import type { SessionController } from './session';
 
-// D17 拆分件步4（docs/TECH-DEBT-SURVEY.md H1）：子智能体面板态——onChildEvent/commitChild/archiveChild/
+// D17 拆分件步4（docs/superpowers/TECH-DEBT-SURVEY.md H1）：子智能体面板态——onChildEvent/commitChild/archiveChild/
 // archiveDeferred/archiveInto/markChildStopped/stopChild 迁出；pairChildResults 等纯件已随步1 在 chat-model。
 // 面板态经 ctrl.state.children 与 childBufs/childPrompts/spawnCalls 单点读写，不为迁出复制状态。
 

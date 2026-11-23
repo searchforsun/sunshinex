@@ -52,7 +52,7 @@ import { applyDelegation } from '../delegation/projection';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import { boardEventFrom } from '../taskboard/translate';
 
-// D17 拆分件（docs/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
+// D17 拆分件（docs/superpowers/TECH-DEBT-SURVEY.md H1 五步边界）：纯模型层迁 chat-model.ts、流式 md 通道迁 md-stream.ts、
 // 命令族迁 commands-*.ts、子智能体面板迁 child-panel.ts、挂起协调迁 approval.ts；session.ts 转发导出
 // 保持既有导入面（组件与既有测试零改动是硬约束）
 export {

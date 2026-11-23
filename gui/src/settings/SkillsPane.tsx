@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Check, Copy } from 'lucide-react';
 import { useCopyFeedback } from '../use-copy-feedback';
@@ -8,6 +8,7 @@ import { errText } from '../ui-util';
 import type { SkillsGroup, SettingsView } from '../connection';
 import { Select } from './controls';
 import { SearchBar, Switch, defaultScopeOptions } from './components';
+import { ModalShell } from './components';
 import type { ScopeOption } from './components';
 
 /**
@@ -318,45 +319,32 @@ export function SkillsPane({ conn, root, title, onScopeChange, scopeOptions, ref
 }
 
 /** SKILL.md 预览弹窗(只读):宽 min(92vw,760px)、高 ≤80vh,正文区纵向滚动;frontmatter 已剥。
- *  正文与侧栏 md 预览同源(files-md 排版+md-render 代码块/mermaid/表格),头部复制钮同侧栏 files-act 款 */
+ *  正文与侧栏 md 预览同源(files-md 排版+md-render 代码块/mermaid/表格),头部复制钮同侧栏 files-act 款。
+ *  壳面走 ModalShell 组合（D96：原手写落焦+Esc+backdrop 退役） */
 function SkillPreviewModal({ id, body, onClose }: { id: string; body: string | null; onClose: () => void }): JSX.Element {
-  const ref = useRef<HTMLDivElement | null>(null);
   const { status: copied, copy } = useCopyFeedback();
-  useEffect(() => {
-    ref.current?.focus();
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
   return (
-    <div className="sx-editor-modal-backdrop" onClick={onClose}>
-      <div ref={ref} className="sx-editor-modal sx-skill-preview" role="dialog" aria-modal="true" aria-label={id} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
-        <header className="sx-editor-modal-head">
-          <h3>{id}</h3>
-          <span className="sx-skill-preview-acts">
-            {body !== null && (
-              <button type="button" className="files-act" aria-label={copied === 'ok' ? 'copied' : 'copy content'} data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={() => copy(body)}>
-                {copied === 'ok' ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
-              </button>
-            )}
-            <button type="button" className="sx-editor-modal-close" aria-label={t('Close', '关闭')} onClick={onClose}>×</button>
-          </span>
-        </header>
-        <div className="sx-skill-preview-body files-md">
-          {body === null ? (
-            <p className="home-loading">{t('Loading…', '加载中…')}</p>
-          ) : (
-            <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>
-              {body}
-            </ReactMarkdown>
-          )}
-        </div>
+    <ModalShell
+      title={id}
+      onClose={onClose}
+      modifier="sx-skill-preview"
+      headerActions={
+        body !== null && (
+          <button type="button" className="files-act" aria-label={copied === 'ok' ? 'copied' : 'copy content'} data-tip={copied === 'ok' ? t('Copied', '已复制') : t('Copy', '复制')} onClick={() => copy(body)}>
+            {copied === 'ok' ? <Check size={14} strokeWidth={2} /> : <Copy size={14} strokeWidth={1.75} />}
+          </button>
+        )
+      }
+    >
+      <div className="sx-skill-preview-body files-md">
+        {body === null ? (
+          <p className="home-loading">{t('Loading…', '加载中…')}</p>
+        ) : (
+          <ReactMarkdown remarkPlugins={MD_REMARK_PLUGINS} rehypePlugins={MD_REHYPE_PLUGINS} urlTransform={keepUrl} components={mdComponentsPlain}>
+            {body}
+          </ReactMarkdown>
+        )}
       </div>
-    </div>
+    </ModalShell>
   );
 }

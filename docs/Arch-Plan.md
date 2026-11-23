@@ -60,7 +60,7 @@ OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路）�
 
 ### 2.7 交互面
 
-- **CLI**（src/cli/）：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计已落地（设计规格 `specs/2026-09-21-cli-tui-interaction-redesign.md`；fe12d6a / 17f7712）
+- **CLI**（src/cli/）：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings 子命令 + 全局 flags（`--mode`、`--language`、`--tier`、`--effort`、`--continue`、`--worktree`、`--workdir`）；命令面统一化重设计（设计规格 `specs/2026-09-21-cli-tui-interaction-redesign.md`）
 - **TUI**（src/tui/，已交付）：会话 REPL、Static 化历史 + 动态帧流式渲染、Markdown 全框线表格（对标 Claude Code）、plan/goal/子智能体面板、审批卡与统一选择器、斜杠命令族、状态栏（cache/ctx/turns/steps/tier/effort）、运行中中断与 steering 穿插提示词、worktree 隔离入口
 - **GUI**（已交付）：React 前端（gui/ 工作区包，浏览器模式经 `serve` daemon）+ Electron 桌面壳（shell/ 工作区包，托盘/全局快捷键/安装包），组件选型唯一登记于 `CLAUDE.md §13`
 

@@ -1,7 +1,7 @@
 import { isFenceLine, normalizeCjkLine, renderMd, stripAnsi } from './md-ansi';
 import type { LiveBlock } from './chat-model';
 
-// D17 拆分件步2（docs/TECH-DEBT-SURVEY.md H1）：流式 md 通道状态机——以持有者 trait 形态从 session.ts 迁出。
+// D17 拆分件步2（docs/superpowers/TECH-DEBT-SURVEY.md H1）：流式 md 通道状态机——以持有者 trait 形态从 session.ts 迁出。
 // 依赖只限 md-ansi 与 chat-model（不得回引 session.ts），对控制器的全部依赖经下方窄接口回呼。
 
 /** 通道宿主接缝（控制器实现）：水位镜像、产物入档、渲染宽度三个回呼点 */

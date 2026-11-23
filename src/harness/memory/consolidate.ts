@@ -68,6 +68,23 @@ export async function consolidateMemory(opts: {
  *     旧实现的 throw→回滚会让同一失败在阈值以上每次收口重演（静默重试循环）。
  *  意外 fs 异常仍走 store.restore() 回滚（清当前→拷回→删备份），成功后 clearBackup 清快照——
  *  .bak 命名与目录级 fs 手术已收编为 store 原语（D26/J10），本函数只持句柄编排控制流。 */
+/** 记录 slug 折叠单点（D99 收敛：isSafeSlug(slugifyMemory(…))…:'memo' 折叠式原 4 处——
+ *  idToSlug 两构建+planned 全集+put 落盘名） */
+function plannedSlugOf(r: ConsolidatedEntry): string {
+  const candidate = slugifyMemory(r.description);
+  return isSafeSlug(candidate) ? candidate : 'memo';
+}
+
+/** id → 最终 slug 映射构建单点（D99：原 6 行逐字 ×2——applyMerged 与 applyTopics 同折叠口径，
+ *  落盘前即可解析；未知 id/自引在此天然滤除——落盘后再滤悬空） */
+function buildIdToSlug(records: ConsolidatedEntry[]): Map<string, string> {
+  const idToSlug = new Map<string, string>();
+  for (const r of records) {
+    if (typeof r.id === 'string' && r.id.length > 0) idToSlug.set(r.id, plannedSlugOf(r));
+  }
+  return idToSlug;
+}
+
 function applyMerged(store: MemoryStore, records: ConsolidatedEntry[], topics: unknown): void {
   const before = store.list();
   const bak = store.backup(); // 旧快照清退 + 全量普通文件拷入（目录级知识归 store）
@@ -92,24 +109,14 @@ function applyMerged(store: MemoryStore, records: ConsolidatedEntry[], topics: u
       if (!keep.has(e.slug)) store.remove(e.slug);
     }
     // Wiki 引用映射：id → 最终 slug（与落盘同一折叠源，落盘前即可解析；未知 id/自引在此天然滤除——落盘后再滤悬空）
-    const idToSlug = new Map<string, string>();
-    for (const r of records) {
-      if (typeof r.id === 'string' && r.id.length > 0) {
-        const candidate = slugifyMemory(r.description);
-        idToSlug.set(r.id, isSafeSlug(candidate) ? candidate : 'memo');
-      }
-    }
+    const idToSlug = buildIdToSlug(records);
     const resolveIds = (ids: string[], self: string | undefined): string[] => {
       // 按「计划 slug 全集」解析（条目落盘顺序无关）；条目级失败留下的死链由落盘后的清偿 pass 滤除
-      const planned = new Set(records.map((r) => {
-        const candidate = slugifyMemory(r.description);
-        return isSafeSlug(candidate) ? candidate : 'memo';
-      }));
+      const planned = new Set(records.map(plannedSlugOf));
       return [...new Set(ids)].filter((id) => id !== self && idToSlug.has(id)).map((id) => idToSlug.get(id)!).filter((s) => planned.has(s));
     };
     records.forEach((r, i) => {
-      const candidate = slugifyMemory(r.description);
-      const slug = isSafeSlug(candidate) ? candidate : 'memo'; // 索引名避让与 add 同口径（如 description 折叠出 memory）
+      const slug = plannedSlugOf(r); // 索引名避让与 add 同口径（如 description 折叠出 memory）
       const created = createdOf[i];
       // put 条目级失败（跨例目重复 MEMORY_DUPLICATE / 超限勒令精简=已写盘）一律跳过该条继续——
       // 不回滚整批（见函数注释③）；只有 fs 意外异常走 throw→.bak 回滚。
@@ -146,13 +153,7 @@ function applyMerged(store: MemoryStore, records: ConsolidatedEntry[], topics: u
  *  topics 缺省/畸形=保持既有主题页不动（不因一次未出牌清空）；ids 映射与 applyMerged 同折叠口径 */
 function applyTopics(store: MemoryStore, records: ConsolidatedEntry[], topics: unknown, notify?: (line: string) => void): void {
   if (!Array.isArray(topics)) return;
-  const idToSlug = new Map<string, string>();
-  for (const r of records) {
-    if (typeof r.id === 'string' && r.id.length > 0) {
-      const candidate = slugifyMemory(r.description);
-      idToSlug.set(r.id, isSafeSlug(candidate) ? candidate : 'memo');
-    }
-  }
+  const idToSlug = buildIdToSlug(records);
   const pages: MemoryTopic[] = [];
   for (const t of topics as unknown[]) {
     const o = (t ?? {}) as { name?: unknown; description?: unknown; summary?: unknown; ids?: unknown };

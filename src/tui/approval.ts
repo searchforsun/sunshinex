@@ -2,7 +2,7 @@ import { t } from '../i18n';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest } from '../types';
 import type { SessionController } from './session';
 
-// D17 拆分件步5（docs/TECH-DEBT-SURVEY.md H1）：审批/问询/中断挂起族——suspendAsker 闭包、resolveApproval、
+// D17 拆分件步5（docs/superpowers/TECH-DEBT-SURVEY.md H1）：审批/问询/中断挂起族——suspendAsker 闭包、resolveApproval、
 // autoAsker 咨询、askUser 问询管线、requestPause/cancelPause/hangPauseCard 暂停卡、interrupt 与中断回执。
 // 挂起态字段仍在控制器（pendingApproval/pendingQuestion/pendingPlan/taskAbort），本族函数经 ctrl 单点协调，
 // SessionController 保留同名公开薄委托（测试与渲染层调用面零变化）。

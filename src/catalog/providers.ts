@@ -305,15 +305,22 @@ export function upsertProvider(root: string | null, scope: Scope, name: string, 
   }
 }
 
-/** 移除一个源整条目：目标文件 providers 数组内无同名条目 → INVALID（catalog 写面严格语义，
- *  幂等收口属调用面裁量） */
-export function removeProvider(root: string | null, scope: Scope, name: string): void {
+/** 源条目定位单点（D100 收敛：removeProvider/setEnabledProvider 原「readWriteDoc→providerLabel→
+ *  providersArrayOf→entryIndexByName→idx===-1 throw」七行同构两份）——返回定位上下文供调用面手术 */
+function locateProviderEntry(root: string | null, scope: Scope, name: string) {
   const { file, read } = readWriteDoc(root, scope);
   const label = providerLabel(name);
   const doc = read.doc;
   const arr = providersArrayOf(doc);
   const idx = entryIndexByName(arr, label);
   if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
+  return { file, read, doc, arr, idx };
+}
+
+/** 移除一个源整条目：目标文件 providers 数组内无同名条目 → INVALID（catalog 写面严格语义，
+ *  幂等收口属调用面裁量） */
+export function removeProvider(root: string | null, scope: Scope, name: string): void {
+  const { file, read, doc, arr, idx } = locateProviderEntry(root, scope, name);
   arr.splice(idx, 1);
   finishCatalogWrite(file, doc, read.exists, { resource: 'settings', scope, root });
 }
@@ -321,12 +328,7 @@ export function removeProvider(root: string | null, scope: Scope, name: string):
 /** 源启停翻转（2026-11-17 用户裁定「provider 右侧加开关,默认开」）：enabled=true 删键归默认
  *  （absent 即开）、false 写 enabled:false；源不在 → INVALID（幂等收口属调用面裁量） */
 export function setEnabledProvider(root: string | null, scope: Scope, name: string, enabled: boolean): void {
-  const { file, read } = readWriteDoc(root, scope);
-  const label = providerLabel(name);
-  const doc = read.doc;
-  const arr = providersArrayOf(doc);
-  const idx = entryIndexByName(arr, label);
-  if (idx === -1) throw new CatalogWriteError('INVALID', `provider not found: ${scope}/providers/${label}`);
+  const { file, read, doc, arr, idx } = locateProviderEntry(root, scope, name);
   const cur = arr[idx] as Record<string, unknown>;
   const next = { ...cur };
   if (enabled) delete next['enabled'];

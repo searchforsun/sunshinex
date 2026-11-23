@@ -37,7 +37,7 @@ flowchart TB
   P2 --> P3
   P2 --> P4["阶段四 MCP 生态<br/>第三方工具 + 向量知识库 + 技能沉淀"]
   P3 --> P4
-  P4 --> P5["阶段五 终端双端<br/>TUI + GUI（进行中）"]
+  P4 --> P5["阶段五 终端双端<br/>TUI + GUI（已交付）"]
 ```
 
 **分层依赖方向**：`graph → loop → harness → model / storage / plugins`。Graph 节点可嵌入 Loop 子流程，二者都运行在 Harness 底座之上。

@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { idleGuard } from './commands-common';
 import type { SessionController } from './session';
 
-// D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：模型选择命令族（/model /model-tier /model-effort）函数体
+// D17 拆分件步3（docs/superpowers/TECH-DEBT-SURVEY.md H1）：模型选择命令族（/model /model-tier /model-effort）函数体
 // 迁出，handleSlash 骨架留 session 只做分发；状态经 ctrl.state 单点读写，切换器经 ctrl.modelSwitcher。
 
 /** /model：多源多模型切换（settings providers 键）：选择卡即选即切，对后续任务生效（整场恒定，CLAUDE.md §11 重算事件口径） */

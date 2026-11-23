@@ -157,33 +157,40 @@ export function upsertMcpServer(root: string | null, scope: Scope, name: string,
   });
 }
 
-/** 移除一个 mcp server 条目：键不存在（Object.hasOwn 只认真自键——原型键不可冒名）→ INVALID
- *  （catalog 严格语义，非幂等——幂等收口属调用面裁量，沿 removeAgent 同裁定） */
-export function removeMcpServer(root: string | null, scope: Scope, name: string): void {
+/** 条目定位守卫单点（D100 收敛：removeMcpServer/setMcpServerEnabled 原「name 非空守卫+hasOwn
+ *  not-found」两份内联） */
+function requireMcpName(name: unknown): string {
   if (typeof name !== 'string' || name.length === 0) {
     throw new CatalogWriteError('INVALID', 'mcp server name required (non-empty string)');
   }
+  return name;
+}
+
+function requireMcpEntry(servers: Record<string, unknown>, scope: Scope, name: string): unknown {
+  if (!Object.hasOwn(servers, name)) {
+    throw new CatalogWriteError('INVALID', `mcp server not found: ${scope}/${name}`);
+  }
+  return servers[name];
+}
+
+/** 移除一个 mcp server 条目：键不存在（Object.hasOwn 只认真自键——原型键不可冒名）→ INVALID
+ *  （catalog 严格语义，非幂等——幂等收口属调用面裁量，沿 removeAgent 同裁定） */
+export function removeMcpServer(root: string | null, scope: Scope, name: string): void {
+  const n = requireMcpName(name);
   mutateMcpServers(scope, root, (servers) => {
-    if (!Object.hasOwn(servers, name)) {
-      throw new CatalogWriteError('INVALID', `mcp server not found: ${scope}/${name}`);
-    }
-    delete servers[name];
+    requireMcpEntry(servers, scope, n);
+    delete servers[n];
   });
 }
 
 /** 启停一个 mcp server 条目（整机开关键 enabled——装载面 enabled !== false 才拉起进程）：条目缺失
  *  或形状非法（非对象条目无从手术）→ INVALID；幂等重放（已是目标态）快照等值零落盘 */
 export function setMcpServerEnabled(root: string | null, scope: Scope, name: string, enabled: boolean): void {
-  if (typeof name !== 'string' || name.length === 0) {
-    throw new CatalogWriteError('INVALID', 'mcp server name required (non-empty string)');
-  }
+  const n = requireMcpName(name);
   mutateMcpServers(scope, root, (servers) => {
-    if (!Object.hasOwn(servers, name)) {
-      throw new CatalogWriteError('INVALID', `mcp server not found: ${scope}/${name}`);
-    }
-    const entry = servers[name];
+    const entry = requireMcpEntry(servers, scope, n);
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-      throw new CatalogWriteError('INVALID', `mcp server "${name}" entry must be an object`);
+      throw new CatalogWriteError('INVALID', `mcp server "${n}" entry must be an object`);
     }
     (entry as Record<string, unknown>)['enabled'] = enabled;
   });

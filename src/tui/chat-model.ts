@@ -7,7 +7,7 @@ import type { LiveTaskState } from './task-state';
 import type { Delegation } from '../delegation/projection';
 import type { TaskBoardState } from '../taskboard/model';
 
-// D17 拆分件步1（docs/TECH-DEBT-SURVEY.md H1）：会话纯模型层——类型与零 this 依赖的纯函数原样迁出；
+// D17 拆分件步1（docs/superpowers/TECH-DEBT-SURVEY.md H1）：会话纯模型层——类型与零 this 依赖的纯函数原样迁出；
 // session.ts 转发导出保持既有导入面（组件与测试零改动）。本文件只允许依赖类型与纯工具，不得回引 SessionController。
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'system' | 'thinking' | 'step';

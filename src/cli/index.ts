@@ -111,6 +111,20 @@ export function resolveDirArg(args: CliArgs): { dir?: string; ignored?: string; 
   return { unrecognized: positional };
 }
 
+/** 目录前置守卫单点（D101 收敛：tui/run/serve/pipeline 四处「resolveDirArg→unrecognized 双语报错
+ *  →ignored 警告」7 行 ×4，退出口径原已漂移——tui 版 process.exit(1) 其余三版 exitCode=1+return）。
+ *  unrecognized=已报错返回 undefined，调用方即返（统一 exitCode=1 非即杀口径）；正常返回 {dir,ignored} */
+export function resolveCommandDir(args: CliArgs): { dir?: string; ignored?: string } | undefined {
+  const d = resolveDirArg(args);
+  if (d.unrecognized !== undefined) {
+    console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
+    process.exitCode = 1;
+    return undefined;
+  }
+  if (d.ignored !== undefined) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
+  return { dir: d.dir, ignored: d.ignored };
+}
+
 /**
  * 调用形态归一（规格 §6.2）：裸命令（无位置参数）= 当前工作区 TUI；已知子命令原样透传；
  * 路径形态首个 positional = 指定目录 TUI；其余裸词报 unrecognized（main 据此 stderr 透出并退出非零）。
@@ -314,12 +328,8 @@ async function main(): Promise<void> {
       // 按 parseArgs 拆装结果回填（Task 18；get/set 的 --scope 两级定位）
       return dispatchCatalogCommand(args, SETTINGS_FLAG_KEYS, runSettings);
     case 'tui': {
-      const d = resolveDirArg(args);
-      if (d.unrecognized) {
-        console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
-        process.exit(1);
-      }
-      if (d.ignored) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
+      const d = resolveCommandDir(args);
+      if (d === undefined) return;
       return runTui({ ...args, positional: d.dir ? [d.dir] : [] });
     }
     default:

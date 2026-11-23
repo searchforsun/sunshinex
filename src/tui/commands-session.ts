@@ -15,7 +15,7 @@ import { isQuietNotice, type KernelEntry } from '../session/entry';
 import type { SessionController } from './session';
 import { emptyBoard } from '../taskboard/model';
 
-// D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：会话谱系命令族（resume/rewind/fork/branchFlow 一族）迁出；
+// D17 拆分件步3（docs/superpowers/TECH-DEBT-SURVEY.md H1）：会话谱系命令族（resume/rewind/fork/branchFlow 一族）迁出；
 // 恢复三面直注入逻辑随族走，SessionController 保留 resumeLatest 公开薄委托（构造器 --continue 消费）。
 
 /** 会话恢复选择卡（/resume 与 --resume 启动共用单点）：mtime 降序候选（排除当前在飞会话）→ askUser 挂起 → restoreFromSession */

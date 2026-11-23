@@ -34,28 +34,20 @@ function taskTitleMapOf(entries: readonly ChatEntry[]): Map<string, string> {
     // 任务名优先 purpose(2026-11-07 用户裁定「等待行显任务名称而非命令原文」),无则完整命令
     const command = execPurposeOf(e) ?? (typeof e.input?.command === 'string' ? e.input.command.trim().replace(/\s+/g, ' ') : '');
     if (command === '') continue;
-    const receipt = e.result?.text ?? e.result?.full ?? '';
     // 回执格式 2026-11-17 根治:裸 id 起头+「started in background/moved to background」(不再冠
     //   task 名词——模型照抄「task <id>」当 taskId 曾致 task_stop INVALID_ARG 误报重试);旧格式
-    //   历史档 fallback 保留(旧转录回执仍是 task <id> started 旧形)
-    const started = /^(\S+) started in background/.exec(receipt) ?? /task (\S+) started/.exec(receipt);
-    if (started !== null) m.set(started[1]!, command);
-    // 新形回执 id 起头(不冠名词);负向 lookahead 排除旧形首词「command」,旧格式历史档走下行兜底
-    const moved = /^(?!command )(\S+) moved to background/.exec(receipt) ?? /command moved to background after timeout: task (\S+)/.exec(receipt);
-    if (moved !== null) m.set(moved[1]!, command);
+    //   历史档 fallback 保留(旧转录回执仍是 task <id> started 旧形)——解析走 backgroundTaskIdOf 单点
+    const taskId = backgroundTaskIdOf(e.result?.text ?? e.result?.full ?? '');
+    if (taskId !== undefined) m.set(taskId, command);
   }
-  // 后台 spawn:`task <id> started` → 展示名=label ?? agent_id(CJK label 的 id 业务段会塌成
+  // 后台 spawn:回执 id → 展示名=label ?? agent_id(CJK label 的 id 业务段会塌成
   // ASCII 碎片如「spawn」,短 id 兜底即误显「spawn」——须用转录名盖住)
   for (const e of entries) {
     if (e.kind !== 'tool' || e.name !== 'spawn') continue;
-    const input = e.input ?? {};
-    const name =
-      (typeof input.label === 'string' && input.label.trim() !== '' ? input.label.trim() : '')
-      || (typeof input.agent_id === 'string' && input.agent_id.trim() !== '' ? input.agent_id.trim() : '');
+    const name = spawnNameOf(e.input);
     if (name === '') continue;
-    const receipt = e.result?.text ?? e.result?.full ?? '';
-    const started = /^(\S+) started in background/.exec(receipt) ?? /task (\S+) started/.exec(receipt);
-    if (started !== null) m.set(started[1]!, name);
+    const taskId = backgroundTaskIdOf(e.result?.text ?? e.result?.full ?? '');
+    if (taskId !== undefined) m.set(taskId, name);
   }
   return m;
 }
@@ -91,6 +83,28 @@ function execPurposeOf(e: ChatEntry): string | undefined {
   return flat === '' ? undefined : flat;
 }
 
+/** 后台回执 → 任务 id 单点（D97 收敛：started/moved 新旧形正则原文件内 4 处且备选分支集已漂移
+ *  ——taskAgentResolverOf spawn 腿只认旧形）。统一全谱：新形裸 id 起头（started/moved in|to
+ *  background，moved 负向 lookahead 排除旧形首词「command」），旧形历史档 fallback（task <id>
+ *  started / command moved…task <id>）——全谱对旧形命中一致，新形即修复漂移面。未命中 undefined */
+function backgroundTaskIdOf(receipt: string): string | undefined {
+  const hit =
+    /^(\S+) started in background/.exec(receipt) ??
+    /task (\S+) started/.exec(receipt) ??
+    /^(?!command )(\S+) moved to background/.exec(receipt) ??
+    /command moved to background after timeout: task (\S+)/.exec(receipt);
+  return hit !== null ? hit[1]! : undefined;
+}
+
+/** spawn 展示名派生单点（D97：label ?? agent_id trim 空守卫原两份逐字） */
+function spawnNameOf(input: { label?: unknown; agent_id?: unknown } | undefined): string {
+  const i = input ?? {};
+  return (
+    (typeof i.label === 'string' && i.label.trim() !== '' ? i.label.trim() : '')
+    || (typeof i.agent_id === 'string' && i.agent_id.trim() !== '' ? i.agent_id.trim() : '')
+  );
+}
+
 /** 等待行可显名的后台任务:子智能体(后台 spawn,可链接转录页)与具名 exec(purpose,纯文本——2026-11-07
  *  后台命令必须命名,办公模式等待行因此可显任务名;无名 exec 仍不显,以免露命令原文) */
 type WaitTaskRef = { name: string; prompt?: string; kind?: 'exec' };
@@ -100,19 +114,17 @@ export function taskAgentResolverOf(entries: readonly ChatEntry[]): (id: string)
   for (const e of entries) {
     if (e.kind !== 'tool' || e.name !== 'exec') continue;
     const name = execPurposeOf(e);
-    const receipt = e.result?.text ?? e.result?.full ?? '';
-    const started = /^(\S+) started in background/.exec(receipt) ?? /task (\S+) started/.exec(receipt) ?? /^(?!command )(\S+) moved to background/.exec(receipt) ?? /command moved to background after timeout: task (\S+)/.exec(receipt);
-    if (name !== undefined && started !== null) m.set(started[1]!, { name, kind: 'exec' });
+    if (name === undefined) continue;
+    const taskId = backgroundTaskIdOf(e.result?.text ?? e.result?.full ?? '');
+    if (taskId !== undefined) m.set(taskId, { name, kind: 'exec' });
   }
   for (const e of entries) {
     if (e.kind !== 'tool' || e.name !== 'spawn') continue;
     const input = e.input ?? {};
-    const name =
-      (typeof input.label === 'string' && input.label.trim() !== '' ? input.label.trim() : '')
-      || (typeof input.agent_id === 'string' && input.agent_id.trim() !== '' ? input.agent_id.trim() : '');
-    const started = /task (\S+) started/.exec(e.result?.text ?? e.result?.full ?? '');
-    if (name === '' || started === null) continue;
-    m.set(started[1]!, { name, ...(typeof input.prompt === 'string' ? { prompt: input.prompt } : {}) });
+    const name = spawnNameOf(input);
+    const taskId = backgroundTaskIdOf(e.result?.text ?? e.result?.full ?? '');
+    if (name === '' || taskId === undefined) continue;
+    m.set(taskId, { name, ...(typeof input.prompt === 'string' ? { prompt: input.prompt } : {}) });
   }
   return (id: string) => {
     const short = id.replace(/-\d{8}T\d{6}Z-[0-9a-z]+$/i, '');

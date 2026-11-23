@@ -2,9 +2,8 @@ import * as path from 'path';
 import { DEFAULT_GOAL_TEMPLATE, resolveTemplate } from '../../loop/templates';
 import { buildDeps } from '../../runtime';
 import { resolveWorktreeLaunchRoot } from '../worktree-launch';
-import { resolveDirArg, flagList } from '../index';
+import { resolveCommandDir, flagList } from '../index';
 import { teardownCliRun } from './run-pipeline';
-import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
 /** 模板工厂上移 loop 层（规格 D4）；再导出保既有导入点（run-loop.test.ts）不变 */
@@ -12,13 +11,8 @@ export { resolveTemplate };
 
 export async function runLoop(args: CliArgs): Promise<void> {
   // 目录来源统一单点（规格 §6.2）：--workdir 优先于位置路径，裸词报「无法识别命令」不启动
-  const d = resolveDirArg(args);
-  if (d.unrecognized) {
-    console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
-    process.exitCode = 1;
-    return;
-  }
-  if (d.ignored) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
+  const d = resolveCommandDir(args);
+  if (d === undefined) return;
   const dir = d.dir;
   if (!dir) throw new Error('用法：sunshinex run <dir> --goal="一句可度量的目标终态（复杂目标可内嵌：验收标准：id=描述）"');
   const root = path.resolve(dir);

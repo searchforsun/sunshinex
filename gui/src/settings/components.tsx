@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Trash2 } from 'lucide-react';
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -301,35 +302,45 @@ interface EditorModalProps {
   readonly children?: ReactNode;
 }
 
-/** 居中模态编辑对话框(2026-10-29 用户裁定:弹窗替换右滑抽屉;raw/JSON 编辑统一容器):
- *  fixed 遮罩(z 120)+居中对话框(role=dialog aria-modal,尺寸 2026-10-30 用户裁定加宽:
- *  min(92vw,680px)/max-height 84vh 内滚动,app.css 追加段覆写首版 90vw/640px/80vh;
- *  体头 ×、Save/Cancel 尾栏);体内点击 stopPropagation 不冒遮罩;Esc=document 捕获段监听
- *  (stopPropagation 截断壳层 document 冒泡段「Esc 回会话态」——弹窗开着时 Esc 只关弹窗);
- *  焦点落对话框(open 挂载 ref.focus——React autoFocus 仅表单元素生效,div 走 ref;简单落焦,
- *  不做完整焦点陷阱) */
-export function EditorModal({ open, title, onClose, onSubmit, children }: EditorModalProps): JSX.Element | null {
+/** 模态壳单点（D96 收敛：EditorModal/rewind-confirm/SkillPreviewModal 三份手写壳——backdrop+
+ *  role=dialog/aria-modal/tabIndex=-1+挂载落焦+document keydown 捕获 Esc→stopPropagation→onClose
+ *  +header(h3) 各持一份，仅 footer/修饰类/portal/头部动作不同）。Esc 与遮罩点击恒走 onClose
+ *  （busy 守卫面以守卫过的回调注入即原语义）；Esc preventDefault 随壳恒带（capture 段截断壳层
+ *  「Esc 回会话态」语义不变）；挂载落焦内置（简单落焦，不做完整焦点陷阱） */
+export function ModalShell(props: {
+  readonly title: string;
+  readonly onClose: () => void;
+  readonly children?: ReactNode;
+  /** 修饰类（sx-editor-modal 后置——sx-turn-confirm/sx-skill-preview 尺寸覆写面） */
+  readonly modifier?: string;
+  /** createPortal 到 body（rewind 面原形态；缺省就地渲染） */
+  readonly portal?: boolean;
+  /** 头部动作槽（× 之前——SkillPreview 复制钮位） */
+  readonly headerActions?: ReactNode;
+  /** 头部 × 钮（rewind 三按钮面原无 ×）；缺省 true */
+  readonly closeButton?: boolean;
+}): JSX.Element {
+  const { title, onClose, children, modifier, portal = false, headerActions, closeButton = true } = props;
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (open) dialogRef.current?.focus(); // 焦点落对话框(简单落焦;jsdom/真浏览器同径)
-  }, [open]);
+    dialogRef.current?.focus(); // 焦点落对话框(简单落焦;jsdom/真浏览器同径)
+  }, []);
   useEffect(() => {
-    if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.stopPropagation();
+        e.preventDefault();
         onClose();
       }
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
-  if (!open) return null;
-  return (
+  }, [onClose]);
+  const shell = (
     <div className="sx-editor-modal-backdrop" onClick={onClose}>
       <div
         ref={dialogRef}
-        className="sx-editor-modal"
+        className={`sx-editor-modal${modifier !== undefined ? ` ${modifier}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -338,27 +349,43 @@ export function EditorModal({ open, title, onClose, onSubmit, children }: Editor
       >
         <header className="sx-editor-modal-head">
           <h3>{title}</h3>
-          <button type="button" className="sx-editor-modal-close" aria-label={t('Close', '关闭')} onClick={onClose}>
-            ×
-          </button>
-        </header>
-        <form
-          className="sx-editor-modal-body"
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSubmit();
-          }}
-        >
-          <div className="sx-editor-modal-fields">{children}</div>
-          <div className="sx-card-actions sx-editor-modal-actions">
-            <button type="submit" className="primary">{t('Save', '保存')}</button>
-            <button type="button" onClick={onClose}>
-              {t('Cancel', '取消')}
+          {headerActions}
+          {closeButton && (
+            <button type="button" className="sx-editor-modal-close" aria-label={t('Close', '关闭')} onClick={onClose}>
+              ×
             </button>
-          </div>
-        </form>
+          )}
+        </header>
+        {children}
       </div>
     </div>
+  );
+  return portal ? createPortal(shell, document.body) : shell;
+}
+
+/** 居中模态编辑对话框(2026-10-29 用户裁定:弹窗替换右滑抽屉;raw/JSON 编辑统一容器):ModalShell
+ *  组合(D96)+form 体 Save/Cancel 尾栏;尺寸 2026-10-30 用户裁定加宽:min(92vw,680px)/max-height
+ *  84vh 内滚动(app.css 覆写段) */
+export function EditorModal({ open, title, onClose, onSubmit, children }: EditorModalProps): JSX.Element | null {
+  if (!open) return null;
+  return (
+    <ModalShell title={title} onClose={onClose}>
+      <form
+        className="sx-editor-modal-body"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onSubmit();
+        }}
+      >
+        <div className="sx-editor-modal-fields">{children}</div>
+        <div className="sx-card-actions sx-editor-modal-actions">
+          <button type="submit" className="primary">{t('Save', '保存')}</button>
+          <button type="button" onClick={onClose}>
+            {t('Cancel', '取消')}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   );
 }
 

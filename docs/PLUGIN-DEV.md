@@ -222,21 +222,20 @@ safety 三类 = 插件作者对所贡献工具的**自声明**风险类别；gua
 
 **信任模型（作者必读）**：safety 是作者自声明，harness 不语义校验工具实际行为——声明即对用户承担义务：`act` 只列真正改动系统状态的工具，`confirm` 只列确有隐私/高频考量的读取，`observe` 只列纯只读工具；逐类取舍理由建议写进插件 README。反过来对用户：**安装第三方插件 = 信任其进程**（server 以你的用户身份运行，无额外沙箱），只安装可信来源的插件。
 
-## 9. 实例解构（规划形态；M2/M3 交付后以仓内 `plugins/<id>/` 为完整实例）
+## 9. 实例解构（仓内 `plugins/<id>/` 为完整实例）
 
-内置首批两插件是框架的首批消费者。交付里程碑前本节为规划形态；M2/M3 交付后以仓内 `plugins/browser-use/`、`plugins/computer-use/`（manifest + README）为完整实例，本文不再重复维护其细节。
+内置首批两插件是框架的首批消费者。完整实例以仓内 `plugins/browser-use/`、`plugins/computer-use/`（manifest + README）为准，本节只做面向开发者的要点解构。
 
-### browser-use（M2：包装现成 server）
+### browser-use（包装现成 server）
 
-- 思路：把现成 npm MCP server（`@playwright/mcp`）**钉版**为插件目录依赖（插件目录 = pnpm 工作区包），manifest 以 `node <插件>/node_modules/@playwright/mcp/cli.js` 直启——运行时零 npx 网络依赖；相对路径 + `cwd` 锚定插件根。（交付形态已演进：现入口为 `server/host.js` 会话隔离宿主束（esbuild 双单文件束、零补装；内置插件只有开关）——本节为规划存档,以仓内 `plugins/browser-use/` 为准）
-- `configArgs` 映射 settings config → server 参数（M2 时代形态：浏览器选择 / headless / isolated profile / caps）——内置插件只有开关后此机制仅用户级插件承载，browser-use 现状 manifest 无配置面。
+- 思路：把现成 npm MCP server（`@playwright/mcp`）**钉版**为插件目录依赖（插件目录 = pnpm 工作区包），manifest 以 `node <插件>/node_modules/@playwright/mcp/cli.js` 直启——运行时零 npx 网络依赖；相对路径 + `cwd` 锚定插件根。现入口为 `server/host.js` 会话隔离宿主束（esbuild 双单文件束、零补装；内置插件只有开关）。
+- `configArgs` 机制（settings config → server 参数映射）仅用户级插件承载——browser-use 现状 manifest 无配置面。
 - `safety` 不声明：浏览器操作走既有通用 MCP 审批行为；敏感面建议用户以 deny 规则兜底（如 `deny mcp__browser-use__browser_run_code_unsafe`）。
-- 规划字段：`platforms: ["win32", "darwin", "linux"]`、`defaultEnabled: false`、server 名 `browser-use`。
+- manifest 字段：`platforms: ["win32", "darwin", "linux"]`、`defaultEnabled: false`、server 名 `browser-use`。
 
-### computer-use（M3：自建 server）
+### computer-use（自建 server）
 
-- 思路：`server/` TS 源构建产物经 manifest 以 `node` stdio 直启（Node 协议层 + 持久 PowerShell worker 执行器，零原生 npm 依赖）；`platforms: ["win32"]`（macOS/Linux 后置——manifest 声明即设置页自动置灰）。
-- safety 三类声明真实样例（guard 硬问线由声明驱动，无 server 名特判）：
+- 思路：`server/` TS 源构建产物经 manifest 以 `node` stdio 直启（Node 协议层 + 持久 PowerShell worker 执行器，零原生 npm 依赖）；`platforms: ["win32"]`（macOS/Linux 后置——manifest 声明即设置页自动置灰）。- safety 三类声明真实样例（guard 硬问线由声明驱动，无 server 名特判）：
 
 ```json
 {

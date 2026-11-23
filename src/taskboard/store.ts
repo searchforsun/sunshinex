@@ -13,26 +13,35 @@ export interface AgentTeamStoreBackend {
   save(teams: AgentTeamRecord[]): void;
 }
 
-/** AgentTeam 清单持久化：与板事件同会话 teams 根（`<dataDir>/teams/<journalId>/`），单文件 registry.json */
-export class AgentTeamRegistryStore implements AgentTeamStoreBackend {
+/** tmp+rename 原子写单点（D95 收敛：原三处逐字——两清单档与 board.json 快照） */
+function writeFileAtomic(target: string, content: string): void {
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, content, 'utf8');
+  fs.renameSync(tmp, target);
+}
+
+/** 双清单档 Store 模板单点（D95 收敛：AgentTeamRegistryStore/TeammateRosterStore 原「path+
+ *  ensureDir(dirMade)+load(ENOENT→[]+parse+数组守卫+逐条解析)+save(tmp+rename)」全同构仅文件名
+ *  与记录校验漂移）——坏档整档回空、坏条目跳过、ENOENT 缺省空列 */
+class JsonListFileStore<T> {
   private dirMade = false;
 
-  constructor(private teamsRoot: string) {}
+  constructor(private readonly root: string, private readonly fileName: string, private readonly parseRecord: (v: unknown) => T | undefined) {}
 
-  private registryPath(): string {
-    return path.join(this.teamsRoot, 'registry.json');
+  private filePath(): string {
+    return path.join(this.root, this.fileName);
   }
 
   private ensureDir(): void {
     if (this.dirMade) return;
-    fs.mkdirSync(this.teamsRoot, { recursive: true });
+    fs.mkdirSync(this.root, { recursive: true });
     this.dirMade = true;
   }
 
-  load(): AgentTeamRecord[] {
+  load(): T[] {
     let raw: string;
     try {
-      raw = fs.readFileSync(this.registryPath(), 'utf8');
+      raw = fs.readFileSync(this.filePath(), 'utf8');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw e;
@@ -40,18 +49,37 @@ export class AgentTeamRegistryStore implements AgentTeamStoreBackend {
     try {
       const parsed = JSON.parse(raw) as unknown;
       if (!Array.isArray(parsed)) return [];
-      return parsed.filter(isAgentTeamRecord);
+      const out: T[] = [];
+      for (const item of parsed) {
+        const rec = this.parseRecord(item);
+        if (rec !== undefined) out.push(rec);
+      }
+      return out;
     } catch {
       return [];
     }
   }
 
-  save(teams: AgentTeamRecord[]): void {
+  save(rows: T[]): void {
     this.ensureDir();
-    const target = this.registryPath();
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(teams), 'utf8');
-    fs.renameSync(tmp, target);
+    writeFileAtomic(this.filePath(), JSON.stringify(rows));
+  }
+}
+
+/** AgentTeam 清单持久化：与板事件同会话 teams 根（`<dataDir>/teams/<journalId>/`），单文件 registry.json */
+export class AgentTeamRegistryStore implements AgentTeamStoreBackend {
+  private readonly store: JsonListFileStore<AgentTeamRecord>;
+
+  constructor(teamsRoot: string) {
+    this.store = new JsonListFileStore<AgentTeamRecord>(teamsRoot, 'registry.json', (v) => (isAgentTeamRecord(v) ? v : undefined));
+  }
+
+  load(): AgentTeamRecord[] {
+    return this.store.load();
+  }
+
+  save(teams: AgentTeamRecord[]): void {
+    this.store.save(teams);
   }
 }
 
@@ -77,48 +105,18 @@ interface TeammateRosterStoreBackend {
 
 /** 成员名册：`<dataDir>/teams/<journalId>/teammates.json`——重启后重建 Teammate 实例 */
 export class TeammateRosterStore implements TeammateRosterStoreBackend {
-  private dirMade = false;
+  private readonly store: JsonListFileStore<TeammateRosterRecord>;
 
-  constructor(private teamsRoot: string) {}
-
-  private rosterPath(): string {
-    return path.join(this.teamsRoot, 'teammates.json');
-  }
-
-  private ensureDir(): void {
-    if (this.dirMade) return;
-    fs.mkdirSync(this.teamsRoot, { recursive: true });
-    this.dirMade = true;
+  constructor(teamsRoot: string) {
+    this.store = new JsonListFileStore<TeammateRosterRecord>(teamsRoot, 'teammates.json', parseTeammateRosterRecord);
   }
 
   load(): TeammateRosterRecord[] {
-    let raw: string;
-    try {
-      raw = fs.readFileSync(this.rosterPath(), 'utf8');
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw e;
-    }
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) return [];
-      const out: TeammateRosterRecord[] = [];
-      for (const item of parsed) {
-        const rec = parseTeammateRosterRecord(item);
-        if (rec !== undefined) out.push(rec);
-      }
-      return out;
-    } catch {
-      return [];
-    }
+    return this.store.load();
   }
 
   save(rows: TeammateRosterRecord[]): void {
-    this.ensureDir();
-    const target = this.rosterPath();
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(rows), 'utf8');
-    fs.renameSync(tmp, target);
+    this.store.save(rows);
   }
 }
 
@@ -188,10 +186,7 @@ export class TeamStore implements TeamStoreBackend {
 
   writeSnapshot(state: TaskBoardState): void {
     this.ensureDir();
-    const target = path.join(this.teamDir, 'board.json');
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
-    fs.renameSync(tmp, target);
+    writeFileAtomic(path.join(this.teamDir, 'board.json'), JSON.stringify(state));
   }
 
   /** 全量重放载入:文件缺失 = 空板;损坏行跳过不炸。 */

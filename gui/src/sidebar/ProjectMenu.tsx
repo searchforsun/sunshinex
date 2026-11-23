@@ -579,19 +579,25 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** 「+ 添加工作区」(G10-C11 + G14.51 收口):桌面壳走 IPC 系统对话框(回全路径);浏览器态
    *  开服务端 DirPicker 逐级浏览——两路都回「既有目录」绝对路径,daemon {path} 分支只登记不建
    *  目录(旧按 name 在 projectsRoot 下 mkdir 的行为废除)。登记后回欢迎页预选该项目。 */
+  /** 登记链单点（D102 收敛：pickFolder/showDirectoryPicker/registerFolder 三份
+   *  「createWorkspace({path}).then(loadWorkspaces+onComposeIn).catch(errText)」同构；
+   *  useCallback 恒稳——pickAndAdd 判等面依赖） */
+  const registerAndCompose = useCallback((path: string): void => {
+    conn
+      .createWorkspace({ path })
+      .then((res) => {
+        loadWorkspaces(); // 建项目落位即刷新组列表
+        onComposeIn(res.root); // 纯回调无 busy,目标提交即刻可用
+      })
+      .catch((err: unknown) => setActionError(errText(err)));
+  }, [conn, loadWorkspaces, onComposeIn]);
   const pickAndAdd = useCallback((): void => {
     setActionError('');
     const shell = window.sunshinex;
     if (typeof shell?.pickFolder === 'function') {
       void shell.pickFolder().then((p) => {
         if (p === null) return;
-        conn
-          .createWorkspace({ path: p })
-          .then((res) => {
-            loadWorkspaces(); // 建项目落位即刷新组列表
-            onComposeIn(res.root); // 纯回调无 busy,目标提交即刻可用
-          })
-          .catch((err: unknown) => setActionError(errText(err)));
+        registerAndCompose(p);
       });
       return;
     }
@@ -600,18 +606,12 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     void pickWorkspaceFolder((q) => conn.locateWorkspace(q)).then((r) => {
       if (r === null) return;
       if (r !== 'unsupported' && r !== 'denied' && r !== 'timeout') {
-        conn
-          .createWorkspace({ path: r.path })
-          .then((res) => {
-            loadWorkspaces();
-            onComposeIn(res.root);
-          })
-          .catch((err: unknown) => setActionError(errText(err)));
+        registerAndCompose(r.path);
         return;
       }
       setDirOpen(true);
     });
-  }, [conn, loadWorkspaces, onComposeIn]);
+  }, [conn, loadWorkspaces, onComposeIn, registerAndCompose]);
   /** 分区回调簇(2026-11-16 流畅轮:useCallback 恒稳——五 memo 分区的判等面,内联箭头每渲染
    *  换新即全分区每帧重渲) */
   const addWorkspaceFromHead = useCallback((e: ReactMouseEvent<HTMLButtonElement>): void => {
@@ -625,13 +625,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   /** DirPicker 确认:登记所选既有目录为工作区(同桌面壳后段;已登记幂等) */
   const registerFolder = (p: string): void => {
     setDirOpen(false);
-    conn
-      .createWorkspace({ path: p })
-      .then((res) => {
-        loadWorkspaces();
-        onComposeIn(res.root);
-      })
-      .catch((err: unknown) => setActionError(errText(err)));
+    registerAndCompose(p);
   };
 
   /** 新建 Sunx 成功链(sunx P1 Task 6):清单重拉(组计数/Recents 即时归位)+ 既有 openSession

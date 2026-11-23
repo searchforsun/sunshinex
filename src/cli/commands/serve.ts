@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { GuiDaemon, LOOPBACK_HOST, assembleGuiModel } from '../../serve/daemon';
 import { buildModel } from '../../runtime';
 import { resolveDataDir } from '../../config/data-dir';
-import { resolveDirArg } from '../index';
+import { resolveCommandDir } from '../index';
 import { t } from '../../i18n';
 import type { CliArgs } from '../index';
 
@@ -25,13 +25,8 @@ export async function runServe(args: CliArgs): Promise<void> {
   process.env.SUNSHINEX_HOST = 'serve';
   // 目录来源统一单点（规格 §6.2）：与 run/pipeline 同判据——--workdir 优先，位置参数目录报 unrecognized 不启动。
   // 会话中心降级（spec §3）：预选缺省无——空注册表启动，会话经 GUI 首页/HTTP 创建
-  const d = resolveDirArg(args);
-  if (d.unrecognized) {
-    console.error(t('Unrecognized command. Run sunshinex help for usage.', '无法识别命令，使用 sunshinex help 查看使用方法'));
-    process.exitCode = 1;
-    return;
-  }
-  if (d.ignored) console.warn(t(`--workdir takes precedence; ignoring positional dir ${d.ignored}`, `--workdir 优先，位置参数目录 ${d.ignored} 已忽略`));
+  const d = resolveCommandDir(args);
+  if (d === undefined) return;
   const preselect = d.dir !== undefined ? path.resolve(d.dir) : undefined;
 
   // --port 收紧（G2）：只认纯数字串且 1-65535——parseInt 宽松形态（'12abc'、'0x10'）与裸 --port/

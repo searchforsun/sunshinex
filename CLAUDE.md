@@ -41,7 +41,7 @@ NODE_OPTIONS=--use-system-ca pnpm shell:dist   # 壳全链：版本同步→主�
 ./shell/release/sunshinex-<version>-win-x64-setup.exe /S   # 静默重装（沿用上次安装目录，装毕自启）
 ```
 
-打包输出**恒 `shell/release` 一个目录**（2026-11-14 用户裁定「应该只放到这一个里面」）：不同版本=目录内不同 setup 文件名并存（deploy-gui 按 mtime 取本机架构最新），同版本=同名覆盖；**禁止每轮 `-c.directories.output=release-freshNN` 换目录**（曾堆 29 份×560MB 残留）。
+打包输出**恒 `shell/release` 一个目录**（2026-11-14 用户裁定「应该只放到这一个里面」）：不同版本=目录内不同 setup 文件名并存（deploy-gui 按 mtime 取本机架构最新），同版本=同名覆盖；**禁止每轮 `-c.directories.output=release-freshNN` 换目录**。
 
 - 纯 `gui/` 改动 deploy 即可（dist-gui 推装+重启，留 dist-gui.old 回滚点）；改 `shell/` 源码必须 reinstall（改动落 app.asar，renderer 推装覆盖不到）。装后装配校验自动化（核 app.asar 壳束标志+进程路径）。`--pristine` 连用户态历史一并清（`%APPDATA%\sunshinex-shell` 与 `~/.sunshinex/gui/`；会话数据 `~/.sunshinex/projects/` 不动）。
 - 壳链铁律：`NODE_OPTIONS=--use-system-ca` 必带（打包下载组件走 Node TLS）；整链必须走根 `shell:dist`（壳包自身 dist 无 esbuild，出旧束）；退出码勿经管道取；装新先杀旧；asar 无压缩可 `grep -a` 直查新束标志。
@@ -286,8 +286,8 @@ GUI 规划选型唯一登记于 §13 组件选型表，不在此重复。
 2. **悬浮提示统一自定义**：hover 提示一律 `data-tip`（CSS 属性驱动），贴右缘加 `tip-right`；**禁原生 `title` 提示**（`title` 仅允许无障碍名）；测试/e2e 定位走 `[data-tip=…]`
 3. **展开/收合一律平滑过渡**：可折叠区域必须高度过渡动画（grid `0fr→1fr`，`--dur-relaxed`），**禁瞬切**；贴底场景动画期逐帧钉底（G14.64）；新增可折叠面复用 `.sx-collapse`/`.seg-collapse` 模式
 4. **悬浮提示克制但图标钮强制**（2026-11-22 用户裁定全局规范）：可见文字已说明的元素不加提示；**裸图标按钮（有图标无文字）必须带 `data-tip`**（含两段式确认钮的两段——同名校验删除/确认删除）；有图标又有文字的按钮不加；**显示不全风险（截断/省略/溢出）的文本必须带**
-5. **全局超椭圆圆角禁止回归正圆——全局与单件同禁**（2026-11-03 裁定，2026-11-09 重申）：`corner-shape: superellipse(1.5)` 全局级联是既定视觉语言；任何理由不得撤全局规则或单件换正圆（已有两次全局回退与一次单件回退在案）。唯一豁免=圆形语义件（状态点/转圈环/滑块拇指，app.css G14.207 豁免组）。毛刺修复登记手段：①阴影收敛——远晕/inset 高光不随形，浮层统一 `--elev-prominent` 贴合近距投影；②撤高亮描边环与 1px 实线边框（同为不随形毛刺源）；③小尺寸件羽化边（底色移 `::before` 继承弧度 + `blur(0.45px)`，`.sx-composer .send` 现行）；④局部面豁免仅限用户明示单一目标；⑤浮层定位整数化——视觉测量写入浮层样式处一律 `Math.round`，与 §ui-zoom「视觉/zoom 归一」叠加
-6. **跳转定位不加闪光**（2026-11-08 裁定，2026-11-09 重申）：跨页签/行级定位一律瞬跳（`scrollIntoView({block:'center'})`），**禁 flash/描边高亮/平滑滑动**；残留「flash 定位」表述以本条为准
+5. **全局超椭圆圆角禁止回归正圆——全局与单件同禁**（2026-11-03 裁定，2026-11-09 重申）：`corner-shape: superellipse(1.5)` 全局级联是既定视觉语言；任何理由不得撤全局规则或单件换正圆。唯一豁免=圆形语义件（状态点/转圈环/滑块拇指，app.css G14.207 豁免组）。毛刺修复登记手段：①阴影收敛——远晕/inset 高光不随形，浮层统一 `--elev-prominent` 贴合近距投影；②撤高亮描边环与 1px 实线边框（同为不随形毛刺源）；③小尺寸件羽化边（底色移 `::before` 继承弧度 + `blur(0.45px)`，`.sx-composer .send` 现行）；④局部面豁免仅限用户明示单一目标；⑤浮层定位整数化——视觉测量写入浮层样式处一律 `Math.round`，与 §ui-zoom「视觉/zoom 归一」叠加
+6. **跳转定位不加闪光**（2026-11-08 裁定，2026-11-09 重申）：跨页签/行级定位一律瞬跳（`scrollIntoView({block:'center'})`），**禁 flash/描边高亮/平滑滑动**
 7. **图标钮尺寸与亮度下限**（2026-11-09 裁定）：GUI 图标一律 ≥14px（`--icon-min`），只随界面放缩不随字号；唯一豁免=状态点内装饰符号。亮度 ≥`--fg-icon`，禁 `--fg-secondary/tertiary` 直作图标钮色（hover 提亮到 `--fg`）；自检走 `gui/src/icon-min.test.ts`
 7b. **图标钮 hover 命中盒 24px**（2026-11-10 裁定）：一切图标钮 hover 背景盒 24px×24px（`.sx-iconbtn` 基准形），18px 历史面一律放大；盒内图标仍 14px 禁再收窄
 8. **界面字号下限 14px**（2026-11-09 裁定）：一切界面文字最小 `calc(14px * var(--fz))`；**唯一例外=代码内容面**走 `--f-code`（缺省 12px）。字号上调后容器随之放大，已有省略的容器尺寸不动
