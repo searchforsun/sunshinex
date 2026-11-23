@@ -48,7 +48,7 @@ export async function handleChannelsTest(io: ChannelsHandlerIo, res: http.Server
   io.send(res, 200, await io.engine.test(id));
 }
 
-/** PUT /channels/:id/secret body {secret: string}（2026-11-22 内联裁定，推翻 D6）：通道密钥写面
+/** PUT /channels/:id/secret body {secret: string}（内联裁定,权威口径 model.ts 头注）：通道密钥写面
  *  ——把密钥写进**全局 settings.json 的 channels 键对应条目**的 secret 字段（密钥随配置项存放、
  *  GET /settings/channels 可回显；env 块不再承载密钥）。本端点是 GUI 弹窗保存链的密钥腿。
  *  守卫族照 config-handlers.handleChannelsPut 同款（settings 结构化写面既有口径）：文件不可读 409 /

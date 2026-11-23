@@ -168,7 +168,7 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   caps(): DeliveryCaps {
-    // markdown=true(2026-11-23 用户裁定「普通文本中显示 md 格式化,可复制」):投影正文走
+    // markdown=true(权威口径本文件头注 markdown 档):投影正文走
     // post 富文本单 md 标签——标准消息气泡(保留复制菜单)+CommonMark/GFM 渲染;card=false
     return { streaming: false, markdown: true, card: false, maxTextLength: CHANNEL_MAX_TEXT_LENGTH, mention: true };
   }
@@ -189,8 +189,8 @@ export class FeishuAdapter implements ChannelAdapter {
       'im.message.receive_v1': async (data: unknown) => {
         const inbound = feishuEventToInbound(this.id, data);
         if (inbound === undefined) return;
-        // 接收 icon（2026-11-23 用户裁定「任何输入都要有接收 icon,这就是已读标记,包括命令输入」）：
-        // 入站即贴 OnIt——命令/回执/任务统一已读标记,回答送达(reply)即摘;尽力而为失败静默
+        // 接收 icon（权威口径本文件头注+ACK_EMOJI 注）：入站即贴 OnIt——命令/回执/任务统一已读标记,
+        // 回答送达(reply)即摘;尽力而为失败静默
         // （icon 是确认面,不阻断消息处理）;markProcessing 同消息幂等,重投不双贴
         const receiptMessageId = (inbound.raw as { message?: { message_id?: string } } | undefined)?.message?.message_id;
         if (receiptMessageId !== undefined && receiptMessageId !== '') void this.markProcessing(receiptMessageId);
@@ -254,8 +254,8 @@ export class FeishuAdapter implements ChannelAdapter {
 
   private async deliverText(target: ChatRef, text: string, replyMessageId?: string, markdown?: boolean): Promise<void> {
     if (this.client === undefined) throw new Error('feishu adapter not started');
-    // markdown 档=post 富文本单 md 标签(2026-11-23 用户裁定「普通文本中显示 md 格式化,
-    // 可复制」——标准消息气泡+CommonMark/GFM 渲染);纯文本档照旧 text 面
+    // markdown 档=post 富文本单 md 标签(权威口径本文件头注 markdown 档——
+    // 标准消息气泡+CommonMark/GFM 渲染);纯文本档照旧 text 面
     const content = markdown === true ? feishuPostContent(text) : JSON.stringify({ text });
     const msgType = markdown === true ? 'post' : 'text';
     if (replyMessageId !== undefined && replyMessageId !== '') {
@@ -273,7 +273,7 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   /** 回执式回复:引用入站 message_id(飞书群聊内呈现为楼中楼);raw 缺 id 退化为 send。
-   *  回答送达即摘「处理中」表情（入站接收 icon,2026-11-23 用户裁定已读标记语义闭环） */
+   *  回答送达即摘「处理中」表情（入站接收 icon——已读标记语义闭环,权威口径本文件头注） */
   async reply(inbound: InboundMessage, msg: OutboundMessage): Promise<void> {
     const raw = inbound.raw as { message?: { message_id?: string } } | undefined;
     const messageId = raw?.message?.message_id;
@@ -281,8 +281,8 @@ export class FeishuAdapter implements ChannelAdapter {
     if (messageId !== undefined && messageId !== '') void this.unmarkProcessing(messageId);
   }
 
-  /** 受理回执平台面：接收 icon 已在**入站即贴**（2026-11-23 用户裁定「任何输入都要有接收
-   *  icon,包括命令输入」——统一已读标记），本面即空操作：受理免文本语义由 engine 的
+  /** 受理回执平台面：接收 icon 已在**入站即贴**（统一已读标记,权威口径本文件头注），
+   *  本面即空操作：受理免文本语义由 engine 的
    *  accepted 短路承担,排队说明文本由 engine 文案路并发——这里不重复贴表情防双 icon */
   async ack(_inbound: InboundMessage, _kind: 'accepted' | 'queued'): Promise<void> {
     void _inbound;

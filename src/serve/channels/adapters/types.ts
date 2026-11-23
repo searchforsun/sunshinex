@@ -51,7 +51,8 @@ export interface ChannelAdapter {
   emit?(msg: InboundMessage): void;
 }
 
-/** 适配器依赖注入:平台密钥(secret 来自通道条目内联 secret 字段,2026-11-22 内联裁定)
+/** 适配器依赖注入:平台密钥(secret 来自通道条目内联 secret 字段,内联裁定——权威口径
+ *  serve/channels/model.ts 头注)
  *  + 平台非密钥标识(ident,如 feishu appId)+ 可选 fetch 注入(测试替身)与日志钩子。 */
 export interface AdapterDeps {
   secret: string;
@@ -61,8 +62,8 @@ export interface AdapterDeps {
 }
 
 /** 注册表工厂:按 cfg.platform 分派到具体适配器;未落地平台 throw——engine 捕获记 health error。
- *  telegram 分支已接 ./telegram(Task 10,long-poll 真实现);feishu 已接 ./feishu(2026-11-22 用户
- *  裁定「先提供飞书一个能力,飞书我可以直接测试」,SDK WS 长连接);dingtalk/wecom 后续任务接入。 */
+ *  telegram 分支已接 ./telegram(Task 10,long-poll 真实现);feishu 已接 ./feishu(首发平台裁定,
+ *  SDK WS 长连接——权威口径 ./feishu 头注);dingtalk/wecom 后续任务接入。 */
 export function createChannelAdapter(cfg: ChannelConfig, deps: AdapterDeps): ChannelAdapter {
   switch (cfg.platform) {
     case 'mock':

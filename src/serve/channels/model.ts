@@ -21,20 +21,20 @@ export interface ChannelConfig {
   enabled: boolean;
   /** 应用名称（spec §8 2026-11-22 终形态）：用户自定义展示名，1..80，trim；缺席=UI 回退平台名 */
   name?: string;
-  /** 通道密钥（2026-11-22 内联裁定）：直接存条目字段、GET /settings/channels 可回显；缺席=未配置 */
+  /** 通道密钥（内联裁定,权威口径本文件头注）：直接存条目字段、GET /settings/channels 可回显；缺席=未配置 */
   secret?: string;
   root: string;
   mode: ChannelAccessMode;
   model?: string;
   /** 平台非密钥标识（feishu 自建应用 URL 等扩展位） */
   ident?: Record<string, string>;
-  /** 开放的聊天命令（2026-11-22 用户裁定「配置可以给聊天执行的命令，一个下拉多选」）：
+  /** 开放的聊天命令（命令配置化裁定**权威注**——用户可配开放子集,一个下拉多选）：
    *  子集出自 CHANNEL_COMMANDS 目录；缺席=全部开放；router 门控与 /help 列举共用此目录 */
   commands?: string[];
   allow: ChannelAllowConfig;
 }
 
-/** 聊天命令目录（2026-11-22 用户裁定）：cmd=聊天侧触发词；desc=人性化说明（/help 输出与 GUI
+/** 聊天命令目录（命令配置化）：cmd=聊天侧触发词；desc=人性化说明（/help 输出与 GUI
  *  多选下拉共用——不透露底层实现，只说作用）；match=触发匹配形态（缺省 exact 全文等值，prefix
  *  前缀命中——/new 允许携带尾注）。门控/匹配/列举共用本目录；执行动作在 router.ts 指令短路分支
  *  ——新增命令须两处同步（本目录登记 + router 分支） */
@@ -154,7 +154,7 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
     const ident = isRecord(identRaw)
       ? Object.fromEntries(Object.entries(identRaw).filter(([, v]) => typeof v === 'string')) as Record<string, string>
       : undefined;
-    // commands 开放命令解析（2026-11-22 用户裁定）：字符串数组，元素限目录内命令（未知 warning
+    // commands 开放命令解析（命令配置化）：字符串数组，元素限目录内命令（未知 warning
     // 跳过该元素不致命）；缺席=全部开放；显式空数组=全不开放（仅自由聊天）
     let commands: string[] | undefined;
     const commandsRaw = item['commands'];
@@ -175,7 +175,7 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
         commands = list;
       }
     }
-    // secret 内联解析（2026-11-22 裁定）：串即收（trim，上限 2000——密钥可长）；空串=缺席；
+    // secret 内联解析（内联裁定）：串即收（trim，上限 2000——密钥可长）；空串=缺席；
     // 非串/超长 warning 跳字段不致命
     let secret: string | undefined;
     const secretRaw = item['secret'];

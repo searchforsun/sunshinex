@@ -4,7 +4,7 @@
  * models 序即默认序）、tier 标注供档位路由消费。两视图一次装载：providers=源级分组（ProviderEntry，
  * 文件结构镜像 + 密钥在场标注）、choices=展平生效值（ModelChoice，条目级 > 源级缺省）。
  * 两级整键遮蔽与形状裁决一律复用 config/providers 装载单点（loadProvidersFull），本模块零解析逻辑——
- * 密钥随条目 apiKey 存放、读面回显（2026-11-22 用户裁定推翻 D6「值不回传」）；apiKeyPresent 在场布尔
+ * 密钥随条目 apiKey 存放、读面回显（内联裁定,权威口径 config/providers 头注）；apiKeyPresent 在场布尔
  * 供状态点。
  * 写面（Task 10）：upsert/remove/modelAdd/modelRemove/modelMove/setProviderApiKey 收口（REST/CLI/GUI
  * 后续一律经此），写纪律沿 catalog/plugins、catalog/approvals 同款——见写面节注释。
@@ -22,13 +22,12 @@ import type { readJsoncDoc } from './io';
 
 /** 单个源条目：config 解析面的源级分组（name/baseUrl/源级显式字段/models 条目显式值）+ 密钥面 */
 export interface ProviderEntry extends ParsedProviderEntry {
-  /** 密钥在场判定：条目内联 apiKey（2026-11-22 裁定，值随 ProviderEntry.apiKey 回显）或 env 槽回退任一有值 */
+  /** 密钥在场判定：条目内联 apiKey（内联裁定，值随 ProviderEntry.apiKey 回显）或 env 槽回退任一有值 */
   apiKeyPresent: boolean;
 }
 
 /** providers 读面：root:null 仅全局（loadProvidersFull 同语义）；providers 与 choices 同源同序，
- *  warnings 为装载告警单（形状裁决逐条跳过/忽略的告知面）。密钥**回显**（2026-11-22 用户裁定推翻
- *  D6「值不回传」——apiKey 随条目透出，GUI 密钥框带显隐切换） */
+ *  warnings 为装载告警单（形状裁决逐条跳过/忽略的告知面）。密钥**回显**（内联裁定——apiKey 随条目透出，GUI 密钥框带显隐切换） */
 export function listProviders(root: string | null): { providers: ProviderEntry[]; choices: ModelChoice[]; warnings: string[] } {
   const full = loadProvidersFull(root);
   return {
@@ -407,7 +406,7 @@ export function modelMove(root: string | null, scope: Scope, provider: string, m
 }
 
 /**
- * 置源密钥（2026-11-22 内联裁定推翻 D6 env 槽写法）：写目标 scope settings **providers 条目的
+ * 置源密钥（内联裁定）：写目标 scope settings **providers 条目的
  * apiKey 字段**（密钥随配置项存放、读面回显）；空串 = 删除该字段（清空语义）。provider 必须在
  * 目标文件 providers 数组内（写面按文件定位——密钥已是条目字段，不再借「装载可见性」语义），
  * 否则 INVALID；定位在文件守卫之后（plugins 定位同序）。返回 void 且全程零打印零日志：

@@ -19,7 +19,7 @@ export interface ModelChoice {
   provider: string;
   model: string;
   baseUrl: string;
-  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6）：providers 条目 apiKey 字段，可回显；缺席=未配置 */
+  /** 源级内联密钥（内联裁定,见本文件头注）：providers 条目 apiKey 字段，可回显；缺席=未配置 */
   apiKey?: string;
   /** 该模型最大上下文 tokens（models 条目对象形态 contextWindow > 源级 contextWindow 缺省；
    *  undefined = 回退全局 SUNSHINEX_CONTEXT_WINDOW / 内置 200k） */
@@ -38,7 +38,7 @@ export interface ModelChoice {
   params?: RequestParams;
 }
 
-/** 源密钥解析（2026-11-22 内联裁定，**无兼容回退**）：读全局档 providers 条目的 apiKey 字段——
+/** 源密钥解析（内联裁定，**无兼容回退**）：读全局档 providers 条目的 apiKey 字段——
  *  条目缺/值空 = 未配置（调用时由适配器报 SUNSHINEX_API_KEY is not configured）。档畸形按缺级
  *  处理（装载链统一上报口径）→ undefined。 */
 export function resolveProviderApiKey(name: string): string | undefined {
@@ -72,7 +72,7 @@ interface LoadedProviders {
 export interface ParsedProviderEntry {
   name: string;
   baseUrl: string;
-  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6）：条目 apiKey 字段直接承载、读面回显；
+  /** 源级内联密钥（内联裁定,见本文件头注）：条目 apiKey 字段直接承载、读面回显；
    *  非串/trim 超 2000 warning 跳字段不致命；空串=缺席 */
   apiKey?: string;
   /** 源启停（2026-11-17 用户裁定「provider 加开关,默认开」）：absent/true=启用,false=停用——
@@ -186,7 +186,7 @@ function parseProvidersAll(raw: unknown, origin: string): ParsedProvidersRaw {
     }
     // 源级分组先于 models 遍历入列（引用共享）：条目全坏该源仍以 models:[] 留列（文件结构如实镜像）
     const models: ParsedProviderEntry['models'] = [];
-    // 条目内联密钥（2026-11-22 D6 推翻裁定）：串 trim 后 1..2000 收口；空串=缺席；非串/超长 warning 跳字段
+    // 条目内联密钥（内联裁定）：串 trim 后 1..2000 收口；空串=缺席；非串/超长 warning 跳字段
     let providerKey: string | undefined;
     if (e.apiKey !== undefined) {
       if (typeof e.apiKey !== 'string') {

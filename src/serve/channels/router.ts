@@ -41,12 +41,12 @@ export interface ChannelRouterDeps {
   bindings: ChannelsBindingsStore;
   configs: () => ChannelConfig[];
   /** 回执:分发面文本(text 语义权威,平台无关);kind 二态受理标(engine 消费——平台 ack 面
-   *  (feishu OnIt 表情)在场时 accepted 免文本,2026-11-22 用户裁定;其余文本恒发) */
+   *  (feishu OnIt 表情)在场时 accepted 免文本;其余文本恒发) */
   ack: (m: InboundMessage, text: string, kind?: 'accepted' | 'queued') => Promise<void>;
   /** 审批 y/n 回复判据（engine 接线 projector，Task 6/7）：true=消息已被消费，router 不再走提交分派 */
   pendingReply?: (sessionId: string, text: string) => boolean;
   /** lastSender 表回写（engine 接线，Task 7 群聊定向回复消费）：结构化 sender——chatKind
-   *  供引擎群聊限定 @（2026-11-22 用户裁定：单聊回执式回复天然指向本人不加 @），
+   *  供引擎群聊限定 @（单聊回执式回复天然指向本人不加 @,权威口径 model.ts 定向提及字段注），
    *  userId 供平台原生提及语法（feishu `<at user_id>` 服务端渲人名） */
   noteSender?: (sessionId: string, sender: { display: string; userId: string; chatKind: 'direct' | 'group' }) => void;
   /** 提交分派成功回调（裁定 1，engine 接线）：submit/steer 分派成功后回调一次——engine 据此武装
@@ -58,7 +58,7 @@ export interface ChannelRouterDeps {
 
 const DEDUP_MAX = 4096;
 
-/** 命令未开放回执（2026-11-22 用户裁定「配置可以给聊天执行的命令」）：被配置关掉的命令不
+/** 命令未开放回执（命令配置化,权威口径 model.ts CHANNEL_COMMANDS 头注）：被配置关掉的命令不
  *  提交模型（/stop 之类当任务发没有意义），一句人性化提示即可——不暴露命令配置细节 */
 const COMMAND_DISABLED_TEXT = '该命令未开启，可直接发送任务描述。';
 
@@ -92,7 +92,7 @@ export class ChannelRouter {
     // ⑪ 审批回复截胡：有绑定且 pendingReply 判 true → 消息已被消费，不发 ack
     if (binding !== undefined && msg.text !== undefined && this.deps.pendingReply?.(binding.sessionId, msg.text) === true) return;
     const text = (msg.text ?? '').trim();
-    // 命令门（2026-11-22 用户裁定「配置可以给聊天执行的命令」）：cfg.commands 缺席=全部开放，
+    // 命令门（命令配置化,权威口径 model.ts CHANNEL_COMMANDS 头注）：cfg.commands 缺席=全部开放，
     // 在场=子集；被关掉的命令一句提示即返回（不提交模型——/stop 当任务发没有意义）
     const cmd = CHANNEL_COMMANDS.find((c) => (c.match === 'prefix' ? text.startsWith(c.cmd) : text === c.cmd));
     if (cmd !== undefined && !this.commandEnabled(cfg, cmd.cmd)) {
@@ -123,7 +123,7 @@ export class ChannelRouter {
     return cfg.commands === undefined || cfg.commands.includes(cmd);
   }
 
-  /** /help 文案（人性化,2026-11-22 用户裁定「提示人性化,不透露底层实现」）：只列开放命令+
+  /** /help 文案（人性化,不透露底层实现）：只列开放命令+
    *  一句提交语义说明——无 steer/绑定/会话等内部术语 */
   private helpText(cfg: ChannelConfig): string {
     const lines: string[] = [];
@@ -268,7 +268,7 @@ export class ChannelRouter {
     }
     this.deps.onSubmitted?.(sessionId, target); // 裁定 1：分派成功（submit 直达/409 回退 steer/running steer）即回调
     // ack 二态回执（计划 §4 第 6 条）：kind 二态受理标随行（engine 据此走平台 ack 面/文本回退——
-    // 飞书 accepted=OnIt「处理中」表情免文本,2026-11-22 用户裁定;排队态仍发文本说明）
+    // 飞书 accepted=OnIt「处理中」表情免文本;排队态仍发文本说明）
     await this.deps.ack(msg, queued ? '已加入排队，当前任务完成后处理' : '已受理，处理中', queued ? 'queued' : 'accepted');
   }
 

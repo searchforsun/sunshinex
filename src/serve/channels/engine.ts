@@ -3,24 +3,25 @@
  *  整体:start() 装载配置调和起停、stop() 全量收口、health() 健康快照、test(id) dry-run 测试连接、
  *  mockAdapter() 测试注入面。
  *
- *  裁定引用:
+ *  裁定引用(spec):
  *  - 裁定 1(router 接缝):ChannelRouterDeps.onSubmitted 可选回调——router 在 submit/steer 分派成功后
  *    回调,engine 据此武装终态观察(armed-once,见 armRunEnd)。
  *  - 裁定 2(engine 装配三线):① 定向回复——lastSender 表(router.noteSender 写入)命中且**群聊**
  *    才注入 OutboundMessage.mention(结构化,适配器按平台语法渲染;caps.mention 缺席=文本前缀退化;
- *    单聊回执式回复天然指向本人不加 @,streaming 全量替换帧不加,streamDeliver 不走 mention 路);
+ *    单聊回执式回复天然指向本人不加 @——权威口径 model.ts 定向提及字段注,streaming 全量替换帧不加,
+ *    streamDeliver 不走 mention 路);
  *    ② 审批/提问接线——projector.resolveApproval ← io.resolveApproval、projector.resolveAsk ←
- *    io.resolveAsk(终审修复波 F1 第 8 面),router.pendingReply ← projector.pendingReply;
- *    ③ 终态观察——runEndArmed 武装位,onSubmitted 首次回调即注册一次性 onRunEnd;终审修复波 F2
- *    补投影器侧缺口:排队续跑轮(session.ts 轮收尾内部 submit)不经 onSubmitted → projector
+ *    io.resolveAsk,router.pendingReply ← projector.pendingReply;
+ *    ③ 终态观察——runEndArmed 武装位,onSubmitted 首次回调即注册一次性 onRunEnd;投影器侧补武装:
+ *    排队续跑轮(session.ts 轮收尾内部 submit)不经 onSubmitted → projector
  *    ensureArmed 透传 armRunEnd 补武装(armed-once 位幂等,双入口同一观察单点)。
  *  - 硬约束(上游裁定 M-4):帧流 done 必须先于 onRunEnd 投影——帧经 io.onFrame 泵入 projector
  *    (subscribe 直挂),onRunEnd 只发终态注记,engine 不自行重排(顺序天然成立)。
  *
  *  调和纪律(幂等,键=cfg.id):新增/启用且在座未起 → createChannelAdapter + start(失败→health
  *  error 记 detail,绝不抛);移除/停用 → stop + 删表;fail-closed(spec §4 存储总览 2):密钥门
- *  secretGateError 单点——非免密平台(现仅 mock)缺条目内联密钥(cfg.secret,2026-11-22 内联裁定)
- *  拒绝启用,launch(health detail)与 test(dry-run error)双路同源不分叉。
+ *  secretGateError 单点——非免密平台(现仅 mock)缺条目内联密钥(cfg.secret,内联裁定,权威口径
+ *  model.ts 头注)拒绝启用,launch(health detail)与 test(dry-run error)双路同源不分叉。
  *  出站分派:每通道包一层 deliver/streamDeliver(adapter.reply? 优先退 send;stream 同理),router.ack
  *  与 projector 共用同款包装。 */
 import { loadChannels } from '../../config/channels';
@@ -59,7 +60,7 @@ export class ChannelsEngine {
   /** 当前生效配置快照(router configs() 配置门与 test(id) 查档消费) */
   private snapshot: ChannelConfig[] = [];
   /** 定向回复表(裁定 2①):sessionId → 最近发送者(router.noteSender 写入,deliver 群聊 @ 消费;
-   *  chatKind 群聊限定——单聊回执式回复天然指向本人不加 @,2026-11-22 用户裁定) */
+   *  chatKind 群聊限定——单聊回执式回复天然指向本人不加 @,权威口径 model.ts 定向提及字段注) */
   private readonly lastSender = new Map<string, { display: string; userId: string; chatKind: 'direct' | 'group' }>();
   /** 终态观察武装位(裁定 2③ armed-once):sessionId → 已注册 onRunEnd(跑完即拆,下一轮重武装) */
   private readonly runEndArmed = new Map<string, boolean>();
@@ -97,7 +98,7 @@ export class ChannelsEngine {
       ack: async (m, text, kind) => {
         const adapter = this.adapters.get(m.channel);
         const inbound = this.lastInbound.get(`${m.channel}:${m.chatId}`);
-        // 平台 ack 面(2026-11-22 用户裁定「受理不用自动弹出来,用官方处理中 icon」):飞书
+        // 平台 ack 面(受理=官方处理中 icon,权威口径 adapters/feishu.ts 头注):飞书
         // OnIt「处理中」表情回应——accepted 免文本;queued 表情+文本并存(排队需文字说明);
         // 无 ack 面/无最近入站(表情无从贴)/贴失败 → 文本回退,router 语义零分叉
         let acked = false;
@@ -267,7 +268,7 @@ export class ChannelsEngine {
   /** 出站投递(裁定 2①):lastSender 查表命中(经绑定反解 sessionId)且**群聊**才注入定向 @——
    *  结构化 mention 交适配器按平台语法渲染(feishu `<at user_id>` 服务端渲人名,caps.mention);
    *  无平台提及面 → 文本前缀 @<display> 退化(telegram 等);单聊零 @(回执式回复天然指向本人,
-   *  2026-11-22 用户裁定)。适配器分派 reply 优先(回执式,需原始入站),退 send */
+   *  权威口径 model.ts 定向提及字段注)。适配器分派 reply 优先(回执式,需原始入站),退 send */
   private async deliver(t: ReplyTarget, msg: OutboundMessage): Promise<void> {
     const adapter = this.adapters.get(t.channelId);
     if (adapter === undefined) throw new Error(`通道 ${t.channelId} 未启动,投递丢弃`);

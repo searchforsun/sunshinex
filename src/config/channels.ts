@@ -5,7 +5,7 @@
  * 键允许项目级遮蔽，channels 不行——通道是 daemon 主动外连的执行面，项目档若能定义通道，等于克隆一个
  * 仓库就能注入「外连攻击者机器人 + full-access 会话」的供应链攻击面。故本装载恒读全局档
  * （loadGlobalSettings 单点），项目档 channels 键整键忽略，无两级遮蔽语义。
- * 密钥内联进条目（2026-11-22 用户裁定推翻 D6）：`secret` 字段随 channels 键存放、GET 可回显，
+ * 密钥内联进条目（内联裁定,权威口径 serve/channels/model.ts 头注）：`secret` 字段随 channels 键存放、GET 可回显，
  * env 槽 SUNSHINEX_CHANNEL_SECRET_<名> 退役（engine 改读 cfg.secret，见 serve/channels/engine.ts）。
  * 兼营聊天专属域目录铸造单点（channelChatDomainDir/channelChatWorkspaceRoot，spec §4 绑定解析
  * 「root==='auto'」缺省形态）：域容器 ~/.sunshinex/channels/ 与容器覆盖（channelsContainerDir）落

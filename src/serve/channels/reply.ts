@@ -2,30 +2,30 @@
  *  降级投影回 IM——流式(同气泡全量替换)/分段(缓冲满 maxTextLength 切发)/终稿(done 冲刷)+
  *  终态注记(onRunEnd)与挂起文本回退([审批]/[提问] 投影 + y/n 与自由文本消费)。
  *
- *  裁定(spec §5.1/§5.2 + Task 6 预检):
+ *  边界清单(spec §5.1/§5.2):
  *  - 降级链全部在投影器不在适配器(适配器只声明 caps + 实现收发,adapters/types.ts 头注同语义)。
  *  - done 帧负责正文冲刷,onRunEnd 只管终态注记——避免双重发送;done 且零输出不补发(防空消息)。
  *  - done 收尾:流式档补终稿增量 {fullText: buf, done:true}(适配器靠它解除 typing 态/定稿气泡
- *    ——StreamDelta.done 语义定义即此,审查 I-2 裁定补生产者);分段档 done 只冲刷未流出余量;
+ *    ——StreamDelta.done 语义定义即此);分段档 done 只冲刷未流出余量;
  *    两档均不重发新消息正文(deliver 面零额外)。
  *  - 审批帧双形消费:契约路 kind==='event' && e.type==='approval-request'(pid 在 e.payload.pid);
  *    实际挂起帧形 kind==='approval'(ApprovalFrame——pid 在帧顶层而非 payload,session.ts
  *    pendingFrames() 重连重发同构,摘要取 req.subject)。现状代码无 approval-request 事件发射点
  *    (grep 实证,仅 types.ts:296 词汇),故实际挂起帧形是主路径,契约路留给上层桥接。
- *  - 挂起投影三型裁定(spec §5.2 三型 approval/ask/plan-approval;2026-11-22 终审修复波 F1):
- *    **ask 先行**——AskFrame(daemon-wire.ts,pid 帧顶层,req=AskUserRequest 原件,session.ts
+ *  - 挂起投影三型(spec §5.2:approval/ask/plan-approval,**ask 先行**):
+ *    AskFrame(daemon-wire.ts,pid 帧顶层,req=AskUserRequest 原件,session.ts
  *    suspendAsk 广播/pendingFrames 重发同形)同 approval 路径投影「[提问] <question>(1. x / 2. y),
  *    回复序号或内容」,pending 同表复用(按 sessionId+kind 判别);回执走 daemon ask 单点
- *    resolveAsk(pid, AskUserAnswer)(POST /ask/:pid/reply 内部方法)。**plan-approval 随 P3 打磨**
- *    (P3=流式投影打磨期,spec §11——卡片面与计划书全文投影形态一并裁定,文本回退届时补)。
- *  - 审批/提问挂起投影按 pid 去重卫语句(审查 I-1;daemon-wire 挂起帧明文「客户端以 pid 去重幂等」
- *    ——WS 重连 pendingFrames 重发/Task 7 双通道齐火同 pid 只投影一次);异 pid 照多挂起
- *    「最新一条覆盖」裁定(pending.set,P0 从简);approval-resolved 事件清挂起
+ *    resolveAsk(pid, AskUserAnswer)(POST /ask/:pid/reply 内部方法)。plan-approval 随 P3 打磨
+ *    (卡片面与计划书全文投影形态届时一并裁定,文本回退届时补)。
+ *  - 审批/提问挂起投影按 pid 去重卫语句(daemon-wire 挂起帧明文「客户端以 pid 去重幂等」
+ *    ——WS 重连 pendingFrames 重发/双通道齐火同 pid 只投影一次);异 pid 照多挂起
+ *    「最新一条覆盖」(pending.set);approval-resolved 事件清挂起
  *    (ApprovalFrame 无 resolved 帧形——回执走 HTTP 端点,消费面靠 pendingReply 与下一条覆盖)。
- *  - 陈座提示(终审修复波 F3):pendingReply 回执返回假=pid 已在他路回执(GUI 已处理,daemon 只
+ *  - 陈座提示:pendingReply 回执返回假=pid 已在他路回执(GUI 已处理,daemon 只
  *    pump notice 无 resolved 帧)→ safeDeliver「已在他处处理」提示给原目标,只补反馈不广播;
  *    回执抛错沿用吞错旧语义(异常≠他路回执,状态未知不误导)。
- *  - 终态武装补漏(终审修复波 F2):排队 steer 收尾的内部续跑(session.ts 轮收尾 steerTakePending
+ *  - 终态武装补漏:排队 steer 收尾的内部续跑(session.ts 轮收尾 steerTakePending
  *    → 内部 submit)不经 router.onSubmitted,该轮无终态武装——投影器在 token/done 帧补调可选
  *    deps.ensureArmed(engine 透传 armRunEnd,armed-once 位天然幂等);armedSeen Set 去重(每会话
  *    每轮首帧一次,done 轮界清位——续跑轮链式排队也能逐轮重补,stop 全清)。
