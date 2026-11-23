@@ -6,8 +6,10 @@
  * - 出站:reply 走 im.message.reply（引用入站 message_id,raw 携带）;send 走 im.message.create
  *   （receive_id_type=chat_id）;均 msg_type=text（P0 纯文本,caps.markdown=false 走投影降级链）。
  * - 测试连接(dry-run):WS 连上 + GET /open-apis/bot/v3/info 取 bot.app_name 作 botId。
- * - 受理回执(2026-11-22 用户裁定「受理不用自动弹出来,用官方处理中 icon」):ack 贴官方 OnIt
- *   「处理中」表情回应,回答送达(reply)自动摘除;失败由 engine 退文本回执不分叉。
+ * - 接收 icon(2026-11-23 用户裁定「任何输入都要有接收 icon,这就是已读标记,包括命令输入」):
+ *   入站即贴官方 OnIt「处理中」表情——命令/回执/任务全消息统一已读标记,回答送达(reply)自动
+ *   摘除;同消息幂等(重投/受理链路复入不双贴);失败静默(icon 是确认面,不阻断处理);
+ *   ack 平台面对飞书即空操作(已读标记已贴,受理免文本/排队文本由 engine 文案路负责)。
  * - 定向 @(2026-11-22 用户裁定「群聊才 @ 人」):caps.mention=true——群聊出站前缀 `<at user_id>`
  *   标签由飞书服务端渲染真实姓名(单聊零 @,回执式回复天然指向本人);发送者姓名富化走通讯录
  *   API+缓存(权限未开静默降级 open_id,不影响 @ 标签渲名)。
@@ -26,11 +28,11 @@ const APP_ID_RE = /^cli_[0-9a-fA-F]{16}$/;
 /** 飞书 text 消息 content JSON 上限防御（正常 <1KB;超限按畸形丢正文） */
 const CONTENT_PARSE_MAX = 64 * 1024;
 
-/** 受理 ack 表情（2026-11-22 用户裁定「受理不用自动弹出来，用官方处理中 icon」）：OnIt=飞书
- *  官方「正在处理」表情，贴在入站消息上作受理回执，回答到达（reply）后自动摘除 */
+/** 接收 icon 表情（2026-11-23 用户裁定「任何输入都要有接收 icon,这就是已读标记」）：OnIt=
+ *  飞书官方「正在处理」表情，入站即贴（命令/回执/任务全消息统一），回答到达（reply）后摘除 */
 const ACK_EMOJI = 'OnIt';
 
-/** 纯函数（单测锚点）：受理 ack → 表情回应请求形状（POST reactions，emoji_type=OnIt） */
+/** 纯函数（单测锚点）：接收 icon → 表情回应请求形状（POST reactions，emoji_type=OnIt） */
 export function feishuAckReactionPayload(messageId: string): { method: string; url: string; data: unknown } {
   return { method: 'POST', url: `/open-apis/im/v1/messages/${messageId}/reactions`, data: { reaction_type: { emoji_type: ACK_EMOJI } } };
 }
@@ -173,6 +175,11 @@ export class FeishuAdapter implements ChannelAdapter {
       'im.message.receive_v1': async (data: unknown) => {
         const inbound = feishuEventToInbound(this.id, data);
         if (inbound === undefined) return;
+        // 接收 icon（2026-11-23 用户裁定「任何输入都要有接收 icon,这就是已读标记,包括命令输入」）：
+        // 入站即贴 OnIt——命令/回执/任务统一已读标记,回答送达(reply)即摘;尽力而为失败静默
+        // （icon 是确认面,不阻断消息处理）;markProcessing 同消息幂等,重投不双贴
+        const receiptMessageId = (inbound.raw as { message?: { message_id?: string } } | undefined)?.message?.message_id;
+        if (receiptMessageId !== undefined && receiptMessageId !== '') void this.markProcessing(receiptMessageId);
         try {
           // 发送者姓名富化（缓存命中零等待；首见一次通讯录查询）：群聊 [来自 x]: 前缀与
           // 绑定锁定展示可读；权限未开/失败静默保 open_id（@ 标签由飞书侧渲名不受影响）
@@ -249,7 +256,7 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   /** 回执式回复:引用入站 message_id(飞书群聊内呈现为楼中楼);raw 缺 id 退化为 send。
-   *  回答送达即摘「处理中」表情（受理 ack 贴的 OnIt,2026-11-22 用户裁定语义闭环） */
+   *  回答送达即摘「处理中」表情（入站接收 icon,2026-11-23 用户裁定已读标记语义闭环） */
   async reply(inbound: InboundMessage, msg: OutboundMessage): Promise<void> {
     const raw = inbound.raw as { message?: { message_id?: string } } | undefined;
     const messageId = raw?.message?.message_id;
@@ -257,12 +264,17 @@ export class FeishuAdapter implements ChannelAdapter {
     if (messageId !== undefined && messageId !== '') void this.unmarkProcessing(messageId);
   }
 
-  /** 受理回执平台面（2026-11-22 用户裁定）：入站消息贴 OnIt「处理中」表情——失败上抛由
-   *  engine ack 包装捕获退文本回执,语义不分叉（缺 message_id 同上抛走文本兜底） */
-  async ack(inbound: InboundMessage, _kind: 'accepted' | 'queued'): Promise<void> {
-    void _kind; // accepted/queued 同贴 OnIt;排队说明文本由 engine 并发
-    const messageId = (inbound.raw as { message?: { message_id?: string } } | undefined)?.message?.message_id;
-    if (this.client === undefined || messageId === undefined || messageId === '') throw new Error('feishu ack: no message_id');
+  /** 受理回执平台面：接收 icon 已在**入站即贴**（2026-11-23 用户裁定「任何输入都要有接收
+   *  icon,包括命令输入」——统一已读标记），本面即空操作：受理免文本语义由 engine 的
+   *  accepted 短路承担,排队说明文本由 engine 文案路并发——这里不重复贴表情防双 icon */
+  async ack(_inbound: InboundMessage, _kind: 'accepted' | 'queued'): Promise<void> {
+    void _inbound;
+    void _kind;
+  }
+
+  /** 贴「处理中」表情（入站接收 icon）：同消息幂等（飞书重投/受理链路复入不双贴） */
+  private async markProcessing(messageId: string): Promise<void> {
+    if (this.client === undefined || messageId === '' || this.processingReactions.has(messageId)) return;
     const resp = (await this.client.request(feishuAckReactionPayload(messageId))) as LarkReactionResponse;
     const rid = resp?.data?.reaction_id;
     if (typeof rid === 'string' && rid !== '') this.processingReactions.set(messageId, rid);
