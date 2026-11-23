@@ -5,7 +5,7 @@ import { ComposerCard } from '../../composer/ComposerCard';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { CommandPalette } from '../../CommandPalette';
 import type { CmdItem } from '../../CommandPalette';
-import { dropRefsOf, pathBasename } from '../../ui-util';
+import { applyFilePick, dropRefsOf } from '../../ui-util';
 import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
@@ -184,13 +184,8 @@ export function EditComposer({ conn, sessionId, root, pickRelRef, value, onChang
             active={Math.min(filePalActive, 11)}
             onHover={setFilePalActive}
             onPick={(p) => {
-              const base = pathBasename(p);
-              pickRelRef.current.set(base, p);
-              const atFrom = filePal.from;
-              const atEnd = atFrom + 1 + filePal.query.length;
-              onChange((prev: string) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-              setFilePal(null);
-              taRef.current?.focus();
+              // applyFilePick 单点(D86;pinTo 补齐 G14.211 光标钉——原面漏钉,同族对齐)
+              applyFilePick(pickRelRef, onChange, { rel: p, atFrom: filePal.from, queryLen: filePal.query.length, close: () => setFilePal(null), pinTo: () => taRef.current });
             }}
           />
         ) : pillOpen === 'plus' ? (

@@ -16,7 +16,7 @@ import type { RefEntries, RefPal } from './ref-palette';
 import { ComposerPillsLeft, ComposerPillsRight } from './ComposerPills';
 import { useComposerKeys } from './use-composer-keys';
 import type { ChatProps } from './chat-types';
-import { chaseScrollBottom, dropRefsOf, insertRefBase, insertRefToken, pathBasename } from '../../ui-util';
+import { applyFilePick, chaseScrollBottom, dropRefsOf, insertRefBase, insertRefToken } from '../../ui-util';
 import { t } from '../../i18n';
 
 type QueuedRow = { seq: number; text: string; images?: string[] };
@@ -293,22 +293,8 @@ export function ChatComposerDock(props: {
                 active={Math.min(filePalActive, 11)}
                 onHover={setFilePalActive}
                 onPick={(p) => {
-                  // G14.126 选中只插短写 @文件名,相对路径记入账本(发送期展开)
-                  const base = pathBasename(p);
-                  pickRelRef.current.set(base, p);
-                  const atFrom = filePal.from;
-                  const atEnd = atFrom + 1 + filePal.query.length;
-                  setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-                  setFilePal(null);
-                  inputRef.current?.focus();
-                  // G14.211 光标钉在插入 token 之后(@+名+空格右沿):面板行点击前 textarea 的
-                  // 旧光标位在 @query 内,focus 恢复旧位=落回 token 中间
-                  requestAnimationFrame(() => {
-                    const ta = inputRef.current;
-                    if (ta === null) return;
-                    const to = Math.min(atFrom + base.length + 2, ta.value.length);
-                    ta.setSelectionRange(to, to);
-                  });
+                  // G14.126 短写显形+记账;G14.211 焦点回框+光标钉 token 右沿——applyFilePick 单点(D86)
+                  applyFilePick(pickRelRef, setInput, { rel: p, atFrom: filePal.from, queryLen: filePal.query.length, close: () => setFilePal(null), pinTo: () => inputRef.current });
                 }}
               />
             ) : pillOpen === 'plus' ? (

@@ -387,3 +387,29 @@ export function insertRefToken(
   const base = bare.split(/[\/]/).filter(Boolean).pop() ?? bare;
   insertRefBase(base, isDir ? `${bare}/` : bare, { ...io, pinCaret: true });
 }
+
+/** @文件面板 pick 插入共用件（D86 收敛：键盘/点击两路六份「pathBasename+pickRelRef 记账+@token
+ *  区间 splice+收面板」逐字核；G14.211 光标钉 ×4 同式随 pinTo 收编——钉在插入 token 右沿
+ *  @+名+空格,旧光标位恢复=token 中间）。返回短写 base（入账键=显形名）。 */
+export function applyFilePick(
+  pickRelRef: { current: Map<string, string> },
+  setText: (updater: (prev: string) => string) => void,
+  opts: { rel: string; atFrom: number; queryLen: number; close: () => void; pinTo?: () => HTMLTextAreaElement | null },
+): string {
+  const base = pathBasename(opts.rel);
+  pickRelRef.current.set(base, opts.rel);
+  const atEnd = opts.atFrom + 1 + opts.queryLen;
+  setText((prev) => prev.slice(0, opts.atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, opts.atFrom)));
+  opts.close();
+  const pin = opts.pinTo;
+  if (pin !== undefined) {
+    pin()?.focus();
+    requestAnimationFrame(() => {
+      const ta = pin();
+      if (ta === null) return;
+      const to = Math.min(opts.atFrom + base.length + 2, ta.value.length);
+      ta.setSelectionRange(to, to);
+    });
+  }
+  return base;
+}

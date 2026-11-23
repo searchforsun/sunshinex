@@ -4,7 +4,7 @@ import { useUiMode } from '../ui-mode';
 import { ArrowUp, ChevronDown, Folder, FolderGit2, GitBranch } from 'lucide-react';
 import { WelcomeHeldBranchDialog, WelcomeIsoBranchDialog, WelcomeIsoDialog, WelcomeSwitchDialog } from './welcome-send-dialogs';
 import { WelcomeProjectPop } from './welcome-project-pop';
-import { dropRefsOf, pathBasename, insertRefBase, insertRefToken } from '../ui-util';
+import { applyFilePick, dropRefsOf, pathBasename, insertRefBase, insertRefToken } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { atomicRange, baseModelName, expandFileRefs, hasMentionTokens, ModeIcon, rankFileHits, renderMentionSpans, slashTokenAt, tokenDeleteRange, tokenSpanAt } from '../pages/Chat';
 import { flatRefItems, refTokenAt } from '../pages/chat/ref-palette';
@@ -645,21 +645,8 @@ export function WelcomeComposer({
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 const rel = items[Math.min(filePalActive, items.length - 1)];
-                // G14.126 选中只插短写 @文件名(显形=图标+文件名),相对路径记账供发送期展开;
-                // 目录项(尾斜杠内部标记):插入文本不带斜杠,记账保标记——芯片/展开面判目录
-                const base = pathBasename(rel);
-                pickRelRef.current.set(base, rel);
-                const atFrom = filePal.from;
-                const atEnd = atFrom + 1 + filePal.query.length;
-                setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-                setFilePal(null);
-                // G14.211 光标钉在插入 token 之后(程序化改值,旧光标位恢复=token 中间)
-                requestAnimationFrame(() => {
-                  const g = goalRef.current;
-                  if (g === null) return;
-                  const to = Math.min(atFrom + base.length + 2, g.value.length);
-                  g.setSelectionRange(to, to);
-                });
+                // G14.126 短写显形+记账供发送期展开——applyFilePick 单点(D86;G14.211 光标钉)
+                applyFilePick(pickRelRef, setGoal, { rel, atFrom: filePal.from, queryLen: filePal.query.length, close: () => setFilePal(null), pinTo: () => goalRef.current });
                 return;
               }
             }

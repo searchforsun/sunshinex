@@ -10,7 +10,7 @@ import { slashItemsFor, useCommandPalette } from '../pages/chat/use-command-pale
 import { useComposerKeys } from '../pages/chat/use-composer-keys';
 import { useChatComposerSide } from '../pages/chat/use-chat-composer-side';
 import { flatRefItems, refTokenAt, type RefEntries, type RefPal } from '../pages/chat/ref-palette';
-import { pathBasename } from '../ui-util';
+import { applyFilePick, pathBasename } from '../ui-util';
 import { useWorkspaceFiles } from '../pages/chat/use-workspace-files';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
 
@@ -282,20 +282,8 @@ export function SideChatComposer(props: {
           active={Math.min(filePalActive, 11)}
           onHover={setFilePalActive}
           onPick={(p) => {
-            const base = pathBasename(p);
-            pickRelRef.current.set(base, p);
-            const atFrom = filePal.from;
-            const atEnd = atFrom + 1 + filePal.query.length;
-            setText((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-            setFilePal(null);
-            inputRef.current?.focus();
-            requestAnimationFrame(() => {
-              const ta = inputRef.current;
-              if (ta !== null) {
-                const to = Math.min(atFrom + base.length + 2, ta.value.length);
-                ta.setSelectionRange(to, to);
-              }
-            });
+            // applyFilePick 单点(D86:短写显形+记账+焦点回框+G14.211 光标钉)
+            applyFilePick(pickRelRef, setText, { rel: p, atFrom: filePal.from, queryLen: filePal.query.length, close: () => setFilePal(null), pinTo: () => inputRef.current });
           }}
         />
       ) : slashPanelItems !== null ? (

@@ -1,7 +1,8 @@
+import { applyFilePick } from '../../ui-util';
 import type { ClipboardEvent, CompositionEvent, Dispatch, FormEvent, KeyboardEvent, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { CmdItem } from '../../CommandPalette';
-import { pathBasename } from '../../ui-util';
+
 import { atomicRange, rankFileHits, slashTokenAt, tokenDeleteRange, tokenGuardVerdict, tokenSpanAt } from './mention';
 import type { RefEntries, RefPal } from './ref-palette';
 import { refPanelItems, refPickLabel, refTokenAt } from './ref-palette';
@@ -209,14 +210,14 @@ export function useComposerKeys(deps: {
         e.preventDefault();
         const rel = items[Math.min(filePalActive, items.length - 1)];
         // G14.126 选中只插短写 @文件名(输入框显形=图标+文件名);相对路径记入账本,
-        // 发送期 expandFileRefs 据此展开为 md 绝对链接;按 @token 区间替换。
-        // 目录项(尾斜杠内部标记):插入文本不带斜杠,记账保标记——芯片/展开面判目录
-        const base = pathBasename(rel);
-        pickRelRef.current.set(base, rel);
-        const atFrom = filePal?.from ?? caret - (atMatch?.[1]?.length ?? 0) - 1;
-        const atEnd = atFrom + 1 + (filePal?.query ?? '').length;
-        setInput((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-        setFilePal(null);
+        // 发送期 expandFileRefs 据此展开为 md 绝对链接——applyFilePick 单点(D86;
+        // 键盘路无钉:textarea 已焦点,setInput 程序化改值后光标随尾)
+        applyFilePick(pickRelRef, setInput, {
+          rel,
+          atFrom: filePal?.from ?? caret - (atMatch?.[1]?.length ?? 0) - 1,
+          queryLen: (filePal?.query ?? '').length,
+          close: () => setFilePal(null),
+        });
         return;
       }
     }

@@ -1,3 +1,4 @@
+import { applyFilePick } from '../ui-util';
 import { type Dispatch, type SetStateAction } from 'react';
 import { t } from '../i18n';
 import { FilePalette, fileHit, rankFileHits, slashTokenAt } from '../pages/Chat';
@@ -6,7 +7,7 @@ import { CommandPalette, type CmdItem } from '../CommandPalette';
 import { flatRefItems } from '../pages/chat/ref-palette';
 import type { RefEntries, RefPal } from '../pages/chat/ref-palette';
 import { ComposerPlusPanel } from '../composer/ComposerPlusPanel';
-import { pathBasename } from '../ui-util';
+
 import type { WelcomeComposerConn } from './welcome-conn';
 
 /** D62 批E 自 WelcomeComposer 平移的 overlays 四面板链($/# 引用 → @ 文件 → / 命令 → + 附加):
@@ -101,22 +102,8 @@ export function WelcomeOverlays({
           active={Math.min(filePalActive, 11)}
           onHover={setFilePalActive}
           onPick={(p) => {
-            // G14.126 选中只插短写 @文件名,相对路径记账供发送期展开
-            const base = pathBasename(p);
-            pickRelRef.current.set(base, p);
-            const atFrom = filePal.from;
-            const atEnd = atFrom + 1 + filePal.query.length;
-            setGoal((prev) => prev.slice(0, atFrom) + `@${base} ` + prev.slice(Math.max(atEnd, atFrom)));
-            setFilePal(null);
-            // G14.211 焦点回输入框 + 光标钉在插入 token 之后(面板行点击带走焦点,
-            // 不回焦则后续键入落空;旧光标位恢复=token 中间)
-            goalRef.current?.focus();
-            requestAnimationFrame(() => {
-              const g = goalRef.current;
-              if (g === null) return;
-              const to = Math.min(atFrom + base.length + 2, g.value.length);
-              g.setSelectionRange(to, to);
-            });
+            // G14.126 短写显形+记账;G14.211 焦点回框+光标钉——applyFilePick 单点(D86)
+            applyFilePick(pickRelRef, setGoal, { rel: p, atFrom: filePal.from, queryLen: filePal.query.length, close: () => setFilePal(null), pinTo: () => goalRef.current });
           }}
         />
       ) : welcomeSlashItems !== null ? (
