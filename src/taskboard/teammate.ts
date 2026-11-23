@@ -58,6 +58,9 @@ export interface TeammateDeps {
   /** 持久化域目录(2026-11-15 sunx P3 Task 1 注入缝):own ContextManager 记忆引导随域(实际写入面经
    *  derive 共享闭包落 Harness 装配域);缺席=resolveDataDir(root) 既有推导(字节不变) */
   dataDir?: string;
+  /** 稳定段数据域事实行源(2026-11-23 用户裁定「系统上下文说明两个地址」):成员稳定段与主链同面
+   *  (workspace+data 双地址行);channels 域装配缝已裁缺席。与 dataDir(memory 域注入)分立 */
+  segmentDataDir?: string;
 }
 
 /** teammate 注册表:帽可配(缺省 DEFAULT_MAX_TEAMMATES,SUNSHINEX_MAX_TEAMMATES 覆盖)+ 名字索引 + 存活聚合(派发路由的退化判据) */
@@ -332,6 +335,8 @@ ${task.spec}` },
       registry: buildFace(this.deps.registry, { label: this.name, taskId: task.id }),
       safety: this.deps.safety,
       context: this.ctx,
+      // 数据域事实行源(2026-11-23 用户裁定):成员稳定段与主链同面(channels 域装配缝已裁缺席)
+      ...(this.deps.segmentDataDir !== undefined ? { dataDir: this.deps.segmentDataDir } : {}),
       model: this.deps.model,
       root: this.deps.root,
       onEvent: tagger,

@@ -91,6 +91,16 @@ export function worktreeMainRootOf(root: string): string | undefined {
   }
 }
 
+/** channels 域工作区判定（2026-11-23 数据域事实行装配缝共用单点）：root 位于 channels 容器内的
+ *  im-* 域目录（workspace 的父目录）之下。纯路径谓词——SUNSHINEX_DATA_DIR 显式覆盖时 resolveDataDir
+ *  走权威分支不经本判定（dev 重定向形态行缺席无害）。稳定段数据域行对域内工作区缺席（不向聊天
+ *  agent 暴露会话账本路径——「data 与 agent 脚下平级隔离」2026-11-21 channels §4 裁定） */
+export function isChannelsDomainRoot(root: string): boolean {
+  const container = channelsContainerDir();
+  const rel = path.relative(container, root);
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
 /** 解析当前工作区数据目录：直指覆盖 > channels 域分支 > projects 根覆盖 > 缺省全局（HOME 可建）> 项目内回退；子目录由各写入面自行 mkdir */
 export function resolveDataDir(root: string): string {
   const held = worktreeMainRootOf(root);
@@ -101,11 +111,11 @@ export function resolveDataDir(root: string): string {
   // 不嵌套——full-access agent 不得踩到自己的会话账本；常规项目 root 与 data 异树、sunx 域为纯持久化域，
   // 均无此问题，channels 不做嵌套形态）：root 位于 channels 容器内 → <容器>/<首段>/data（首段 = im-* 域
   // 目录，即 agent 工作区 workspace 的父目录）；置于 SUNSHINEX_DATA_DIR 检查之后=最小侵入（开发与测试
-  // 专用直指口仍最高优先，常规路径行为零变动）；容器自身（rel 空串）非域目录，不命中走常规路径
-  const container = channelsContainerDir();
-  const rel = path.relative(container, root);
-  if (rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)) {
-    return path.join(container, rel.split(path.sep)[0]!, 'data');
+  // 专用直指口仍最高优先，常规路径行为零变动）；容器自身（rel 空串）非域目录，不命中走常规路径。
+  // 域内判定收口 isChannelsDomainRoot 单点（2026-11-23 数据域事实行装配缝同源消费）
+  if (isChannelsDomainRoot(root)) {
+    const rel = path.relative(channelsContainerDir(), root);
+    return path.join(channelsContainerDir(), rel.split(path.sep)[0]!, 'data');
   }
   const base = projectsRoot();
   const projectsOverride = process.env.SUNSHINEX_PROJECTS_DIR;

@@ -73,6 +73,14 @@ export function workDirLine(root: string): string {
   return `Current working directory (project root): ${root}`;
 }
 
+/** 数据域事实行（2026-11-23 用户裁定「说明两个地址：当前项目在 X、数据目录在 Y 及其内容；workspace
+ *  即原来的工作区」）：workspace 地址=静态装配根（原工作区），数据域地址=resolveDataDir 产物；两个
+ *  地址并列陈述不加冗余说明（用户二轮裁定「没必要多余说明」）；内容清单给全（sessions 会话原文/tasks
+ *  任务日志/memory/runs/skills/图片缓存），审计与找回场景模型可直接 read/grep。文案恒英文单语（§15 写链面） */
+export function dataDirLine(workspace: string, dataDir: string): string {
+  return `Working workspace (project root): ${workspace} — session data directory: ${dataDir}; contains sessions/ = conversation journals (jsonl transcripts), tasks/ = background task logs, memory/ = agent memory, runs/ = run cost ledgers, skills/ = learned skills, images-cache/ = spilled images. Read or grep the data directory directly for audit and recovery.`;
+}
+
 /** 文件引用路径行（G14.129）：回复中提及文件一律输出 Markdown 链接，链接文本=文件名；
  *  工作区内文件用相对项目根的 ./ 路径做目标，工作区外文件用绝对路径做目标——
  *  GUI 渲染面把这类链接统一渲染为可点文件引用（文件标签页直达） */
@@ -161,6 +169,10 @@ export function stableSegmentOf(opts: {
   contextRoot: string;
   /** 会话形态（缺省/其余值 = standard 原样）：仅 'sunx' 触发身份槽替换与章程行尾随 */
   kind?: SessionKind;
+  /** 数据域事实行（2026-11-23 用户裁定）：会话数据目录绝对路径（resolveDataDir 产物）——workspace+
+   *  data 双地址+内容清单行进稳定段；channels 域缺席（装配缝 isChannelsDomainRoot 裁——不向聊天
+   *  agent 暴露会话账本路径）；缺席=行不落，旧行为逐字节不变 */
+  dataDir?: string;
   /** worker 覆写尾行（sunx 分派通道专用，2026-11-15；2026-11-16 二轮修剪文案）：true=段尾追
    *  SUNX_WORKER_TAIL——仅 fork chain 通道子代消费（spawn 工具路径：稳定段与父同面+尾行废黜
    *  编排者指令），Sunx 主链恒 false。尾追=纯追加，主链与子代共享前缀到段尾为止，缓存纪律不破。
@@ -180,6 +192,13 @@ export function stableSegmentOf(opts: {
     SKILLS_INSTALL_LINE,
     TEAMS_INSTALL_LINE,
     workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
+    // 数据域事实行（2026-11-23 用户裁定「说明两个地址：当前项目在 X、数据目录在 Y 及其内容文件夹；
+    // workspace 即原来的工作区，两者分开」）：数据域=root 确定性推导（resolveDataDir），会话级常量→
+    // 稳定段字节冻结合规（与 workDir 行同性质）；workspace 地址取静态装配根（workDir 行=活动根动态面，
+    // worktree 树内执行时两行各表其事实——树=执行 cwd，主根=workspace/data 绑定域）。缺席=不落行
+    // （channels 域装配缝裁——「data 与 agent 脚下平级隔离」2026-11-21 channels §4，显式给 sessions/
+    // 路径与隔离初衷冲突），旧行为逐字节不变
+    ...(opts.dataDir !== undefined ? [dataDirLine(opts.root ?? opts.contextRoot, opts.dataDir)] : []),
     FILE_PATH_LINE,
     IMAGE_PLACEMENT_LINE,
     ...(sunx ? SUNX_CHARTER_LINES : []),

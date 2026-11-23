@@ -94,6 +94,10 @@ export interface ReactorDeps {
   /** 渲染期图片历史半径（spec §3.2 settings 键 imageHistoryLimit，config/image-history.ts 装配期解析注入）：
    *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
   imageHistoryLimit?: number;
+  /** 数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」）：会话数据目录进稳定段
+   *  （resolveDataDir 产物，会话级常量→字节冻结合规）；channels 域缺席（装配缝裁决——不向聊天
+   *  agent 暴露会话账本路径）；缺席=行不落，逐字节旧行为 */
+  dataDir?: string;
 }
 
 /** 收口沉淀载荷（规格 §3.2）：outcome = 终态归一值（done/failed/stopped）；无最终答复时 reply 归一为空串 */
@@ -511,6 +515,7 @@ export class Reactor {
       activeRoot: this.deps.activeRoot,
       ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
       contextRoot: this.deps.context.root,
+      ...(this.deps.dataDir !== undefined ? { dataDir: this.deps.dataDir } : {}),
     });
   }
 

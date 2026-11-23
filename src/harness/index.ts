@@ -42,7 +42,7 @@ import { MemoryPipeline } from './memory/pipeline';
 import { writeMemoryFact } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
 import type { SettlePayload } from './reactor';
-import { resolveDataDir, sessionTeamsRoot } from '../config/data-dir';
+import { isChannelsDomainRoot, resolveDataDir, sessionTeamsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { teamTokenCapEnv } from '../config/termination-config';
@@ -203,6 +203,11 @@ export class Harness {
   private readonly inboxCursors: InboxCursorStore;
   /** 工作区数据根（adoptSessionTeams 拼会话 teams 路径） */
   private readonly dataDir: string;
+  /** 稳定段数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」）：workspace+data 双地址+
+   *  内容清单行进稳定段（主链 Reactor/loop/fork 子代/teammate 同源同面）；channels 域缺席
+   *  （isChannelsDomainRoot——不向聊天 agent 暴露会话账本路径，2026-11-21 channels §4 隔离裁定）。
+   *  公开只读：createKernelRuntime LoopDeps 装配点同源消费（loop 内 Reactor 与单发同面） */
+  readonly segmentDataDir: string | undefined;
   /** 已绑定的会话团队键；同键重复收养幂等 */
   private teamsBoundJournalId: string | undefined;
   /** 未落盘前的内存板（adopt 时若盘空则回流事件） */
@@ -251,6 +256,11 @@ export class Harness {
     // 同源取本变量；缺席=resolveDataDir(base) 既有推导（零变化）。base 保持工作树共享面锚（sandbox/safePath/
     // perception/worktree），不随注入漂移
     const dataDir = opts.dataDir ?? resolveDataDir(base);
+    // 数据域事实行装配缝裁决（2026-11-23 用户裁定「系统上下文说明两个地址」）：channels 域工作区缺席
+    // （不暴露会话账本路径——2026-11-21 channels §4 隔离裁定）；其余域 workspace+data 双地址行进稳定段，
+    // 主链 Reactor/Harness.stableSegment()/loop 透传/fork 子代/teammate 全部同源消费本字段（同面不漂移）。
+    // 赋值先于 runner/teamAdapter 构造（两处 deps 同消费）
+    this.segmentDataDir = isChannelsDomainRoot(base) ? undefined : dataDir;
     const store = new FileStore(dataDir);
     const ledger = new RunLedger(store);
     this.perception = new PerceptionEngine(base);
@@ -509,6 +519,8 @@ export class Harness {
         // 存储适配器(2026-11-16 clean 派发通道):clean 子代自有 fresh ContextManager 构造入参——
         // 与主链同仓 FileStore 单例(ContextManager 构造入参 _store 现阶段未消费,透传为形态完备)
         store,
+        // 数据域事实行源(2026-11-23 用户裁定):fork 子代稳定段与主链同面(channels 域装配缝已裁缺席)
+        ...(this.segmentDataDir !== undefined ? { segmentDataDir: this.segmentDataDir } : {}),
       },
       agents,
     );
@@ -590,6 +602,8 @@ export class Harness {
           // 持久化域目录(2026-11-15 sunx P3 Task 1):成员 own ContextManager 记忆引导随域(实际写入面
           // 经 derive 共享闭包本就落域)——缺席=既有推导
           ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
+          // 数据域事实行源(2026-11-23 用户裁定):成员稳定段与主链同面(channels 域装配缝已裁缺席)
+          ...(this.segmentDataDir !== undefined ? { segmentDataDir: this.segmentDataDir } : {}),
         },
       });
       const registered = this.team.register(tm);
@@ -759,6 +773,8 @@ export class Harness {
       root: base,
       // workDirLine 事实行随会话活动根（D19-b）：与 exec cwd / glob 锚同源（safety 单点），worktree 进出即翻转
       activeRoot: () => this.safety.activeRoot,
+      // 数据域事实行（2026-11-23 用户裁定）：workspace+data 双地址+内容清单进稳定段（channels 域缺席）
+      ...(this.segmentDataDir !== undefined ? { dataDir: this.segmentDataDir } : {}),
       ledger,
       runner: this.runner,
       imageHistoryLimit: imageHistory.value,
@@ -844,6 +860,7 @@ export class Harness {
       ...(this.stableOutputStyle ? { outputStyle: this.stableOutputStyle } : {}),
       ...(this.stableKind ? { kind: this.stableKind } : {}),
       activeRoot: () => this.safety.activeRoot,
+      ...(this.segmentDataDir !== undefined ? { dataDir: this.segmentDataDir } : {}),
       contextRoot: this.context.root,
     });
   }
