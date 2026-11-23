@@ -134,6 +134,9 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                       <PlatformIcon size={16} strokeWidth={1.75} />
                     </span>
                     <span className="ws-slug sx-ws-name">{g.name}</span>
+                    {/* 展开/收起指示(2026-11-23 用户裁定「名称后面增加 >V 图标」):随组开合旋转,
+                        与分区头 sx-side-chev 同款(收起=向右,展开=向下) */}
+                    <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${gOpen ? ' open' : ''}`} />
                   </button>
                   {/* 行尾簇(2026-11-22 用户裁定:计数在图标钮左,最右=通道配置跳转钮) */}
                   <span className="ws-row-actions">
