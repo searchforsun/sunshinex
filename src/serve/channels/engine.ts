@@ -30,7 +30,7 @@ import { ChannelRouter } from './router';
 import type { ChannelsSessionIo } from './router';
 import { ReplyProjector } from './reply';
 import type { ReplyTarget } from './reply';
-import { createChannelAdapter } from './adapters/types';
+import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
 import type { ChannelAdapter, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
 
@@ -170,16 +170,18 @@ export class ChannelsEngine {
   }
 
   /** dry-run 测试连接:按配置独立 createChannelAdapter + start + health + stop(空 sink,不起 sink
-   *  路由、不动在座表);fail-closed 密钥门同 launch(secretGateError 单点,缺密钥直接 ok:false) */
-  async test(id: string): Promise<{ ok: boolean; botId?: string; error?: string }> {
+   *  路由、不动在座表);fail-closed 密钥门同 launch(secretGateError 单点,缺密钥直接 ok:false)。
+   *  失败携结构化 code（D111：GUI 按码映射文案,免 daemon 文案子串耦合）——not-found/secret-missing/
+   *  ident-invalid/connect-failed/start-failed（未知错误归此);message 仍原样随行供人读 */
+  async test(id: string): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }> {
     const cfg =
       this.snapshot.find((c) => c.id === id) ??
       this.knownConfigs.get(id) ??
       this.opts?.configs?.().find((c) => c.id === id);
-    if (cfg === undefined) return { ok: false, error: `通道 ${id} 未配置` };
+    if (cfg === undefined) return { ok: false, error: `通道 ${id} 未配置`, code: 'not-found' };
     try {
       const gate = this.secretGateError(cfg); // fail-closed 密钥门(单点,与 launch 同源)
-      if (gate !== undefined) return { ok: false, error: gate };
+      if (gate !== undefined) return { ok: false, error: gate, code: 'secret-missing' };
       const adapter = createChannelAdapter(cfg, { secret: cfg.secret ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
       await adapter.start(() => {});
       let h: { connected: boolean; detail?: string };
@@ -187,11 +189,11 @@ export class ChannelsEngine {
         h = adapter.health();
       } catch (e) {
         await adapter.stop().catch(() => {});
-        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+        return { ok: false, error: e instanceof Error ? e.message : String(e), code: 'start-failed' };
       }
       if (!h.connected) {
         await adapter.stop().catch(() => {});
-        return { ok: false, error: h.detail ?? '适配器报告未连接' };
+        return { ok: false, error: h.detail ?? '适配器报告未连接', code: 'connect-failed' };
       }
       // bot 身份:适配器 botName SPI 面则取真名(飞书 bot/v3/info),否则退化为通用健康文案
       // (无 botName 适配器——mock 等——ok 载荷不空尾,engine.test ③ 口径)
@@ -206,7 +208,8 @@ export class ChannelsEngine {
       await adapter.stop().catch(() => {});
       return { ok: true, botId: botId ?? 'OK' };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      const code = e instanceof ChannelAdapterError ? e.code : 'start-failed';
+      return { ok: false, error: e instanceof Error ? e.message : String(e), code };
     }
   }
 

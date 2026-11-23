@@ -135,45 +135,12 @@ export function liveSessionByJournal(sessions: Map<string, SessionRuntime>): Map
  *  标记（GUI 归档入口过滤数据源=后续 GUI 迭代；unarchive/delete 端点对 sunx 域按 journalId
  *  寻址可达=findSunxJournalOwner 兜底）——旧滤除形态下归档 sunx 重启后两列表都不在=死态 */
 export function handleSunxSessions(io: SessionHandlerIo, res: http.ServerResponse): void {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(sunxContainerDir(), { withFileTypes: true });
-  } catch {
-    io.send(res, 200, []);
-    return;
-  }
-  const liveByJournal = liveSessionByJournal(io.sessions);
-  const awaitingSet = awaitingByJournal(io.sessions);
-  const statusByJournal = new Map<string, string>();
-  for (const s of io.sessions.values()) {
-    const jid = s.attachedJournalId;
-    if (jid !== undefined) statusByJournal.set(jid, s.status());
-  }
-  const out: Array<Record<string, unknown>> = [];
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    const dataDir = path.join(sunxContainerDir(), ent.name, 'data');
-    for (const r of listSessions(dataDir)) {
-      const live = liveByJournal.get(r.id);
-      const status = statusByJournal.get(r.id);
-      out.push({
-        id: r.id,
-        ...(r.title !== undefined ? { title: r.title } : {}),
-        ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
-        ...(r.root !== undefined ? { root: r.root } : {}),
-        kind: 'sunx', // 域容器恒 sunx（裁定：容器=纯 sunx 域；不读 meta，杂散目录不误标）
-        updatedAt: r.updatedAt,
-        ...(r.archived === true ? { archived: true as const } : {}), // 归档行随列（终审 Fix 4 可达性）
-        ...(r.runs !== undefined ? { runs: r.runs } : {}),
-        ...(r.steps !== undefined ? { steps: r.steps } : {}),
-        ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
-        ...(live !== undefined ? { liveSessionId: live } : {}),
-        ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
-        ...(status !== undefined ? { status } : {}),
-      });
-    }
-  }
-  out.sort((a, b) => (b.updatedAt as number) - (a.updatedAt as number));
+  const out = enumerateContainerSessions({
+    containerDir: sunxContainerDir(),
+    kind: 'sunx',
+    sessions: io.sessions,
+    domainColumns: (r) => (r.root !== undefined ? { root: r.root } : {}), // root=journal 行 root（随档）
+  });
   io.send(res, 200, out);
 }
 
@@ -188,6 +155,64 @@ export function awaitingByJournal(sessions: Map<string, SessionRuntime>): Set<st
     if (jid !== undefined) m.add(jid);
   }
   return m;
+}
+
+/** 容器域会话行枚举共享助法（D109 收敛：handleSunxSessions/handleChannelsSessions 原两份镜像
+ *  ——「容器 readdir→逐域 <域>/data listSessions 归并→行形白名单→在座三标注→updatedAt 降序」
+ *  骨架单点）。白名单族=GUI 消费面（id/title/firstUser/updatedAt/archived/runs/steps/createdAt
+ *  + liveSessionId/awaiting/status 在座标注；剔 charterText 全文与其余旁车超集,2026-11-15 终审
+ *  行形收窄口径）。域差异经 domainColumns 注入——sunx root=journal 行 root、channels root=域目录
+ *  （GUI attach 直寻址）另附 channel/chatId 列。skipMissingDataDir=true 时 <域>/data 缺席（手工
+ *  杂散目录）不列（channels 面）；false 交 listSessions 缺档自回空（sunx 面原语义）。容器不可读
+ *  =空列合法空态。 */
+export function enumerateContainerSessions(opts: {
+  containerDir: string;
+  kind: 'sunx' | 'channel';
+  sessions: Map<string, SessionRuntime>;
+  skipMissingDataDir?: boolean;
+  domainColumns: (r: ReturnType<typeof listSessions>[number], domainDir: string) => Record<string, unknown>;
+}): Array<Record<string, unknown>> {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(opts.containerDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const liveByJournal = liveSessionByJournal(opts.sessions);
+  const awaitingSet = awaitingByJournal(opts.sessions);
+  const statusByJournal = new Map<string, string>();
+  for (const s of opts.sessions.values()) {
+    const jid = s.attachedJournalId;
+    if (jid !== undefined) statusByJournal.set(jid, s.status());
+  }
+  const out: Array<Record<string, unknown>> = [];
+  for (const ent of entries) {
+    if (!ent.isDirectory()) continue;
+    const domainDir = path.join(opts.containerDir, ent.name);
+    const dataDir = path.join(domainDir, 'data');
+    if (opts.skipMissingDataDir === true && !fs.existsSync(dataDir)) continue;
+    for (const r of listSessions(dataDir)) {
+      const live = liveByJournal.get(r.id);
+      const status = statusByJournal.get(r.id);
+      out.push({
+        id: r.id,
+        ...(r.title !== undefined ? { title: r.title } : {}),
+        ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
+        kind: opts.kind, // 域容器恒该 kind（裁定：容器=纯域，不读 meta，杂散目录不误标）
+        updatedAt: r.updatedAt,
+        ...(r.archived === true ? { archived: true as const } : {}), // 归档行随列（sunx 面终审 Fix 4 可达性）
+        ...(r.runs !== undefined ? { runs: r.runs } : {}),
+        ...(r.steps !== undefined ? { steps: r.steps } : {}),
+        ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
+        ...(live !== undefined ? { liveSessionId: live } : {}),
+        ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
+        ...(status !== undefined ? { status } : {}),
+        ...opts.domainColumns(r, domainDir),
+      });
+    }
+  }
+  out.sort((a, b) => (b.updatedAt as number) - (a.updatedAt as number));
+  return out;
 }
 
 /** journalId → {dataDir, slug}(跨工作区扫描;archive/delete 的 journal 寻址与归档列表共用) */
@@ -348,4 +373,11 @@ export function listSunxDataDirs(): Array<{ slug: string; dataDir: string }> {
     out.push({ slug: ent.name, dataDir: path.join(sunxContainerDir(), ent.name, 'data') });
   }
   return out;
+}
+
+/** 保留期清扫/缓存清点扫描域单点（D110 消双写：retention/cache-inventory 原各自
+ *  `[...listWorkspaceDataDirs(), ...listSunxDataDirs()]` 拼装行两处双写）。channels 容器纳入
+ *  与否（通道域归档会话入不入保留期清扫/缓存清点）随产品裁定后在此一并落地——登记在案。 */
+export function listScanDataDirs(): Array<{ slug: string; dataDir: string }> {
+  return [...listWorkspaceDataDirs(), ...listSunxDataDirs()];
 }

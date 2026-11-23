@@ -16,6 +16,7 @@
  * （Reconnect/pingLoop）,stop() = ws.close() 主动退场。
  */
 import { CHANNEL_MAX_TEXT_LENGTH } from '../model';
+import { ChannelAdapterError } from './types';
 import type { AdapterDeps, ChannelAdapter, ChatRef } from './types';
 import type { ChannelConfig, DeliveryCaps, InboundMessage, OutboundMessage } from '../model';
 
@@ -161,7 +162,7 @@ export class FeishuAdapter implements ChannelAdapter {
     if (!APP_ID_RE.test(appId)) {
       this.connected = false;
       this.detail = 'App ID 无效';
-      throw new Error(this.detail);
+      throw new ChannelAdapterError(this.detail, 'ident-invalid');
     }
     const log = this.deps.log ?? (() => {});
     const lark = (await import('@larksuiteoapi/node-sdk')) as unknown as LarkModule;
@@ -197,7 +198,7 @@ export class FeishuAdapter implements ChannelAdapter {
     if (state !== 'connected') {
       this.connected = false;
       this.detail = `长连接未建立(${state})`;
-      throw new Error(this.detail);
+      throw new ChannelAdapterError(this.detail, 'connect-failed');
     }
     this.connected = true;
     this.detail = '飞书长连接运行中';

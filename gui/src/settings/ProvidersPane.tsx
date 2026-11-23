@@ -6,6 +6,7 @@ import { SettingsForm } from './SettingsForm';
 import type { SettingsFormConn, SettingsPaneDef } from './SettingsForm';
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch } from './components';
 import { SecretInput, Select } from './controls';
+import { useAutoToast } from '../use-auto-toast';
 import { sanitizeRequestParams } from '../../../src/model/request-params';
 import type { ProviderEntry, ProviderEntryModel, ProviderOpInput, SettingsView } from '../connection';
 
@@ -155,18 +156,10 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
   const [modelModal, setModelModal] = useState<{ provider: string; mode: 'add' | 'edit'; original?: string } | null>(null);
   const [modelForm, setModelForm] = useState<ModelForm>(EMPTY_MODEL);
   const [formError, setFormError] = useState('');
-  /** 连通探测结果(2026-11-17 用户裁定「提示显示在下面弹出提示层」):sx-toast 底部浮出 3s 自隐 */
-  const [toast, setToast] = useState('');
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 连通探测结果(2026-11-17 用户裁定「提示显示在下面弹出提示层」):sx-toast 底部浮出 3s 自隐
+   *  （useAutoToast 单点，D113） */
+  const { toast, showToast } = useAutoToast<string>();
   const [testing, setTesting] = useState('');
-  const showToast = (text: string): void => {
-    setToast(text);
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 3_000);
-  };
-  useEffect(() => () => {
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-  }, []);
 
   const load = useCallback((): void => {
     conn.settings(undefined).then(
@@ -612,7 +605,7 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
       )}
-      {toast !== '' && (
+      {toast !== null && (
         <div className="sx-toast" role="status">
           {toast}
         </div>

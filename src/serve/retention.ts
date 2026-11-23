@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { userConfigDir } from '../config/env';
 import { listSessions, purgeSideJournals, purgeSession } from '../tui/session-journal';
-import { listSunxDataDirs, listWorkspaceDataDirs } from './sessions-list-handlers';
+import { listScanDataDirs } from './sessions-list-handlers';
 
 /**
  * 归档保留期清扫器(2026-11-21 spec §4,docs/superpowers/specs/2026-11-21-archive-retention-
@@ -59,7 +59,7 @@ export interface SweepDeps {
 export function sweepArchivedExpired(deps: SweepDeps = {}): SweepResult {
   const now = deps.now ?? (() => Date.now());
   const days = deps.days ?? resolveRetentionDays(process.env.SUNSHINEX_ARCHIVE_RETENTION_DAYS);
-  const dirs = deps.dataDirs ?? [...listWorkspaceDataDirs(), ...listSunxDataDirs()];
+  const dirs = deps.dataDirs ?? listScanDataDirs(); // 扫描域单点（D110；channels 纳入随裁定）
   const known = deps.isKnownSession ?? (() => false);
   const result: SweepResult = { ranAt: now(), days, scanned: 0, purged: [], failed: 0 };
   if (days <= 0) return result;

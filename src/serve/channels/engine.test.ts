@@ -163,6 +163,19 @@ test('③ test(id) dry-run:独立实例 start+health+stop 返回 ok,不起 sink 
   assert.ok(bad.error !== undefined && bad.error.length > 0);
 });
 
+// D111 结构化失败档:测试连接失败携 code（GUI 按码映射文案,免 daemon 文案子串耦合——换回无
+// code 实现此钉即红）。not-found=未配置 id;secret-missing=密钥门(fail-closed 与 launch 同源)
+test('③b test(id) 失败档结构化 code:not-found/secret-missing', async () => {
+  const h = makeHarness();
+  const nope = await h.engine.test('nope');
+  assert.equal(nope.code, 'not-found');
+  h.engine.applyConfigs([mkCfg({ id: 'tg1', platform: 'telegram' })]); // telegram 无 secret 字段
+  const gated = await h.engine.test('tg1');
+  assert.equal(gated.ok, false);
+  assert.equal(gated.code, 'secret-missing');
+  assert.ok(gated.error !== undefined && gated.error.includes('密钥'));
+});
+
 test('④ mockAdapter(id).emit → router 全链路:binding 创建 + ack 进 mock.sent;单聊零 @', async () => {
   const h = makeHarness();
   h.engine.applyConfigs([mkCfg()]);

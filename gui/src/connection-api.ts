@@ -112,8 +112,10 @@ export interface Connection {
    *  serve 实装应答含 warnings 键，契约面按实装形状声明）；409 注释档/畸形引流 raw 编辑面 */
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   /** POST /channels/:id/test：dry-run 测试连接（独立起停适配器，不动在座表）——失败恒 200
-   *  {ok:false,error}（诊断面失败即结果非错误码，mcp probe 同裁定），成功 {ok:true,botId} */
-  testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
+   *  {ok:false,error,code}（诊断面失败即结果非错误码，mcp probe 同裁定；code=结构化失败档
+   *  not-found/secret-missing/ident-invalid/connect-failed/start-failed，D111：GUI 按码映射文案
+   *  免 daemon 文案子串耦合），成功 {ok:true,botId} */
+  testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }>;
   /** GET /channels/bindings：绑定档全列（行含 rootOverride 供聊天信息条回显——Task 13 消费） */
   channelBindings(): Promise<{ bindings: ChannelBindingMsg[] }>;
   /** DELETE /channels/bindings/:key：解除绑定（journal 留盘；缺失 404 非幂等，写面从严）——

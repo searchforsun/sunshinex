@@ -42,7 +42,7 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
     current = channels;
     return { ok: true as const, warnings: [] };
   });
-  const testChannel = vi.fn(async () => ({ ok: true as const, botId: 'bot-1' }));
+  const testChannel = vi.fn(async (): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }> => ({ ok: true, botId: 'bot-1' }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
   const conn = { channelsView, settingsChannels, putChannels, testChannel, workspaces } as unknown as ChannelsPaneConn;
   return { conn, channelsView, settingsChannels, putChannels, testChannel, workspaces };
@@ -266,5 +266,16 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     await waitFor(() => expect(testChannel).toHaveBeenCalledWith('telegram-1'));
     expect(await screen.findByText(/bot-1/)).toBeDefined();
     expect(container.querySelector('.sx-toast-ok')).not.toBeNull();
+  });
+
+  /** ⑭ 试连失败档结构化 code 映射（D111）：code 优先——daemon 自由文本不含旧关键词也按码出
+   *  文案（换回子串匹配实现此钉即红） */
+  it('maps the structured failure code to the brief toast text', async () => {
+    const { conn, testChannel } = makeConn([healthRow()]);
+    testChannel.mockImplementation(async () => ({ ok: false, error: 'SDK closed (peer reset)', code: 'connect-failed' }));
+    const { container } = render(<ChannelsPane conn={conn} />);
+    await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
+    fireEvent.click(screen.getByRole('button', { name: bi('Test connection telegram-1', '测试连接 telegram-1') }));
+    expect(await screen.findByText(/Connection failed|连接失败/)).toBeDefined();
   });
 });

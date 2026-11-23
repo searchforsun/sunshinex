@@ -13,14 +13,12 @@
  *    kind 钉 'channel'（容器=纯通道域，不读 meta，杂散目录不误标——sunx 面 kind:'sunx' 同判）。
  */
 import type * as http from 'node:http';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type { SessionRuntime } from '../session';
-import { listSessions } from '../../tui/session-journal';
 import { channelsContainerDir } from '../../config/data-dir';
-import { hasJsonComments, loadGlobalSettings } from '../../config/settings';
+import { loadGlobalSettings } from '../../config/settings';
 import { writeJsonAtomic } from '../../catalog/io';
-import { liveSessionByJournal, awaitingByJournal } from '../sessions-list-handlers';
+import { enumerateContainerSessions } from '../sessions-list-handlers';
+import { readStrictSettingsRootForWrite } from '../config-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
 import { parseChannelsKey } from './model';
@@ -67,41 +65,14 @@ export async function handleChannelsSecretPut(io: ChannelsHandlerIo, req: http.I
   const secret = (parsed.body as { secret?: unknown } | null)?.secret;
   if (typeof secret !== 'string') return io.send(res, 400, { error: 'secret must be a string' });
   const target = loadGlobalSettings();
-  // 409 守卫族（handleChannelsPut 同款）：不可读/注释/畸形/根非对象/version≠1（结构化写不越权处置）
-  let raw: string | null = null;
-  try {
-    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
-  } catch {
-    io.send(res, 409, { error: `settings file not readable: ${target}` });
+  // 409 守卫族（readStrictSettingsRootForWrite 单点，D108——原 config-handlers 同款内联第三份）：
+  // 不可读/注释/畸形/根非对象/version≠1（结构化写不越权处置）
+  const guarded = readStrictSettingsRootForWrite(target);
+  if (!guarded.ok) {
+    io.send(res, guarded.status, guarded.hint !== undefined ? { error: guarded.error, hint: guarded.hint } : { error: guarded.error });
     return;
   }
-  if (raw !== null && hasJsonComments(raw)) {
-    io.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
-    return;
-  }
-  let obj: Record<string, unknown>;
-  if (raw === null) {
-    obj = { version: 1 }; // 新档补 version:1（settings schema 口径，handleChannelsPut 同款）
-  } else {
-    let parsedRoot: unknown;
-    try {
-      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（装载口径一致）
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
-      return;
-    }
-    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
-      io.send(res, 409, { error: 'settings root must be a JSON object' });
-      return;
-    }
-    const existing = parsedRoot as Record<string, unknown>;
-    if ((existing['version'] ?? 1) !== 1) {
-      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
-      return;
-    }
-    obj = existing;
-  }
+  const obj = guarded.root;
   // channels 条目手术：定位 id 匹配条目（无键/无条目 404，catalog 写面同文案）；条目经 parseChannelsKey
   // 归一后回写（防手编档混入畸形字段随写固化）；secret 覆写/空串删除字段；条目外键与数组其余条目零触碰
   const listRaw = obj['channels'];
@@ -176,20 +147,6 @@ export function handleChannelsBindingDelete(io: ChannelsHandlerIo, res: http.Ser
  *  出行，GUI 既有消费形 getJson<SessionRow[]>('/sunx/sessions') 同款，无信封）。空容器（目录不
  *  存在/不可读）=空列合法空态；行序 updatedAt 降序 */
 export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerResponse): void {
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(channelsContainerDir(), { withFileTypes: true });
-  } catch {
-    io.send(res, 200, []);
-    return;
-  }
-  const liveByJournal = liveSessionByJournal(io.sessions);
-  const awaitingSet = awaitingByJournal(io.sessions);
-  const statusByJournal = new Map<string, string>();
-  for (const s of io.sessions.values()) {
-    const jid = s.attachedJournalId;
-    if (jid !== undefined) statusByJournal.set(jid, s.status());
-  }
   // chatId 反查表（2026-11-22 用户裁定「hover 显示飞书会话 id」）：绑定档 journalId → 聊天 id
   // （key=`<channelId>:<chatId>` 首冒号切分）——平台聊天会话标识（飞书 oc_/Telegram chat id），
   // GUI 会话悬浮卡显示与复制用；未绑定行（异常）缺席=卡回落根路径行
@@ -199,34 +156,16 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
     if (i <= 0 || b.journalId === undefined) continue;
     chatIdByJournal.set(b.journalId, b.key.slice(i + 1));
   }
-  const out: Array<Record<string, unknown>> = [];
-  for (const ent of entries) {
-    if (!ent.isDirectory()) continue;
-    const domainDir = path.join(channelsContainerDir(), ent.name);
-    const dataDir = path.join(domainDir, 'data');
-    if (!fs.existsSync(dataDir)) continue; // <域>/data 缺席（手工杂散目录）=不列
-    for (const r of listSessions(dataDir)) {
-      const live = liveByJournal.get(r.id);
-      const status = statusByJournal.get(r.id);
-      out.push({
-        id: r.id,
-        ...(r.title !== undefined ? { title: r.title } : {}),
-        ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
-        root: domainDir, // 行 root=域目录（GUI attach 直寻址，见上注）
-        kind: 'channel', // 域容器恒 channel（容器=纯通道域；不读 meta，杂散目录不误标）
-        updatedAt: r.updatedAt,
-        ...(r.archived === true ? { archived: true as const } : {}), // 归档行随列（sunx 面 Fix 4 可达性同款）
-        ...(r.channel !== undefined ? { channel: r.channel } : {}), // 通道配置 id（Task 13 分组键）
-        ...(chatIdByJournal.get(r.id) !== undefined ? { chatId: chatIdByJournal.get(r.id) } : {}), // 平台聊天会话标识（悬浮卡显示/复制）
-        ...(r.runs !== undefined ? { runs: r.runs } : {}),
-        ...(r.steps !== undefined ? { steps: r.steps } : {}),
-        ...(r.createdAt !== undefined ? { createdAt: r.createdAt } : {}),
-        ...(live !== undefined ? { liveSessionId: live } : {}),
-        ...(awaitingSet.has(r.id) ? { awaiting: true as const } : {}),
-        ...(status !== undefined ? { status } : {}),
-      });
-    }
-  }
-  out.sort((a, b) => (b.updatedAt as number) - (a.updatedAt as number));
+  const out = enumerateContainerSessions({
+    containerDir: channelsContainerDir(),
+    kind: 'channel', // 域容器恒 channel（容器=纯通道域；不读 meta，杂散目录不误标）
+    sessions: io.sessions,
+    skipMissingDataDir: true, // <域>/data 缺席（手工杂散目录）=不列
+    domainColumns: (r, domainDir) => ({
+      root: domainDir, // 行 root=域目录（GUI attach 直寻址：resolveDataDir 对容器内路径归约回 <域>/data）
+      ...(r.channel !== undefined ? { channel: r.channel } : {}), // 通道配置 id（Task 13 分组键）
+      ...(chatIdByJournal.get(r.id) !== undefined ? { chatId: chatIdByJournal.get(r.id) } : {}), // 平台聊天会话标识（悬浮卡显示/复制）
+    }),
+  });
   io.send(res, 200, out); // 裸 SessionRow[]（sunx 面同款，GUI 消费形对齐）
 }

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { userConfigDir } from '../config/env';
-import { listSunxDataDirs, listWorkspaceDataDirs } from './sessions-list-handlers';
+import { listScanDataDirs } from './sessions-list-handlers';
 
 /**
  * 缓存登记表单点(2026-11-21 spec §3,docs/superpowers/specs/2026-11-21-archive-retention-
@@ -46,7 +46,7 @@ export interface CacheDirs {
 export function resolveCacheDirs(): CacheDirs {
   const override = process.env.SUNSHINEX_DATA_DIR;
   const globalRoot = override !== undefined && override !== '' ? path.resolve(override) : userConfigDir();
-  const dataDirs = [...listWorkspaceDataDirs(), ...listSunxDataDirs()].map((d) => d.dataDir);
+  const dataDirs = listScanDataDirs().map((d) => d.dataDir); // 扫描域单点（D110；channels 纳入随裁定）
   return { globalRoot, dataDirs };
 }
 

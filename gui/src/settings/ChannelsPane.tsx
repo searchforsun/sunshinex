@@ -2,6 +2,7 @@ import { FolderOpen, Pencil, PlugZap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
+import { useAutoToast } from '../use-auto-toast';
 import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch } from './components';
 import { MultiSelect, SecretInput, Select } from './controls';
@@ -264,14 +265,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   /** 写面在途门(单通道在途:保存/删除/试连/Switch 共用——禁再发) */
   const [savingId, setSavingId] = useState('');
   /** 测试结果 toast(2026-11-22 用户裁定:居中 toast 3s 自隐;四档色——成功绿/异常红,四档
-   *  提示色规范见 CLAUDE.md) */
-  const [testToast, setTestToast] = useState<{ ok: boolean; text: string } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (ok: boolean, text: string): void => {
-    setTestToast({ ok, text });
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setTestToast(null), 3_000);
-  };
+   *  提示色规范见 CLAUDE.md;useAutoToast 单点,D113——原手写 timer 克隆退役) */
+  const { toast: testToast, showToast } = useAutoToast<{ ok: boolean; text: string }>();
   const [modal, setModal] = useState<ChannelModal | null>(null);
   const [form, setForm] = useState<ChannelForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
@@ -360,20 +355,21 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     writeAll(next, id);
   };
 
-  /** 试连结果落槽单点(手动测试与保存后自动试连同路径;成功回显 botId,失败简洁化——去内部细节) */
-  const recordTest = (_id: string, r: { ok: boolean; botId?: string; error?: string }): void => {
+  /** 试连结果落槽单点(手动测试与保存后自动试连同路径;成功回显 botId,失败简洁化——去内部细节)。
+   *  失败档按结构化 code 映射(D111:免 daemon 文案子串耦合);旧 daemon/未知码回落自由文本首段 */
+  const recordTest = (_id: string, r: { ok: boolean; botId?: string; error?: string; code?: string }): void => {
     if (r.ok) {
-      showToast(true, `${t('Test passed', '测试通过')} · ${r.botId ?? ''}`);
+      showToast({ ok: true, text: `${t('Test passed', '测试通过')} · ${r.botId ?? ''}` });
     } else {
-      const raw = r.error ?? '';
-      const brief = raw.includes('密钥未配置')
-        ? t('No secret configured', '未配置密钥')
-        : raw.includes('App ID')
-          ? t('Invalid App ID', 'App ID 无效')
-          : raw.includes('长连接未建立')
-            ? t('Connection failed', '连接失败')
-            : raw.split('——')[0]!.split('（')[0]!;
-      showToast(false, `${t('Test failed', '测试失败')}：${brief}`);
+      const brief =
+        r.code === 'secret-missing'
+          ? t('No secret configured', '未配置密钥')
+          : r.code === 'ident-invalid'
+            ? t('Invalid App ID', 'App ID 无效')
+            : r.code === 'connect-failed'
+              ? t('Connection failed', '连接失败')
+              : (r.error ?? '').split('——')[0]!.split('（')[0]!;
+      showToast({ ok: false, text: `${t('Test failed', '测试失败')}：${brief}` });
     }
   };
 
@@ -408,7 +404,9 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   };
 
   /** 弹窗保存:putChannels 全表读改写(secret 随条目内联,2026-11-22 裁定)→ 成功关弹窗 + 重拉 +
-   *  自动 testChannel 一次。id 新增时自动生成 platform-<序>;编辑保留原 id(平台锁定同因) */
+   *  自动 testChannel 一次。id 新增时自动生成 platform-<序>;编辑保留原 id(平台锁定同因)。
+   *  在途门全程闭合(D112:原中途 setSavingId('')→取名腿再置 savingId 有空窗,试连期可再触发写
+   *  与回填写竞态)——单链收口,save/试连/自动取名全程 busy,收尾统一放门 */
   const submitChannel = (): void => {
     if (modal === null || savingId !== '' || drafts === null) return;
     const platform = CHANNEL_PLATFORMS.find((p) => p.v === form.platform);
@@ -453,13 +451,12 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     conn
       .putChannels(next.map(toMsg))
       .then(() => {
-        setSavingId('');
         setDrafts(next);
         setModal(null);
         setForm(EMPTY_FORM);
         load();
         // 自动取名(2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」):应用名称留空
-        // 且试连拿到平台侧应用名 → 静默回填 name=botId 再落一次(全表写,单门复用)
+        // 且试连拿到平台侧应用名 → 静默回填 name=botId 再落一次(全表写,门保持闭合)
         return conn.testChannel(id).then(
           (r) => {
             recordTest(id, r);
@@ -467,22 +464,22 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
             if (botName !== undefined && botName !== '' && botName.length <= NAME_MAX) {
               const named = next.map((d) => (d.id === id ? { ...d, name: botName } : d));
               setDrafts(named);
-              setSavingId(id);
-              conn
-                .putChannels(named.map(toMsg))
-                .then(() => {
-                  setSavingId('');
+              return conn.putChannels(named.map(toMsg)).then(
+                () => {
                   load();
-                }, () => setSavingId(''));
+                },
+                (err: unknown) => showToast({ ok: false, text: errText(err) }), // 回填写失败:toast 可见化(原静默吞)
+              );
             }
+            return undefined;
           },
           (err: unknown) => recordTest(id, { ok: false, error: errText(err) }),
         );
       })
       .catch((err: unknown) => {
-        setSavingId('');
-        setFormError(errText(err));
-      });
+        setFormError(errText(err)); // 首腿失败:弹窗未关,表单错误行可见化
+      })
+      .finally(() => setSavingId(''));
   };
 
   /** 工作区文件夹选择(路径与执行环境页同款):window.sunshinex.pickFolder → 返回路径落草稿;

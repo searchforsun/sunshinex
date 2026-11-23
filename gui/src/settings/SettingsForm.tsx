@@ -8,6 +8,7 @@ import { ArtifactCardsRow, ChangeCardsRow, CodeFontRow, SessionInfoCardsRow, Con
 import type { SettingsScope } from './components';
 import { relTime, errText } from '../ui-util';
 import { parseLanguage, setLanguage, t } from '../i18n';
+import { useAutoToast } from '../use-auto-toast';
 import { FolderOpen } from 'lucide-react';
 import { DirPicker, type DirPickerConn } from '../pages/DirPicker';
 import { useDeveloperMode } from '../developer-mode';
@@ -311,11 +312,10 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
   const [models, setModels] = useState<string[]>([]);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
-  const [toast, setToast] = useState('');
+  /** toast 3s 自隐（useAutoToast 单点，D113） */
+  const { toast, showToast } = useAutoToast<string>();
   /** 记忆概览行数据(memoryOverview 面板拉取;null = 无/未落定) */
   const [stats, setStats] = useState<{ entries: number; lastWriteAt: number | null } | null>(null);
-  /** toast 3s 自隐句柄(连续保存重置;卸载兜底清) */
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** load 代计数(竞态守卫):每次发起新拉即递增;应答到达时代不齐 = 陈旧——弃,不覆写行表 */
   const loadGenRef = useRef(0);
   /** 行/值镜像(重拉保脏合并读前一态;渲染期同步——事件回调读当帧值) */
@@ -375,14 +375,6 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
     load();
   }, [load]);
 
-  /** 卸载兜底:在途 toast 计时器不泄漏 */
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
   /** 单字段自动保存(入队串行):值与来源文件行相同即跳过;空值→null=delete,数字键 number 化;
    *  按行 source 归桶写回('project' → 项目档需 root;余 → 全局档)。成功 toast+重拉(保脏合并),
    *  失败错误条示出、行值保持脏(改后再触发可重试) */
@@ -411,9 +403,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
             onLanguageChanged?.();
           }
         }
-        setToast(t('Applied — takes effect for new sessions', '已生效：新建会话起'));
-        if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToast(''), 3_000);
+        showToast(t('Applied — takes effect for new sessions', '已生效：新建会话起'));
         load(); // 重拉:来源徽标重归因(保脏合并——在途编辑不被 clobber)
       })
       .catch((err: unknown) => {
@@ -628,7 +618,7 @@ export function SettingsForm({ conn, root, pane, onLanguageChanged }: SettingsFo
         <EmptyState text={t('No matching settings.', '无匹配设置项。')} />
       )}
       {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}
-      {toast !== '' && (
+      {toast !== null && (
         <div className="sx-toast" role="status">
           {toast}
         </div>

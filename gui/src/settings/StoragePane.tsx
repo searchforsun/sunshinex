@@ -4,6 +4,7 @@ import type { CacheClearResp, CacheStatusResp, SettingsKeyRow, SettingsView } fr
 import { t } from '../i18n';
 import { errText, fmtBytes, relTime } from '../ui-util';
 import { cacheClearResultText, clearCacheAll } from '../cache-clear';
+import { useAutoToast } from '../use-auto-toast';
 import { KEY_DESCRIPTIONS } from './SettingsForm';
 
 /**
@@ -45,18 +46,12 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
   const [busy, setBusy] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
-  const [toast, setToast] = useState('');
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** toast 3s 自隐（useAutoToast 单点，D113）；引用型单清确认计时器独立（确认窗口 3.5s 语义不同） */
+  const { toast, showToast: bumpToast } = useAutoToast<string>();
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const bumpToast = (msg: string): void => {
-    setToast(msg);
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 3_000);
-  };
   useEffect(
     () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
       if (confirmTimer.current !== null) clearTimeout(confirmTimer.current);
     },
     [],
@@ -289,7 +284,7 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
           {saveError}
         </p>
       )}
-      {toast !== '' && (
+      {toast !== null && (
         <div className="sx-toast" role="status">
           {toast}
         </div>

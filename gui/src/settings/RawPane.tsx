@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Select } from './controls';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
+import { useAutoToast } from '../use-auto-toast';
 import type { SettingsScope } from './components';
 
 /**
@@ -65,9 +66,8 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState('');
-  /** toast 3s 自隐句柄(连续保存重置;卸载兜底清) */
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** toast 3s 自隐（useAutoToast 单点，D113） */
+  const { toast, showToast, clearToast } = useAutoToast<string>();
   /** G8d T5 文件面告警(未知/退役键):拉取失败/无字段按空——增强面不挡编辑主流程 */
   const [warnings, setWarnings] = useState<string[]>([]);
   /** read 代计数(在途竞态守卫,镜像 SettingsForm loadGenRef):发起新读/切文件即递增;
@@ -83,13 +83,6 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight + 2, 320)}px`;
   }, [content, file]);
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
 
   useEffect(() => {
     let alive = true;
@@ -113,7 +106,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
     setLoaded(false);
     setLoadError('');
     setSaveError('');
-    setToast('');
+    clearToast();
     conn.settingsRaw(effScope, effRoot, file).then(
       (v) => {
         if (readGenRef.current !== gen) return; // 陈旧代:文件已切走,弃——不置 loaded/不装内容
@@ -151,9 +144,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
     conn.putSettingsRaw(effScope, effRoot, file, content).then(
       () => {
         setSaving(false);
-        setToast(t('Saved — applies to new sessions', '已保存：新建会话起'));
-        if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToast(''), 3_000);
+        showToast(t('Saved — applies to new sessions', '已保存：新建会话起'));
       },
       (err: unknown) => {
         setSaving(false);
@@ -208,7 +199,7 @@ export function RawPane({ conn }: RawPaneProps): JSX.Element {
         </div>
         {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}
       </div>
-      {toast !== '' && (
+      {toast !== null && (
         <div className="sx-toast" role="status">
           {toast}
         </div>

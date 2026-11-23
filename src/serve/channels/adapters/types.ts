@@ -15,6 +15,16 @@ export interface ChatRef {
   chatId: string;
 }
 
+/** 适配器可分类错误（D111：start/健康失败的结构化归档——message 供人读，code 供 GUI 测试连接
+ *  按码映射文案，免子串匹配 daemon 文案硬耦合）。非分类错误（SDK 抛出等）由 engine 归
+ *  'start-failed'。 */
+export class ChannelAdapterError extends Error {
+  constructor(message: string, readonly code: 'ident-invalid' | 'connect-failed') {
+    super(message);
+    this.name = 'ChannelAdapterError';
+  }
+}
+
 /** 流式增量(同气泡全量替换语义):fullText 为累积全文,done 标记终稿 */
 export interface StreamDelta {
   fullText: string;

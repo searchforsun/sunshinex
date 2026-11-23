@@ -830,6 +830,43 @@ export function handlePluginsGet(io: ConfigHandlerIo, req: http.IncomingMessage,
  *  已滤 '__proto__' 一类原型键，普通对象赋值安全。原子写（同目录 tmp+rename，T2/T4 同款）；
  *  成功 root 在场时 reloadSettingsChain(root)（plugins 键随 settings 链生效；无 root 无项目锚不
  *  reload——与 raw 全局面裁定同）。IO 失败（写/换名）不经本地捕获——沿 dispatch 500 收口 */
+/** 结构化 settings 写面 409 守卫管线单点（D108 收敛，原 handlePluginsPut/handleChannelsPut/
+ *  channels handleChannelsSecretPut 三处逐字内联）：读档（缺档放行）→ 注释档 409 引流 raw →
+ *  BOM 剥除解析（畸形 409）→ 根非对象 409 → version≠1 409；通过=返回既有根对象（新档补
+ *  version:1）。fail 分支由消费方 send——status/error/hint 即原三处逐字面，daemon.test 各 409
+ *  钉零漂移；业务面（定位 404/键手术/原子写）留在各 handler。 */
+export type StrictSettingsRoot =
+  | { ok: true; root: Record<string, unknown> }
+  | { ok: false; status: 409; error: string; hint?: string };
+
+export function readStrictSettingsRootForWrite(target: string): StrictSettingsRoot {
+  let raw: string | null = null;
+  try {
+    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
+  } catch {
+    return { ok: false, status: 409, error: `settings file not readable: ${target}` };
+  }
+  if (raw !== null && hasJsonComments(raw)) {
+    return { ok: false, status: 409, error: 'file contains comments', hint: 'use raw editor' };
+  }
+  if (raw === null) return { ok: true, root: { version: 1 } }; // 新档补 version:1（settings schema 口径）
+  let parsedRoot: unknown;
+  try {
+    parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 装载口径一致）
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return { ok: false, status: 409, error: `settings file is not valid JSON: ${reason}` };
+  }
+  if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
+    return { ok: false, status: 409, error: 'settings root must be a JSON object' };
+  }
+  const existing = parsedRoot as Record<string, unknown>;
+  if ((existing['version'] ?? 1) !== 1) {
+    return { ok: false, status: 409, error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` };
+  }
+  return { ok: true, root: existing };
+}
+
 export async function handlePluginsPut(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) {
@@ -856,42 +893,14 @@ export async function handlePluginsPut(io: ConfigHandlerIo, req: http.IncomingMe
   const rootRaw = body?.root;
   const root = typeof rootRaw === 'string' && rootRaw.length > 0 ? path.resolve(rootRaw) : undefined;
   const target = root !== undefined ? loadProjectSettings(root) : loadGlobalSettings();
-  // 409 守卫：既有文件注释/畸形/version（T2/T4 同款；结构化写不越权处置这三类文件现状）——先于
-  // 404 定位：定位器 parseSettingsFile 对畸形 settings fail-fast，目标文件现状须先在这里收口
-  let raw: string | null = null;
-  try {
-    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
-  } catch {
-    io.send(res, 409, { error: `settings file not readable: ${target}` });
+  // 409 守卫（readStrictSettingsRootForWrite 单点，D108）——先于 404 定位：定位器 parseSettingsFile
+  // 对畸形 settings fail-fast，目标文件现状须先在这里收口
+  const guarded = readStrictSettingsRootForWrite(target);
+  if (!guarded.ok) {
+    io.send(res, guarded.status, guarded.hint !== undefined ? { error: guarded.error, hint: guarded.hint } : { error: guarded.error });
     return;
   }
-  if (raw !== null && hasJsonComments(raw)) {
-    io.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
-    return;
-  }
-  let obj: Record<string, unknown>;
-  if (raw === null) {
-    obj = { version: 1 }; // 新档补 version:1（settings schema 口径，T2 同款）
-  } else {
-    let parsedRoot: unknown;
-    try {
-      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 装载口径一致）
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
-      return;
-    }
-    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
-      io.send(res, 409, { error: 'settings root must be a JSON object' });
-      return;
-    }
-    const existing = parsedRoot as Record<string, unknown>;
-    if ((existing['version'] ?? 1) !== 1) {
-      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
-      return;
-    }
-    obj = existing;
-  }
+  const obj = guarded.root;
   // 404 定位（文件守卫后——见上注）：loadEffectivePlugins 与 GET/装配同源（内置→用户两级扫描）
   let located = true;
   try {
@@ -970,41 +979,13 @@ export async function handleChannelsPut(io: ConfigHandlerIo, req: http.IncomingM
     return;
   }
   const target = loadGlobalSettings(); // 全局豁免单档（写哪级读哪级的两级语义在此不存在）
-  // 409 守卫：既有文件注释/畸形/version（handlePluginsPut 同款——结构化写不越权处置这三类文件现状）
-  let raw: string | null = null;
-  try {
-    raw = fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null;
-  } catch {
-    io.send(res, 409, { error: `settings file not readable: ${target}` });
+  // 409 守卫（readStrictSettingsRootForWrite 单点，D108——原 handlePluginsPut 同款内联第二份）
+  const guarded = readStrictSettingsRootForWrite(target);
+  if (!guarded.ok) {
+    io.send(res, guarded.status, guarded.hint !== undefined ? { error: guarded.error, hint: guarded.hint } : { error: guarded.error });
     return;
   }
-  if (raw !== null && hasJsonComments(raw)) {
-    io.send(res, 409, { error: 'file contains comments', hint: 'use raw editor' });
-    return;
-  }
-  let obj: Record<string, unknown>;
-  if (raw === null) {
-    obj = { version: 1 }; // 新档补 version:1（settings schema 口径，plugins 同款）
-  } else {
-    let parsedRoot: unknown;
-    try {
-      parsedRoot = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw); // BOM 容忍（与 parseSettingsFile 装载口径一致）
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      io.send(res, 409, { error: `settings file is not valid JSON: ${reason}` });
-      return;
-    }
-    if (typeof parsedRoot !== 'object' || parsedRoot === null || Array.isArray(parsedRoot)) {
-      io.send(res, 409, { error: 'settings root must be a JSON object' });
-      return;
-    }
-    const existing = parsedRoot as Record<string, unknown>;
-    if ((existing['version'] ?? 1) !== 1) {
-      io.send(res, 409, { error: `unsupported settings version: ${JSON.stringify(existing['version'] ?? 1)}` });
-      return;
-    }
-    obj = existing;
-  }
+  const obj = guarded.root;
   obj['channels'] = value; // 归一值整键落盘（channels 以外顶层键原样保留，T2 同语义）
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
   afterWrite?.(value); // 热生效 + config-changed 直发（daemon 注入；见上注 ③）

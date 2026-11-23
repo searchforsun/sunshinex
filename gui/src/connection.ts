@@ -522,7 +522,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
       return putJson<{ ok: true; warnings: string[] }>('/settings/channels', { channels });
     },
     testChannel(id: string) {
-      return postJson<{ ok: boolean; botId?: string; error?: string }>(`/channels/${encodeURIComponent(id)}/test`, {});
+      return postJson<{ ok: boolean; botId?: string; error?: string; code?: string }>(`/channels/${encodeURIComponent(id)}/test`, {});
     },
     channelBindings() {
       return getJson<{ bindings: ChannelBindingMsg[] }>('/channels/bindings');

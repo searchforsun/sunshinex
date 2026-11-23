@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
+import { useAutoToast } from '../use-auto-toast';
 
 /**
  * 全局规范面板（2026-11-05 用户裁定，编码分组）——**形态对标「高级」raw 面**（sx-raw-card 卡、
@@ -37,8 +38,8 @@ export function GlobalRulesPane({ conn, refreshTick }: GlobalRulesPaneProps): JS
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState('');
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** toast 3s 自隐（useAutoToast 单点，D113） */
+  const { toast, showToast, clearToast } = useAutoToast<string>();
   /** read 代计数（在途竞态守卫，镜像 SettingsForm loadGenRef）：tick 重读发起即递增，迟到应答弃 */
   const readGenRef = useRef(0);
   /** 编辑器自增长锚（raw 同款：高度随原文撑开，下限 320，滚动交外层面） */
@@ -51,19 +52,12 @@ export function GlobalRulesPane({ conn, refreshTick }: GlobalRulesPaneProps): JS
     el.style.height = `${Math.max(el.scrollHeight + 2, 320)}px`;
   }, [content]);
 
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
   /** 自动回显：mount 与 refreshTick 变化即重读（读中清错误/toast；迟到应答代不齐弃） */
   const read = useCallback((): void => {
     const gen = ++readGenRef.current;
     setLoadError('');
     setSaveError('');
-    setToast('');
+    clearToast();
     conn.sunshineGet().then(
       (v) => {
         if (readGenRef.current !== gen) return;
@@ -88,9 +82,7 @@ export function GlobalRulesPane({ conn, refreshTick }: GlobalRulesPaneProps): JS
     conn.sunshinePut(content).then(
       () => {
         setSaving(false);
-        setToast(t('Saved — applies to new sessions', '已保存：新建会话起'));
-        if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-        toastTimer.current = setTimeout(() => setToast(''), 3_000);
+        showToast(t('Saved — applies to new sessions', '已保存：新建会话起'));
       },
       (err: unknown) => {
         setSaving(false);
@@ -126,7 +118,7 @@ export function GlobalRulesPane({ conn, refreshTick }: GlobalRulesPaneProps): JS
         </div>
         {saveError !== '' && <p className="home-error" role="alert">{saveError}</p>}
       </div>
-      {toast !== '' && (
+      {toast !== null && (
         <div className="sx-toast" role="status">
           {toast}
         </div>
