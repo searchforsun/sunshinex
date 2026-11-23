@@ -7,6 +7,7 @@ import { ModelSwitcher } from '../model/catalog';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { ModelChoice } from '../config/providers';
+import type { DaemonFrame } from './daemon-wire';
 import { SessionRuntime } from './session';
 
 /** G10-C1b 运行中切换面:model switchTo 透传 + snapshot 回显 + mode 重建(idle)。 */
@@ -22,7 +23,7 @@ class FakeSwitcher extends ModelSwitcher {
   }
 }
 
-function makeSession(): SessionRuntime {
+function makeSession(broadcasts?: DaemonFrame[]): SessionRuntime {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sx-g10-switch-'));
   const sw = new FakeSwitcher({
     default: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
@@ -36,7 +37,7 @@ function makeSession(): SessionRuntime {
       let n = 0;
       return () => ++n;
     })(),
-    broadcast: () => {},
+    broadcast: (frame) => broadcasts?.push(frame),
     mintPid: () => 'p1' });
 }
 
@@ -49,6 +50,43 @@ test('model 切换:switchTo 透传 + snapshot 回显;unknown id false 不动现�
   assert.equal(s.snapshotResponse().model, 'a/m1');
   assert.equal(s.setModel(undefined), true); // 回缺省主模型
   assert.equal(s.snapshotResponse().model, undefined);
+});
+
+test('模型切换系统提示(2026-11-23 用户裁定):实际变化双面发(notice 事件用户面+链尾 note 模型面);幂等/未知/装配期不发', () => {
+  const frames: DaemonFrame[] = [];
+  const s = makeSession(frames);
+  const notices = () => frames.filter((f) => f.kind === 'event' && f.e.type === 'notice');
+  const chainText = (): string => JSON.stringify(s.runtime.harness.context.chainView());
+  try {
+    // 缺省主模型 → a/m1：双语 notice 事件 + 链尾 note（模型面英文单语）
+    assert.equal(s.setModel('a/m1'), true);
+    assert.equal(notices().length, 1, '实际变化恰发一条 notice 事件');
+    // 事件面文案经 t()（测试进程 SUNSHINEX_LANGUAGE=en → 英文键；zh 语言键=「模型从 {a} 切换至 {b}」）
+    const first = notices()[0];
+    assert.ok(first.kind === 'event' && first.e.type === 'notice');
+    assert.equal(
+      first.kind === 'event' && first.e.type === 'notice' ? first.e.text : '',
+      'Model switched from default model to a/m1',
+      '用户面 notice 事件（t() 双语单点）',
+    );
+    assert.ok(chainText().includes('Model switched from default model to a/m1; subsequent tasks use the new model.'), '链尾 note 行（模型面）');
+    // 同 id 重选：幂等不发
+    assert.equal(s.setModel('a/m1'), true);
+    assert.equal(notices().length, 1, '同 id 重选零 notice');
+    // 未知 id：false 不动现状零 notice
+    assert.equal(s.setModel('nope'), false);
+    assert.equal(notices().length, 1);
+    // 回缺省主模型：变化再发
+    assert.equal(s.setModel(undefined), true);
+    assert.equal(notices().length, 2, '回缺省属实际变化再发一条');
+    assert.ok(chainText().includes('Model switched from a/m1 to default model;'), '第二条 note 行入链');
+    // m1 → m2 前回过缺省（上一行 setModel(undefined)），此处 prev=default model → a/m2
+    assert.equal(s.setModel('a/m2'), true);
+    assert.equal(notices().length, 3);
+    assert.ok(chainText().includes('Model switched from default model to a/m2;'));
+  } finally {
+    void s.teardown().catch(() => undefined);
+  }
 });
 
 test('mode 切换:idle 下四值循环回显;snapshot.mode 随之(缺省 full-access=原 dontAsk 地位)', async () => {

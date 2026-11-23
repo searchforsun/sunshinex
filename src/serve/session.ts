@@ -11,6 +11,7 @@ import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
 import type { ModelAdapter } from '../model/adapter';
 import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, SessionEvent, TodoItem } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
+import { t } from '../i18n';
 import type { TaskBoardState } from '../taskboard/model';
 import type { AgentTeam } from '../taskboard/team-registry';
 import { applyDelegation } from '../delegation/projection';
@@ -1838,12 +1839,28 @@ ${this.sessionCharter ?? ''}` }
     return this.opts.modelSwitcher ?? null;
   }
 
-  /** 运行中模型切换（G10-C1b）：switchTo 单点;unknown id 幂等 false 不动现状。切换 daemon 级生效 */
+  /** 运行中模型切换（G10-C1b）：switchTo 单点;unknown id 幂等 false 不动现状。切换 daemon 级生效。
+   *  系统提示双面（2026-11-23 用户裁定「切换模型时提示一个系统提示」）：实际发生变化（prev≠next）时
+   *  notice 事件（用户面，t() 双语——界面外观口径）+ 链尾 note 行（模型面，英文单语 §15——下一轮模型
+   *  知道内核已换）；同 id 重选/装配期 switchTo(choices[0])/reload 配置漂移回退不发（只发用户显式切换） */
   setModel(id: string | undefined): boolean {
     const sw = this.modelSwitcher;
-    const okSwitch = sw === null ? false : sw.switchTo(id);
-    if (okSwitch && id !== undefined) this.persistSelection({ model: id });
-    return okSwitch;
+    if (sw === null) return false;
+    const prev = sw.currentId();
+    if (!sw.switchTo(id)) return false;
+    const next = sw.currentId();
+    if (next !== prev) {
+      if (id !== undefined) this.persistSelection({ model: id });
+      const fromLabel = prev ?? 'default model';
+      const toLabel = next ?? 'default model';
+      this.pump({
+        type: 'notice',
+        text: t(`Model switched from ${fromLabel} to ${toLabel}`, `模型从 ${fromLabel} 切换至 ${toLabel}`),
+        ts: Date.now(),
+      });
+      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: `Model switched from ${fromLabel} to ${toLabel}; subsequent tasks use the new model.` }]);
+    }
+    return true;
   }
 
   /** 权限模式切换（G10-C1b;2026-11-03 重建退役）：真档轻量直切——档位在装配期只进 guard 构造参数
