@@ -739,6 +739,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'POST', path: '/session/:id/submit', auth: true, run: (req, res, p) => this.handleSubmit(req, res, p.id) },
     { method: 'POST', path: '/session/:id/steer', auth: true, run: (req, res, p) => this.handleSteer(req, res, p.id) },
     { method: 'POST', path: '/session/:id/interrupt', auth: true, run: async (_req, res, p) => this.handleInterrupt(res, p.id) },
+    // 队列暂停/恢复（2026-11-23 用户裁定「中断同时暂停队列」）：暂停态轮收束不自动发出,横幅继续钮解除
+    { method: 'POST', path: '/session/:id/queue/pause', auth: true, run: async (_req, res, p) => sessionHandlers.handleQueuePause(this.sessionIo, res, p.id) },
+    { method: 'POST', path: '/session/:id/queue/resume', auth: true, run: async (_req, res, p) => sessionHandlers.handleQueueResume(this.sessionIo, res, p.id) },
     { method: 'POST', path: '/session/:id/reset', auth: true, run: async (_req, res, p) => this.handleReset(res, p.id) },
     { method: 'GET', path: '/session/:id/snapshot', auth: true, run: async (req, res, p) => this.handleSnapshot(req, res, p.id) },
     { method: 'POST', path: '/session/:id/board/stop', auth: true, run: (req, res, p) => sessionHandlers.handleBoardStop(this.sessionIo, req, res, p.id) },
@@ -1871,6 +1874,14 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     sessionHandlers.handleSunxSessions(this.sessionIo, res);
   }
   private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
+    // GUI 发起轮打标(2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到」):通道绑定
+    // 会话的 HTTP 提交进引擎抑制集,该轮出站不投影进 IM(engine done 帧清位)。
+    // **仅空闲提交打标**(用户复裁定「共享轮正常显示给飞书用户回答」):busy=IM 轮进行中,GUI
+    // 穿插进共享轮——回答照常给飞书;空闲提交才是 GUI 发起的新轮,才静默
+    if (id !== undefined) {
+      const rt = this.sessions.get(id);
+      if (rt === undefined || rt.status() === 'idle') this.channelsEngine.markGuiRun(id);
+    }
     await sessionHandlers.handleSubmit(this.sessionIo, req, res, id);
   }
 
@@ -1879,6 +1890,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   }
 
   private async handleSteer(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
+    // 穿插不打标(用户复裁定:穿插=进共享轮,回答照常给飞书)
     await sessionHandlers.handleSteer(this.sessionIo, req, res, id);
   }
 

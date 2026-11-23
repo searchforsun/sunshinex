@@ -68,10 +68,10 @@ export class ChannelsEngine {
    *  需要原始入站坐标,sink 记最近一条供 deliver 查用 */
   private readonly lastInbound = new Map<string, InboundMessage>();
   /** GUI 发起轮抑制集（2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到,两者是隔离的,
-   *  只是同一个显示在上下文中,过滤一下」）:daemon HTTP 提交/穿插面对通道绑定会话打标(markGuiRun)
-   *  ——投影器帧过滤跳过这些会话的全部帧(正文/终态/挂起投影均不进 IM),done 帧清位;同一会话
-   *  上下文共享(GUI 与 IM 同源转录)但出站各回各家。局限(如实):GUI 在 IM 轮进行中穿插时,该轮
-   *  为共享轮,整轮静默到 done */
+   *  只是同一个显示在上下文中,过滤一下」;复裁定「共享轮正常显示给飞书用户回答」）:daemon HTTP
+   *  **空闲提交**面对通道绑定会话打标(markGuiRun)——GUI 发起的新轮,投影器帧过滤跳过该会话全部
+   *  帧(正文/终态/挂起投影均不进 IM),done 帧清位;IM 轮进行中的 GUI 穿插**不打标**——共享轮
+   *  回答照常给飞书。同一会话上下文共享(GUI 与 IM 同源转录),出站各回各家 */
   private readonly guiRuns = new Set<string>();
 
   constructor(
