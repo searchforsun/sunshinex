@@ -6,6 +6,7 @@ import { urlOf } from './daemon-wire';
 import { projectsRoot, projectSlug } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import { clearAppGuiStatePointer, removePinsByRoot } from './app-state-handlers';
+import { writeJsonAtomic } from '../catalog/io';
 import { defaultScratchRootPath, isDefaultWorkspaceSlug } from './session-lifecycle';
 import { listSessions } from '../tui/session-journal';
 import type { WorkspaceRow } from './daemon';
@@ -141,11 +142,7 @@ function readHiddenSlugs(): Set<string> {
 }
 
 function writeHiddenSlugs(slugs: Set<string>): void {
-  const file = workspaceHiddenFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify([...slugs]), 'utf8');
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(workspaceHiddenFile(), JSON.stringify([...slugs]));
 }
 
 /** 移除工作区:slug 入隐藏档(扫描过滤,盘上数据/目录不动)+ 清指向它的「上次打开」指针

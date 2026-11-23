@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { writeJsonAtomic } from '../../catalog/io';
 import * as path from 'node:path';
 import { userConfigDir } from '../../config/env';
 import { SCHEDULE_RUN_LIMIT } from './model';
@@ -125,10 +126,7 @@ export class ScheduleStore {
 
   private persist(): void {
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(this.data), 'utf8');
-      fs.renameSync(tmp, this.file);
+      writeJsonAtomic(this.file, JSON.stringify(this.data));
     } catch (e) {
       console.error('[schedules] persist failed:', e instanceof Error ? e.message : String(e));
     }

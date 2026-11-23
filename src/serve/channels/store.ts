@@ -3,6 +3,7 @@
  *  骨架与 schedules/store.ts 同款,仅数据形状换为 {version:1, bindings: Binding[]}。
  *  供 Task 5 router 做绑定读写;文件 channels-bindings.json。 */
 import * as fs from 'node:fs';
+import { writeJsonAtomic } from '../../catalog/io';
 import * as path from 'node:path';
 import { userConfigDir } from '../../config/env';
 import type { Binding } from './model';
@@ -94,10 +95,7 @@ export class ChannelsBindingsStore {
 
   private persist(): void {
     try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const tmp = `${this.file}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(this.data), 'utf8');
-      fs.renameSync(tmp, this.file);
+      writeJsonAtomic(this.file, JSON.stringify(this.data));
     } catch (e) {
       console.error('[channels-bindings] persist failed:', e instanceof Error ? e.message : String(e));
     }

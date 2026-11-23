@@ -5,6 +5,7 @@ import type { SessionRuntime } from './session';
 import { validSessionId } from './session-id';
 import type { SessionHandlerIo } from './session-handlers';
 import { userConfigDir } from '../config/env';
+import { writeJsonAtomic } from '../catalog/io';
 
 /**
  * 应用级指针档 + 置顶档 + GUI 面私有态三族（D42 端点族拆分自 session-handlers.ts，行搬运
@@ -40,9 +41,7 @@ export function removePinsByRoot(root: string): boolean {
   }
   const kept = pins.filter((p) => p?.root !== root);
   if (kept.length === pins.length) return false;
-  const tmp = `${appPinsFile()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(kept), 'utf8');
-  fs.renameSync(tmp, appPinsFile());
+  writeJsonAtomic(appPinsFile(), JSON.stringify(kept));
   return true;
 }
 
@@ -53,9 +52,7 @@ export function repointPin(oldId: string, newId: string): void {
     if (!Array.isArray(raw)) return;
     const pins = raw as Array<Record<string, unknown>>;
     if (!pins.some((p) => p?.id === oldId)) return;
-    const tmp = `${appPinsFile()}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(pins.map((p) => (p?.id === oldId ? { ...p, id: newId } : p))), 'utf8');
-    fs.renameSync(tmp, appPinsFile());
+    writeJsonAtomic(appPinsFile(), JSON.stringify(pins.map((p) => (p?.id === oldId ? { ...p, id: newId } : p))));
   } catch {
     /* 缺档/坏档:无可改指 */
   }
@@ -68,13 +65,19 @@ function appSeenFile(): string {
   return path.join(userConfigDir(), 'gui', 'seen.json');
 }
 
-export async function handleAppSeenGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
+/** GET 读档「try read/parse else default」三胞胎单点（D94②收敛：handleAppSeenGet/
+ *  handleAppPinsGet/handleAppGuiStateGet 原各自 try-parse-catch 同体）——guard 裁各面形状
+ *  （不符即 default；解析成功原样透传） */
+function readJsonTolerant<T>(file: string, fallback: T, guard: (v: unknown) => T): T {
   try {
-    const raw = JSON.parse(fs.readFileSync(appSeenFile(), 'utf8')) as unknown;
-    io.send(res, 200, { seen: raw !== null && typeof raw === 'object' && !Array.isArray(raw) ? raw : {} });
+    return guard(JSON.parse(fs.readFileSync(file, 'utf8')));
   } catch {
-    io.send(res, 200, { seen: {} });
+    return fallback;
   }
+}
+
+export async function handleAppSeenGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
+  io.send(res, 200, { seen: readJsonTolerant(appSeenFile(), {}, (v) => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {})) });
 }
 
 /** 已读档写(原子写):body.seen 须对象;逐条消毒(键非空串 → 有限数,坏条目弃置不拒整单);
@@ -99,21 +102,12 @@ export async function handleAppSeenPut(io: SessionHandlerIo, req: http.IncomingM
       .sort((a, b) => a[1] - b[1])
       .slice(-200),
   );
-  const file = appSeenFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(seen), 'utf8');
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(appSeenFile(), JSON.stringify(seen));
   io.send(res, 200, { ok: true, seen });
 }
 
 export async function handleAppPinsGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
-  try {
-    const raw = JSON.parse(fs.readFileSync(appPinsFile(), 'utf8')) as unknown;
-    io.send(res, 200, { pins: Array.isArray(raw) ? raw : [] });
-  } catch {
-    io.send(res, 200, { pins: [] });
-  }
+  io.send(res, 200, { pins: readJsonTolerant(appPinsFile(), [], (v) => (Array.isArray(v) ? v : [])) });
 }
 
 /** 置顶档写(原子写):body.pins 须数组,逐条校验(id/root 非空串,title 可缺,updatedAt 数目)——
@@ -142,21 +136,13 @@ export async function handleAppPinsPut(io: SessionHandlerIo, req: http.IncomingM
       ...(e.kind === 'sunx' ? { kind: 'sunx' as const } : {}),
     }];
   });
-  const file = appPinsFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(pins), 'utf8');
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(appPinsFile(), JSON.stringify(pins));
   io.send(res, 200, { ok: true, pins });
 }
 
 /** 应用级指针档读:缺档/坏档回 {state:null}(首启无现场,客户端落欢迎页) */
 export async function handleAppGuiStateGet(io: SessionHandlerIo, res: http.ServerResponse): Promise<void> {
-  try {
-    io.send(res, 200, { state: JSON.parse(fs.readFileSync(appGuiStateFile(), 'utf8')) });
-  } catch {
-    io.send(res, 200, { state: null });
-  }
+  io.send(res, 200, { state: readJsonTolerant(appGuiStateFile(), null, (v) => v) });
 }
 
 /** 应用级指针档写(原子写):body.state 须对象 */
@@ -171,11 +157,7 @@ export async function handleAppGuiStatePut(io: SessionHandlerIo, req: http.Incom
     io.send(res, 400, { error: 'state object required' });
     return;
   }
-  const file = appGuiStateFile();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(appGuiStateFile(), JSON.stringify(state));
   io.send(res, 200, { ok: true });
 }
 
@@ -188,11 +170,7 @@ export function clearAppGuiStatePointer(root: string): void {
     if (raw?.lastRoot !== root) return;
     delete raw.lastRoot;
     delete raw.lastJournalId;
-    const file = appGuiStateFile();
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(raw), 'utf8');
-    fs.renameSync(tmp, file);
+    writeJsonAtomic(appGuiStateFile(), JSON.stringify(raw));
   } catch {
     // 缺档/坏档:无指针可清(首启本就无现场)
   }
@@ -252,10 +230,6 @@ export async function handleGuiStatePut(io: SessionHandlerIo, req: http.Incoming
     io.send(res, 400, { error: 'state object required' });
     return;
   }
-  const file = guiStateFile(session);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(guiStateFile(session), JSON.stringify(state));
   io.send(res, 200, { ok: true });
 }
