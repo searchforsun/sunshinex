@@ -764,9 +764,11 @@ export class SessionRuntime {
     });
   }
 
-  /** 子智能体影子帧重放(emitQueueFrame 同形):journal 里的子智能体事件按新 seq 回灌帧缓冲+广播,
-   *  GUI agent 页签的聚合面从帧重建(实时流同一消费通道) */
-  private emitShadowFrame(e: SessionEvent): void {
+  /** 旁路帧发射单点（D88 收敛，原四写——emitShadowFrame/emitQueueFrame/broadcastUserEcho/
+   *  emitJournalMinted 各持同一「nextSeq→lastSeqNum→建 EventFrame→frames.push→EVENT_BUFFER_CAP
+   *  shift→broadcast」协议不变量）：seq 分配+环形缓冲+广播一处承载，旁路面只构造 SessionEvent
+   *  后委托；改缓冲策略/seq 语义单点改 */
+  private emitBypassFrame(e: SessionEvent): void {
     const seq = this.opts.nextSeq();
     this.lastSeqNum = seq;
     const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e };
@@ -775,15 +777,17 @@ export class SessionRuntime {
     this.opts.broadcast(frame);
   }
 
+  /** 子智能体影子帧重放:journal 里的子智能体事件按新 seq 回灌帧缓冲+广播,
+   *  GUI agent 页签的聚合面从帧重建(实时流同一消费通道) */
+  private emitShadowFrame(e: SessionEvent): void {
+    this.emitBypassFrame(e);
+  }
+
   /** queue 事件旁路广播(P5,spec §12):队列变更不发 SessionEvent 主链(pump 会喂转录内核与影子
    *  投影,default 分支把 queue 当边界误闭合开启段)——单走 seq 分配+环形缓冲+广播;重连补发经
-   *  frames 环窗天然覆盖(新连接回放最后一条 queue 帧=最新队列) */  private emitQueueFrame(items: SteerItem[]): void {
-    const seq = this.opts.nextSeq();
-    this.lastSeqNum = seq;
-    const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e: { type: 'queue', payload: { items }, ts: Date.now() } };
-    this.frames.push(frame);
-    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
-    this.opts.broadcast(frame);
+   *  frames 环窗天然覆盖(新连接回放最后一条 queue 帧=最新队列) */
+  private emitQueueFrame(items: SteerItem[]): void {
+    this.emitBypassFrame({ type: 'queue', payload: { items }, ts: Date.now() });
   }
 
   /** v3 档装载入核(attach 序调用,daemon.ts 持 journalId 位):reduceSegRows 重放条目 seed——
@@ -862,20 +866,10 @@ ${this.sessionCharter ?? ''}` }
     return rt;
   }
 
-  /** user 回显纯帧广播（emitQueueFrame 同形,不经 kernel.pump——泵路回显曾致转录双气泡+journal
+  /** user 回显纯帧广播（不经 kernel.pump——泵路回显曾致转录双气泡+journal
    *  双行,G14.2xx 实测;条目本体由 kernel.submit 写面承载,本帧只管 live 视图） */
   private broadcastUserEcho(text: string, images?: string[]): void {
-    const seq = this.opts.nextSeq();
-    this.lastSeqNum = seq;
-    const frame: EventFrame = {
-      kind: 'event',
-      sessionId: this.id,
-      seq,
-      e: { type: 'user', text, ...(images !== undefined && images.length > 0 ? { images } : {}), ts: Date.now() },
-    };
-    this.frames.push(frame);
-    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
-    this.opts.broadcast(frame);
+    this.emitBypassFrame({ type: 'user', text, ...(images !== undefined && images.length > 0 ? { images } : {}), ts: Date.now() });
   }
 
   // ---- 挂起表（P6 §4 下沉）：注册/回执/回填/外窥,daemon 只做寻址与传输 ----
@@ -1285,17 +1279,12 @@ ${this.sessionCharter ?? ''}` }
     this.charterCurrent = text;
   }
 
-  /** journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):旁路帧(不经 pump 主链,
-   *  emitQueueFrame 同形)——GUI 即刻回填升级链稳定身份,免 recents 对账窗口 */
+  /** journal 铸造推送(2026-11-07 用户裁定「主动推送是基本能力」):旁路帧(不经 pump 主链)
+   *  ——GUI 即刻回填升级链稳定身份,免 recents 对账窗口 */
   private emitJournalMinted(): void {
     const journalId = this.journal?.currentId;
     if (journalId === undefined) return;
-    const seq = this.opts.nextSeq();
-    this.lastSeqNum = seq;
-    const frame: EventFrame = { kind: 'event', sessionId: this.id, seq, e: { type: 'journal-minted', payload: { journalId }, ts: Date.now() } };
-    this.frames.push(frame);
-    if (this.frames.length > EVENT_BUFFER_CAP) this.frames.shift();
-    this.opts.broadcast(frame);
+    this.emitBypassFrame({ type: 'journal-minted', payload: { journalId }, ts: Date.now() });
   }
 
   persistSnapshotRow(): void {
