@@ -9,8 +9,7 @@ import type { Connection, ProviderEntry, SettingsKeyRow, SettingsView } from '..
  * 请求参数卡散键行退役):conn 全桩(settings/putSettings/putProviderOp 三面,不出网),
  * 用例沿 task brief——①卡片渲染含默认标记(choices[0]=默认模型)+密钥状态点+warnings;
  * ②删除调 op remove+成功重拉;③models 上移下移提交 modelMove(文件级手术+行重播种);
- * ④apiKey 提交走 setKey(服务端写条目 apiKey 字段);编辑回显已存值+眼睛显隐切换+「获取 API Key」
- * 链接,未改动零 setKey、清空保存=setKey 空串(2026-11-22 用户裁定:密钥内联可回显,推翻零回显口径);⑤新增提交 op add
+ * ④apiKey 提交走 setKey(服务端写条目 apiKey 字段);编辑回显已存值+眼睛显隐切换,未改动零 setKey、清空保存=setKey 空串(2026-11-22 用户裁定:密钥内联可回显,推翻零回显口径);⑤新增提交 op add
  * (密钥留空零 setKey);⑥请求参数卡无「API 地址」行/模型散键 Combo 退役;⑦请求参数卡
  * 恒全局写钉测(2026-10-29 用户裁定豁免:root 恒 ''——PUT /settings 无 root 即缺省全局,
  * 断言 putSettings 首参 global/second undefined);⑧refreshTick 重拉;⑨表单校验(空名/空
@@ -146,7 +145,7 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New provider' })).toBeNull());
   });
 
-  it('编辑提供方:密钥回显(entries apiKey)+眼睛显隐切换+「获取 API Key」链接;未改动零 setKey、改动才 setKey', async () => {
+  it('编辑提供方:密钥回显(entries apiKey)+眼睛显隐切换;未改动零 setKey、改动才 setKey', async () => {
     const { conn, opCalls } = connOf(viewOf());
     render(<ProvidersPane conn={conn} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit p1' }));
@@ -161,9 +160,8 @@ describe('ProvidersPane(拆分弹窗改版)', () => {
     expect(screen.getByRole('button', { name: 'Hide API key' })).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Hide API key' }));
     expect(keyInput().type).toBe('password');
-    // 「获取 API Key」链接(回显形态配套):指向 baseUrl 源站
-    const link = screen.getByRole('link', { name: 'Get API key' }) as HTMLAnchorElement;
-    expect(link.href).toContain('https://api.p1');
+    // 「获取 API Key」链接已移除(2026-11-23 用户裁定)
+    expect(screen.queryByRole('link', { name: 'Get API key' })).toBeNull();
     // 未改动保存:只 update,零 setKey(同值不重写)
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>

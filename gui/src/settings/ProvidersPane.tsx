@@ -546,9 +546,6 @@ export function ProvidersPane({ conn, refreshTick }: ProvidersPaneProps): JSX.El
           </ModalField>
           <ModalField label={t('API key', 'API 密钥')}>
             <SecretInput ariaLabel={t('API key', 'API 密钥')} value={providerForm.apiKey} autoComplete="new-password" onChange={(v) => setProviderForm({ ...providerForm, apiKey: v })} />
-            <a className="sx-provider-hint" href={providerForm.baseUrl || '#'} target="_blank" rel="noreferrer">
-              {t('Get API key', '获取 API Key')}
-            </a>
           </ModalField>
           {formError !== '' && <ErrorBanner text={formError} />}
         </EditorModal>
