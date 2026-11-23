@@ -320,7 +320,7 @@ interface SubagentRunnerDeps {
    *  （装配根 harness/index.ts 透传 FileStore 单例——与主链同仓）；缺席=clean 通道兜底回共享面 */
   store?: StorageAdapter;
   /** 稳定段数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」）：fork 子代稳定段与主链
-   *  同面（workspace+data 双地址行）；channels 域装配缝已裁缺席。与 deps.dataDir（memory 域注入）
+   *  同面（workspace+data 双地址行）；channels 域同给（二轮裁定）。与 deps.dataDir（memory 域注入）
    *  分立——同源不同语义 */
   segmentDataDir?: string;
 }
@@ -699,7 +699,7 @@ export class SubagentRunner {
         // clean 通道=fresh ContextManager(无品性层,快照=工作区约定族;fork 作用域零回写不变量下
         // 仅快照/根观测消费);chain 通道=共享父面(总章程+品性随行,§17.2 前缀缓存裁定)
         context: cleanFace ? this.cleanChildContext() : this.deps.context,
-        // 数据域事实行源(2026-11-23 用户裁定):fork 子代稳定段与主链同面(channels 域装配缝已裁缺席)
+        // 数据域事实行源(2026-11-23 用户裁定):fork 子代稳定段与主链同面(全域同给,含 channels)
         ...(this.deps.segmentDataDir !== undefined ? { dataDir: this.deps.segmentDataDir } : {}),
         model: this.deps.model,
         // 主任务暂停级联（2026-10-02 用户裁决）：显式 opts.signal 优先（后台两段式已带任务 abort），

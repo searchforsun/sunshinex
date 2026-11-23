@@ -95,8 +95,8 @@ export interface ReactorDeps {
    *  chatRound 透传 buildMessages 第二参；缺省 3（与 buildMessages 参数缺省一致） */
   imageHistoryLimit?: number;
   /** 数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」）：会话数据目录进稳定段
-   *  （resolveDataDir 产物，会话级常量→字节冻结合规）；channels 域缺席（装配缝裁决——不向聊天
-   *  agent 暴露会话账本路径）；缺席=行不落，逐字节旧行为 */
+   *  （resolveDataDir 产物，会话级常量→字节冻结合规）；全域同给含 channels（2026-11-23 二轮裁定——
+   *  隔离裁定只防目录误踩，不防知情）；缺席=行不落，逐字节旧行为 */
   dataDir?: string;
 }
 

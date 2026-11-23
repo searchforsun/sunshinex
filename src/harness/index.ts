@@ -42,7 +42,7 @@ import { MemoryPipeline } from './memory/pipeline';
 import { writeMemoryFact } from './memory/extractor';
 import { guardMemoryWrite } from './memory/writer';
 import type { SettlePayload } from './reactor';
-import { isChannelsDomainRoot, resolveDataDir, sessionTeamsRoot } from '../config/data-dir';
+import { resolveDataDir, sessionTeamsRoot } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { teamTokenCapEnv } from '../config/termination-config';
@@ -203,9 +203,8 @@ export class Harness {
   private readonly inboxCursors: InboxCursorStore;
   /** 工作区数据根（adoptSessionTeams 拼会话 teams 路径） */
   private readonly dataDir: string;
-  /** 稳定段数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」）：workspace+data 双地址+
-   *  内容清单行进稳定段（主链 Reactor/loop/fork 子代/teammate 同源同面）；channels 域缺席
-   *  （isChannelsDomainRoot——不向聊天 agent 暴露会话账本路径，2026-11-21 channels §4 隔离裁定）。
+  /** 稳定段数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」；二轮裁定 channels 域同给）：
+   *  workspace+data 双地址+内容清单行进稳定段（主链 Reactor/loop/fork 子代/teammate 同源同面）。
    *  公开只读：createKernelRuntime LoopDeps 装配点同源消费（loop 内 Reactor 与单发同面） */
   readonly segmentDataDir: string | undefined;
   /** 已绑定的会话团队键；同键重复收养幂等 */
@@ -256,11 +255,11 @@ export class Harness {
     // 同源取本变量；缺席=resolveDataDir(base) 既有推导（零变化）。base 保持工作树共享面锚（sandbox/safePath/
     // perception/worktree），不随注入漂移
     const dataDir = opts.dataDir ?? resolveDataDir(base);
-    // 数据域事实行装配缝裁决（2026-11-23 用户裁定「系统上下文说明两个地址」）：channels 域工作区缺席
-    // （不暴露会话账本路径——2026-11-21 channels §4 隔离裁定）；其余域 workspace+data 双地址行进稳定段，
+    // 数据域事实行（2026-11-23 用户裁定「系统上下文说明两个地址」；二轮裁定「还有通道 channels 的」：
+    // channels 域同样给行——隔离裁定只防目录误踩，不防知情）：workspace+data 双地址行进稳定段，
     // 主链 Reactor/Harness.stableSegment()/loop 透传/fork 子代/teammate 全部同源消费本字段（同面不漂移）。
     // 赋值先于 runner/teamAdapter 构造（两处 deps 同消费）
-    this.segmentDataDir = isChannelsDomainRoot(base) ? undefined : dataDir;
+    this.segmentDataDir = dataDir;
     const store = new FileStore(dataDir);
     const ledger = new RunLedger(store);
     this.perception = new PerceptionEngine(base);

@@ -91,11 +91,11 @@ export function worktreeMainRootOf(root: string): string | undefined {
   }
 }
 
-/** channels 域工作区判定（2026-11-23 数据域事实行装配缝共用单点）：root 位于 channels 容器内的
+/** channels 域工作区判定（resolveDataDir channels 分支单点谓词）：root 位于 channels 容器内的
  *  im-* 域目录（workspace 的父目录）之下。纯路径谓词——SUNSHINEX_DATA_DIR 显式覆盖时 resolveDataDir
- *  走权威分支不经本判定（dev 重定向形态行缺席无害）。稳定段数据域行对域内工作区缺席（不向聊天
- *  agent 暴露会话账本路径——「data 与 agent 脚下平级隔离」2026-11-21 channels §4 裁定） */
-export function isChannelsDomainRoot(root: string): boolean {
+ *  走权威分支不经本判定。2026-11-23 二轮裁定：数据域事实行对 channels 域同给（隔离裁定只防目录
+ *  误踩，不防知情），本谓词不再作装配缝缺席依据，回归模块内部实现 */
+function isChannelsDomainRoot(root: string): boolean {
   const container = channelsContainerDir();
   const rel = path.relative(container, root);
   return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);

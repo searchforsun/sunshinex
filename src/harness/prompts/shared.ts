@@ -59,6 +59,13 @@ export const ERROR_CONVERGENCE_LINE =
 const TASK_FOCUS_LINE =
   'Work on the task given by the last task-instruction line in the context; complete it fully, then give the final answer as your final response.';
 
+/** 长会话提示行（2026-11-23 用户裁定「系统不要过多干预，只在系统提示词提一下，完全靠模型自觉，
+ *  提示词不要太细」）：轻指引一行——长会话上下文渐重可损质量，工作需要时建议用户开新会话并附
+ *  交接摘要；阈值/时机/是否提示全权模型自判（系统侧零阈值零 notice 零干预）。措辞刻意不量化
+ *  （无轮数/占比/触发条件），一句收束。共享槽位=standard/sunx 同面 */
+export const SESSION_RENEWAL_LINE =
+  'In long sessions, growing context can erode quality — when the work warrants it, suggest the user start a fresh session and offer a handoff note.';
+
 /** 技能安装政策行：模型可自助安装技能（项目级直接写标准形态；全局根可写），settings.json 两级受保护 */
 export const SKILLS_INSTALL_LINE =
   'To install skills, write them directly as <root>/skills/<id>/SKILL.md (frontmatter: name/description/version) under the project skills root (.sunshinex/skills) or the global skills root (~/.sunshinex/skills); users can also run `sunshinex skills install <git-url|owner/repo|dir>` to install into the global root. settings.json files (project and global) are protected and never editable by you.';
@@ -170,8 +177,8 @@ export function stableSegmentOf(opts: {
   /** 会话形态（缺省/其余值 = standard 原样）：仅 'sunx' 触发身份槽替换与章程行尾随 */
   kind?: SessionKind;
   /** 数据域事实行（2026-11-23 用户裁定）：会话数据目录绝对路径（resolveDataDir 产物）——workspace+
-   *  data 双地址+内容清单行进稳定段；channels 域缺席（装配缝 isChannelsDomainRoot 裁——不向聊天
-   *  agent 暴露会话账本路径）；缺席=行不落，旧行为逐字节不变 */
+   *  data 双地址+内容清单行进稳定段（2026-11-23 二轮裁定：channels 域同给——隔离裁定只防目录误踩，
+   *  不防知情）；缺席=行不落，旧行为逐字节不变 */
   dataDir?: string;
   /** worker 覆写尾行（sunx 分派通道专用，2026-11-15；2026-11-16 二轮修剪文案）：true=段尾追
    *  SUNX_WORKER_TAIL——仅 fork chain 通道子代消费（spawn 工具路径：稳定段与父同面+尾行废黜
@@ -189,6 +196,7 @@ export function stableSegmentOf(opts: {
     ERROR_CONVERGENCE_LINE,
     REFERENCE_DATA_LINE,
     TASK_FOCUS_LINE,
+    SESSION_RENEWAL_LINE,
     SKILLS_INSTALL_LINE,
     TEAMS_INSTALL_LINE,
     workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
