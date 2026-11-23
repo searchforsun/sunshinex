@@ -5,12 +5,19 @@
  * 上收面=ui-zoom/theme(跨端漫游偏好);menuWidth 系窗口形状相关,保持设备本地不上收。
  * 冲突口径:boot 拉取时服务端已有值覆盖本地(公共权威);服务端缺键则本地回填上收(旧档首联)。
  */
+import { bindBooleanPrefNotify, booleanLocalKeys, booleanRemoteDispatch } from './ui-pref-boolean';
+import type { BooleanPrefKey } from './ui-pref-boolean';
+
 type UiPrefConn = {
   appGuiState(): Promise<{ state: unknown }>;
   saveAppGuiState(state: object): Promise<void>;
 };
 
-const LOCAL_KEYS = {
+/** 偏好键全集（布尔族段自 ui-pref-boolean 注册表生成——D84：新增布尔偏好只写工厂一份 spec，
+ *  本文件与宿主 appliers 零新增；非布尔键仍字面量登记） */
+type PrefKey = 'uiZoom' | 'theme' | 'fontPreset' | 'paletteLight' | 'paletteDark' | 'uiFontSize' | 'codeFontSize' | 'uiMode' | 'developerMode' | BooleanPrefKey;
+
+const LOCAL_KEYS: Record<PrefKey, string> = {
   uiZoom: 'sunshinex.ui-zoom',
   theme: 'sunshinex.theme',
   fontPreset: 'sunshinex.font-preset',
@@ -19,15 +26,12 @@ const LOCAL_KEYS = {
   uiFontSize: 'sunshinex.ui-font-size',
   codeFontSize: 'sunshinex.code-font-size',
   uiMode: 'sunshinex.ui-mode',
-  darkBubbles: 'sunshinex.dark-bubbles',
-  darkCode: 'sunshinex.dark-code',
-  usageStats: 'sunshinex.usage-stats',
-  artifactCards: 'sunshinex.artifact-cards',
-  conciseMode: 'sunshinex.concise-mode',
-  changeCards: 'sunshinex.change-cards',
-  sessionInfoCards: 'sunshinex.session-info-cards',
   developerMode: 'sunshinex.developer-mode',
-} as const;
+  ...booleanLocalKeys(),
+};
+
+// 布尔族登记（D84）：同步面 notify 经工厂注入回填（本模块 → 工厂单向依赖，反向 import 即成环）
+bindBooleanPrefNotify(notifyUiPref);
 
 let conn: UiPrefConn | null = null;
 let pending: Partial<Record<keyof typeof LOCAL_KEYS, string>> = {};
@@ -41,9 +45,10 @@ let appliers: UiPrefAppliers | null = null;
 /** palette:配色偏好已由 flush 写入本地层,回调只需按当前模式重落根 */
 type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void; darkBubbles: (v: string) => void; darkCode: (v: string) => void; usageStats: (v: string) => void; artifactCards: (v: string) => void; conciseMode: (v: string) => void; developerMode: (v: string) => void; changeCards: (v: string) => void; sessionInfoCards: (v: string) => void };
 
-/** 远程值落地分发单点(2026-11-07 收敛——此前 flush 内逐键 if 链,每加一项偏好须同改
- *  LOCAL_KEYS/UiPrefAppliers/if 链三处):Record<键,…> 使 LOCAL_KEYS 加键而本表漏配即 tsc 咬住 */
-const APPLY_REMOTE: Record<keyof typeof LOCAL_KEYS, (a: UiPrefAppliers, v: string) => void> = {
+/** 远程值落地分发单点(2026-11-07 收敛——此前 flush 内逐键 if 链;2026-11-23 D84:布尔族段自
+ *  工厂注册表生成,新增布尔偏好三登记点全部归一):Record<键,…> 使 LOCAL_KEYS 加键而本表漏配
+ *  即 tsc 咬住 */
+const APPLY_REMOTE: Record<PrefKey, (a: UiPrefAppliers, v: string) => void> = {
   uiZoom: (a, v) => a.zoom(v),
   theme: (a, v) => a.theme(v),
   fontPreset: (a, v) => a.fontPreset(v),
@@ -52,14 +57,8 @@ const APPLY_REMOTE: Record<keyof typeof LOCAL_KEYS, (a: UiPrefAppliers, v: strin
   uiFontSize: (a, v) => a.uiFontSize(v),
   codeFontSize: (a, v) => a.codeFontSize(v),
   uiMode: (a, v) => a.uiMode(v),
-  darkBubbles: (a, v) => a.darkBubbles(v),
-  darkCode: (a, v) => a.darkCode(v),
-  usageStats: (a, v) => a.usageStats(v),
-  artifactCards: (a, v) => a.artifactCards(v),
-  conciseMode: (a, v) => a.conciseMode(v),
-  changeCards: (a, v) => a.changeCards(v),
-  sessionInfoCards: (a, v) => a.sessionInfoCards(v),
   developerMode: (a, v) => a.developerMode(v),
+  ...booleanRemoteDispatch(),
 };
 
 /** 连接就绪后调用一次:拉公共档覆盖本地,并回填本地缺键 */

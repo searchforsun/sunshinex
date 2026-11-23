@@ -6,6 +6,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { notifyUiPref } from './ui-pref-sync';
+import { bindBooleanPrefDevSource } from './ui-pref-boolean';
 
 const LS_KEY = 'sunshinex.developer-mode';
 const DATA_ATTR = 'developerMode';
@@ -60,3 +61,7 @@ function subscribe(fn: () => void): () => void {
 export function useDeveloperMode(): boolean {
   return useSyncExternalStore(subscribe, readStored, readStored);
 }
+
+// 布尔偏好工厂（ui-pref-boolean，D84）的模式派生源回填：本模块装载即接线（工厂体先于本模块
+// 求值，devGated 闭包在列待接——依赖方向 dev→sync→factory 为 DAG，见工厂头注）
+bindBooleanPrefDevSource({ read: readDeveloperMode, onChange: onDeveloperModeChange });

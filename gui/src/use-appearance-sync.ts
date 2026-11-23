@@ -6,15 +6,10 @@ import { applyTheme, type ThemePref } from './theme';
 import { syncPalette } from './palette';
 import { applyCodeFontSize, applyUiFontSize, CODE_FONT_CHOICES, UI_FONT_CHOICES } from './font-size';
 import { applyUiMode } from './ui-mode';
-import { applyDarkBubbles, applyDarkCode } from './dark-surfaces';
-import { applyUsageStats } from './usage-stats';
-import { applyArtifactCards } from './artifact-cards';
-import { applyConciseMode } from './concise-mode';
-import { applyChangeCards } from './change-cards';
-import { applySessionInfoCards } from './session-info-cards';
 import { applyDeveloperMode } from './developer-mode';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
+import { booleanPrefAppliers } from './ui-pref-boolean';
 
 /**
  * 外观偏好同步 hook(2026-10-27 技术债轮 D53 批E 自 App.tsx 外提,行为零变化):
@@ -40,7 +35,8 @@ export function useAppearanceSync(connInstance: Connection | null): void {
   }, [connInstance]);
 
   /** 公共持久化偏好上收(2026-10-24 用户裁定「能放到公共持久化的务必放」):连接就绪即拉
-   *  /app/gui-state 公共档覆盖本地(ui-zoom/theme),此后变更经 notifyUiPref 去抖双写 */
+   *  /app/gui-state 公共档覆盖本地(ui-zoom/theme),此后变更经 notifyUiPref 去抖双写。
+   *  布尔族段自工厂注册表展开(D84:新增布尔偏好宿主零新增) */
   useEffect(() => {
     if (connInstance === null) return;
     initUiPrefSync(connInstance, {
@@ -57,14 +53,8 @@ export function useAppearanceSync(connInstance: Connection | null): void {
       uiMode: (v) => {
         if (v === 'code' || v === 'office') applyUiMode(v);
       },
-      darkBubbles: (v) => applyDarkBubbles(v === '1'),
-      darkCode: (v) => applyDarkCode(v === '1'),
-      usageStats: (v) => applyUsageStats(v === '1'),
-      artifactCards: (v) => applyArtifactCards(v === '1'),
-      conciseMode: (v) => applyConciseMode(v === '1'),
-      changeCards: (v) => applyChangeCards(v === '1'),
-      sessionInfoCards: (v) => applySessionInfoCards(v === '1'),
       developerMode: (v) => applyDeveloperMode(v === '1'),
+      ...booleanPrefAppliers(),
     });
   }, [connInstance]);
 }

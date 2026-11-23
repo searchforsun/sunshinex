@@ -5,70 +5,13 @@
  * 跑完向上并入折叠行(纯渲染层识别)。逃逸面(不进折叠层,恒独立行)=子智能体 spawn、智能体
  * 团队/成员/板面工具、交互问询 ask_question、计划提交 exit_plan、工作树 worktree、任务停止——
  * 影响大/有交互/用户核心关注点的行不折叠;其余(查阅/命令/网页/编辑/技能/记忆/待办/等待/思考)
- * 全部并入。结构同 usage-stats.ts:LS+根 data 属性+ui-pref-sync 双写,默认开(2026-11-17 裁定:与普通态强制值一致)。
+ * 全部并入。落根 html[data-concise-mode];2026-11-17 裁定缺省「开」——普通态恒开,
+ * 开发者模式开=存储值。状态机制在 ui-pref-boolean 工厂单点(D84 收敛:原手写克隆退役)。
  */
-import { useSyncExternalStore } from 'react';
-import { notifyUiPref } from './ui-pref-sync';
-import { onDeveloperModeChange, readDeveloperMode } from './developer-mode';
+import { booleanPref } from './ui-pref-boolean';
 
-const LS_KEY = 'sunshinex.concise-mode';
-const DATA_ATTR = 'conciseMode';
-const PREF_KEY = 'conciseMode';
+const pref = booleanPref('conciseMode');
 
-const listeners = new Set<() => void>();
-
-function readStored(): boolean {
-  try {
-    // 2026-11-17 用户裁定「开关开=左侧内容开启」:缺省=开(与普通态强制值一致,开发者模式开关不再反向)
-    return localStorage.getItem(LS_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
-
-function readAttr(): boolean {
-  return document.documentElement.dataset[DATA_ATTR] === '1';
-}
-
-/** 有效值(2026-11-17 用户裁定「非开发者模式下肯定是简洁模式」):普通态恒开,
- *  存储值仅在开发者模式开启时生效 */
-export function readConciseMode(): boolean {
-  return readDeveloperMode() ? readStored() : true;
-}
-
-function apply(on: boolean): void {
-  try {
-    localStorage.setItem(LS_KEY, on ? '1' : '0');
-  } catch {
-    /* 隐私模式等持久化失败:仅内存态生效,不阻断 */
-  }
-  applyAttr(); // 落根属性须在写档之后(先 applyAttr 会读到上一值,开关与行为错位)
-  notifyUiPref(PREF_KEY, on ? '1' : '0');
-  for (const fn of listeners) fn();
-}
-
-export function applyConciseMode(on: boolean): void {
-  apply(on);
-}
-
-/** 有效值落根属性(存储值不动):普通态恒开 */
-function applyAttr(): void {
-  const root = document.documentElement;
-  if (readConciseMode()) root.dataset[DATA_ATTR] = '1';
-  else delete root.dataset[DATA_ATTR];
-}
-
-/** 开发者模式翻转:重落属性并重渲(存储值不动) */
-onDeveloperModeChange(() => {
-  applyAttr();
-  for (const fn of listeners) fn();
-});
-
-function subscribe(fn: () => void): () => void {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-
-export function useConciseMode(): boolean {
-  return useSyncExternalStore(subscribe, readAttr, readStored);
-}
+export const readConciseMode = pref.readEffective;
+export const applyConciseMode = pref.apply;
+export const useConciseMode = pref.usePref;
