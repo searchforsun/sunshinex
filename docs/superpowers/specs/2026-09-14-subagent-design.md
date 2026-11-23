@@ -1,7 +1,7 @@
 # 子 agent 执行单元（SubagentRunner + spawn 双入口）设计
 
 - 日期：2026-09-14
-- 状态：设计已评审定稿（六节呈现 + 调用语义修订经用户确认）
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §5.3「子智能体（spawn）」现行口径 + CLAUDE.md §3 subagent.ts 条目；src/harness/subagent.ts（SubagentRunner：fork 组装/回写/预算/并发护栏）与 spawn 工具面在座；原状态行留档：「- 状态：设计已评审定稿（六节呈现 + 调用语义修订经用户确认）」）
 - 上游规格：`docs/superpowers/specs/2026-09-14-context-fork-design.md`（fork 语义 §5——本设计是其「子 agent」落地的专项设计）
 - 上游计划：`docs/superpowers/plans/2026-09-14-context-fork.md`（Task 2 reactor 双作用域为本设计前置；Task 4 graph fork 化由本设计吸收）
 

@@ -1,6 +1,7 @@
 # todo_write 通用模型工具设计（对标 Claude Code TodoWrite · Codex update_plan）
 
 > 日期：2026-09-22 · 状态：设计定稿，待用户评审
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md 5.1「实施进度由模型经 todo_write 自主维护」与待办卡三态现行口吻＋src/harness/tools/builtin.ts todo_write 注册（注释引本规格 D3/D4/D10）与 src/types.ts ToolCategory 'todo' 在座；原状态行留档：「原无状态行」）
 > 决策链：定位=通用模型工具（用户裁决）→ 路径=A 单点状态面（用户裁决）→ 设计七节已获批准
 > 对标：Claude Code `TodoWrite`、Codex CLI `update_plan`——两家共同形态：模型工具层的动态进度清单，模型自主维护、UI 只渲染、执行中实时更新
 

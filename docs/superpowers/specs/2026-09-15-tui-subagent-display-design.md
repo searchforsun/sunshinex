@@ -1,7 +1,7 @@
 # TUI 子代理显示设计（Subagent Display）
 
 - 日期：2026-09-15
-- 状态：设计经用户确认（方案一获批），待规格审阅
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §5.3 子智能体「运行中一行实时面板/结束后折叠进 ● [SPAWN] 调用行」+代码 ChildPanel.tsx、session.ts children 分流、subagent.ts 同名并发 #N 消歧在座；原状态行留档：「- 状态：设计经用户确认（方案一获批），待规格审阅」）
 - 上游：`docs/superpowers/specs/2026-09-14-subagent-design.md`（子代理能力已实施，提交 2e588ae…75bc760）、`2026-09-14-context-fork-design.md`（fork 显示语义依据）
 
 ## 1. 背景与问题

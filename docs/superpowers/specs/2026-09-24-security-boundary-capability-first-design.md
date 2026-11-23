@@ -1,7 +1,7 @@
 # 安全边界能力优先重构设计
 
 - 日期：2026-09-24
-- 状态：设计定稿（用户逐项裁决确认）；实施计划待 writing-plans 产出
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §6 现行口径（缺省全盘读、越界写按档审批、--add-dir 三面、§6.2 permissions 规则面、§6.3 Landlock 沙箱）+ src/config/permissions.ts 与 src/harness/security/landlock.ts 在座；原状态行留档：「- 状态：设计定稿（用户逐项裁决确认）；实施计划待 writing-plans 产出」）
 - 关联：CLAUDE.md §5（工具面与依赖台账）、§14（平台兼容性）；7c9f358（settings.json 两级硬保护与 ~/.sunshinex 放行）、b4cede3（worktree 程序化隔离与安全链执行期缝）、d6d9a3e（装配失败警告降级语义先例）、81599cf（两级 JSON 装载形态先例）
 
 ## 1. 背景与问题清单

@@ -1,7 +1,7 @@
 # TUI `/goal`：完整 Loop 能力入口 设计规格
 
 - 日期：2026-09-15
-- 状态：设计已批准（会话内呈现确认 + 用户定名 `/goal`），待实施
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §5.2 goal 验收修正环与命令表 /goal 条目 + src/tui/session.ts '/goal' 分支、src/loop/templates.ts 在座；原状态行留档：「- 状态：设计已批准（会话内呈现确认 + 用户定名 `/goal`），待实施」）
 - 关联：`2026-09-14-context-fork-design.md`（会话链模型 / 主链追加语义）、`2026-09-14-subagent-design.md`（D5 主链唯一入口先例）
 
 ## 1. 背景与目标

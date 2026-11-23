@@ -1,7 +1,7 @@
 # task_wait：后台任务阻塞等待工具设计
 
 - 日期：2026-09-26
-- 状态：已确认（用户裁决：方案 A · 阻塞等待 + 批量 + 终态回执）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3 tools/task-wait.ts 与 §5 另册 task_wait 登记、MANUAL.md §四 /tasks 条目「模型以 task_wait/task_stop 等待或停止」，src/harness/tools/task-wait.ts 在座；原状态行留档：「- 状态：已确认（用户裁决：方案 A · 阻塞等待 + 批量 + 终态回执）」）
 - 主题：为后台任务（后台 exec、超时转后台 exec、后台子代理）补齐「等待」工具面
 
 ## 1. 背景与问题

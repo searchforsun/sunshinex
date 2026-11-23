@@ -1,6 +1,7 @@
 # 长任务终止参数收编 settings.json 与缺省放宽 — 设计规格
 
 > 日期：2026-09-20 ｜ 状态：待用户评审 ｜ 线：长任务终止参数（brainstorming → writing-plans）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §12 缺省放宽现行口径（Reactor 400 步 SUNSHINEX_MAX_STEPS、修正环 200 轮/12h、全链 1000 节点步/24h、墙钟失控保底不进 settings）＋src/config/termination-config.ts 三解析器与 reactor.ts/graph/agents.ts 缺省 400 在座；原状态行留档：「原无状态行」）
 
 ## 1. 背景与目标
 

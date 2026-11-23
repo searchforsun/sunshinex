@@ -1,6 +1,6 @@
 # 通道层（channels）架构设计 —— 任意 IM 平台 ↔ sunshine 会话
 
-> 状态：设计稿（2026-11-21 调研后成文）。sunshine 定位通用智能体，本层目标是**任何外部 IM 平台
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md「通道（IM 接入）」节+CLAUDE.md §3 serve/ channels/ 登记+MANUAL.md §二 channels/channelsDir 键；代码 src/serve/channels/（engine/router/reply/handlers/store+adapters 飞书·Telegram·mock）在座；原状态行留档：「> 状态：设计稿（2026-11-21 调研后成文）。sunshine 定位通用智能体，本层目标是**任何外部 IM 平台」）
 > （飞书/钉钉/企业微信/微信公众号/Telegram/Discord/Slack…）都能成为 sunshine 会话的入口与出口**，
 > 且新增一个平台 = 新增一个适配器，核心零改动。
 

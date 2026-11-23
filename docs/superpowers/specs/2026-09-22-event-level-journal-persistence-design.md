@@ -1,7 +1,7 @@
 # 事件级会话日志即时落盘（Crash-Resilient Journal）设计规格
 
 - 日期：2026-09-22
-- 状态：已获用户批准（设计裁决 D1–D8 经问卷「对齐 CC：事件级即时落盘」+「批准，落库规格并转 writing-plans」拍板）
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3 tui/ session-journal 条目（v3 段级行、jsonl 逐字节权威）+ MANUAL.md 故障表 journal v3 口径；src/tui/session-journal.ts 逐事件 appendFileSync（D1/D3）与 session.ts sealJournal（D2/D8）在座；原状态行留档：「- 状态：已获用户批准（设计裁决 D1–D8 经问卷「对齐 CC：事件级即时落盘」+「批准，落库规格并转 writing-plans」拍板）」）
 - 关联：规格 2026-09-17-session-persistence-resume-design.md（D1/D3/D4/D5 原始裁决）、规格 2026-09-20-rewind-fork-design.md（§5/§6 影子快照与代码回退）
 
 ## 1. 背景与问题

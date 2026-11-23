@@ -1,7 +1,7 @@
 # 上下文治理吸收批次设计规格（Claude Code 实现调研吸收）
 
 - 日期：2026-09-17
-- 状态：待评审（评审通过转 writing-plans）
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md 命令表「/compact [关注点]」+ CLAUDE.md §6 Compact Instructions 机器消费区与 §11 快照刷新点；src/harness/tools/output-archive.ts（A 项）、context/compaction.ts Full trace 归档（B 项）、reactor.ts isContextOverflowError 反应式压缩（F 项）在座；原状态行留档：「- 状态：待评审（评审通过转 writing-plans）」）
 - 调研来源：官方文档（code.claude.com「How Claude Code works / How Claude Code uses prompt caching」）+ 社区反编译重构 shareAI-lab/learn-claude-code s08_context_compact（形态参考，其常量为课程还原值非官方数字）
 - 关联：CLAUDE.md §11 前缀缓存第一要义；model-compaction 规格（44a6d3c / 60e8e20）；前缀缓存 91%→50% 排查（66bd70a）；基线 d05bc83
 

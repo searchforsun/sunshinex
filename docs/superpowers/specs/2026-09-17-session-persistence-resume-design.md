@@ -1,7 +1,7 @@
 # 会话持久化 + resume（事件日志形态）设计规格
 
 - 日期：2026-09-17
-- 状态：方案 B（JSONL 事件日志）经用户裁决批准（原话「B, 未来肯定要做重放和回溯的」），设计六节呈现获批（「继续」），落库待书面评审
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §四 /resume 行、启动旗标表 --continue/--resume 行与 data/sessions/ 目录说明 + src/tui/session-journal.ts 在座；原状态行留档：「- 状态：方案 B（JSONL 事件日志）经用户裁决批准（原话「B, 未来肯定要做重放和回溯的」），设计六节呈现获批（「继续」），落库待书面评审」）
 - 关联：product_vision 2026-09-17（会话跨天持久化 + resume 升格一等能力：全会话口径、对标 claude --resume、/goal 续走为首个消费场景）、2026-09-16-goal-claude-code-alignment §11（goal 跨天恢复拆线，硬前置=本线）、2026-09-14-context-fork-design（链 API）
 
 ## 1. 背景与目标

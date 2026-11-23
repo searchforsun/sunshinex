@@ -1,7 +1,7 @@
 # 子代理与主链任务统计增强设计
 
 - 日期：2026-09-26
-- 状态：设计已获用户确认（三项关键取舍均经用户裁决）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 MANUAL.md:383「整段记录折叠进 ● [SPAWN] 调用行（单行摘要含步数/耗时尾注）」，代码在座——src/tui/session.ts:431「任务统计基线（规格 §3.2）」+ closeTask done 路径 formatTaskStatsLine 统计行（session.ts:843）、chat-model.ts sessionChildTokens/turnChildTokens 状态栏合并口径、child-panel.ts doneAt 冻结耗时；原状态行留档：「- 状态：设计已获用户确认（三项关键取舍均经用户裁决）」）
 - 关联：`2026-09-26-child-inspector-view-design.md`（§3.1 子代理单行面板、§4 transcript 结构化）
 
 ## 1. 背景与动机

@@ -1,7 +1,7 @@
 # 权限档重构与 plan 模式重造设计(read-only / acceptEdits / full-access · planFlow)
 
 - 日期:2026-10-24
-- 状态:已批准(会话内分段评审;方案 A 与分节设计经用户确认后落档)
+- 状态:已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md --mode 旗标行与 §5.1/§六 现行口径（read-only/acceptEdits/full-access 三档、计划模式只读流程批准后实施）+ src/harness/security/modes.ts 三档枚举与 src/harness/plan-flow.ts 在座；原状态行留档：「- 状态:已批准(会话内分段评审;方案 A 与分节设计经用户确认后落档)」）
 - 轮次:权限面与计划流程首轮(brainstorming 产出;承接 G10-C1b 模式面「plan 提交通道标记」的历史欠账与 /plan 首版语义空缺)
 - 裁定记录:用户裁定——①一份 spec 三阶段(权限档改名+read-only 新增 / planFlow 共享模块+TUI 重造 / serve+GUI 接通),依赖递进,每阶段独立可交付;②计划书批准交互=批准+反馈驳回环(非 yes/no 二选一);③批准后执行档固定落 acceptEdits(不落回原档、批准卡不设选档);④TUI+GUI 一起纳入(GUI「计划模式」入口现状是 plan→dontAsk 假映射,必须随本 spec 收口);⑤方案 A 入口驱动共享 planFlow(方案 B exit_plan 模型工具留作演进);⑥命名定稿四项:计划模式/plan、只读模式/read-only、工作区编辑/acceptEdits、完全访问/full-access。
 

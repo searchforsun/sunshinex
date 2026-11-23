@@ -1,7 +1,7 @@
 # 插件体系 + browser use / computer use 系统插件设计（工具结果图片通道前置）
 
 - 日期：2026-10-26
-- 状态：已实施（2026-10-26，SDD 22 任务，T22 收口；两插件 defaultEnabled false 等）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 CLAUDE.md §113/§124/§135 插件治理层与 manifest safety 三类问线、MANUAL.md §514-542 插件节（browser-use/computer-use 双内置、plugins list/validate、安装即信任）+ ROADMAP §151 [x] 引本规格，代码在座——plugins/ 内置 browser-use、computer-use、schema 三目录，src/config/plugins.ts 装载单点，src/cli/commands/plugins.ts CLI，docs/PLUGIN-DEV.md 开发指南；原状态行留档：「- 状态：已实施（2026-10-26，SDD 22 任务，T22 收口；两插件 defaultEnabled false 等）」）
 - 范围：src/config（plugins 语义键）、src/harness（插件装配 + MCP 客户端图片提取 + guard 声明式安全消费）、src/types（ExecResult.images 等）、src/serve（设置端点）、gui（设置页插件 pane + 工具行图片渲染）、plugins/（新工作区目录：两个内置插件，其一含自建 MCP server）+ plugins/schema（manifest JSON Schema）+ plugins CLI（list/validate）+ docs/PLUGIN-DEV.md（插件开发指南）
 - 前置关系：图片功能（2026-10-26 已交付）打通了**用户随行图片**全链（`src/images.ts` 单源 → `SteerLine/SessionEvent/HistoryStep.images` → `buildMessages` 多模态 user 行 → wire image_url 块）；本设计补全**工具观察图片回流**这半边（截屏能力的生命线），并以「插件」为治理层承载 browser use / computer use 两个能力。
 - 业界调研锚点（2026-10-26 三路调研，详见会话记录）：浏览器自动化事实标准 = Playwright MCP（a11y snapshot+ref 主线，vision 兜底）；桌面自动化收敛动作面（screenshot/click/type/key/scroll/drag/wait）；结构优先、视觉兜底为工程共识；OpenAI 兼容协议 `role:"tool"` 消息无图片通道，业界标准变通 = 图片随合成 user 帧注入（与既有链行图片通道同形）；高危桌面动作业界共识 = 默认人工确认 + 能力默认关。

@@ -1,7 +1,7 @@
 # SessionKernel 会话内核设计(方案 B 全量收敛)
 
 - 日期:2026-10-17
-- 状态:待评审
+- 状态:已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3「session/ 会话内核 kernel.ts（applyEvent 纯 reducer）/entry.ts/seglog.ts」+MANUAL.md §八 Ctrl+Q 排队管理面板（§11.3 队列内核化）；代码 src/session/kernel.ts、entry.ts 在座；原状态行留档：「- 状态:待评审」）
 - 轮次:G14.213b(承接同日「转录持久化/段边界落档」临时修复,本轮将其下沉为内核单点)
 - 裁定记录:用户确认「方案 B 全量收敛」+「不做旧档兼容(旧会话直接删除)」+「TUI/GUI 只做渲染,数据同源,唯一差异 = TUI 单会话单窗口 / GUI 多会话多标签」
 

@@ -1,7 +1,7 @@
 # 模型驱动压缩摘要设计
 
 - 日期：2026-09-16
-- 状态：设计定稿（用户已批准方案 A + /compact 补链对齐）；实施计划待 writing-plans 产出
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3 context/ 模块清单在列 summarizer/compaction、ROADMAP 阶段五 [x]「上下文压缩模型驱动六要素」＋src/harness/context/summarizer.ts（summarizeWithModel/isModelSummarizer）与 compaction.ts 摘要分叉在座；原状态行留档：「- 状态：设计定稿（用户已批准方案 A + /compact 补链对齐）；实施计划待 writing-plans 产出」）
 - 关联：CLAUDE.md §11（前缀缓存第一要义）；docs/superpowers/specs/2026-09-14-context-fork-design.md（压缩块=唯一合法重写产物、压缩协调链）；window.ts 确定性压缩（现行为）；92ab44a（ctx 水位口径）
 
 ## 1. 背景与问题

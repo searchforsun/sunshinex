@@ -1,7 +1,7 @@
 # 会话归档与受控删除设计(/archive · /delete)
 
 - 日期:2026-10-21
-- 状态:已批准(会话内分段评审,用户逐段确认)
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md 命令表 /archive·/unarchive·/delete（未归档须先归档门禁）与 MANUAL-GUI.md 归档会话页现行口吻＋src/tui/session-journal.ts archived 键/markSessionArchived 与 src/serve daemon 归档路由钉测在座；原状态行留档：「- 状态:已批准(会话内分段评审,用户逐段确认)」）
 - 轮次:会话整理能力首轮(brainstorming 产出;承接 G14.2xx 刷新恢复/归档语义空缺)
 - 裁定记录:用户裁定——①归档标记落共享层旁车 meta(方案 A,B/C 否);②GUI 既有删除入口(顶栏 Delete、侧栏行 hover 垃圾桶)全部退役,删除只存在于归档页;③归档后方可删除,删除=真清文件(旧「daemon 回收留 journal」语义退役);④`/archive` 与 `/delete` TUI/GUI 公用;⑤撤销归档不设 TUI 命令(GUI 归档页/顶栏撤销足够);⑥归档页数据范围=当前 daemon 服务根下全部工作区,跨工作区聚合、行标注来源项目。
 

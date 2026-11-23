@@ -1,7 +1,7 @@
 # /skill 命令与选择卡 filterable 筛选能力设计
 
 - 日期：2026-09-22
-- 状态：设计定稿（用户已批准设计呈现；三项交互裁决与注入通道经问卷/呈现收束）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：filterable 筛选能力活文档 MANUAL.md:330/346/353/356 四张清单卡「输入即筛选（Esc 先清词再取消）」现行真值，代码在座——src/tui/components/OptionSelector.tsx:46 filterOptions 纯函数、src/tui/session.ts skillFlow >8 项带 filterable、AskUserRequest.filterable 在座；注记：本规格 D2 的 /skill 硬载注入通道（选择即 appendChain 正文）已被后继规格 2026-11-04-agents-teams-catalog §4.2 退役为「插入引用」（/skill 卡保留为浏览兜底，MANUAL.md:330 载明「不直接载入上下文」），filterable 组件能力不受影响；原状态行留档：「- 状态：设计定稿（用户已批准设计呈现；三项交互裁决与注入通道经问卷/呈现收束）」）
 - 关联：`specs/2026-09-21-cli-tui-interaction-redesign.md`（扁平命令与选择卡先例）、`specs/2026-09-20-askquestion-selector-design.md`（OptionSelector 与 ask_question）、CLAUDE.md §6（技能装载）、§11（前缀缓存第一要义）、§15（外观双语/写链恒英文）
 
 ## 1. 背景与目标

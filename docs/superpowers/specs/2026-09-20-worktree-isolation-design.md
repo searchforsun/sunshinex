@@ -1,7 +1,7 @@
 # Worktree 隔离设计规格（对标 Claude Code worktree 三入口）
 
 日期：2026-09-20
-状态：设计定稿（两项裁决经问卷用户拍板：入口范围=B 三入口全做；清理语义=A 干净自动删、有改动保留）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 MANUAL.md:73「--worktree 在隔离 git worktree 内启动（裸旗标自动命名；干净树随会话自动清理，脏树保留待处置，见 5.5）」与 §270 数据目录 worktrees/、CLAUDE.md §97「worktree.ts # git worktree 单点模块」/§132 内置工具含 worktree、ROADMAP §113 [x] 本特性线，代码在座——src/harness/worktree.ts、src/cli/worktree-launch.ts 接 run-loop.ts 与 tui/entry.ts 双入口、src/harness/subagent.ts frontmatter isolation: worktree；原状态行留档：「状态：设计定稿（两项裁决经问卷用户拍板：入口范围=B 三入口全做；清理语义=A 干净自动删、有改动保留）」）
 关联线：docs/superpowers/specs/2026-09-20-session-rewind-fork-design.md（正交，见 §4-D8）、2026-09-14-subagent-design.md（frontmatter 扩展见 §9）
 
 ## 1. 背景与目标

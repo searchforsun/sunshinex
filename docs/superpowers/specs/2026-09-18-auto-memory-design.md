@@ -1,7 +1,7 @@
 # Auto Memory 设计规格（情景/状态记忆，与程序性记忆双轨互补）
 
 - 日期：2026-09-18
-- 状态：已获用户批准（设计总览「继续」通过），待 writing-plans 转实施计划
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §二 autoMemory 键+§四 /memory 命令族+CLAUDE.md §3 harness/memory/ 登记；代码 src/harness/memory/（store/extractor/consolidate/pipeline）在座；原状态行留档：「- 状态：已获用户批准（设计总览「继续」通过），待 writing-plans 转实施计划」）
 - 调研来源：CC 官方 memory 文档（code.claude.com）+ 社区反编译还原课程 shareAI-lab/learn-claude-code s09 + Hermes 官方文档（hermes-agent.nousresearch.com）
 - 关联：CLAUDE.md §11 前缀缓存第一要义；context-fork 规格（「链即记忆」裁决、记忆段 41.1% 事故先例）；G 项 SUNSHINE.md 会话冻结快照（四刷新点）；LearnedSkillStore（程序性记忆，本规格不动）
 

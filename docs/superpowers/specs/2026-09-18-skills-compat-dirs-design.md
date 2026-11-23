@@ -1,7 +1,7 @@
 # 项目级技能目录兼容链规格（v2：统一标准形态）
 
 - 日期：2026-09-18（v2 修订，取代同日 v1）
-- 状态：待用户评审；无异议答复「继续」转实施（预计 3 任务 TDD），代码实施未开始
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §6「项目级五根只认 {root}/<根>/skills/{id}/SKILL.md」+ MANUAL.md 目录结构兼容根行；src/harness/skills.ts PROJECT_SKILL_ROOTS_ASC 五根与 SKILL.md 优先/skill.md 兜底在座；原状态行留档：「- 状态：待用户评审；无异议答复「继续」转实施（预计 3 任务 TDD），代码实施未开始」）
 - 关联：`docs/superpowers/specs/2026-09-18-skills-three-tier-dirs-design.md`（三级根分层与 项目级>全局级>学习级 优先级承袭不动）
 - v2 修订缘由：用户裁决收紧形态适配面——兼容根只认标准形态，异构形态零兼容
 

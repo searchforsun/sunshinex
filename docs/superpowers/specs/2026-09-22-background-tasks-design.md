@@ -1,7 +1,7 @@
 # 设计规格：后台任务（对标 Claude Code 全形态）
 
 - 日期：2026-09-22
-- 状态：设计已获用户批准（选择卡答复：批准——落规格文档并转 writing-plans）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §4 /tasks 命令与数据目录 tasks/ 台账现行口吻＋src/harness/tasks.ts 统一账本与 tools/task-stop.ts、task-wait.ts 在座；原状态行留档：「- 状态：设计已获用户批准（选择卡答复：批准——落规格文档并转 writing-plans）」）
 - 关联规范：CLAUDE.md §5（原始工具面复用/专属工具纪律）、§11（前缀缓存第一要义）、§12（长任务取向）、§14（平台兼容纪律）；`docs/superpowers/specs/2026-09-14-subagent-design.md`（spawn `background` 参数预留）
 
 ## 1. 背景与问题

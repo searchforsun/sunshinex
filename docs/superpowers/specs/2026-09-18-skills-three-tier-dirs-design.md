@@ -1,7 +1,7 @@
 # 三级技能目录设计规格
 
 - 日期：2026-09-18
-- 状态：定稿，待评审；用户无异议答复「继续」转 writing-plans（预计 4 任务 TDD），代码实施未开始
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3/§6 三级技能根现行口径（项目级 .sunshinex/skills > 全局 ~/.sunshinex/skills > 学习级）+ src/config/data-dir.ts userSkillsDir() 与 src/harness/skills.ts 三根合并在座；原状态行留档：「- 状态：定稿，待评审；用户无异议答复「继续」转 writing-plans（预计 4 任务 TDD），代码实施未开始」）
 - 关联：`src/harness/skills.ts`、`src/config/data-dir.ts`、CLAUDE.md §3/§6、fork 规格（P4 技能置尾不变）
 
 ## 1. 背景与问题

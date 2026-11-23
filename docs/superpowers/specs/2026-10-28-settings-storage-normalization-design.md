@@ -1,7 +1,7 @@
 # 四类资源存储与设置规范化设计（skills / MCP / plugins / agents）
 
 - 日期：2026-10-28
-- 状态：设计定稿（待用户审阅 → 实现计划）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：docs/ROADMAP.md [x] 设置存储规范化 catalog、CLAUDE.md §3 catalog/ 结构化单点描述、src/catalog/ 全套模块（providers/agents/plugins/mcp/skills/approvals/permissions/watch/sunx）在座、MANUAL.md §四 /mcp /agents /plugins /providers 两级遮蔽面板现行真值；原状态行留档：「- 状态：设计定稿（待用户审阅 → 实现计划）」）
 - 范围：src/catalog（新共享存储库）、src/config（settings/plugins 加载语义 + providers 规范化 + 散键退役）、src/config.ts（loadMcpServers 项目级复活）、src/harness/subagent.ts（agents 两级+enabled+兼容读）、src/model/catalog.ts（缺省内芯恒为 choices[0]）、src/serve（设置端点对称补齐 + WS config-changed 帧 + 文件监听）、src/cli（资源全套子命令 + settings get/set + providers）、src/tui（/mcp /agents /plugins /skills /providers 面板）、gui/src/settings（ScopeSwitcher/SearchBar/ResourceCard/EditorDrawer 共享组件 + 11 页统一卡片风格）
 - 前置关系：插件体系（2026-10-26 设计已实施）提供 manifest/两级发现/安全契约；本设计不改动插件 manifest 规范，只恢复其开关的项目级生效、并把四类资源的存储、作用域、UI、CLI、TUI、实时同步统一到一套规范。
 

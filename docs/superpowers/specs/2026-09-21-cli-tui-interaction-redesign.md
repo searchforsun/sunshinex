@@ -1,7 +1,7 @@
 # TUI 斜杠命令选择题化 + CLI 入口判界 + 文档职责拆分 · 设计规格
 
 - 日期：2026-09-21
-- 状态：设计经用户四轮逐项裁决收敛终版，待评审
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §四 命令表「命令只认裸形式」口径与选择卡族（/model、/model-effort、/memory-rm 多选、/memory-on|/memory-off）现行真值、src/cli/index.ts --workdir 入口判界在座、MANUAL.md/README.md 文档职责拆分既成；原状态行留档：「- 状态：设计经用户四轮逐项裁决收敛终版，待评审」）
 - 上游：askquestion 选择器线 D6 预留批次（decision/project.askquestion_selector_design）；CLI 目录直进裁决修订（decision/project.cli_dir_direct_entry）
 - 关联：TUI-MANUAL 分门别类重组（工作区未提交改动，随本线文档批次一并收口）
 

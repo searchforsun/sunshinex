@@ -1,7 +1,7 @@
 # 预定义智能体与智能体团队：目录注册、软引用统一与缓存稳定
 
 - **日期**: 2026-11-04
-- **状态**: 设计定稿，待用户审阅后进入 implementation plan
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 CLAUDE.md §177「.sunshinex/teams/{id}/team.md 两级注册、清单进冻结快照、#team-id 软引用经 load_agent_teams 加载章程、$agent-id 软引用经 load_subagent 出卡」+ MANUAL.md §330 技能「插入技能引用（浏览兜底）…不直接载入上下文」（§4 skills 硬载退役落地），代码在座——src/harness/teams.ts、src/catalog/teams.ts、src/tui/commands-teams.ts、src/harness/context/index.ts:352/361 teamsIndexItems·agentsIndexItems、drift-detector.ts:79/84 [agents]/[teams] notice、gui/src/settings TeamsPane 与 gui/src/pages/chat mention $/# token；工具名演化为 load_agent_teams/load_subagent（镜像原 team/agent 语义）；原状态行留档：「- **状态**: 设计定稿，待用户审阅后进入 implementation plan」）
 - **来源**: 会话四轮收敛——①团队预定义目录（`$` 单符号）→ ②`$`=智能体 / `#`=团队分符号 → ③三域统一「软引用」（清单进快照、模型匹配、工具按需加载，harness 零预注入）→ ④skills 一并软引用化，harness 硬加载机制退役
 - **路径裁定**: `$` 智能体 / `#` 团队 / `/skill-id` 技能全部软引用；命令面仅剩纯内置命令；**禁止兼容**（硬载通道零保留，历史 journal 只读回放）
 - **关联**:

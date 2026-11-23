@@ -1,7 +1,7 @@
 # 长任务护栏下沉与 TUI 主链接线（设计）
 
 - 日期：2026-09-11
-- 状态：待评审
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 CLAUDE.md §80 载明 guardrail.ts「护栏停判纯函数（超时→预算→步数序；loop/graph 双引擎共用）」，代码在座——src/harness/guardrail.ts:24 被 reactor.ts:294 / loop/engine.ts:152 / graph/engine.ts:144 共用，TUI runTask 经 longTaskTemplate 接 LoopEngine 且 stopReason 经 describeIncomplete 上屏（src/session/runtime.ts:178、src/tui/session.ts:891）；原状态行留档：「- 状态：待评审」）
 - 前置修复：`18190c8 fix(tui): TUI 装配真实模型 + 堵住系统提示词回显泄露`
 - 关联：`docs/Arch-Plan.md:68`（四重终止口径）、`2026-09-06-phase2-loop-engine-design.md`、`2026-09-06-phase3-graph-orchestration-design.md`、`2026-09-10-phase5b-tui-markdown-design.md`
 

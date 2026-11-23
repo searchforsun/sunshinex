@@ -1,7 +1,7 @@
 # 上下文 fork 模型治理设计
 
 - 日期：2026-09-14
-- 状态：设计定稿（用户逐节确认）；实施计划待 writing-plans 产出
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §11「上下文模型：单一基座 + fork」以现行真值载明并径引本 spec＋src/harness/context/chain-ledger.ts 与 context/index.ts chainView/appendChain/trimChainFront 在座；原状态行留档：「- 状态：设计定稿（用户逐节确认）；实施计划待 writing-plans 产出」）
 - 关联：CLAUDE.md §11（前缀缓存第一要义）；plan_cache_continuous_fix（5f85ac8 / f4cd5e2）；prefix_cache_audit（唯一击穿点：技能首帧注入前部）；92ab44a（ctx 水位 exact 口径）
 
 ## 1. 背景与问题清单

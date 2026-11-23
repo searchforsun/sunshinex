@@ -1,6 +1,6 @@
 # 子代理 Worktree 隔离（程序化）设计规格
 
-日期：2026-09-23 · 状态：已裁决待实施 · 对标基线：Claude Code sub-agents `isolation: worktree`（含 v2.1.203+ 执行面强制口径）
+日期：2026-09-23 · 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §5.3/§5.5 isolation: worktree 口径与 `agents add --isolation=worktree`；src/harness/subagent.ts 建树/settleSubagentTree + security/chain.ts withRoot 隔离判界在座；原状态行留档：「状态：已裁决待实施」） · 对标基线：Claude Code sub-agents `isolation: worktree`（含 v2.1.203+ 执行面强制口径）
 
 ## 1. 背景与目标
 

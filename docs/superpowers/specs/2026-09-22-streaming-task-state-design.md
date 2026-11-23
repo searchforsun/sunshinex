@@ -1,7 +1,7 @@
 # 流式会话三态状态机设计（Streaming Task State Machine）
 
 - 日期：2026-09-22
-- 状态：已批准（用户在问卷通道批准事件面落 reactor + 模型宣告 tool call 即 pending，随后批准设计五节全文）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §七「运行状态实时显示」三态现行口径（思考中/执行前 pending·awaiting approval/输出中）、src/harness/reactor.ts model-start/model-end 发射点在座；原状态行留档：「- 状态：已批准（用户在问卷通道批准事件面落 reactor + 模型宣告 tool call 即 pending，随后批准设计五节全文）」）
 - 对标：Claude Code 客户端工具调用状态机（pending → in_progress → completed/failed，事件驱动推进、渲染层只消费状态）与 Anthropic 流式协议「块宣告与块完成是两个独立时刻」的分界语义
 
 ## 1. 问题

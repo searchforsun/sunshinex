@@ -5,6 +5,7 @@
 > (工具=输入 JSON+输出),不应有渲染记号;**内核条目重构为业界标准形态,不关心渲染层如何渲染**,
 > 未来任何渲染层或纯 API 消费者拿到即可识别。状态:**设计定版,实施未开始(P11 单片)**。
 > 修订(同日):并入三态标识(§7)——思考/工具/正文行的前中后态进条目模型,渲染层零推导。
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：P11 计划（docs/superpowers/plans/2026-10-18-renderer-neutral-entries-p11.md）已执行——代码在座 src/session/entry.ts tool 装配点 md:''（:432/:469/:478）与 KernelEntry.status 三态（:94）、v2log.ts 已正名 seglog.ts（头注「journal v3 零兼容,P11-T2 正名 seglog」）、scripts/purge-legacy-sessions.mjs「P11-T2 起 attach 只认 v3」扫描 v≠3；活文档 CLAUDE.md §72「session-journal（v3 段级行）」/§108「seglog.ts（kernelEventRows→journal v3）」；原状态表述留档：「状态:**设计定版,实施未开始(P11 单片)**。」）
 
 ## 1. 原则
 

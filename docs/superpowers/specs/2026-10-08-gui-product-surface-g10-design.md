@@ -1,5 +1,7 @@
 # GUI 产品面重构(Codex 面 → sunshinex 底层,G10)· 设计 spec
 
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md 现行载明模型/计划模式 pill、排队条与归档会话页＋src/serve/daemon.ts GET /commands、/session/:id/model|tier|effort|mode、steer/cancel、rewind、fork 与 /memory/rm 端点在座（注释引 G10 spec §6/C1d）；原状态行留档：「原无状态行」）
+
 日期:2026-10-08。前置:`2026-10-08-codex-desktop-1to1-design.md`(G9 视觉令牌复刻,已交付)。
 本 spec 处理 G9 之后的**产品面层**:布局、信息架构、能力承载——方法论为「**从 Codex 产品面上层切入,映射到 sunshinex 底层实现;sunshinex 独有能力以 Codex 视觉语言拓展**」。每个 Codex 面元素必须落到真实底层;无底层能力的 UI 一律不做(延续 G9 §0 复刻纪律)。
 

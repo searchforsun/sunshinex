@@ -1,6 +1,6 @@
 # 会话恢复对标 CC：活动指针收编 + resume 子命令 + 数据目录口径收敛 设计规格
 
-> 日期：2026-09-22 ｜ 状态：待用户评审
+> 日期：2026-09-22 ｜ 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md 启动旗标表 --continue/--resume 行 + src/tui/entry.ts --resume 旗标与互斥 fail-fast、journal 测试断言目录树无 sessions-active.json 指针；原状态行留档：「状态：待用户评审」）
 > 关联：`docs/superpowers/specs/2026-09-17-session-persistence-resume-design.md`（会话持久化基座）、`2026-09-20-session-rewind-fork-design.md`（rewind/fork）、`2026-09-21-cli-tui-interaction-redesign.md`（CLI 判界与命令风格）、`2026-09-22-event-level-journal-persistence-design.md`（事件级落盘）
 
 ## 1. 背景与目标

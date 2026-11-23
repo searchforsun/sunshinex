@@ -1,7 +1,7 @@
 # 智能体团队：工具面重构、会话隔离开关与 GUI 三分栏
 
 - **日期**: 2026-11-01
-- **状态**: 设计定稿，待用户审阅后进入 implementation plan
+- **状态**: 已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §5 智能体团队八件套（agentTeams 门禁）+MANUAL.md §5.6+ROADMAP [x] 智能体团队行点名本档；代码 tools/task-wait.ts、config/agent-teams.ts 在座；原状态行留档：「- **状态**: 设计定稿，待用户审阅后进入 implementation plan」）
 - **来源**: 会话隔离裁定 + 页签「任务板→智能体团队」+ 工具整包改名/wait·stop 分域 + settings 开关
 - **路径裁定**: 方案 1——settings 语义键 + 装配期剔工具；**禁止兼容**（旧工具名、工作区级 teams 根、双读别名一律不保留）
 - **关联**: `2026-10-31-agent-team-simplify-design.md`（五态/队卡语义仍有效；本规格替换其工具命名与 wait/stop 边界，并叠加 GUI/开关）

@@ -1,6 +1,6 @@
 # 归档会话保留期与缓存清理（Archive Retention & Cache Clear）设计方案
 
-- 日期：2026-11-21　分支：dev1　状态：**待用户审阅**
+- 日期：2026-11-21　分支：dev1　状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md 设置面板「存储」行现行口径（归档会话保留天数每日清理、缓存清点与清理、搜索框/托盘入口）+ src/serve/retention.ts·cache-inventory.ts·cache-handlers.ts 与 gui/src/cache-clear.ts 在座；原状态行留档：「状态：**待用户审阅**」）
 - 需求来源（2026-11-21 用户）：设置页增加清理归档会话的设置项——可设置归档会话保存的天数，到期自动清理，每天定时后台自动清理过期归档会话记录；增加清理缓存按钮，可在搜索框和托盘里快捷清理缓存，并正确识别哪些是缓存。
 - 关联规格：`2026-11-20-scheduled-tasks-design.md`（ScheduleEngine 注入形态先例）、`2026-10-21 归档面`（`handleSessionArchive`/`handleSessionsArchived`）、CLAUDE.md §13 持久化分层、§15 语言规范。
 - **口径声明（AskUserQuestion 未获答复，按推荐缺省执行，实现注记随码）**：①`images-cache`/`tool-outputs` 按「引用型缓存」处理——不进一键清理，仅设置页带警示单独清；②归档保留天数缺省 30 天，0 = 永不清理；③托盘/搜索一键清仅清「安全缓存」档。

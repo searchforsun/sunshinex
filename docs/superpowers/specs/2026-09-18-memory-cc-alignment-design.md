@@ -1,7 +1,7 @@
 # 记忆体系对齐 Claude Code 形态 · 设计规格
 
 - 日期：2026-09-18
-- 状态：待用户评审
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §5 内置工具清单 memory_write 与 §11「动态改动一律尾追」、MANUAL.md settings autoMemory 总开关与 /memory-on|/memory-off，src/harness/memory/writer.ts Saved 回执+modified 刷新与 memory/paths.ts 子代理 agents/<id> 作用域在座；原状态行留档：「- 状态：待用户评审」）
 - 承接：`docs/superpowers/specs/2026-09-18-auto-memory-design.md`（自动记忆底座，已实施收口）。本规格只做「向 CC 形态对齐的五项补齐」与两条项目级新规范落地，不改动已实现的四类提取 / 五重闸门 / 整理管线语义。
 - 关联规范：`CLAUDE.md` §11（前缀缓存第一要义 + 动态改动尾追）、§5（原子工具优先）。
 

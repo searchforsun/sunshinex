@@ -1,7 +1,7 @@
 # 阶段五 5B · TUI 正文 Markdown 渲染与交互增强（对标 Codex / Claude Code）设计
 
 > 日期：2026-09-10
-> 状态：设计待用户评审后转入 writing-plans
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §四界面元素表「正文｜模型答复（Markdown 渲染）」+CLAUDE.md §13 依赖台账 markdown-it/markdansi 行；代码 src/tui/markdown.ts、md-ansi.ts 在座；原状态行留档：「> 状态：设计待用户评审后转入 writing-plans」）
 > 关联：`docs/superpowers/specs/2026-09-10-phase5a-tui-polish-design.md`（5A 精装）、`docs/superpowers/plans/2026-09-10-phase5a-tui-polish.md`、`docs/ROADMAP.md` 阶段五、`TUI-MANUAL.md`
 
 ## 1. 背景与目标

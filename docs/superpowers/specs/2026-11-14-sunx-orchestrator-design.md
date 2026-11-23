@@ -1,6 +1,6 @@
 # Sunx（路由型编排智能体）设计方案
 
-- 日期：2026-11-14　分支：dev1　状态：**已裁定待实施**（2026-11-14 用户裁定 R1–R13 全部按推荐采纳；同日三问增补裁决见 §17——实例身份三元组、fork 缓存语义、总览页形态）
+- 日期：2026-11-14　分支：dev1　> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md §「Sunx 编排会话」整节现行真值、CLAUDE.md §3 sunx 域与 session wake/timer、serve /sunx 路由及 sessionKind 'sunx' 登记，src/session/wake.ts、timer.ts、wake-host.ts 与 src/catalog/sunx.ts 代码在座；原状态行留档：「状态：**已裁定待实施**（2026-11-14 用户裁定 R1–R13 全部按推荐采纳；同日三问增补裁决见 §17——实例身份三元组、fork 缓存语义、总览页形态）」）
 - 需求来源（2026-11-14 用户）：新增 "Sunx" —— 类业界 super agent 架构；Sunx 是**路由 agent**：负责首发用户任务、转派给子 agent、做状态控制与任务管理、**始终异步**处理任务；GUI 新增 **SUNX 分组**管理每一个 Sunx 实例；Sunx **只有分派任务相关工具和能力**（含 HITL 用户介入）。
 - 关联规格：`2026-11-09-bg-task-wake-design.md`（后台任务唤醒，**草案未实施**——本设计的 P0 前置）、`2026-10-04-multi-agent-orchestration-design.md`（TaskBoard/Teammate/Executor 三维正交，已实施为 taskboard/）
 

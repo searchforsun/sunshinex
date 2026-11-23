@@ -1,7 +1,7 @@
 # 全局配置 settings.json 化设计规格
 
 - 日期：2026-09-19
-- 状态：待评审
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §二「配置（settings.json）」两级文件与优先级链+README.md 模型配置节；代码 src/config/settings.ts 在座；原状态行留档：「- 状态：待评审」）
 - 前置裁决（用户已定，本规格只做展开与收口）：①形态=语义键 + env 透传块（混合式，对标 Claude Code）；②优先级=环境变量 > 项目 .env > settings.json > 内置缺省（项目覆盖全局）；③兼容=硬切换（settings.json 为唯一全局配置源，删除全局 .env 读取）；④层级=两级（全局 `~/.sunshinex/settings.json` + 项目级 `.sunshinex/settings.json`）
 
 ## 1. 背景与动机

@@ -1,7 +1,7 @@
 # 会话 Rewind + Fork 设计规格（对标 CC /rewind · Codex 不可变分档）
 
 日期：2026-09-20
-状态：设计定稿（七节呈现经用户批准；两项范围裁决用户拍板）
+状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §5.4 会话回退与分叉现行口径（对话/代码三选恢复、write/edit pre-image 影子快照 sessions/_blobs/、fork 血缘标注）+ src/tui/session.ts /rewind·/fork 分支与 session-snapshots.ts 在座；原状态行留档：「状态：设计定稿（七节呈现经用户批准；两项范围裁决用户拍板）」）
 自审：2026-09-20 修正三处——分支点边界语义（锚点行不进新档、upToLine=锚点行号−1）、代码回退收集面（含当轮写入）、upToLine=1（仅 header 空档）合法化。
 复审：2026-09-20 §6.2 收集面由「血缘上溯」修正为「单文件收集」——逐字节前缀复制下锚点前历史（含血缘祖先事件）已物理内含于当前档，无需上溯；祖先档分支点之后的事件属平行时间线，纳入将造成重复回退（正确性缺陷，非仅简化）。
 前置：docs/superpowers/specs/2026-09-17-session-persistence-resume-design.md（journal 基建）

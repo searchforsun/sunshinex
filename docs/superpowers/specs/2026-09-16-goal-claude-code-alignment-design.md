@@ -1,7 +1,7 @@
 # /goal 对齐 Claude Code 形态（条件自由化 · 三值裁决 · 错误分级）设计规格
 
 - 日期：2026-09-16
-- 状态：方案 B（核心对齐）经会话内裁决批准（范围问卷通道超时按 fork/子代理两计划先例收束），待实施
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 MANUAL.md:375-376 现行真值「满足/未满足/不可满足三值自评、判据服务不可用自动重试 3 次后暂停、重跑 /goal 续走」+ ROADMAP §64 [x]「verdict 三值 met/not-yet/impossible、错误分级重试 ≤3 次」，代码在座——src/loop/nodes.ts verdict 三值与 fatal/recoverable 分级重试、src/loop/engine.ts:192 terminal 通道、src/types.ts:142/157 CriterionResult.verdict 与 NodeOutput.terminal；原状态行留档：「- 状态：方案 B（核心对齐）经会话内裁决批准（范围问卷通道超时按 fork/子代理两计划先例收束），待实施」）
 - 关联：`2026-09-15-tui-goal-loop-entry-design.md`（/goal v1 薄入口与主链纪律）、`2026-09-14-context-fork-design.md`（会话链模型）
 
 ## 1. 背景与目标

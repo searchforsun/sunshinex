@@ -1,7 +1,7 @@
 # 5B GUI v1 设计规格(daemon + Web UI)
 
 - **日期**:2026-10-06
-- **状态**:设计定稿,待评审,未实施
+- **状态**:已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md CLI 命令表 sunshinex serve 行 + MANUAL-GUI.md 全册现行口径 + src/serve/daemon.ts 与 gui/ 工作区包在座；原状态行留档：「- **状态**:设计定稿,待评审,未实施」）
 - **来源**:设计对话(三假设经用户「继续」放行:壳路线 daemon+Web 先行 / 协议 SessionEvent 直通 / 看板并入 v1)
 - **关联**:`docs/ROADMAP.md`(阶段五 5B)、`docs/superpowers/specs/2026-10-04-multi-agent-orchestration-design.md`(§10.4 GUI 投影三边界、§13 P3)、`src/tui/runtime.ts:44-46`(daemon 接缝预留注释)
 - **定位**:ROADMAP 5B「GUI 设计规格(复用 SessionEvents 事件面与 asker 契约,三面同源)」的正式落地件;编排 spec P3 的验收载体

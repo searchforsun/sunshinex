@@ -1,7 +1,7 @@
 # 桌面壳(Electron)设计规格——壳批次 H
 
 - **日期**:2026-10-08
-- **状态**:设计定稿 v1(H1-H4 全量交付收官)
+- **状态**:已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3 shell/ 条目与 §13「GUI 桌面壳 Electron 已引入」+ MANUAL-GUI.md §安装/启动与退出现行口径；shell/src（main/daemon/preload）与 electron-builder.yml 在座；原状态行留档：「- **状态**:设计定稿 v1(H1-H4 全量交付收官)」）
 - **来源**:用户会话既定后置项——「壳批次(后置):Tauri/Electron 选型+打包+托盘/快捷键|独立 spec 立项」(gui-v1 spec §12+ROADMAP 5B);G8 spec U-D7「真原生 webview 归壳批次」
 - **关联**:`2026-10-06-gui-v1-design.md` §12 壳批次行、`2026-10-07-gui-redesign-design.md` U-D7/终局归档
 

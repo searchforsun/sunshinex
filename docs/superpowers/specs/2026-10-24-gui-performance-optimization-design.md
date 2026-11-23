@@ -1,7 +1,7 @@
 # GUI 性能优化三期工程设计
 
 - 日期：2026-10-24
-- 状态：设计已确认（brainstorming 产出），待实施计划
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md FAQ「该次写入事件已被裁剪——在消息条目里直接展开查看」即 §5.2 观察裁剪现行口径；gui/src chat-reducer.ts structureVersion、tabs/registry.tsx「2026-10-26 二期分包」lazy、app-shell-panes.tsx 二期 keep-alive、use-session-events.ts 三期 before/limit 翻页与 serve daemon batch 合帧在座；原状态行留档：「- 状态：设计已确认（brainstorming 产出），待实施计划」）
 - 范围：gui/（React 18 + Vite 渲染面）、src/serve/ + src/tui/session-journal.ts（历史加载传输面）
 
 ## 1. 背景与目标

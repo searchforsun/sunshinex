@@ -1,5 +1,7 @@
 # Codex 桌面端美学交互 1:1 复刻 · 设计 spec
 
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 MANUAL-GUI.md §120 设置·通用外观组「主题 / 暗色气泡」现行真值，代码在座——gui/src/app.css §1 B1 令牌地基（--surface/--accent #339cff/--bubble-user、[data-theme='light'] 整块覆盖、color-scheme）与 app.css:743「G9-B3 会话流(spec §3)：用户右胶囊/日期分隔/流区限宽」（entry-user flex 尾对齐 + .user-bubble，EntryViews.tsx 装配）；原无状态行）
+
 日期:2026-10-08。调研底稿:[2026-10-08-codex-desktop-audit.md](./2026-10-08-codex-desktop-audit.md)(全部数值的唯一来源,本文不重复论证,只定实现)。
 
 用户已裁定:①accent 弃青,采纳 Codex 中性黑白 + `#339cff` 蓝仅 info/焦点/链接(推翻 G8d U-D21 青色);②用户消息改右对齐胶囊(涉 Chat.tsx);③B1 一次到位双主题。

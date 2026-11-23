@@ -1,6 +1,6 @@
 # 阶段五 5A · 交互式 TUI（对标 Claude Code）设计
 
-> **状态：** 待评审（brainstorming 产出；用户已逐节确认四节设计）
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §3/§13「TUI…均已交付」+ MANUAL.md（CLI + TUI 全册现行真值）；src/tui/ ink+React 全量在座；原状态行留档：「> **状态：** 待评审（brainstorming 产出；用户已逐节确认四节设计）」）
 > **上游：** docs/ROADMAP.md 阶段五 5A（TUI 优先交付）；对标 Claude Code 交互范式
 > **范围裁定：** 5A/5B 拆分立项——本 spec 只覆盖 5A TUI 与共享底座契约，5B GUI 另立 spec（其依赖本 spec 定稿的 SessionEvents 与 asker 契约）
 

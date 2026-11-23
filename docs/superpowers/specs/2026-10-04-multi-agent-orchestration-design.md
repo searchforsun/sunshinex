@@ -1,7 +1,7 @@
 # 多 Agent 编排子系统设计规格(TaskBoard / Teammate / Executor 三维正交)
 
 - **日期**:2026-10-04
-- **状态**:设计定稿,待评审,未实施
+- **状态**:已实施交付（2026-11-23 D83 批二状态回写核证：spec §13 P0–P3 落地记录齐备 + MANUAL.md §5.6 智能体团队现行口径；src/taskboard/（TaskBoard/Teammate/Executor）与 src/delegation/projection.ts 在座；原状态行留档：「- **状态**:设计定稿,待评审,未实施」）
 - **来源**:六轮架构讨论收敛(现状分析 → 落地设计与取舍 → 正交性修正 → 持久化与恢复 → 外部执行体 → 上下文缓存)
 - **关联**:`docs/ROADMAP.md`(阶段五 5A/5B)、`docs/Tech Architecture/01~04`、`docs/superpowers/specs/` 同级设计规格
 - **对照系**:Claude Code Agent Teams(官方文档 + 第三方逆向:共享任务列表 + 文件 mailbox + 扁平 teammate)

@@ -1,5 +1,7 @@
 # GUI 会话流渲染升级(Codex 对标二轮) · 设计 spec
 
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md 界面表现行口径（Worked 行展开、正文 markdown 即读即显、工具/思考行自动折叠）+ gui/src/pages/chat/ 的 RunEntryView·RunFooter·md-render.tsx 在座；原无状态行）
+
 日期:2026-10-10。前作:[2026-10-08-codex-desktop-1to1-design.md](./2026-10-08-codex-desktop-1to1-design.md)(令牌/形状/动效 token 全部沿用,本文不重复定义)。
 
 用户已裁定:

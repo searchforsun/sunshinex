@@ -1,5 +1,7 @@
 # 正文流式渲染 markdansi 替换（正文路径先行 + 子代理转录统一）设计
 
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §5 依赖台账与 §13 选型表「markdansi 已引入，收敛 tui/md-ansi.ts 单点出口」＋src/tui/md-ansi.ts 在座、reply-flusher.ts 已按本设计退役；原状态行留档：「原无状态行」）
+
 日期：2026-09-30 · 状态：已裁决（范围=正文先行、预览=纯行级打字机+表格缓冲期表头原文、**子代理转录渲染同批统一**） · 前置：markdansi 0.3.4 已入依赖（4f2a69a）
 
 ## 一、背景与选型（并入原 docs/spike-markdansi.md spike 报告）

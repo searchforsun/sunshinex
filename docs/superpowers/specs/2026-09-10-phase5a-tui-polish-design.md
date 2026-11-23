@@ -1,7 +1,7 @@
 # 阶段五 5A+ · TUI 产品化精装（对标 Claude Code）设计
 
 > 日期：2026-09-10
-> 状态：设计已获用户确认（含一次视觉修订：去掉角色标签、助手裸文本、用户消息整行底色）；本 spec 待用户评审后转入 writing-plans
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §四基本用法现行口径（流式正文、✻ Thought for Ns 思考折叠、工具两行、状态栏 tokens/cache 命中）+ src/tui/components/ 的 Banner·StatusBar·Spinner·InputBox·MessageList·ToolRow 在座；原状态行留档：「> 状态：设计已获用户确认（含一次视觉修订：去掉角色标签、助手裸文本、用户消息整行底色）；本 spec 待用户评审后转入 writing-plans」）
 > 关联：docs/superpowers/specs/2026-09-10-phase5a-tui-design.md（5A 基础版）、docs/ROADMAP.md 阶段五、TUI-MANUAL.md
 
 ## 1. 背景与目标

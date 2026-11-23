@@ -2,6 +2,7 @@
 
 > 目标：①TUI 全部选择题交互统一为「上下选择 + 空格选定」的 OptionSelector 组件（对标 Claude Code）；②新增 harness 工具 `ask_question`（display: AskQuestion），让模型主动向用户出选择题，支持单选 / 多选（空格勾选）/ 自定义输入。
 > 前缀缓存登记：工具清单 +1 = 一次全量前缀断点（§5 纪律内，本次新增经用户裁决）。
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL.md §五「AskQuestion 问询卡」（单选/多选/Other…/Esc）与 CLAUDE.md §5 内置工具清单 ask_question，src/tui/components/OptionSelector.tsx 与 src/harness/tools/builtin.ts ask_question 工厂在座；原状态行留档：「原无状态行」）
 
 ## 1. 背景与问题
 

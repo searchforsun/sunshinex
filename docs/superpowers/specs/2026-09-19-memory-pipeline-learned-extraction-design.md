@@ -3,6 +3,7 @@
 > 背景：用户三问（auto memory 与 learned skills 的提示词是什么 / 是否对标明星产品 / 调度时机是否需要空闲与周期触发）+ 两轮裁决（①调度方案 A=队列+空闲消化+空闲兜底节拍，钉死「后台提取不得阻塞用户」；②learned 用语义提示词提取而非 goal 写死，钉死「对标 Hermes」；③补 CC 记忆提取时机对标调研）。
 > 2026-09-19 第三轮修订：用户裁决「运行中由大模型自动触发为主，后台任务兜底和优化；原子工具规范改『只保留原始工具的规范』，核心 harness 能力可定义专属工具、效果优先」——in-band 自主写入由「登记方向」收编为主通道（`memory_write` 工具 §3.7），后台队列降级为兜底与优化面（D5）。
 > 对标实证：Hermes 官方文档 Skills System / Curator / Heartbeat 页 + GitHub 仓库；Claude Code 官方文档 Memory 页（2026-09-19）。
+> 状态：已实施交付（2026-11-23 D83 批二状态回写核证：活文档 MANUAL.md:158-159「memoryIdleKickMs 后台沉淀空闲兜底节拍 / stepDigestMaxSteps 后台提取材料预算」、CLAUDE.md §132 内置工具清单含 memory_write、ROADMAP §50/§93 [x] 记忆双轨与「语义化提炼 lessons-not-logs」，代码在座——src/harness/memory/pipeline.ts（队列/kick/drain）、src/harness/skills/learned-extract.ts（语义提炼）、src/harness/memory/guards.ts（闸门单点）、tools/builtin.ts 注册 memory_write；注记：§3.8 curator-lite 未随批落地（src/ 无 curation 面），learned 库空闲整理未实现；原无状态行）
 
 ## 1. 调研对标结论
 

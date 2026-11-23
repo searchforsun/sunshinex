@@ -1,7 +1,7 @@
 # 智能体团队简化设计规格（Team / 五态任务机 / 停等重试 / 消息 / GUI）
 
 - **日期**: 2026-10-31
-- **状态**: 设计定稿，待用户审阅后进入 implementation plan
+- **状态**: 已实施交付（2026-11-23 D83 批二状态回写核证：MANUAL-GUI.md 右栏「智能体团队」一队一卡/五态点色/划线/hover 停现行口径 + MANUAL.md §5.6 retryOf 重试链与五态符号；src/taskboard/model.ts 五态 LEGAL/teamId/retryOf 在座；原状态行留档：「- **状态**: 设计定稿，待用户审阅后进入 implementation plan」）
 - **来源**: 任务板 GUI 与团队语义重构讨论（状态徽标 → 停钮 → 团队实体 → 流程简化）
 - **路径裁定**: 方案 1——在现有 TaskBoard 上增加 Team 聚合层；**禁止兼容**（旧状态名、gate/审批、用户气泡队头、双读映射一律删除）
 - **关联**: `docs/superpowers/specs/2026-10-04-multi-agent-orchestration-design.md`（本规格对其状态机、gate、卡头聚合做破坏性收敛）

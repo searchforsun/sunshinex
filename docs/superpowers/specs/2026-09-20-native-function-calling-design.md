@@ -1,7 +1,7 @@
 # 原生 function calling 迁移设计（工具调用协议硬切换）
 
 - 日期：2026-09-20
-- 状态：设计要点经用户三裁决批准（硬切换 / 工具清单迁移 / 独立调用全迁），本规格为批准口径的完整化；实施未开始
+- 状态：已实施交付（2026-11-23 D83 批二状态回写核证：CLAUDE.md §6「工具参数声明化（function calling strict 口径）」；src/model/adapter.ts tool_calls 流式聚合在座且 §9 删除清单已执行（action-schema.ts/stream-extractor.ts 不存在、structuredOutput 退役 RETIRED_KEYS）；原状态行留档：「- 状态：设计要点经用户三裁决批准（硬切换 / 工具清单迁移 / 独立调用全迁），本规格为批准口径的完整化；实施未开始」）
 - 探针证据：`/workspace/probe-so.js`（json_schema strict 可行性）、`/workspace/probe-fc.js`（function calling 能力矩阵）；端点 open.bigmodel.cn · glm-5.3-flash，2026-09-20 实测
 
 ## 1. 背景与动因
