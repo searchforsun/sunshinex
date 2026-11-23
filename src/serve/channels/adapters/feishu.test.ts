@@ -3,7 +3,7 @@
  *  SDK 外连面(WS/HTTP)不进单测——适配器经 engine dry-run 链路覆盖。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuCardContent, feishuCardMentionPrefix } from './feishu';
+import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent } from './feishu';
 
 const p2pText = {
   sender: { sender_id: { open_id: 'ou_1', user_id: 'uid_1' }, sender_type: 'user' },
@@ -82,12 +82,11 @@ test('群聊 @ 前缀:`<at user_id>` 标签(服务端渲人名);无 mention/空 
   assert.equal(feishuMentionPrefix({ userId: '' }), '');
 });
 
-test('markdown 卡片(2026-11-23 用户裁定「正文中支持渲染 md」):card JSON 2.0(schema+body.elements,表格等标准语法)+卡内 <at id> 语法', () => {
+test('markdown post 消息(2026-11-23 用户裁定「不是卡片,普通文本中显示 md 格式化,可复制」):post 单 md 标签 JSON+at 提及同 text 面语法', () => {
   assert.equal(
-    feishuCardContent('# 标题\n- 列表'),
-    '{"schema":"2.0","body":{"elements":[{"tag":"markdown","content":"# 标题\\n- 列表"}]}}',
+    feishuPostContent('# 标题\n- 列表'),
+    '{"zh_cn":{"content":[[{"tag":"md","text":"# 标题\\n- 列表"}]]}}',
   );
-  assert.equal(feishuCardMentionPrefix({ userId: 'ou_abc' }), '<at id="ou_abc"></at> ');
-  assert.equal(feishuCardMentionPrefix(undefined), '');
-  assert.equal(feishuCardMentionPrefix({ userId: '' }), '');
+  // md 标签内 at 提及=<at user_id>(CommonMark+GFM 子集的飞书扩展,与 text 面同语法)
+  assert.equal(feishuMentionPrefix({ userId: 'ou_abc' }), '<at user_id="ou_abc"></at> ');
 });

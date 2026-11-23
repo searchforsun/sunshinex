@@ -275,28 +275,40 @@ test('⑧ deliver/streamDeliver 抛错吞错 + log,不击穿帧处理', async ()
 });
 
 /** 合成 ask 挂起帧(AskFrame,daemon-wire.ts:31——pid 帧顶层,req=AskUserRequest 原件) */
-const askFrame = (sessionId: string, pid: string, question: string, options: string[]): DaemonFrame => ({
+const askFrame = (sessionId: string, pid: string, question: string, options: string[], multiple?: boolean): DaemonFrame => ({
   kind: 'ask',
   sessionId,
   pid,
-  req: { question, options: options.map((label) => ({ label })) },
+  req: { question, options: options.map((label) => ({ label })), ...(multiple === true ? { multiple: true } : {}) },
 });
 
-test('⑥d ask 挂起帧投影(F1,spec §5.2 三型裁定 ask 先行):[提问] 文案含 question+选项序号;pendingReply 序号/选项原文/自由文本/y/n 全受理落 resolveAsk', async () => {
+test('⑥d ask 挂起帧投影(F1,spec §5.2 三型裁定 ask 先行):无标识多行文案(问题/逐行选项/指引);pendingReply 序号/逗号多选/选项原文/自由文本/y/n 全受理落 resolveAsk', async () => {
   const h = makeHarness();
   h.push(askFrame('s1', 'pA', '用哪个方案?', ['A 方案', 'B 方案']));
   await drain();
   assert.equal(h.delivered.length, 1);
-  assert.ok(h.delivered[0]!.msg.text.includes('[提问]'));
-  assert.ok(h.delivered[0]!.msg.text.includes('用哪个方案?'));
+  // 无 [提问] 标识(2026-11-23 用户裁定「去掉[提问]标识」)+多行格式(「问题一行,每个选项一行」)
+  assert.ok(h.delivered[0]!.msg.text.startsWith('用哪个方案?'));
   assert.ok(h.delivered[0]!.msg.text.includes('1. A 方案'));
-  // 多行格式(2026-11-23 用户裁定「问题一行,每个选项一行」):问题行后选项逐行换行
+  assert.ok(!h.delivered[0]!.msg.text.includes('[提问]'));
   assert.ok(h.delivered[0]!.msg.text.includes('用哪个方案?\n1. A 方案\n2. B 方案\n回复序号或内容'));
   assert.ok(h.delivered[0]!.msg.text.includes('序号')); // 「回复序号或内容」指引
   // ① 选项序号回执(1 起,trim 容忍)
   assert.equal(h.p.pendingReply('s1', ' 2 '), true);
   assert.deepEqual(h.askResolved, [{ pid: 'pA', answer: { type: 'selected', labels: ['B 方案'] } }]);
   assert.equal(h.resolved.length, 0); // ask 挂起不误落审批回执
+
+  // ①b 逗号多选(2026-11-23 用户裁定「多选的识别方式是逗号,如 1,2」+multiple 帧尾样例提示)
+  const hM = makeHarness();
+  hM.push(askFrame('s1', 'pM', '哪些要做?', ['甲', '乙', '丙'], true));
+  await drain();
+  assert.ok(hM.delivered[0]!.msg.text.includes('回复序号（多选如 1,2）或内容'), 'multiple 帧=多选样例尾行');
+  assert.equal(hM.p.pendingReply('s1', ' 1,3 '), true);
+  assert.deepEqual(hM.askResolved, [{ pid: 'pM', answer: { type: 'selected', labels: ['甲', '丙'] } }]);
+  // 全半角逗号混排+去重;越界项剔除;仅剩一项也走 selected
+  hM.push(askFrame('s1', 'pM2', '再来?', ['X', 'Y'], true));
+  assert.equal(hM.p.pendingReply('s1', '1，1，9'), true);
+  assert.deepEqual(hM.askResolved[1], { pid: 'pM2', answer: { type: 'selected', labels: ['X'] } });
 
   // ② 选项原文回执(trim + 大小写不敏感,selected 带原件 label)
   const h2 = makeHarness();

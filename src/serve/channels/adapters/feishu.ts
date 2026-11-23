@@ -13,8 +13,10 @@
  * - 定向 @(2026-11-22 用户裁定「群聊才 @ 人」):caps.mention=true——群聊出站 @ 标签由飞书服务端
  *   渲染真实姓名(单聊零 @,回执式回复天然指向本人;text 面 `<at user_id>`/卡片面 `<at id>`
  *   两套语法各随其面);发送者姓名富化走通讯录 API+缓存(权限未开静默降级 open_id)。
- * - markdown(2026-11-23 用户裁定「md 文档格式化显示」):caps.markdown/card=true——投影正文
- *   (带 markdown 标)走 interactive 卡单 markdown 元素渲染;注记/回执类短文案仍纯文本。
+ * - markdown(2026-11-23 用户裁定「不是卡片,是普通文本中显示 md 格式化——可复制」):
+ *   caps.markdown=true/card=false——投影正文走 post 富文本单 `md` 标签:标准消息气泡保留
+ *   完整右键菜单(复制/回复/转发),语法=CommonMark 0.31+GFM(标题/GFM 表格(前后空行分隔)/
+ *   围栏代码块/任务列表/引用);at 提及=<at user_id>(与 text 面同语法,md 标签内直用)。
  * - 凭证:App ID 走 cfg.ident.appId,App Secret 走 deps.secret（cfg.secret 内联,2026-11-22 裁定）。
  * SDK 靠 start() 内动态 import——加载延迟到首个飞书通道启用;连接保活/断线重连由 SDK 内部负责
  * （Reconnect/pingLoop）,stop() = ws.close() 主动退场。
@@ -46,19 +48,12 @@ export function feishuMentionPrefix(mention: { userId: string; display?: string 
   return `<at user_id="${mention.userId}"></at> `;
 }
 
-/** 纯函数（单测锚点）：markdown 卡片内容 JSON——**card JSON 2.0**（schema:"2.0"+body.elements,
- *  2026-11-23 用户裁定「正文中支持渲染 md」:1.0 卡的 markdown 组件不支持表格等标准语法,
- *  2.0 富文本组件支持除 HTMLBlock 外全部标准 Markdown——表格(每组件至多 4 张,数据行 5 行
- *  超出翻页)/标题/列表/代码块/引用等原文渲染;卡内 at 语法=<at id>） */
-export function feishuCardContent(text: string): string {
-  return JSON.stringify({ schema: '2.0', body: { elements: [{ tag: 'markdown', content: text }] } });
-}
-
-/** 纯函数（单测锚点）：卡片内定向 @ 前缀——卡 markdown 元素的 at 语法是 `<at id>`（官方
- *  卡片文档口径,与 text 面 `<at user_id>` 不同源）；无 mention → 空串 */
-export function feishuCardMentionPrefix(mention: { userId: string; display?: string } | undefined): string {
-  if (mention === undefined || mention.userId === '') return '';
-  return `<at id="${mention.userId}"></at> `;
+/** 纯函数（单测锚点）：markdown 消息内容 JSON——**post 富文本单 `md` 标签**（2026-11-23
+ *  用户裁定「不是卡片,是普通文本中显示 md 格式化——可复制」:md 标签在标准消息气泡内渲染,
+ *  保留完整消息右键菜单(复制/回复/转发);语法=CommonMark 0.31+GFM——标题/GFM 表格(前后
+ *  空行分隔)/围栏代码块/任务列表/引用/`<at user_id>` 提及;md 标签独占段落,整段正文入单标签） */
+export function feishuPostContent(text: string): string {
+  return JSON.stringify({ zh_cn: { content: [[{ tag: 'md', text }]] } });
 }
 
 /** im.message.receive_v1 事件最小形状(只取消费字段;SDK 全量类型不进本文件) */
@@ -173,9 +168,9 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   caps(): DeliveryCaps {
-    // markdown/card=true(2026-11-23 用户裁定「md 文档格式化显示」):投影正文走 interactive 卡
-    // 单 markdown 元素,飞书侧渲染格式;注记/回执类短文案仍纯文本
-    return { streaming: false, markdown: true, card: true, maxTextLength: CHANNEL_MAX_TEXT_LENGTH, mention: true };
+    // markdown=true(2026-11-23 用户裁定「普通文本中显示 md 格式化,可复制」):投影正文走
+    // post 富文本单 md 标签——标准消息气泡(保留复制菜单)+CommonMark/GFM 渲染;card=false
+    return { streaming: false, markdown: true, card: false, maxTextLength: CHANNEL_MAX_TEXT_LENGTH, mention: true };
   }
 
   async start(sink: (msg: InboundMessage) => void): Promise<void> {
@@ -259,10 +254,10 @@ export class FeishuAdapter implements ChannelAdapter {
 
   private async deliverText(target: ChatRef, text: string, replyMessageId?: string, markdown?: boolean): Promise<void> {
     if (this.client === undefined) throw new Error('feishu adapter not started');
-    // markdown 档=interactive 卡单 markdown 元素(2026-11-23 用户裁定「md 文档格式化显示」);
-    // 纯文本档照旧 text 面
-    const content = markdown === true ? feishuCardContent(text) : JSON.stringify({ text });
-    const msgType = markdown === true ? 'interactive' : 'text';
+    // markdown 档=post 富文本单 md 标签(2026-11-23 用户裁定「普通文本中显示 md 格式化,
+    // 可复制」——标准消息气泡+CommonMark/GFM 渲染);纯文本档照旧 text 面
+    const content = markdown === true ? feishuPostContent(text) : JSON.stringify({ text });
+    const msgType = markdown === true ? 'post' : 'text';
     if (replyMessageId !== undefined && replyMessageId !== '') {
       await this.client.im.message.reply({ path: { message_id: replyMessageId }, data: { msg_type: msgType, content } });
       return;
@@ -274,9 +269,7 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   async send(target: ChatRef, msg: OutboundMessage): Promise<void> {
-    const md = msg.markdown === true;
-    const prefix = md ? feishuCardMentionPrefix(msg.mention) : feishuMentionPrefix(msg.mention);
-    await this.deliverText(target, prefix + (msg.text ?? ''), undefined, md);
+    await this.deliverText(target, feishuMentionPrefix(msg.mention) + (msg.text ?? ''), undefined, msg.markdown === true);
   }
 
   /** 回执式回复:引用入站 message_id(飞书群聊内呈现为楼中楼);raw 缺 id 退化为 send。
@@ -284,9 +277,7 @@ export class FeishuAdapter implements ChannelAdapter {
   async reply(inbound: InboundMessage, msg: OutboundMessage): Promise<void> {
     const raw = inbound.raw as { message?: { message_id?: string } } | undefined;
     const messageId = raw?.message?.message_id;
-    const md = msg.markdown === true;
-    const prefix = md ? feishuCardMentionPrefix(msg.mention) : feishuMentionPrefix(msg.mention);
-    await this.deliverText({ channelId: inbound.channel, chatId: inbound.chatId }, prefix + (msg.text ?? ''), messageId, md);
+    await this.deliverText({ channelId: inbound.channel, chatId: inbound.chatId }, feishuMentionPrefix(msg.mention) + (msg.text ?? ''), messageId, msg.markdown === true);
     if (messageId !== undefined && messageId !== '') void this.unmarkProcessing(messageId);
   }
 

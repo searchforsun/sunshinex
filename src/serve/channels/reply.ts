@@ -162,8 +162,10 @@ export class ReplyProjector {
   }
 
   /** ask 回答铸形(AskUserAnswer 三态,G4):y/yes → 首选项(第 1 项 selected;无选项回落 custom
-   *  原文);n/no → dismissed;整数序号(1 起,越界不命中)→ 该项 selected;选项原文(trim+大小写
-   *  不敏感)→ selected(带 req 原件 label);其余自由文本 → custom 原文(trim) */
+   *  原文);n/no → dismissed;整数序号(1 起,越界不命中)→ 该项 selected;**逗号分隔序号 →
+   *  多选**(2026-11-23 用户裁定「多选的识别方式是逗号,如 1,2」——在范围内的序号逐项入选,
+   *  labels 数组原生承载;全部越界 → 落自由文本);选项原文(trim+大小写不敏感)→ selected;
+   *  其余自由文本 → custom 原文(trim) */
   private askAnswerOf(req: AskUserRequest, raw: string, norm: string): AskUserAnswer {
     const trimmed = raw.trim();
     if (YES.has(norm)) {
@@ -174,6 +176,16 @@ export class ReplyProjector {
     const idx = /^\d+$/.test(norm) ? Number.parseInt(norm, 10) : NaN;
     const byIndex = Number.isInteger(idx) && idx >= 1 && idx <= req.options.length ? req.options[idx - 1] : undefined;
     if (byIndex !== undefined) return { type: 'selected', labels: [byIndex.label] };
+    // 逗号分隔序号 → 多选（全半角逗号+空白容忍;范围内逐项入选,保出现序去重;全越界回落自由文本）
+    if (/^\d{1,4}(?:\s*[，,]\s*\d{1,4})*$/.test(norm)) {
+      const picked: string[] = [];
+      for (const part of norm.split(/[，,]/)) {
+        const n = Number.parseInt(part.trim(), 10);
+        const opt = Number.isInteger(n) && n >= 1 && n <= req.options.length ? req.options[n - 1] : undefined;
+        if (opt !== undefined && !picked.includes(opt.label)) picked.push(opt.label);
+      }
+      if (picked.length > 0) return { type: 'selected', labels: picked };
+    }
     const byLabel = req.options.find((o) => o.label.trim().toLowerCase() === norm);
     if (byLabel !== undefined) return { type: 'selected', labels: [byLabel.label] };
     return { type: 'custom', text: trimmed };
@@ -288,19 +300,26 @@ export class ReplyProjector {
   }
 
   /** 降级链 §5.2 三型之一(F1,ask 先行——plan-approval 随 P3 流式打磨,spec §5.2/§11):
-   *  **多行格式**(2026-11-23 用户裁定「ask_question 要问题一行,每个选项一行,格式化展示」):
-   *  `[提问] <question>\n1. x\n2. y\n回复序号或内容`(无选项 → 尾行「回复内容」)+ 记挂起
-   *  (同审批:pid 去重卫语句,异 pid 最新覆盖)。回执消费见 pendingReply ask 分支(自由文本
-   *  恒受理,序号/原文/custom 铸形)。 */
+   *  **多行无标识格式**(2026-11-23 用户裁定「去掉[提问]标识」+「问题一行,每个选项一行」+
+   *  「多选识别方式是逗号,提示 回复序号(多选如1,2)或内容」):`<question>\n1. x\n2. y\n
+   *  回复序号(多选如 1,2)或内容`(req.multiple 才带多选样例;无选项 → 尾行「回复内容」)
+   *  + 记挂起(同审批:pid 去重卫语句,异 pid 最新覆盖)。回执消费见 pendingReply ask 分支
+   *  (自由文本恒受理,序号/逗号多选/原文/custom 铸形)。 */
   private onAskRequest(sessionId: string, pid: string, req: AskUserRequest): void {
     const target = this.deps.boundSessions().get(sessionId);
     if (target === undefined) return;
     const existed = this.pending.get(sessionId);
     if (existed !== undefined && existed.pid === pid) return;
     this.pending.set(sessionId, { kind: 'ask', pid, target, req });
-    const lines: string[] = [`[提问] ${req.question}`];
+    const lines: string[] = [req.question];
     for (let i = 0; i < req.options.length; i++) lines.push(`${i + 1}. ${req.options[i]!.label}`);
-    lines.push(req.options.length > 0 ? '回复序号或内容' : '回复内容');
+    lines.push(
+      req.options.length === 0
+        ? '回复内容'
+        : req.multiple === true
+          ? '回复序号（多选如 1,2）或内容'
+          : '回复序号或内容',
+    );
     void this.safeDeliver(target, { text: lines.join('\n') });
   }
 
