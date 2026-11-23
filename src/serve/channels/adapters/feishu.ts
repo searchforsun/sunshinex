@@ -46,11 +46,12 @@ export function feishuMentionPrefix(mention: { userId: string; display?: string 
   return `<at user_id="${mention.userId}"></at> `;
 }
 
-/** 纯函数（单测锚点）：markdown 卡片内容 JSON——interactive 卡单 markdown 元素（msg_type=
- *  interactive,2026-11-23 用户裁定「md 文档格式化显示」:caps.markdown=true 走卡片面,
- *  markdown 原文交飞书卡片渲染);卡内 at 语法=<at id>(与 text 面 user_id 语法不同) */
+/** 纯函数（单测锚点）：markdown 卡片内容 JSON——**card JSON 2.0**（schema:"2.0"+body.elements,
+ *  2026-11-23 用户裁定「正文中支持渲染 md」:1.0 卡的 markdown 组件不支持表格等标准语法,
+ *  2.0 富文本组件支持除 HTMLBlock 外全部标准 Markdown——表格(每组件至多 4 张,数据行 5 行
+ *  超出翻页)/标题/列表/代码块/引用等原文渲染;卡内 at 语法=<at id>） */
 export function feishuCardContent(text: string): string {
-  return JSON.stringify({ elements: [{ tag: 'markdown', content: text }] });
+  return JSON.stringify({ schema: '2.0', body: { elements: [{ tag: 'markdown', content: text }] } });
 }
 
 /** 纯函数（单测锚点）：卡片内定向 @ 前缀——卡 markdown 元素的 at 语法是 `<at id>`（官方

@@ -82,8 +82,11 @@ test('群聊 @ 前缀:`<at user_id>` 标签(服务端渲人名);无 mention/空 
   assert.equal(feishuMentionPrefix({ userId: '' }), '');
 });
 
-test('markdown 卡片(2026-11-23 用户裁定「md 文档格式化显示」):单 markdown 元素 JSON+卡内 <at id> 语法', () => {
-  assert.equal(feishuCardContent('# 标题\n- 列表'), '{"elements":[{"tag":"markdown","content":"# 标题\\n- 列表"}]}');
+test('markdown 卡片(2026-11-23 用户裁定「正文中支持渲染 md」):card JSON 2.0(schema+body.elements,表格等标准语法)+卡内 <at id> 语法', () => {
+  assert.equal(
+    feishuCardContent('# 标题\n- 列表'),
+    '{"schema":"2.0","body":{"elements":[{"tag":"markdown","content":"# 标题\\n- 列表"}]}}',
+  );
   assert.equal(feishuCardMentionPrefix({ userId: 'ou_abc' }), '<at id="ou_abc"></at> ');
   assert.equal(feishuCardMentionPrefix(undefined), '');
   assert.equal(feishuCardMentionPrefix({ userId: '' }), '');
