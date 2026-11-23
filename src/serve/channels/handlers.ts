@@ -20,7 +20,7 @@ import { listSessions } from '../../tui/session-journal';
 import { channelsContainerDir } from '../../config/data-dir';
 import { hasJsonComments, loadGlobalSettings } from '../../config/settings';
 import { writeJsonAtomic } from '../../catalog/io';
-import { liveSessionByJournal } from '../sessions-list-handlers';
+import { liveSessionByJournal, awaitingByJournal } from '../sessions-list-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
 import { parseChannelsKey } from './model';
@@ -163,18 +163,6 @@ export function handleChannelsBindingDelete(io: ChannelsHandlerIo, res: http.Ser
     }
   }
   io.send(res, 200, { ok: true });
-}
-
-/** 会话待确认标注（挂起表非空=需要用户确认；sessions-list-handlers.awaitingByJournal 同构副本——
- *  源文件未导出且不在本任务可改清单，副本随源裁定注释对齐；liveSessionByJournal 已导出，直引同源） */
-function awaitingByJournal(sessions: Map<string, SessionRuntime>): Set<string> {
-  const m = new Set<string>();
-  for (const s of sessions.values()) {
-    if (s.pendingSnapshot().length === 0) continue;
-    const jid = s.attachedJournalId;
-    if (jid !== undefined) m.add(jid);
-  }
-  return m;
 }
 
 /** GET /channels/sessions（spec §2 运维面；Task 13 侧栏「通道」数据源）：扫 channels 容器各域

@@ -34,8 +34,8 @@ import { AppShellPanes, type AppShellPanesProps } from './app-shell-panes';
 export { emptyTabCardIds } from './app-shell-panes';
 import { useAppRewind } from './use-app-rewind';
 import { useHeavyTabLru } from './use-heavy-tab-lru';
-import { prefetchEditorIcons, fmtBytes } from './ui-util';
-import { t } from './i18n';
+import { prefetchEditorIcons } from './ui-util';
+import { cacheClearResultText, clearCacheAll } from './cache-clear';
 import { useCollapseTransition } from './use-collapse-transition';
 import { clearAutoSeenSuppressed } from './sidebar/project-menu-util';
 
@@ -478,21 +478,14 @@ function AppShell(): JSX.Element {
       .catch(showOpError);
   });
 
-  /** 缓存清理(2026-11-21):daemon safe 档+壳浏览器 HTTP 缓存并行;toast 回显释放量——
-   *  搜索框 Actions 与托盘 clear-cache 同走此稳定回调,不另造旁路语义 */
+  /** 缓存清理(2026-11-21):daemon safe 档+壳浏览器 HTTP 缓存并行(cache-clear 共享单点,
+   *  StoragePane 存储页同源);toast 回显释放量——搜索框 Actions 与托盘 clear-cache 同走此稳定
+   *  回调,不另造旁路语义 */
   const clearCacheNow = useStableCallback((): void => {
     const conn = connRef.current;
     if (conn === null) return;
-    const http = window.sunshinexWindow?.clearHttpCache?.().catch(() => undefined);
-    void conn
-      .clearCache()
-      .then(async (r) => {
-        await http;
-        const freed = r.cleared.reduce((a, c) => a + c.freed, 0);
-        if (r.failed.length > 0) showOpMessage(t(`${r.failed.length} cache item(s) failed to clear`, `${r.failed.length} 项缓存清理失败`));
-        else if (freed > 0) showOpMessage(t(`Cache cleared — freed ${fmtBytes(freed)}`, `已清理缓存，释放 ${fmtBytes(freed)}`));
-        else showOpMessage(t('Cache is already clean', '缓存本来就很干净'));
-      })
+    clearCacheAll(conn)
+      .then((r) => showOpMessage(cacheClearResultText(r)))
       .catch(showOpError);
   });
 

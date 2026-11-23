@@ -86,7 +86,7 @@ export interface ConfigHandlerIo {
  *  {merged, project, global}（两级文件分立拆解 + 拼接去重合并——与 loadPermissions 同口径的
  *  视图态）；providers = catalog listProviders 单点（Task 16 增量消费：choices 生效面 + entries
  *  源级分组显式值面（含 tier/apiKeyEnv，T9 语义标注见实现处注释）+ apiKeyPresent 布尔
- *  （resolveProviderApiKey 判存，不显值——密钥永不回传））。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知
+ *  （条目 apiKey 判存，值随 entries 回显——2026-11-22 内联裁定））。G8d T5 增 warnings：两级 settings.json 的 flatten 告警（未知
  *  键，项目先行拼全局）。daemon 不调装载链（CLI 入口先跑、daemon 继承其 env），本端点纯读
  *  process.env + 文件面，零副作用 */
 export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -117,8 +117,8 @@ export function handleSettingsGet(io: ConfigHandlerIo, req: http.IncomingMessage
   const view = listProviders(root ?? null);
   const apiKeyPresent: Record<string, boolean> = {};
   for (const entry of view.providers) {
-    // 密钥在场（2026-11-22 内联裁定）：条目 apiKey 优先,env 槽链(resolveProviderApiKey)回退兼容
-    apiKeyPresent[entry.name] = (entry.apiKey ?? '') !== '' || resolveProviderApiKey(entry.name) !== undefined;
+    // 密钥在场（2026-11-22 内联裁定）：条目 apiKey 单判据——无 env 槽回退（无兼容回退裁定）
+    apiKeyPresent[entry.name] = (entry.apiKey ?? '') !== '';
   }
   // G8d T5 warnings：两级 settings.json 的 flatten 告警（未知键）项目先行拼全局——GET /settings
   // 透出（RawPane 顶部告警列表消费）；降级语义沿 fileSlots（缺文件/畸形按空）

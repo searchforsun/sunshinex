@@ -144,6 +144,18 @@ const UnitView = memo(function UnitView({ unit, render, unitRef }: {
   );
 });
 
+/** 通道会话空态(2026-11-22 用户裁定「改回欢迎页样式,图标随应用」):平台大图标占 logo 位,
+ *  标语=新会话;首条消息后生成会话名,侧栏标题随之归位 */
+function ChannelEmpty({ platform }: { platform?: string }): JSX.Element {
+  const ChannelIcon = platformMeta(platform).Icon;
+  return (
+    <div className="chat-empty chat-empty-welcome chat-empty-channel" aria-label="chat empty">
+      <ChannelIcon size={72} strokeWidth={1.25} className="chat-empty-mark" />
+      <h1 className="welcome-tagline">{t('New session', '新会话')}</h1>
+    </div>
+  );
+}
+
 /** 会话流列表(2026-11-18 结构:虚拟窗口)——窗口内条目经 dayUnitSpans 切成「块」,只挂视口
  *  ±overscan 的块,上下 spacer 占位;块高实测表 + 前缀和,阅读位按块坐标锚定。jsdom(无布局)
  *  旁路为整窗逐块直渲(回退 DOM=旧 DayGroupBlock 拼接结果,测试面语义不变)。 */
@@ -1058,30 +1070,23 @@ export function MessageList(props: MessageListProps): JSX.Element {
             通道会话=平台大图标+「新会话」(2026-11-22 用户裁定「改回欢迎页样式,图标随应用」——
             72px 平台图标占 logo 位,标语=新会话;首条消息后生成会话名,侧栏标题随之归位);
             原居中「给 Sunshinex 一个任务」旧空态(误读为加载态)退役;辅助对话面保留极简标示） */}
+        {/* 空会话三态互斥排布(通道分支抽 ChannelEmpty 单件,免 IIFE):标准=欢迎 hero、
+            Sunx=名片标、通道=平台大图标、辅助对话=极简标示(见下注) */}
         {entries.length === 0 && sideChat !== true && channelChat === true ? (
-          (() => {
-            const ChannelIcon = platformMeta(channelPlatform).Icon;
-            return (
-              <div className="chat-empty chat-empty-welcome chat-empty-channel" aria-label="chat empty">
-                <ChannelIcon size={72} strokeWidth={1.25} className="chat-empty-mark" />
-                <h1 className="welcome-tagline">{t('New session', '新会话')}</h1>
-              </div>
-            );
-          })()
-        ) : entries.length === 0 && sideChat !== true && (
+          <ChannelEmpty platform={channelPlatform} />
+        ) : entries.length === 0 && sideChat !== true ? (
           <div className={`chat-empty chat-empty-welcome${sunxName !== undefined ? ' chat-empty-sunx' : ''}`} aria-label="chat empty">
             {sunxName !== undefined ? <SunxMark size={72} className="chat-empty-mark" /> : <WelcomeLogo />}
             <h1 className="welcome-tagline">
               {sunxName !== undefined ? t(`Give ${sunxName} a goal`, `给 ${sunxName} 一个目标`) : t('What should we do today?', '今天要做些什么？')}
             </h1>
           </div>
-        )}
-        {entries.length === 0 && sideChat === true && (
+        ) : entries.length === 0 && sideChat === true ? (
           <div className="chat-empty" aria-label="chat empty">
             <div className="chat-empty-title">{t('Side chat', '辅助对话')}</div>
             <div className="chat-empty-hint">{t('Questions here do not affect the main task', '提问不影响主任务')}</div>
           </div>
-        )}
+        ) : null}
         {hiddenCount > 0 && (
           <button type="button" className="chat-earlier" onClick={() => showEarlier()}>
             {t(`Show ${hiddenCount} earlier entries`, `显示更早的 ${hiddenCount} 条`)}

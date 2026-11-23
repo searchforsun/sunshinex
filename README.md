@@ -37,6 +37,7 @@
 - **Sunx 编排会话**：路由型编排智能体——只拆解分派不执行，后台子任务完成自动唤醒接续（调度定时/挂起问询/重启恢复轮），一 Sunx 一持久化域（记忆/台账/看板域内隔离）；侧栏 SUNX 分组 + 总览页看板。
 - **长任务稳定可靠**：验收修正环 + 运行中消息排队（可编辑/重排/插队）+ 跨天 resume、rewind 回退、fork 分叉；计划模式先规划后执行，Worktree 隔离让并行任务互不踩脚。
 - **多 Agent 编排**：任务板五态 + 依赖 + 审批门 + 裁决；长驻 teammate、外部 CLI 执行体（如 claude code）、定向消息收件箱，kill -9 崩溃可恢复。
+- **IM 通道接入**：飞书 / Telegram 机器人接入（Telegram bot 长轮询、飞书长连接），IM 消息绑定会话双向收发，聊天命令 `/help` `/stop` `/new` `/status`，单聊群聊标点与侧栏通道分组；通道数据独立容器（`channelsDir`）。
 - **生产级安全**：权限三档（read-only / acceptEdits / full-access）、审批三态（allow / deny / always）、破坏性命令底线拦截、Linux 下 Landlock 内核围栏。
 - **记忆、知识库与联网检索**：全局 / 项目 / 会话三级记忆注入，任务成功自动沉淀学习级技能，知识库索引 + 向量检索（kb_search）；网页抓取（webfetch）与全网检索（websearch）开箱即用。
 - **模型面**：任意 OpenAI 协议兼容供应商，small / medium / large 三档算力路由，思考强度七档自动降级，图片输入三面通用。
@@ -97,10 +98,10 @@ pnpm cli                       # 构建并启动交互式终端
     {
       "name": "<供应商名>",
       "baseUrl": "https://<端点>/v1",
-      "models": [{ "model": "<模型名>" }]
+      "models": [{ "model": "<模型名>" }],
+      "apiKey": "sk-…"
     }
-  ],
-  "env": { "SUNSHINEX_API_KEY": "sk-…" }
+  ]
 }
 ```
 

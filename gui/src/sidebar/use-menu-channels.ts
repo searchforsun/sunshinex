@@ -28,23 +28,21 @@ export interface ChannelSessionRow extends SessionRow {
   platform?: ChannelConfigMsg['platform'];
 }
 
-/** 平台元数据单点(图标+双语名;Task 13 侧栏行与 Chat 信息条共用——零新依赖,lucide 通用
- *  字形近似各平台品牌,平台名以文字/data-tip 权威):未知/缺席=中性「通道」回落 */
+/** 平台目录单点（图标 + 双语名 + 新增可选）：侧栏行 / Chat 信息条 / ChannelsPane 下拉三面共用
+ *  ——此前 ChannelsPane PLATFORMS 与本表两张注册表并行维护（钉钉/企微启用须双改，已收敛）。
+ *  supports=「新增通道」平台下拉可选；mock=daemon 测试夹具（e2e 用），生产下拉不可选；
+ *  钉钉/企微「即将支持」占位。未知/缺席平台=中性「通道」回落 */
+export const CHANNEL_PLATFORMS: ReadonlyArray<{ v: string; Icon: LucideIcon; en: string; zh: string; supports: boolean }> = [
+  { v: 'feishu', Icon: Feather, en: 'Feishu', zh: '飞书', supports: true },
+  { v: 'telegram', Icon: Send, en: 'Telegram', zh: 'Telegram', supports: true },
+  { v: 'mock', Icon: Bot, en: 'Mock', zh: 'Mock', supports: false },
+  { v: 'dingtalk', Icon: MessageCircle, en: 'DingTalk', zh: '钉钉', supports: false },
+  { v: 'wecom', Icon: MessagesSquare, en: 'WeCom', zh: '企业微信', supports: false },
+];
+
+/** 平台元数据反查（图标+双语名）：未知/缺席=中性「通道」回落 */
 export function platformMeta(platform?: string): { Icon: LucideIcon; en: string; zh: string } {
-  switch (platform) {
-    case 'feishu':
-      return { Icon: Feather, en: 'Feishu', zh: '飞书' };
-    case 'dingtalk':
-      return { Icon: MessageCircle, en: 'DingTalk', zh: '钉钉' };
-    case 'wecom':
-      return { Icon: MessagesSquare, en: 'WeCom', zh: '企业微信' };
-    case 'telegram':
-      return { Icon: Send, en: 'Telegram', zh: 'Telegram' };
-    case 'mock':
-      return { Icon: Bot, en: 'Mock', zh: 'Mock' };
-    default:
-      return { Icon: MessageSquare, en: 'Channel', zh: '通道' };
-  }
+  return CHANNEL_PLATFORMS.find((p) => p.v === platform) ?? { Icon: MessageSquare, en: 'Channel', zh: '通道' };
 }
 
 /**

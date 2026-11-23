@@ -17,7 +17,7 @@
 
 1. Node.js ≥ 22.9（下限登记于 `package.json` `engines`），实测基线 22 LTS 与 24.x。
 2. `dist/` 不入库：新检出须先 `pnpm install` + `pnpm build`（`pnpm cli` 已内置自动构建，可直接执行）。
-3. 写入 `~/.sunshinex/settings.json`（语义键 + `env` 块填密钥，模板见 MANUAL.md 第二节）；未配置密钥时可用 `--model stub` 先验证链路。
+3. 写入 `~/.sunshinex/settings.json`（语义键 + providers 条目 `apiKey` / 通道条目 `secret` 内联密钥，模板见 MANUAL.md 第二节）；未配置密钥时可用 `--model stub` 先验证链路。
 4. 包管理器统一 pnpm（`packageManager` 钉版，corepack 启用后自动对齐版本）；`.npmrc` 已将 store 固定在仓内 `.pnpm-store`，依赖安装与缓存随仓库走。
 5. GUI 面（可选）：`node-pty` 为原生模块（安装期编译，serve 与终端标签依赖）；桌面端安装包经 `pnpm shell:dist` 产出（esbuild daemon 束 + node-pty 预编译产物装配，见 `scripts/prepare-pty-resource.mjs`），CI 打包矩阵当前仅 Windows。
 6. 内置插件（可选启用）：两插件束均单文件内联（依赖内联，目标机零补装——npm 打包恒剔除 node_modules 亦无碍；browser-use 含宿主束 host.js 即 manifest 启动入口）；浏览器形态按环境定：桌面端内置侧栏页签 / serve 系统默认浏览器 / TUI·CLI 无头（系统已装 Chrome 通道）；computer-use 仅 Windows（持久 PowerShell worker 执行器）。

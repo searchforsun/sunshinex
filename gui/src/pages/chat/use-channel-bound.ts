@@ -23,6 +23,13 @@ interface ChannelBoundConn {
 
 const EMPTY: ChannelJournalInfo = { isChannel: false, chatId: '' };
 
+/** 绑定键拆解单点:key=`channelId:chatId`,channelId 惯例不含 ':'(engine/router 裁定)——
+ *  首 ':' 切分,chatId 段保留其余(含 ':' 等保留字)。Chat 信息条同款消费(原两份内联已收编) */
+export function splitBindingKey(key: string): { channelId: string; chatId: string } {
+  const i = key.indexOf(':');
+  return i < 0 ? { channelId: key, chatId: '' } : { channelId: key.slice(0, i), chatId: key.slice(i + 1) };
+}
+
 export function useChannelJournalInfo(conn: ChannelBoundConn | null, journalId: string): ChannelJournalInfo {
   const [info, setInfo] = useState<ChannelJournalInfo>(EMPTY);
   useEffect(() => {
@@ -39,15 +46,13 @@ export function useChannelJournalInfo(conn: ChannelBoundConn | null, journalId: 
           setInfo(EMPTY);
           return;
         }
-        const i = hit.key.indexOf(':');
-        const chatId = i > 0 ? hit.key.slice(i + 1) : '';
+        const { channelId, chatId } = splitBindingKey(hit.key);
         setInfo({ isChannel: true, chatId, platform: undefined });
         // 平台反查(配置读面;失败静默=platform 缺席,图标走中性通道形)
         if (typeof conn.settingsChannels === 'function') {
           conn.settingsChannels().then(
             (cfgs) => {
               if (!alive) return;
-              const channelId = i > 0 ? hit.key.slice(0, i) : '';
               const platform = cfgs.channels.find((c) => c.id === channelId)?.platform;
               setInfo({ isChannel: true, chatId, platform });
             },

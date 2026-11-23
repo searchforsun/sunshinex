@@ -7,7 +7,7 @@
  *   model add|remove|move <provider> <model> [--tier=small|medium|large]（add）/ [--direction=up|down]（move）
  * 读写全走 catalog 单点（listProviders / upsertProvider / removeProvider / setProviderApiKey /
  * modelAdd / modelRemove / modelMove），CLI 零自管盘上形态——写面落 <root>/.sunshinex/settings.json
- * 或 ~/.sunshinex/settings.json 的 providers 键（key 写 env 块专用槽）。--models 逗号清单序即优先级
+ * 或 ~/.sunshinex/settings.json 的 providers 键（key 写条目 apiKey 字段）。--models 逗号清单序即优先级
  * （choices 序 = providers 序 × models 序，model move 调序即调默认序）。providers 无 enabled 概念
  * （散键退役后的唯一事实源，不设 enable|disable——agents 族同名子命令不照搬）。
  * key 交互面：process.stdin.setRawMode 最小实现（逐字符读、回显 *，Ctrl+C 中止——仓内无 readline
@@ -17,7 +17,7 @@
  * 成功两行（ok 行 + 模型数行）或错误摘要一行——失败是结果不是异常（mcp test 同款裁定）。
  * 通道即语义（mcp.ts 先例）：结果面（表格/JSON/ok 行）stdout、诊断面（error/[warn]）stderr、
  * 非法参数 usage + exit 1（仓内零 exit 2 先例）；CatalogWriteError → error 行 + exit 1
- * （runCatalogWrite 单点，T15 映射）。密钥值任何输出通道零回显（ok 行只落 env 槽名）。
+ * （runCatalogWrite 单点，T15 映射）。密钥值任何输出通道零回显（ok 行只落条目名）。
  * --scope 语义沿 catalog-common：global → 全局面（list 过滤全局键装载视图，写面落 ~/.sunshinex/）；
  * 缺省 project → root = --root 目录或 process.cwd()（写面落 <root>/.sunshinex/settings.json）。
  */
@@ -348,14 +348,15 @@ async function keyCmd(args: string[]): Promise<number> {
   if (!process.stdin.isTTY) {
     console.error(t(
       'error: providers key requires an interactive terminal (TTY);'
-      + ' set the key via the GUI settings page or edit the settings env block (raw) directly',
-      'error：providers key 需要交互终端（TTY）；请经 GUI 设置页配置密钥，或直接编辑 settings env 块（raw）',
+      + ' set the key via the GUI settings page or edit the providers entry apiKey field (raw) directly',
+      'error：providers key 需要交互终端（TTY）；请经 GUI 设置页配置密钥，或直接编辑 providers 条目 apiKey 字段（raw）',
     ));
     return 1;
   }
   // 在场预检（setProviderApiKey 同判据：该 scope 装载视图可见）——别让用户白打一遍密钥才报 not found
   const viewRoot = target.scope === 'project' ? target.root : null;
-  if (!listProviders(viewRoot).providers.some((p) => p.name === name)) {
+  const label = name.trim();
+  if (!listProviders(viewRoot).providers.some((p) => p.name.trim() === label)) {
     console.error(t(`error: provider not found: ${name}`, `error：找不到 provider：${name}`));
     return 1;
   }

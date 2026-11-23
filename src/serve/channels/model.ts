@@ -34,12 +34,14 @@ export interface ChannelConfig {
   allow: ChannelAllowConfig;
 }
 
-/** 聊天命令目录（2026-11-22 用户裁定，单一目录点）：cmd=聊天侧触发词；desc=人性化说明
- *  （/help 输出与 GUI 多选下拉共用——不透露底层实现，只说作用）。新增命令在此登记一处 */
-export const CHANNEL_COMMANDS: ReadonlyArray<{ cmd: string; desc: string }> = [
+/** 聊天命令目录（2026-11-22 用户裁定）：cmd=聊天侧触发词；desc=人性化说明（/help 输出与 GUI
+ *  多选下拉共用——不透露底层实现，只说作用）；match=触发匹配形态（缺省 exact 全文等值，prefix
+ *  前缀命中——/new 允许携带尾注）。门控/匹配/列举共用本目录；执行动作在 router.ts 指令短路分支
+ *  ——新增命令须两处同步（本目录登记 + router 分支） */
+export const CHANNEL_COMMANDS: ReadonlyArray<{ cmd: string; desc: string; match?: 'exact' | 'prefix' }> = [
   { cmd: '/help', desc: '显示本帮助' },
   { cmd: '/stop', desc: '停止当前任务' },
-  { cmd: '/new', desc: '开始新对话（聊天设置保留）' },
+  { cmd: '/new', desc: '开始新对话（聊天设置保留）', match: 'prefix' },
   { cmd: '/status', desc: '查看任务状态' },
 ];
 
@@ -90,6 +92,9 @@ export interface DeliveryCaps {
   /** 平台原生提及支持（feishu `<at user_id>` 标签=服务端渲人名）：缺席=引擎文本前缀退化 */
   mention?: boolean;
 }
+
+/** 平台消息文本长度帽单点：feishu/telegram caps、mock 缺省档与 reply FALLBACK_CAPS 兜底同值 */
+export const CHANNEL_MAX_TEXT_LENGTH = 4000;
 
 const PLATFORMS: readonly ChannelPlatform[] = ['feishu', 'dingtalk', 'wecom', 'telegram', 'mock'];
 const MODES: readonly ChannelAccessMode[] = ['read-only', 'acceptEdits', 'full-access'];

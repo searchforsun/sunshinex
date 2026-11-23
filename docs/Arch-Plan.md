@@ -70,7 +70,7 @@ OpenAI 协议兼容适配器（内置 fetch 直连、流式/非流式双路）�
 - 已引入依赖（用途/收敛边界/回退预案）唯一登记于 `CLAUDE.md §5` 依赖台账
 - GUI 组件选型（已引入与规划选型分态登记）唯一登记于 `CLAUDE.md §13` 组件选型登记表
 - 存储：本地 JSON 底座（src/storage/）；运行时数据（账本/记忆/学习技能/KB/会话日志/worktree）统一落 `~/.sunshinex/projects/<工作区>/data`
-- 配置：settings.json 两级装载（全局 `~/.sunshinex/settings.json` + 项目级 `.sunshinex/settings.json`），语义键 + env 透传块，JSONC 容忍；全局约定层 `~/.sunshinex/SUNSHINE.md` 对标 `~/.claude/CLAUDE.md`
+- 配置：settings.json 两级装载（全局 `~/.sunshinex/settings.json` + 项目级 `.sunshinex/settings.json`），语义键 + providers/通道条目内联密钥，JSONC 容忍；全局约定层 `~/.sunshinex/SUNSHINE.md` 对标 `~/.claude/CLAUDE.md`
 - 平台：Windows / macOS / Linux 三平台可部署，LF 由 `.gitattributes` + `.editorconfig` 机器强制，CI 矩阵 ubuntu+windows × Node 22/24；机制细节见 `docs/PLATFORM.md`
 
 ## 四、依赖引入与候选池

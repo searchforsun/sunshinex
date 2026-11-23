@@ -114,11 +114,6 @@ export interface Connection {
   /** POST /channels/:id/test：dry-run 测试连接（独立起停适配器，不动在座表）——失败恒 200
    *  {ok:false,error}（诊断面失败即结果非错误码，mcp probe 同裁定），成功 {ok:true,botId} */
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
-  /** PUT /channels/:id/secret body {secret}（2026-11-22 终形态修复波）：通道密钥写面——写全局
-   *  settings.json channels 条目 secret 字段（2026-11-22 内联裁定：密钥随配置项存放；providers
-   *  setKey 同机制）；空串=删除该 env 键；响应恰 {ok:true} 零回显。ChannelsPane 弹窗保存链密钥腿
-   *  （putChannels → token 非空时 setChannelSecret → testChannel） */
-  setChannelSecret(id: string, secret: string): Promise<{ ok: true }>;
   /** GET /channels/bindings：绑定档全列（行含 rootOverride 供聊天信息条回显——Task 13 消费） */
   channelBindings(): Promise<{ bindings: ChannelBindingMsg[] }>;
   /** DELETE /channels/bindings/:key：解除绑定（journal 留盘；缺失 404 非幂等，写面从严）——

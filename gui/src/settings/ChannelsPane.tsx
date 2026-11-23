@@ -2,6 +2,7 @@ import { FolderOpen, Pencil, PlugZap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
+import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
 import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, Switch } from './components';
 import { MultiSelect, SecretInput, Select } from './controls';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
@@ -14,8 +15,8 @@ import type { WorkspaceRow } from '../connection';
  *
  * 页面结构:节头「通道」+ 一句简介 + 「+ 新增通道」工具栏(搜索锚 channels.add)+ 每通道一张卡片
  * (状态点 sx-api-dot + 应用名称 + 平台副标 + 操作簇:测试连接/删除/编辑/启用 Switch)。卡片无内嵌
- * 表单——全部编辑走弹窗(EditorModal/ModalField)。弹窗字段:平台(共享 Select,新增可选飞书/Telegram/
- * mock,编辑锁定)/应用名称/按平台凭证(飞书:App ID+App Secret;Telegram:Bot Token;均 SecretInput
+ * 表单——全部编辑走弹窗(EditorModal/ModalField)。弹窗字段:平台(共享 Select,新增可选飞书/Telegram,
+ * 编辑锁定)/应用名称/按平台凭证(飞书:App ID+App Secret;Telegram:Bot Token;均 SecretInput
  * 回显+眼睛)/工作区(文本框+pickFolder 文件夹钮,空=聊天专属工作区)/权限模式/准入(共享 Select,
  * full-access 与「不限」红字)。保存 → putChannels 全表(secret 随条目内联,2026-11-22 裁定)→
  * 成功自动 testChannel。
@@ -32,19 +33,8 @@ export interface ChannelsPaneConn {
   settingsChannels(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
-  channelBindings(): Promise<{ bindings: import('../connection-api').ChannelBindingMsg[] }>;
-  deleteChannelBinding(key: string): Promise<{ ok: true }>;
   workspaces(): Promise<WorkspaceRow[]>;
 }
-
-/** 平台目录(spec §8.2:飞书首发可测,Telegram 已落地,mock 测试夹具;钉钉/企微「即将支持」) */
-const PLATFORMS = [
-  { v: 'feishu', en: 'Feishu', zh: '飞书', supports: true },
-  { v: 'telegram', en: 'Telegram', zh: 'Telegram', supports: true },
-  { v: 'mock', en: 'Mock (test)', zh: 'Mock(测试)', supports: true },
-  { v: 'dingtalk', en: 'DingTalk', zh: '钉钉', supports: false },
-  { v: 'wecom', en: 'WeCom', zh: '企业微信', supports: false },
-] as const;
 
 type PlatformValue = ChannelConfigMsg['platform'];
 type ModeValue = ChannelConfigMsg['mode'];
@@ -56,11 +46,10 @@ const HEALTH_POLL_MS = 5_000;
 /** 应用名称长度上限(spec §8 终形态:1..80,trim) */
 const NAME_MAX = 80;
 
-/** 应用名称占位随平台 */
+/** 应用名称占位随平台（新增下拉可选平台；CHANNEL_PLATFORMS 之外回落通用占位） */
 const NAME_PLACEHOLDERS: Record<string, { en: string; zh: string }> = {
   feishu: { en: 'My Feishu bot', zh: '我的飞书机器人' },
   telegram: { en: 'My Telegram bot', zh: '我的 Telegram 机器人' },
-  mock: { en: 'My Mock bot', zh: '我的 Mock 机器人' },
 };
 
 /** 聊天命令目录（镜像 serve/channels/model.ts CHANNEL_COMMANDS——2026-11-22 用户裁定
@@ -92,7 +81,7 @@ const allowLabel = (d: ChannelDraft): string => {
 const displayNameOf = (d: ChannelDraft): string => (d.name !== '' ? d.name : d.id);
 
 const platformLabel = (v: string): string => {
-  const p = PLATFORMS.find((x) => x.v === v);
+  const p = CHANNEL_PLATFORMS.find((x) => x.v === v);
   return p === undefined ? v : t(p.en, p.zh);
 };
 
@@ -422,7 +411,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
    *  自动 testChannel 一次。id 新增时自动生成 platform-<序>;编辑保留原 id(平台锁定同因) */
   const submitChannel = (): void => {
     if (modal === null || savingId !== '' || drafts === null) return;
-    const platform = PLATFORMS.find((p) => p.v === form.platform);
+    const platform = CHANNEL_PLATFORMS.find((p) => p.v === form.platform);
     if (modal.mode === 'add' && (platform === undefined || !platform.supports)) {
       setFormError(t('Choose a platform', '请选择平台'));
       return;
@@ -603,7 +592,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                 ariaLabel={t('Platform', '平台')}
                 value={form.platform}
                 placeholder={t('Choose a platform…', '选择平台…')}
-                options={PLATFORMS.filter((p) => p.supports).map((p) => ({ v: p.v, l: t(p.en, p.zh) }))}
+                options={CHANNEL_PLATFORMS.filter((p) => p.supports).map((p) => ({ v: p.v, l: t(p.en, p.zh) }))}
                 onChange={(v: string) => setForm({ ...form, platform: v })}
               />
             ) : (

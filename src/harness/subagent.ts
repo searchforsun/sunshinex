@@ -271,6 +271,10 @@ const SUBAGENT_CONCURRENCY_LIMIT = 8;
  *  后台任务 id 双键同映、同数组只读共享）——FIFO 淘汰最旧，防长会话无界增长；条目=键非执行体 */
 const RESUME_HISTORY_CAP = 32;
 
+/** 可续跑键清单提示截断（lookupResumable INVALID_ARG hint）与结论闭合行截断共用帽 */
+const RESUME_CLOSURE_CAP = 300;
+const RESUME_HINT_MAX = 12;
+
 /** 子智能体预算（对齐 ReactorLimits 语义；tokenCap 缺省 = 不设 token 硬顶，与父级剩余解耦，
  *  只认 SUNSHINEX_SUBAGENT_TOKEN_CAP 显式注入，以 maxSteps/deadline 为护栏） */
 export interface SubagentBudget {
@@ -371,14 +375,15 @@ export class SubagentRunner {
     const steps = this.resumeHistory.get(key);
     if (steps === undefined) {
       const known = [...this.resumeHistory.keys()];
-      const hint = known.length > 0 ? ` resumable: ${known.slice(0, 12).join(', ')}` : ' nothing has finished in this session yet';
+      const hint = known.length > 0 ? ` resumable: ${known.slice(0, RESUME_HINT_MAX).join(', ')}` : ' nothing has finished in this session yet';
       return fail('INVALID_ARG', `no finished subagent matched resume="${key}" (use a previous spawn's label or a background task id).${hint}`);
     }
     return ok(steps);
   }
 
   /** 终态步登记（label + 后台任务 id 双键同映同一数组）：done/failed 皆登（失败史对「修复续跑」同样是上下文）；
-   *  超帽 FIFO 淘汰（Map 插入序=最旧在前；双键同批插入不散龄） */
+   *  超帽 FIFO 淘汰（Map 插入序=最旧在前）：逐键淘汰，帽边界处可能只拆双键对的一半（余下一键仍可续跑，
+   *  未留键在 INVALID_ARG 提示清单如实缺席）——按键粒度实现最简，拆对语义可接受 */
   private rememberResume(label: string, taskId: string | undefined, steps: StepRecord[]): void {
     this.resumeHistory.set(label, steps);
     if (taskId !== undefined) this.resumeHistory.set(taskId, steps);
@@ -742,7 +747,7 @@ export class SubagentRunner {
         // 步覆盖同名键，链式追加自然滚存
         const lastStep = result.steps.length > 0 ? result.steps[result.steps.length - 1].step : 0;
         const closure = result.done && result.reply
-          ? `Previous task finished (success) — your conclusion was: ${result.reply.length > 300 ? `${result.reply.slice(0, 300)}…` : result.reply}`
+          ? `Previous task finished (success) — your conclusion was: ${result.reply.length > RESUME_CLOSURE_CAP ? `${result.reply.slice(0, RESUME_CLOSURE_CAP)}…` : result.reply}`
           : `Previous task ended without completion (${result.stopReason ?? 'unknown'}) — it is closed; the follow-up task below decides whether to retry or continue.`;
         this.rememberResume(finalLabel, opts?.taskId, [...result.steps, { step: lastStep + 1, action: 'note', observation: closure }]);
         if (result.done && result.reply) {

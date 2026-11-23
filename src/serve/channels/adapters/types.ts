@@ -23,9 +23,10 @@ export interface StreamDelta {
 
 /** 适配器 SPI:必选 id/caps/start/stop/health/send;可选 reply(回执式回复,未实现时
  *  router 回退 send)、stream(同气泡流式替换,未实现时 router 走分段 send 降级链)、
- *  ack(受理回执平台面——飞书 OnIt「处理中」表情回应,2026-11-22 用户裁定「受理不用自动
- *  弹文本气泡,用官方处理中 icon」;未实现时 engine 回退文本 ack)、emit(测试/注入用,仅
- *  mock 实现——把 InboundMessage 塞给 start 存下的 sink)。 */
+ *  ack(受理回执平台面——飞书 OnIt「处理中」表情回应;未实现时 engine 回退文本 ack)、
+ *  botName(平台侧 bot 身份名,测试连接回显用——飞书 bot/v3/info app_name;未实现时
+ *  engine 退化通用健康文案)、emit(测试/注入用,仅 mock 实现——把 InboundMessage 塞给
+ *  start 存下的 sink)。 */
 export interface ChannelAdapter {
   readonly id: string;
   caps(): DeliveryCaps;
@@ -36,6 +37,7 @@ export interface ChannelAdapter {
   reply?(inbound: InboundMessage, msg: OutboundMessage): Promise<void>;
   stream?(target: ChatRef, delta: StreamDelta): Promise<void>;
   ack?(inbound: InboundMessage, kind: 'accepted' | 'queued'): Promise<void>;
+  botName?(): Promise<string | undefined>;
   emit?(msg: InboundMessage): void;
 }
 

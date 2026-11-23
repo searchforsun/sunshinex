@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { t } from '../i18n';
 
@@ -20,6 +21,49 @@ export interface SelectOption {
   readonly l: string;
 }
 
+/** 弹层翻转测量单点（Select/MultiSelect 共用,原两份逐字克隆收敛;2026-11-22 用户裁定
+ *  「下拉显示不全就翻转显示到上面」）:按**最近的滚动容器**(弹窗体/设置主区)量上下空间——
+ *  下放不下且上空间更大即翻转(.sx-dd-pop-up)。按打开瞬间的容器位置判定,不随滚动抖动;
+ *  jsdom 无布局(全 0 rect)不触发,测试面零影响 */
+const DROPUP_EST_POP_MAX = 264;
+const DROPUP_EST_MARGIN = 16;
+
+function useDropUp(open: boolean, wrapRef: RefObject<HTMLElement | null>, popRef: RefObject<HTMLElement | null>): boolean {
+  const [dropUp, setDropUp] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    setDropUp(false);
+    const raf = requestAnimationFrame(() => {
+      const wrap = wrapRef.current;
+      const pop = popRef.current;
+      if (wrap === null || pop === null) return;
+      // 最近的可滚动祖先(弹窗体/设置主区)——弹层被谁裁切就对谁量空间
+      let scroller: HTMLElement | null = null;
+      let el: HTMLElement | null = wrap.parentElement;
+      while (el !== null && el !== document.body) {
+        const oy = getComputedStyle(el).overflowY;
+        if (oy === 'auto' || oy === 'scroll') { scroller = el; break; }
+        el = el.parentElement;
+      }
+      const wrapRect = wrap.getBoundingClientRect();
+      const estH = Math.min(pop.scrollHeight, DROPUP_EST_POP_MAX) + DROPUP_EST_MARGIN;
+      let spaceBelow: number;
+      let spaceAbove: number;
+      if (scroller !== null) {
+        const cRect = scroller.getBoundingClientRect();
+        spaceBelow = cRect.bottom - wrapRect.bottom;
+        spaceAbove = wrapRect.top - cRect.top;
+      } else {
+        spaceBelow = window.innerHeight - wrapRect.bottom;
+        spaceAbove = wrapRect.top;
+      }
+      setDropUp(spaceBelow < estH && spaceAbove > spaceBelow);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [open, wrapRef, popRef]);
+  return dropUp;
+}
+
 export function Select(props: {
   readonly value: string;
   readonly options: readonly SelectOption[];
@@ -36,12 +80,11 @@ export function Select(props: {
   const { value, options, disabled = false, title, ariaLabel, placeholder, className, onChange } = props;
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  /** 弹层翻转(2026-11-22 用户裁定「下拉显示不全就翻转显示到上面」):下方空间不足容纳弹层
-   *  时向上弹(.sx-dd-pop-up)。open 后实测弹层底缘 vs 视口底缘,越界即翻转 */
-  const [dropUp, setDropUp] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const popRef = useRef<HTMLUListElement | null>(null);
   const activeRef = useRef<HTMLButtonElement | null>(null);
+  /** 弹层翻转(2026-11-22 用户裁定「下拉显示不全就翻转显示到上面」):useDropUp 单点(Select/MultiSelect 共用) */
+  const dropUp = useDropUp(open, wrapRef, popRef);
 
   /** 外点收：mousedown 在包裹外即收（trigger 点击自身由 toggle 先行，不双触发） */
   useEffect(() => {
@@ -56,43 +99,12 @@ export function Select(props: {
     return () => document.removeEventListener('mousedown', onDown);
   }, [open]);
 
-  /** 开弹层即激活当值行并滚入视口（键盘导航起点=当前值）+ 翻转测量（2026-11-22 用户裁定
-   *  「下拉显示不全就翻转显示到上面」）:按**最近的滚动容器**(弹窗体/设置主区)量上下空间——
-   *  下放不下且上空间更大即翻转。按打开瞬间的容器位置判定,不随滚动抖动;jsdom 无布局
-   *  (全 0 rect)不触发,测试面零影响 */
+  /** 开弹层即激活当值行并滚入视口（键盘导航起点=当前值；翻转测量在 useDropUp 单点） */
   useEffect(() => {
     if (!open) return;
     const idx = options.findIndex((o) => o.v === value);
     setActive(idx >= 0 ? idx : 0);
     activeRef.current?.scrollIntoView?.({ block: 'nearest' }); // jsdom 无此 API——可选调用(真实浏览器内滚动定位)
-    setDropUp(false);
-    const raf = requestAnimationFrame(() => {
-      const wrap = wrapRef.current;
-      const pop = popRef.current;
-      if (wrap === null || pop === null) return;
-      // 最近的可滚动祖先(弹窗体/设置主区)——弹层被谁裁切就对谁量空间
-      let scroller: HTMLElement | null = null;
-      let el: HTMLElement | null = wrap.parentElement;
-      while (el !== null && el !== document.body) {
-        const oy = getComputedStyle(el).overflowY;
-        if (oy === 'auto' || oy === 'scroll') { scroller = el; break; }
-        el = el.parentElement;
-      }
-      const wrapRect = wrap.getBoundingClientRect();
-      const estH = Math.min(pop.scrollHeight, 264) + 16;
-      let spaceBelow: number;
-      let spaceAbove: number;
-      if (scroller !== null) {
-        const cRect = scroller.getBoundingClientRect();
-        spaceBelow = cRect.bottom - wrapRect.bottom;
-        spaceAbove = wrapRect.top - cRect.top;
-      } else {
-        spaceBelow = window.innerHeight - wrapRect.bottom;
-        spaceAbove = wrapRect.top;
-      }
-      setDropUp(spaceBelow < estH && spaceAbove > spaceBelow);
-    });
-    return () => cancelAnimationFrame(raf);
     // options/value 在场期不变（弹层开着上层不改值），只随 open 跑一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -316,7 +328,8 @@ export function MultiSelect(props: {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const popRef = useRef<HTMLUListElement | null>(null);
-  const [dropUp, setDropUp] = useState(false);
+  /** 翻转测量（useDropUp 单点,与 Select 同款） */
+  const dropUp = useDropUp(open, wrapRef, popRef);
 
   useEffect(() => {
     if (!open) return;
@@ -325,38 +338,6 @@ export function MultiSelect(props: {
     };
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  /** 翻转测量（Select 同款:最近滚动容器上下空间,开瞬间判定不随滚动抖动） */
-  useEffect(() => {
-    if (!open) return;
-    setDropUp(false);
-    const raf = requestAnimationFrame(() => {
-      const wrap = wrapRef.current;
-      const pop = popRef.current;
-      if (wrap === null || pop === null) return;
-      let scroller: HTMLElement | null = null;
-      let el: HTMLElement | null = wrap.parentElement;
-      while (el !== null && el !== document.body) {
-        const oy = getComputedStyle(el).overflowY;
-        if (oy === 'auto' || oy === 'scroll') { scroller = el; break; }
-        el = el.parentElement;
-      }
-      const wrapRect = wrap.getBoundingClientRect();
-      const estH = Math.min(pop.scrollHeight, 264) + 16;
-      let spaceBelow: number;
-      let spaceAbove: number;
-      if (scroller !== null) {
-        const cRect = scroller.getBoundingClientRect();
-        spaceBelow = cRect.bottom - wrapRect.bottom;
-        spaceAbove = wrapRect.top - cRect.top;
-      } else {
-        spaceBelow = window.innerHeight - wrapRect.bottom;
-        spaceAbove = wrapRect.top;
-      }
-      setDropUp(spaceBelow < estH && spaceAbove > spaceBelow);
-    });
-    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   const toggle = (v: string): void => {

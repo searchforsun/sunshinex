@@ -43,11 +43,9 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
     return { ok: true as const, warnings: [] };
   });
   const testChannel = vi.fn(async () => ({ ok: true as const, botId: 'bot-1' }));
-  const channelBindings = vi.fn(async () => ({ bindings: [] }));
-  const deleteChannelBinding = vi.fn(async () => ({ ok: true as const }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
-  const conn = { channelsView, settingsChannels, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, settingsChannels, putChannels, testChannel, channelBindings, deleteChannelBinding, workspaces };
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, workspaces } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, workspaces };
 }
 
 describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联回显）', () => {

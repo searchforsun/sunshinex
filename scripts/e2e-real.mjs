@@ -3,8 +3,8 @@
  * 真实模型 e2e（D5 资产化，手动门——花真金 token，不进 pnpm test/selfcheck 门禁）：
  *   node scripts/e2e-real.mjs [--model <id>] [--timeout <秒,缺省180>]
  *
- * 前提：~/.sunshinex/settings.json 已配真实密钥（env 块 SUNSHINEX_API_KEY 或 provider apiKey——
- * CLI 自带装载链把它们写入 SUNSHINEX_* 环境槽，本脚本只做存在性预检，不读密钥明文）。
+ * 前提：~/.sunshinex/settings.json 已配真实密钥（providers 条目 apiKey 内联，或进程环境变量
+ * SUNSHINEX_API_KEY 直配——本脚本只做存在性预检，不读密钥明文）。
  * 无 key 直接跑：模型 401 形态失败，场景 FAIL 并给配置指引（MANUAL 第二节）。
  *
  * 场景两条（真实 OpenAI 协议适配器 + 流式 + 工具注册表 + 安全链全链，只有此门能验）：
@@ -25,14 +25,15 @@ const TIMEOUT_MS = (Number(process.argv.find((a, i) => process.argv[i - 1] === '
 const modelIdx = process.argv.indexOf('--model');
 const MODEL_FLAG = modelIdx >= 0 ? [`--model=${process.argv[modelIdx + 1]}`] : [];
 
-/** 预检：settings.json env 块是否有真实密钥槽（容忍注释/BOM，同装载链口径的轻量近似） */
+/** 预检：providers 条目是否带 apiKey（容忍注释/BOM，同装载链口径的轻量近似；进程 env 直配也认） */
 function preflight() {
+  if (process.env.SUNSHINEX_API_KEY) return;
   const file = path.join(os.homedir(), '.sunshinex', 'settings.json');
   try {
     const raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').replace(/\/\/[^\n"]*(?=\n|$)/g, '');
-    const env = JSON.parse(raw).env ?? {};
-    const hasKey = Object.entries(env).some(([k, v]) => k.startsWith('SUNSHINEX_API_KEY') && String(v).length > 0);
-    if (!hasKey) console.log('[e2e-real] 注意：settings.json env 块未探测到 API key 槽——继续尝试（外部 env 直配形态自行承担）');
+    const providers = JSON.parse(raw).providers ?? [];
+    const hasKey = Array.isArray(providers) && providers.some((p) => p !== null && typeof p === 'object' && typeof p.apiKey === 'string' && p.apiKey.length > 0);
+    if (!hasKey) console.log('[e2e-real] 注意：settings.json providers 未探测到条目 apiKey——继续尝试（外部 env 直配形态自行承担）');
   } catch {
     console.log('[e2e-real] 注意：读不到 ~/.sunshinex/settings.json——继续尝试（外部 env 直配形态自行承担）');
   }
@@ -101,6 +102,6 @@ for (const s of scenarios) {
 const failed = results.filter((r) => !r.pass);
 console.log(`\n[e2e-real] ${results.length - failed.length}/${results.length} 场景通过`);
 if (failed.length > 0) {
-  console.error('[e2e-real] FAIL——检查：①settings.json env 块密钥（MANUAL 第二节）②网络可达性③模型名是否在 provider 清单');
+  console.error('[e2e-real] FAIL——检查：①providers 条目 apiKey（MANUAL 第二节）②网络可达性③模型名是否在 provider 清单');
   process.exit(1);
 }

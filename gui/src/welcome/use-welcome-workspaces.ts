@@ -132,7 +132,7 @@ export function useWelcomeWorkspaces(
   /** 登记成功收口单点(三入口共用:桌面壳对话框/浏览器态对话框/DirPicker 确认):
    *  幂等追加(slug 判重)+选中+收项目菜单+静默回源(skills 闸随 picked 重置+列表与侧栏/mtime 对齐) */
   /** 纯路径收口(2026-11-21 用户裁定「工作目录选择与底层项目解耦:只有真正发送消息/创建 Sunx 时
-   *  才创建项目」):选中即落 picked,不调 createWorkspace、不写 workspace.json——登记由发��期
+   *  才创建项目」):选中即落 picked,不调 createWorkspace、不写 workspace.json——登记由发送期
    *  createSession(root) 在 daemon 侧完成(standard 才登记;sunx 域整块跳过,不进 /workspaces)。
    *  候选清单(rows)保持只读:未登记目录选完即用,basename 直接显示 */
   const adoptPickedPath = (root: string): void => {

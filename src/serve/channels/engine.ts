@@ -43,6 +43,9 @@ export interface ChannelHealthRow {
   detail?: string;
 }
 
+/** 免密平台清单(mock=测试夹具无外连;新增免密平台在此登记)——secretGateError 单点消费 */
+const SECRET_FREE_PLATFORMS: ReadonlySet<string> = new Set(['mock']);
+
 export class ChannelsEngine {
   readonly router: ChannelRouter;
   readonly projector: ReplyProjector;
@@ -190,13 +193,12 @@ export class ChannelsEngine {
         await adapter.stop().catch(() => {});
         return { ok: false, error: h.detail ?? '适配器报告未连接' };
       }
-      // bot 身份:适配器提供 botName 面则取真名(飞书 bot/v3/info),否则退化为通用健康文案
+      // bot 身份:适配器 botName SPI 面则取真名(飞书 bot/v3/info),否则退化为通用健康文案
       // (无 botName 适配器——mock 等——ok 载荷不空尾,engine.test ③ 口径)
-      const withBotName = adapter as { botName?: () => Promise<string | undefined> };
       let botId: string | undefined;
-      if (typeof withBotName.botName === 'function') {
+      if (typeof adapter.botName === 'function') {
         try {
-          botId = await withBotName.botName();
+          botId = await adapter.botName();
         } catch {
           botId = undefined;
         }
@@ -214,11 +216,11 @@ export class ChannelsEngine {
     return a instanceof MockChannelAdapter ? a : undefined;
   }
 
-  /** 密钥门单点(fail-closed,spec §4 存储总览 2;审查收敛裁定):免密平台清单(mock——测试夹具
-   *  无外连)与「密钥未配置」文案裁决都收在此一处——launch(health detail)与 test(dry-run error)
-   *  双路消费不分叉;undefined=放行,否则返回 detail 文案 */
+  /** 密钥门单点(fail-closed,spec §4 存储总览 2;审查收敛裁定):免密平台清单与「密钥未配置」
+   *  文案裁决都收在此一处——launch(health detail)与 test(dry-run error)双路消费不分叉;
+   *  undefined=放行,否则返回 detail 文案 */
   private secretGateError(cfg: ChannelConfig): string | undefined {
-    if (cfg.platform === 'mock') return undefined; // mock 免密(测试夹具无外连)
+    if (SECRET_FREE_PLATFORMS.has(cfg.platform)) return undefined; // 免密平台(测试夹具无外连)
     return (cfg.secret ?? '') === '' ? '密钥未配置,通道拒绝启用' : undefined;
   }
 

@@ -56,7 +56,7 @@ npm install -g https://github.com/searchforsun/sunshinex/releases/download/v0.6.
 | `sunshinex mcp` | `list` / `add <名> --command=<命令> [--arg=a]… [--env=K=V]…` 或 `--url=<地址>` / `remove` / `enable` / `disable` / `test <名>` / `approve` / `deny <名>` | MCP 服务器登记表增删改查；`test` 探活（握手 + tools/list）；`approve`/`deny` 写项目批准阀（见第二节 mcp.json）；项目级 `add` 会提示首次装载需批准 |
 | `sunshinex agents` | `list` / `add <id> --name=<名称> [--description=<描述>] [--memory] [--isolation=worktree] [--executor=internal-team\|external-cli] [--body-file=<路径>]` / `remove` / `enable` / `disable <id>` | 子智能体目录管理；启停写 agent.md 的 `enabled` 行（见 5.3） |
 | `sunshinex plugins` | `list [--root <目录>]` / `validate <目录>` / `enable` / `disable <id> [--scope=global\|project]` | 插件清单 / manifest 校验 / 启停（写 settings `plugins` 键，见 6.4） |
-| `sunshinex providers` | `list` / `add <名> --base-url=<地址> --models=m1,m2,…` / `set <名>`（增量更新，同 add 字段）/ `remove` / `key <名>`（隐藏输入写 env 块）/ `test <名>`（探测 `<baseUrl>/models`）| 模型提供方管理；模型行二级：`providers model add\|remove\|move <源> <模型> [--tier=small\|medium\|large] [--direction=up\|down]`——清单序即缺省序（首位=默认模型），`--tier` 标注档位路由 |
+| `sunshinex providers` | `list` / `add <名> --base-url=<地址> --models=m1,m2,…` / `set <名>`（增量更新，同 add 字段）/ `remove` / `key <名>`（隐藏输入写条目 apiKey）/ `test <名>`（探测 `<baseUrl>/models`）| 模型提供方管理；模型行二级：`providers model add\|remove\|move <源> <模型> [--tier=small\|medium\|large] [--direction=up\|down]`——清单序即缺省序（首位=默认模型），`--tier` 标注档位路由 |
 | `sunshinex skills` | `list [--scope=all\|project\|global] [--json]`（另有 `install` 见上表） | 沿来源链列技能（project/user/learned/plugin 分组 + 遮蔽标注） |
 | `sunshinex settings` | `get <键>` / `set <键> <值> [--scope=global\|project]` | 读语义设置键（打印生效值与来源）/ 写键；未知键报未知设置键错误并退出码 1 |
 
@@ -166,8 +166,10 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
   "kbDataDir": "",                                   // 知识库目录；留空 = 数据目录/kb
   "embeddingBaseUrl": "",                            // 嵌入服务；留空 = 回退主模型同名字段
   "embeddingModel": "",
-  "websearchProvider": "bing-html",                  // bing-html（缺省）| duckduckgo | bing；bing 需 SUNSHINEX_BING_API_KEY
+  "embeddingApiKey": "",                             // 嵌入密钥；留空 = 回退 SUNSHINEX_API_KEY
+  "websearchProvider": "bing-html",                  // bing-html（缺省）| duckduckgo | bing；bing 需下方 websearchApiKey
   "websearchEndpoint": "",                           // 搜索端点覆盖；留空 = 提供方缺省
+  "websearchApiKey": "",                             // Bing 搜索密钥（websearchProvider=bing 时用）
 
   // ── 目录覆盖（留空即用缺省，见第三节）────────────────
   "projectsDir": "",                                 // 项目数据根（各工作区分目录的父级）；留空 = ~/.sunshinex/projects，可指向任意盘
@@ -199,21 +201,25 @@ CLI 与 TUI 为一次性进程：修改配置后新开会话生效。serve/GUI �
   // "mcpApprovals": { "<项目slug>": ["github"] },    // 已批准的项目 MCP 服务器（按项目记，见下节）
   // "mcpDenied": { "<项目slug>": ["不可信源"] },     // 已拒绝的：不再询问、装载器直接跳过
 
-  // ── 密钥（2026-11-22 裁定:providers/通道密钥内联进各自配置项,env 块不再承载;下面仅剩非 provider 密钥）──
-  "env": {
-    "SUNSHINEX_EMBEDDING_API_KEY": "",               // 嵌入密钥；留空 = 回退 SUNSHINEX_API_KEY
-    "SUNSHINEX_BING_API_KEY": ""                     // Bing 搜索密钥（websearchProvider=bing 时用）
-  }
+  // ── 通道（IM 接入，GUI 通道页编辑，一般无需手改；详见 MANUAL-GUI「通道」节）──
+  // "channels": [
+  //   {
+  //     "id": "feishu-a1b2c", "platform": "feishu", "enabled": true,
+  //     "name": "我的飞书机器人", "secret": "",          // 应用名称；密钥内联条目（secret），缺席 = 未配置
+  //     "root": "auto", "mode": "read-only",            // root "auto" = 聊天专属工作区；也可为项目路径
+  //     "allow": { "kind": "first-user" }               // first-user | list（+userIds） | all
+  //   }
+  // ]
 }
 ```
 
 - 语义键与同名 `SUNSHINEX_*` 环境变量一一对应（`tier` ≡ `SUNSHINEX_TIER`），环境变量仍最高优先。`SUNSHINEX_MODEL` / `SUNSHINEX_BASE_URL` 两个环境槽保持有效——无 `providers` 时直接导出仍按单模型形态装配。
-- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥内联写在条目 `"apiKey"` 字段（2026-11-22 裁定推翻 env 槽口径,无 env 回退;`sunshinex providers key <源>` 交互写入条目）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
+- `providers` 多源清单：TUI 内 `/model` 弹选择卡按 `源/模型` 即选即切（对后续任务生效，状态栏模型段随之更新）；**缺省模型恒 = 清单第一源 × 第一模型**（清单序即优先级，`/model` 卡与 GUI 提供方页首位标「默认」，`/model` 卡无 `default` 选项）。各源密钥内联写在条目 `"apiKey"` 字段（`sunshinex providers key <源>` 交互写入条目；进程环境变量 `SUNSHINEX_API_KEY` 仍作最后兜底）。`supportsImages`（源级/条目级两级，条目覆盖源级）声明模型是否接受图片附件：未声明按支持处理，显式 `false` 时 GUI/TUI 拒收图片并提示「当前模型不支持图片输入」，适配器层同口径拒发（不打必败请求）。
 - 每模型窗口与思考强度：`models` 条目可写对象形态 `{ "model": "…", "contextWindow": 128000, "reasoningEffort": "high" }`（源级同名字段为该源缺省，条目级优先，逐项可省）。窗口是压缩预算与状态栏/`/context` 分母——未配置的模型回退全局 `contextWindow` 键 / 内置 200k，切换模型后下一任务按新窗口判定；思考强度是该模型的缺省档（`/model-effort` 会话内覆盖仍最高），未配置回退全局 `reasoningEffort` 键 / 端点缺省。
 - 档位路由：models 条目可选 `"tier": "small|medium|large"` 标注，`/model-tier` 与 GUI 档位切换按标注选中对应模型（同档多模型取第一个；无标注/无匹配回缺省模型）（档位标注是 tier 路由的唯一数据源。）
 - 自定义请求参数：models 条目可选 `"params": { "<键>": <JSON 值> }`，键值原样并入每次模型的请求体顶层（值可为 string/number/boolean/null/数组/对象，嵌套上限 8 层）。厂商私有扩展（缓存路由键、思考模板开关、采样扩展等）由此声明，适配器不含任何厂商分支。协议字段 `model` / `messages` / `tools` / `tool_choice` / `stream` / `stream_options` 由适配器装配，`params` 不得占用（写面拒收，手改文件则装载告警忽略该键）；非法值同口径告警忽略、好键保留。
 - 缓存路由键自动派生：请求体默认带 `prompt_cache_key`（模型名 + 稳定段摘要，非明文；同配置会话归同一自动缓存分组）。端点 400/422 点名该参数即自动省略并记忆（后续请求形态回旧版，用户无感）。`params` 里显式声明 `prompt_cache_key` 时以其为准，自动派生让位。
-- 空串等价未配置；密钥类一律只放 `env` 块。
+- 空串等价未配置；密钥内联进各自配置项（providers 条目 `apiKey`、通道条目 `secret`、语义键 `embeddingApiKey` / `websearchApiKey`）。
 - JSON 写错或 `version` 非 1：启动即报错并指出文件路径；未知键告警后忽略。
 
 ### MCP 服务器（mcp.json）
@@ -586,7 +592,7 @@ known-issue（older Landlock ABI）：较旧内核下如遇 git 或写设备类�
 
 | 现象 | 处理 |
 | --- | --- |
-| 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `providers`（首源 `baseUrl` 与 `env` 密钥槽，全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与对应密钥槽（`providers test <源>` 可探活） |
+| 启动报模型错误 / 答复均为错误 | 检查 `settings.json` 的 `providers`（首源 `baseUrl` 与条目 `apiKey`，全局或项目级）；`/model` 切换后报错则检查该源的 `baseUrl` 与条目 `apiKey`（`providers test <源>` 可探活） |
 | 启动告警「未知语义键 "model" / "dataDir" …」 | 形近历史键与拼错键同判（告警不致命）——模型配置改写 `providers` 列表（见第二节）；未配 providers 时 env 直导出形态仍可用 |
 | 输入没反应 | 正在等待审批或计划确认：按 `y` / `a` / `n` |
 | 写操作总被拒 | 当前是 `read-only` 档：重启以 `--mode=acceptEdits`（或缺省档）启动 |

@@ -121,7 +121,7 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                     aria-expanded={gOpen}
                     onClick={() => toggleGroup(g.key)}
                   >
-                    <span className="sx-ws-folder" aria-hidden="true" data-tip={meta.zh}>
+                    <span className="sx-ws-folder" aria-hidden="true" data-tip={t(meta.en, meta.zh)}>
                       <PlatformIcon size={16} strokeWidth={1.75} />
                     </span>
                     <span className="ws-slug sx-ws-name">{g.name}</span>

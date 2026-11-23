@@ -4,9 +4,8 @@
  *   （对标 settings 标量键「项目级覆盖全局级」，MANUAL 第二节）；两级都缺 = 无可切换模型。
  * - 单级形状非法 → 该级 warning 跳过、不致命（对标 permissions/mcp.json 非法条目跳过语义）；
  *   畸形 JSON 由 settings 装载链统一 fail-fast，此处按缺级处理。
- * - 密钥不进本键（D6 用户裁决「env 块只承载敏感字段」延续）：每个源按名取
- *   SUNSHINEX_API_KEY_<大写源名> 槽，缺省回退主槽 SUNSHINEX_API_KEY——多源密钥仍是
- *   「密钥只走 env 透传块或环境变量」，settings 与凭据分离的口径不变。
+ * - 密钥内联条目（2026-11-22 用户裁定推翻 D6「密钥与配置分离」）：providers 条目 apiKey 字段直接
+ *   承载、读面可回显；真实进程环境变量 SUNSHINEX_API_KEY 由适配器作最后兜底。
  */
 import { parseSettingsFile, loadProjectSettings, loadGlobalSettings } from './settings';
 import { EFFORT_ORDER, parseEffort } from '../model/effort';
@@ -20,7 +19,7 @@ export interface ModelChoice {
   provider: string;
   model: string;
   baseUrl: string;
-/** 源级内联密钥（2026-11-22 用户裁定推翻 D6：providers 条目 apiKey 字段，可回显；缺席=回退 env 槽链） */
+  /** 源级内联密钥（2026-11-22 用户裁定推翻 D6）：providers 条目 apiKey 字段，可回显；缺席=未配置 */
   apiKey?: string;
   /** 该模型最大上下文 tokens（models 条目对象形态 contextWindow > 源级 contextWindow 缺省；
    *  undefined = 回退全局 SUNSHINEX_CONTEXT_WINDOW / 内置 200k） */
@@ -74,7 +73,7 @@ export interface ParsedProviderEntry {
   name: string;
   baseUrl: string;
   /** 源级内联密钥（2026-11-22 用户裁定推翻 D6）：条目 apiKey 字段直接承载、读面回显；
-   *  非串/trim 超 2000 warning 跳字段不致命；空串=缺席。env 槽降为回退兼容（resolveProviderApiKey） */
+   *  非串/trim 超 2000 warning 跳字段不致命；空串=缺席 */
   apiKey?: string;
   /** 源启停（2026-11-17 用户裁定「provider 加开关,默认开」）：absent/true=启用,false=停用——
    *  停用源条目保留（设置页可见可拨回）但其 models 不进 choices（/model 选择卡不可见） */

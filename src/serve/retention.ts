@@ -93,7 +93,6 @@ export function retentionStateFile(): string {
 
 export interface RetentionState {
   lastRunAt?: number;
-  lastDays?: number;
   lastScanned?: number;
   lastPurgedCount?: number;
   lastPurged?: Array<{ slug: string; id: string }>;
@@ -169,7 +168,6 @@ export class RetentionSweeper {
     writeRetentionState(
       {
         lastRunAt: r.ranAt,
-        lastDays: r.days,
         lastScanned: r.scanned,
         lastPurgedCount: r.purged.length,
         ...(r.purged.length > 0 ? { lastPurged: r.purged.slice(0, PURGED_LIST_CAP) } : {}),

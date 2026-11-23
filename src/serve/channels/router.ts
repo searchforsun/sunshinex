@@ -94,7 +94,7 @@ export class ChannelRouter {
     const text = (msg.text ?? '').trim();
     // 命令门（2026-11-22 用户裁定「配置可以给聊天执行的命令」）：cfg.commands 缺席=全部开放，
     // 在场=子集；被关掉的命令一句提示即返回（不提交模型——/stop 当任务发没有意义）
-    const cmd = CHANNEL_COMMANDS.find((c) => (c.cmd === '/new' ? text.startsWith('/new') : text === c.cmd));
+    const cmd = CHANNEL_COMMANDS.find((c) => (c.match === 'prefix' ? text.startsWith(c.cmd) : text === c.cmd));
     if (cmd !== undefined && !this.commandEnabled(cfg, cmd.cmd)) {
       await this.deps.ack(msg, COMMAND_DISABLED_TEXT);
       return;
@@ -213,16 +213,7 @@ export class ChannelRouter {
       return;
     }
     if (binding !== undefined && binding.sessionId !== sessionId) this.deps.io.releaseSession(binding.sessionId);
-    const lock = this.lockOf(cfg, binding, msg);
-    this.deps.bindings.upsert({
-      key,
-      sessionId,
-      ...(seat.journalId !== undefined ? { journalId: seat.journalId } : {}),
-      ...(lock !== undefined ? { lockedUserId: lock } : {}),
-      ...(binding?.rootOverride !== undefined ? { rootOverride: binding.rootOverride } : {}),
-      chatKind: binding?.chatKind ?? msg.chatKind, // 绑定元数据：保留优先，首绑自入站消息取（spec §9.3 信息条单聊/群聊标）
-      updatedAt: this.nowMs(),
-    });
+    this.upsertBinding(key, sessionId, seat, cfg, binding, msg);
     await this.deps.ack(msg, '已开启新会话，原会话留档可回看');
   }
 
@@ -255,16 +246,7 @@ export class ChannelRouter {
       }
       sessionId = created.value.sessionId;
       rt = seat.rt;
-      const lock = this.lockOf(cfg, existing, msg);
-      this.deps.bindings.upsert({
-        key,
-        sessionId,
-        ...(seat.journalId !== undefined ? { journalId: seat.journalId } : {}),
-        ...(lock !== undefined ? { lockedUserId: lock } : {}),
-        ...(existing?.rootOverride !== undefined ? { rootOverride: existing.rootOverride } : {}),
-        chatKind: existing?.chatKind ?? msg.chatKind, // 绑定元数据：保留优先，首绑自入站消息取（spec §9.3 信息条单聊/群聊标）
-        updatedAt: this.nowMs(),
-      });
+      this.upsertBinding(key, sessionId, seat, cfg, existing, msg);
     }
     this.deps.noteSender?.(sessionId, { display: msg.userDisplay ?? msg.userId, userId: msg.userId, chatKind: msg.chatKind }); // ⑫ 绑定解析成功即回写
     const body = msg.text ?? '';
@@ -327,6 +309,21 @@ export class ChannelRouter {
   /** first-user 锁定值：既有锁定原样保留（含 /new 原样带过）；无锁定且通道为 first-user → 锁到当前发送者 */
   private lockOf(cfg: ChannelConfig, binding: Binding | undefined, msg: InboundMessage): string | undefined {
     return binding?.lockedUserId ?? (cfg.allow.kind === 'first-user' ? msg.userId : undefined);
+  }
+
+  /** 绑定 upsert 收敛单点（/new 重绑与 dispatch 新建腿共用）：journalId/lock/rootOverride/chatKind
+   *  保留优先拼装 + updatedAt——七元字段面一处承载，两调用点零漂移 */
+  private upsertBinding(key: string, sessionId: string, seat: { journalId?: string }, cfg: ChannelConfig, binding: Binding | undefined, msg: InboundMessage): void {
+    const lock = this.lockOf(cfg, binding, msg);
+    this.deps.bindings.upsert({
+      key,
+      sessionId,
+      ...(seat.journalId !== undefined ? { journalId: seat.journalId } : {}),
+      ...(lock !== undefined ? { lockedUserId: lock } : {}),
+      ...(binding?.rootOverride !== undefined ? { rootOverride: binding.rootOverride } : {}),
+      chatKind: binding?.chatKind ?? msg.chatKind, // 绑定元数据：保留优先，首绑自入站消息取（spec §9.3 信息条单聊/群聊标）
+      updatedAt: this.nowMs(),
+    });
   }
 
   private nowMs(): number {

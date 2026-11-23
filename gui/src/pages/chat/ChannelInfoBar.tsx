@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { t } from '../../i18n';
 import { pathBasename, relTime } from '../../ui-util';
 import { platformMeta } from '../../sidebar/use-menu-channels';
+import { splitBindingKey } from './use-channel-bound';
 import type { ChannelBindingMsg, ChannelConfigMsg } from '../../connection-api';
 import type { WorkspaceRow } from '../../connection';
 
@@ -28,12 +29,7 @@ export interface ChannelInfoBarConn {
   deleteChannelBinding?(key: string): Promise<{ ok: true }>;
 }
 
-/** 绑定键拆解单点:key=`channelId:chatId`,channelId 惯例不含 ':'(engine/router 裁定)——
- *  首 ':' 切分,chatId 段保留其余(含 ':' 等保留字) */
-function splitBindingKey(key: string): { channelId: string; chatId: string } {
-  const i = key.indexOf(':');
-  return i < 0 ? { channelId: key, chatId: '' } : { channelId: key.slice(0, i), chatId: key.slice(i + 1) };
-}
+/** 绑定键拆解（use-channel-bound.splitBindingKey 单点） */
 
 interface ChannelInfoBarProps {
   readonly conn: ChannelInfoBarConn;
@@ -118,7 +114,7 @@ export function ChannelInfoBar(props: ChannelInfoBarProps): JSX.Element | null {
       {/* 平台(图标+名)/通道实例名/聊天 id(+单聊群聊标) */}
       <span className="channel-info-plt">
         <PlatformIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-        <span>{meta.zh}</span>
+        <span>{t(meta.en, meta.zh)}</span>
       </span>
       <span className="channel-info-item" data-tip={t('Channel instance', '通道实例')}>{channelId}</span>
       <span className="channel-info-item" data-tip={t('Chat ID', '聊天 ID')}>

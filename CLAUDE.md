@@ -28,7 +28,7 @@ pnpm gui:build  # 构建 GUI 前端产物 dist-gui/
 | GUI 全量 | `pnpm --dir gui run test` | pretest 先 typecheck 并编译主仓；vitest 单测 + e2e（起真 daemon） |
 | GUI e2e 单跑 | `pnpm --dir gui run test:e2e` | pretest 先构建 dist-gui；主仓 dist 须先在 |
 | 桌面壳 | `pnpm --filter sunshinex-shell run test`；冒烟 `pnpm shell:smoke` | 冒烟 = electron 真启动→加载→有序退，退出码判过 |
-| 真实模型 e2e | `node scripts/e2e-real.mjs` | 手动门（花真金 token）：真适配器/流式/工具链/安全链全链唯此能验；需 settings env 已配密钥 |
+| 真实模型 e2e | `node scripts/e2e-real.mjs` | 手动门（花真金 token）：真适配器/流式/工具链/安全链全链唯此能验；需 providers 条目 apiKey 已配密钥 |
 | 长任务基准集 | `node scripts/eval-run.mjs [--only <id>]` | 手动门：6 固定任务量化完成率与干预次数，脚本验盘为权威判定 |
 
 联调：`pnpm --dir gui run typecheck`；`pnpm --dir gui run dev`（`VITE_SERVE_URL` 指向后端）；`pnpm cli serve` → `http://127.0.0.1:7788/`（host 恒回环；`--port` 覆盖 / `--port=0` 临时；缺省免鉴权，`--token` 启用）。**HTTP posture（登记的接受面，D58 裁定 2026-11-02）**：单用户本机工具，安全第一道=回环绑定；缺省免鉴权档不验 Host/Origin/Content-Type，浏览器侧跨站 simple POST 的理论可达面显式接受；多用户/不可信环境用 `--token` 收紧。daemon 服务 dist-gui 静态产物——改完 GUI 源码须 `pnpm gui:build` 再刷新（dev 热更免重建）。
@@ -68,7 +68,7 @@ src/
   warning-filter.ts   # node:sqlite ExperimentalWarning 定点过滤（入口首 import；拒全局静音）
   config.ts           # SUNSHINE.md 解析器
   catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、teams、plugins、mcp、skills、approvals、permissions、sunx 品性模板读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
-  config/             # env.ts、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts / permissions / providers / termination-config / memory-config / data-dir（sunx 域目录 sunxDomainDir/sunxContainerDir，settings 语义键 sunxDir） / plugins / image-history
+  config/             # env.ts、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts / permissions / providers / termination-config / memory-config / data-dir（sunx 域目录 sunxDomainDir/sunxContainerDir，settings 语义键 sunxDir） / channels（settings.json channels 键解析单点，全局豁免单档） / plugins / image-history
   tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/、markdown/md-ansi/highlight 呈现、md-theme 双链共享常量单点、session-journal（v3 段级行；INDEX.md 索引 + <id>.transcript.md 可读镜像，jsonl 为逐字节权威）/session-snapshots、ui-state-disk（§13 分层）、clipboard-image（Ctrl+V 贴图）
   harness/
     index.ts          # Harness 门面（生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
@@ -106,7 +106,7 @@ src/
   taskboard/          # 智能体团队域模型与协调器（model/board/store/translate/teammate/team-registry/inbox/executors）
   delegation/         # 委派投影（spawn/后台/graph 节点统一生命周期，TUI/GUI 同源）
   session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）、timer.ts（sunx 定时唤醒/派发 Timer）、wake-host.ts（daemon/TUI 宿主装配件：板名解析+通知文装配）
-  serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows；/sunx 组路由=域枚举/attach/rename/charter，sessionKind 'sunx' 域绑定 dataDir）；schedules/（daemon 级定时任务引擎：engine/executor/handlers/model/recurrence/store——到点新建普通会话派发,schedules.json 落 userConfigDir）
+  serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows；/sunx 组路由=域枚举/attach/rename/charter，sessionKind 'sunx' 域绑定 dataDir）；schedules/（daemon 级定时任务引擎：engine/executor/handlers/model/recurrence/store——到点新建普通会话派发,schedules.json 落 userConfigDir）；channels/（IM 通道域：engine 调和/router 入站指令/reply 出站投影/handlers 运维面/store 持久化/model+adapters 配置与飞书·Telegram·mock 适配,绑定会话落 channelsDir 独立容器）；retention.ts / cache-inventory.ts / cache-handlers.ts（归档保留期清扫+缓存清点清理面）
   storage/            # 本地 JSON 存储底座；archive.ts（归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；直接 import 主仓 TS 源保类型同源）
 shell/               # Electron 桌面壳工作区包（托盘/全局快捷键/无边框窗控/NSIS 打包；壳与主仓零编译期耦合）

@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import type { CacheClearResp, CacheStatusResp, SettingsKeyRow, SettingsView } from '../connection-types';
 import { t } from '../i18n';
 import { errText, fmtBytes, relTime } from '../ui-util';
+import { cacheClearResultText, clearCacheAll } from '../cache-clear';
 import { KEY_DESCRIPTIONS } from './SettingsForm';
 
 /**
@@ -113,20 +114,15 @@ export function StoragePane({ conn, root }: { conn: StoragePaneConn; root: strin
       .catch((err: unknown) => setSaveError(errText(err)));
   };
 
-  /** 缓存清理:ids 缺省=safe 全档(主按钮,附壳侧 http-cache);显式 ids=行级单独清 */
+  /** 缓存清理:ids 缺省=safe 全档(主按钮,附壳侧 http-cache);显式 ids=行级单独清
+   *  ——并行组合与文案走 cache-clear 共享单点(与 App.clearCacheNow 同源) */
   const clear = (ids: string[] | undefined): void => {
     if (busy) return;
     setBusy(true);
     setConfirmId(null);
-    const http = ids === undefined ? window.sunshinexWindow?.clearHttpCache?.().catch(() => undefined) : undefined;
-    void conn
-      .clearCache(ids)
+    clearCacheAll(conn, ids)
       .then(async (r) => {
-        await http;
-        const freed = r.cleared.reduce((a, c) => a + c.freed, 0);
-        if (r.failed.length > 0) bumpToast(t(`${r.failed.length} item(s) failed to clear`, `${r.failed.length} 项清理失败`));
-        else if (freed > 0) bumpToast(t(`Cleared — freed ${fmtBytes(freed)}`, `已清理，释放 ${fmtBytes(freed)}`));
-        else bumpToast(t('Cache is already clean', '缓存本来就很干净'));
+        bumpToast(cacheClearResultText(r));
         load();
       })
       .catch((err: unknown) => setSaveError(errText(err)))

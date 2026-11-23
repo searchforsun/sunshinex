@@ -178,7 +178,6 @@ export function parseSettingsFile(filePath: string): SettingsDoc | null {
   let channels: unknown = undefined;
   for (const [key, value] of Object.entries(root)) {
     if (key === 'version') continue;
-    if (key === 'env') continue; // env 透传分组退役（2026-11-22 裁定）：settings.json 不再承载 SUNSHINEX_* 环境透传,真实环境变量仍有效
     if (key === 'permissions') {
       permissions = root[key] as unknown;
       continue;

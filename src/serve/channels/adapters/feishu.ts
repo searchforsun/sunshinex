@@ -15,6 +15,7 @@
  * SDK 靠 start() 内动态 import——加载延迟到首个飞书通道启用;连接保活/断线重连由 SDK 内部负责
  * （Reconnect/pingLoop）,stop() = ws.close() 主动退场。
  */
+import { CHANNEL_MAX_TEXT_LENGTH } from '../model';
 import type { AdapterDeps, ChannelAdapter, ChatRef } from './types';
 import type { ChannelConfig, DeliveryCaps, InboundMessage, OutboundMessage } from '../model';
 
@@ -50,7 +51,7 @@ interface FeishuMessageEvent {
     content?: string;
     mentions?: unknown[];
   };
-  sender?: { sender_id?: { open_id?: string; user_id?: string }; sender_type?: string };
+  sender?: { sender_id?: { open_id?: string; user_id?: string } };
 }
 
 /** 事件归一:WS 分发可能给 {header,event} 全量或直接 event 本体——取含 message 的一侧 */
@@ -152,7 +153,7 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   caps(): DeliveryCaps {
-    return { streaming: false, markdown: false, card: false, maxTextLength: 4000, mention: true };
+    return { streaming: false, markdown: false, card: false, maxTextLength: CHANNEL_MAX_TEXT_LENGTH, mention: true };
   }
 
   async start(sink: (msg: InboundMessage) => void): Promise<void> {

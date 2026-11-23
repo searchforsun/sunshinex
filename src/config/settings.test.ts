@@ -12,7 +12,7 @@ import {
   SEMANTIC_KEYS,
 } from './settings';
 
-test('parseSettingsFile：合法文档解析语义键；env 分组已退役被忽略；version 缺省视为 1 可载', () => {
+test('parseSettingsFile：合法文档解析语义键；env 分组退役落未知键告警面；version 缺省视为 1 可载', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'settings-ok-'));
   try {
     const file = path.join(dir, 'settings.json');
@@ -26,9 +26,12 @@ test('parseSettingsFile：合法文档解析语义键；env 分组已退役被�
     assert.ok(doc, '合法文档应解析出结果');
     assert.equal(doc.semantic['model'], 'glm-5.3-flash');
     assert.equal(doc.semantic['tier'], 'medium');
-    // env 透传分组退役（2026-11-22 裁定）：env 键整块忽略，不落 semantic 也不落解析产物
-    assert.equal('env' in doc, false, '解析产物无 env 字段');
-    assert.equal(doc.semantic['env'], undefined, 'env 不落语义键面');
+    // env 透传分组退役（2026-11-22 裁定）：无特判——落 semantic 面作未知键，flattenSettings
+    // 走通用「未知语义键」告警（2026-10-29 撤退役键专属指引先例），不落任何槽
+    assert.ok(doc.semantic['env'], 'env 落未知键面（告警可见）');
+    const flat = flattenSettings(doc);
+    assert.ok(flat.warnings.some((w) => w.includes('"env"')), 'flatten 告警点名 env');
+    assert.equal(flat.slots['SUNSHINEX_API_KEY'], undefined, 'env 块不落槽');
 
     const noVersion = path.join(dir, 'settings-noversion.json');
     fs.writeFileSync(noVersion, JSON.stringify({ model: 'glm-5.3-flash' }));

@@ -178,8 +178,9 @@ export function handleSunxSessions(io: SessionHandlerIo, res: http.ServerRespons
 }
 
 /** 会话待确认标注(2026-10-31 主菜单「?」图标数据源):live 会话挂起表非空(approval/ask/
- *  plan-approval 任一未决)=运行中需要用户确认;journal 反查与 liveSessionByJournal 同构 */
-function awaitingByJournal(sessions: Map<string, SessionRuntime>): Set<string> {
+ *  plan-approval 任一未决)=运行中需要用户确认;journal 反查与 liveSessionByJournal 同构。
+ *  导出单点：serve/channels/handlers 通道域会话枚举共用（原 handlers 内同构副本已收编） */
+export function awaitingByJournal(sessions: Map<string, SessionRuntime>): Set<string> {
   const m = new Set<string>();
   for (const s of sessions.values()) {
     if (s.pendingSnapshot().length === 0) continue;

@@ -33,6 +33,7 @@
  */
 import type { DaemonFrame } from '../daemon-wire';
 import type { AskUserAnswer, AskUserRequest } from '../../types';
+import { CHANNEL_MAX_TEXT_LENGTH } from './model';
 import type { DeliveryCaps, OutboundMessage } from './model';
 import type { StreamDelta } from './adapters/types';
 
@@ -78,8 +79,8 @@ interface RunBuf {
   flushed: boolean;
 }
 
-/** capsOf 缺档兜底:保守降级(不流式/纯文本/4000,数值与 mock 缺省档同源) */
-const FALLBACK_CAPS: DeliveryCaps = { streaming: false, markdown: false, card: false, maxTextLength: 4000 };
+/** capsOf 缺档兜底:保守降级(不流式/纯文本/长度帽单点) */
+const FALLBACK_CAPS: DeliveryCaps = { streaming: false, markdown: false, card: false, maxTextLength: CHANNEL_MAX_TEXT_LENGTH };
 
 const YES = new Set(['y', 'yes']);
 const NO = new Set(['n', 'no']);
