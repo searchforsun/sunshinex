@@ -111,6 +111,9 @@ interface SessionSnapshot {
   effort?: ReasoningEffort;
   /** G10-C1d 排队插话段(steering FIFO 快照;seq=队列下标,cancel 寻址键);images=随行图片附件 */
   queued: Array<{ seq: number; text: string; images?: string[] }>;
+  /** 队列暂停态（2026-11-23 用户裁定「中断同时暂停队列」）：真=轮收束不自动发出,待发条目留存,
+   *  GUI 队列面板显示暂停横幅;解除仅经队列恢复端点 */
+  queuePaused: boolean;
   /** 归档态(2026-10-21):旁车 meta archived 回读——GUI 顶栏归档钮/徽标三态播种;未附 journal 恒 false */
   archived: boolean;
   /** todo 批次权威投影(2026-10-31 用户裁定):journal 全量派生+live 增量——GUI 直显,无旧档兼容面 */
@@ -160,6 +163,19 @@ const EVENT_BUFFER_CAP = 512;
  *  signal 无视的工具悬挂 teardown；超时即放行进后续步骤 */
 const ABORTED_RUN_SETTLE_MS = 2_000;
 
+/** 通道元信息 → 会话冻结层文本（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：
+ *  全静态字段——同一聊天所有轮次逐字节一致（前缀缓存零损失）；发言用户是动态的（群聊每人
+ *  不同）**不进此层**，由消息级 [来自 x]: 前缀承载（router ⑫）。appName 可改（设置页改名），
+ *  改名后新轮次缓存重铸一次为可接受代价（用户裁定确认） */
+function channelMetaCharter(m: { platform: string; chatId: string; appName?: string }): string {
+  const lines = [
+    `当前通道平台: ${m.platform}`,
+    `当前聊天 id: ${m.chatId}`,
+  ];
+  if (m.appName !== undefined && m.appName !== '') lines.push(`当前应用名称: ${m.appName}`);
+  return lines.join('\n');
+}
+
 export interface SessionRuntimeOpts {
   id: string;
   /** 会话工作目录（绝对路径——daemon.createSession 解析后注入；buildHarness 按它装配数据底座） */
@@ -188,6 +204,10 @@ export interface SessionRuntimeOpts {
   /** 实例品性原文（charter，2026-11-15 sunx §17.1 用户面=品性/代码面=charter）：assemble() 透传
    *  ContextManager 会话冻结层（全局 → 项目 → 品性）；后续编辑走 /session/:id/charter 尾追替代行 */
   charter?: string;
+  /** 通道元信息（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：assemble() 透传
+   *  ContextManager 会话冻结层——出生定版一次不重写（前缀缓存纪律：同一聊天逐字节一致；
+   *  动态发言用户走消息级 [来自 x]: 前缀不入此层）；缺席=普通会话装配字节不变 */
+  channelMeta?: { platform: string; chatId: string; appName?: string };
   /** 持久化域目录（2026-11-15 sunx P3 Task 2 域绑定）：sunx 出生即铸档时由 createSessionIn 注入
    *  `~/.sunshinex/sunx/<journalId>/data`——assemble() 透传 buildHarness（持久化数据面全落域），
    *  `dataDir` 外窥供 handler 寻址；缺席（standard/TUI/CLI）=resolveDataDir(root) 既有推导逐字节不变 */
@@ -821,7 +841,10 @@ export class SessionRuntime {
         ? { charter: `Your name: ${this.sessionName}.
 
 ${this.sessionCharter ?? ''}` }
-        : this.sessionCharter !== undefined ? { charter: this.sessionCharter } : {}),
+        : this.sessionCharter !== undefined ? { charter: this.sessionCharter }
+        // 通道元信息冻结层（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：出生定版
+        // 一次不重写——同一聊天逐字节一致（前缀缓存零损失）；动态发言用户走消息级 [来自 x]: 前缀
+        : this.opts.channelMeta !== undefined ? { charter: channelMetaCharter(this.opts.channelMeta) } : {}),
       // 持久化域透传（2026-11-15 sunx P3 Task 2 域绑定）：缺席=既有推导零变化
       ...(this.opts.dataDir !== undefined ? { dataDir: this.opts.dataDir } : {}),
       // 学习沉淀关闸（P2 遗留义务清偿,P3 Task 2 裁定）：sunx 装配 learnSkills:false——编排轮不沉淀
@@ -1667,7 +1690,9 @@ ${this.sessionCharter ?? ''}` }
         // interrupted(用户主动停)不续——停止即停,队列留存由用户决定;余下条目保序回队
         // (P5:取走/回队均走内核——steer 行落档+queue 帧广播随发)
         if (runOutcome?.stopReason !== 'interrupted') {
-          const pending = this.kernel.steerTakePending();
+          // 队列暂停态（2026-11-23 用户裁定）：不取队即不发出——待发条目留存,解除仅经队列恢复端点;
+          // wake 续发/定时补跑不受队列暂停牵连（背景任务接力与用户队列分立）
+          const pending = this.queuePausedFlag ? [] : this.kernel.steerTakePending();
           if (pending.length > 0) {
             for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text, it.images);
             // G14.89 user 回显帧:GUI 运行中入队不本地回显,气泡靠此帧。回显必须走纯帧广播
@@ -1911,6 +1936,28 @@ ${this.sessionCharter ?? ''}` }
   }
 
   /** 排队插话(G10-C1d):内核队列快照(P5),seq=位置下标(每次变更重排,cancel 寻址键) */
+  /** 队列暂停态（2026-11-23 用户裁定「用户点击输入框暂停按钮,同时要暂停队列,不要自动发出」）：
+   *  真=轮收束不自动发出（待发条目留存,面板显示暂停横幅）;输入框停止钮中断时同置;解除仅经队列恢复。
+   *  内存态随运行时生命周期（队列本体同源,不落盘） */
+  private queuePausedFlag = false;
+
+  /** 队列暂停:置暂停态并广播快照面（GUI 队列面板横幅切换） */
+  queuePause(): void {
+    this.queuePausedFlag = true;
+  }
+
+  /** 队列恢复:解除暂停;idle 且队列非空即按序自动发送（排队语义即刻续跑;running 由轮收束 gate 接力） */
+  queueResume(): void {
+    this.queuePausedFlag = false;
+    if (this.status() !== 'idle') return;
+    const pending = this.kernel.steerTakePending();
+    if (pending.length > 0) {
+      for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text, it.images);
+      this.broadcastUserEcho(pending[0]!.text, pending[0]!.images);
+      this.submit(pending[0]!.text, pending[0]!.images);
+    }
+  }
+
   private queuedSteer(): Array<{ seq: number; text: string; images?: string[] }> {
     return this.kernel.steerPendingItems().map(({ seq, text, images }) => ({ seq, text, ...(images !== undefined ? { images } : {}) }));
   }
@@ -1980,6 +2027,7 @@ ${this.sessionCharter ?? ''}` }
       ...(this.tier ? { tier: this.tier } : {}),
       ...(this.effort ? { effort: this.effort } : {}),
       queued: this.queuedSteer(),
+      queuePaused: this.queuePausedFlag,
       todoBatches: this.todoBatches,
       archived: this.attachedJournalId !== undefined
         ? readSessionMeta(this.dataDir, this.attachedJournalId).archived === true

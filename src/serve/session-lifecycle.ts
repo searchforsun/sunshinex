@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { ok, fail } from '../result';
 import type { Result } from '../result';
 import { SessionRuntime } from './session';
+import { ensureEnvWorkdirFact } from '../harness/context';
 import type { DaemonFrame } from './daemon-wire';
 import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
@@ -99,6 +100,9 @@ export interface CreateSessionOpts {
   name?: string;
   /** 实例品性原文：装配透传 ContextManager 品性冻结层 */
   charter?: string;
+  /** 通道元信息（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：装配透传 ContextManager
+   *  会话冻结层——出生定版一次不重写（前缀缓存纪律）；仅通道域会话传入（router createOpts） */
+  channelMeta?: { platform: string; chatId: string; appName?: string };
   /** 域绑定覆写（换座缝,见接口注）：传入=领养既有域目录（不铸档不注册工作区） */
   dataDir?: string;
   /** 固定模型 id（2026-11-20 定时任务）：装配 per-session 适配器（不切 daemon 全局选择）——
@@ -187,6 +191,7 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     ...(opts?.kind !== undefined ? { kind: opts.kind } : {}),
     ...(opts?.name !== undefined ? { name: opts.name } : {}),
     ...(opts?.charter !== undefined ? { charter: opts.charter } : {}),
+    ...(opts?.channelMeta !== undefined ? { channelMeta: opts.channelMeta } : {}),
     // 域绑定（2026-11-15 sunx P3 Task 2）：dataDir=域——持久化数据面全落域,handler 寻址走 dataDir 外窥
     ...(domainDir !== undefined ? { dataDir: domainDir } : {}),
     ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
@@ -321,6 +326,9 @@ export function attachSessionIn(io: SessionLifecycleIo, id: string, journalId: s
     });
   }
   session.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+  // 环境事实行对齐（2026-11-23 路线一）：回放链上的 worktree 翻转行 vs 本次运行时活动根（重启后
+  // activeRoot 内存态归零）失配即尾追修正——重建上下文不带入安全态错位
+  ensureEnvWorkdirFact(session.runtime.harness.context, session.runtime.harness.context.root, session.runtime.harness.safety.activeRoot);
   // 转录装载:seg 面重放入核(no-compat——v1 的 msg 行/链派生播种已随 collector 退役)
   session.kernelSeed(reduceSegRows(replayEvents));
   session.seedTodoBatches(replayEvents); // todo 批次权威投影(2026-10-31 用户裁定):journal 全量行派生,内核环窗之外的老批次由此可见

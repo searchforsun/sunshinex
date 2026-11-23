@@ -22,7 +22,7 @@ import type { Result } from '../../result';
 /** 会话 IO 面（engine/Task 7 装配 daemon 既有单点：createSession/attach 走 session-lifecycle、
  *  resolveApproval 接审批回执路由同款方法） */
 export interface ChannelsSessionIo {
-  createSession(root: string, opts?: { mode?: 'read-only' | 'acceptEdits' | 'full-access'; activate?: boolean; model?: string }): Result<{ sessionId: string }>;
+  createSession(root: string, opts?: { mode?: 'read-only' | 'acceptEdits' | 'full-access'; activate?: boolean; model?: string; channelMeta?: { platform: string; chatId: string; appName?: string } }): Result<{ sessionId: string }>;
   getSession(id: string): SessionRuntime | undefined;
   attach(id: string, journalId: string): Result<{ sessionId: string; root: string }>;
   releaseSession(id: string): void;
@@ -203,7 +203,7 @@ export class ChannelRouter {
    *  影响之前会话的内容，就放着就可以」）：/new 不 release 旧座——GUI 开着旧会话时 snapshot/
    *  pty 等会话维端点照常寻址（404 根修），旧转录/终端原样可回看，注册表容量交 daemon 既有面 */
   private async cmdNew(msg: InboundMessage, cfg: ChannelConfig, key: string, binding: Binding | undefined): Promise<void> {
-    const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg));
+    const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg, msg.chatId));
     if (!created.ok) {
       await this.deps.ack(msg, `新会话创建失败：${created.error.message}`);
       return;
@@ -237,7 +237,7 @@ export class ChannelRouter {
     if (rt === undefined || sessionId === undefined) {
       if (existing !== undefined) this.deps.io.releaseSession(existing.sessionId); // ⑨b attach 失败/无 journalId → 残座释放走新建
       const root = this.resolveRoot(cfg, msg.chatId, existing);
-      const created = this.deps.io.createSession(root, this.createOpts(cfg)); // ⑦ 新建
+      const created = this.deps.io.createSession(root, this.createOpts(cfg, msg.chatId)); // ⑦ 新建
       if (!created.ok) {
         await this.deps.ack(msg, `会话创建失败：${created.error.message}`);
         return;
@@ -305,9 +305,16 @@ export class ChannelRouter {
     return cfg.root === 'auto' ? channelChatWorkspaceRoot(cfg.id, chatId) : cfg.root;
   }
 
-  /** createSession opts：mode 透传配置、activate:false（通道会话不抢 GUI 焦点）、model 可选透传 */
-  private createOpts(cfg: ChannelConfig): { mode: ChannelConfig['mode']; activate: false; model?: string } {
-    return { mode: cfg.mode, activate: false, ...(cfg.model !== undefined ? { model: cfg.model } : {}) };
+  /** createSession opts：mode 透传配置、activate:false（通道会话不抢 GUI 焦点）、model 可选透传；
+   *  channelMeta（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）——出生定版冻结层,
+   *  同一聊天逐字节一致（前缀缓存零损失;动态发言用户走 ⑫ 消息级 [来自 x]: 前缀不入此层） */
+  private createOpts(cfg: ChannelConfig, chatId: string): { mode: ChannelConfig['mode']; activate: false; model?: string; channelMeta: { platform: string; chatId: string; appName?: string } } {
+    return {
+      mode: cfg.mode,
+      activate: false,
+      ...(cfg.model !== undefined ? { model: cfg.model } : {}),
+      channelMeta: { platform: cfg.platform, chatId, ...(cfg.name !== undefined ? { appName: cfg.name } : {}) },
+    };
   }
 
   /** first-user 锁定值：既有锁定原样保留（含 /new 原样带过）；无锁定且通道为 first-user → 锁到当前发送者 */
