@@ -1,7 +1,7 @@
 import { listAgents, setAgentEnabled } from '../catalog/agents';
 import type { AgentEntry } from '../catalog/agents';
-import { CatalogWriteError } from '../catalog/io';
 import { t } from '../i18n';
+import { idleGuard, readListing, runCatalogWriteTui } from './commands-common';
 import type { SessionController } from './session';
 
 // Task 20（Phase E）拆分件：/agents 命令族函数体（commands-model/commands-mcp 先例——handleSlash 骨架
@@ -21,24 +21,12 @@ function agentRow(e: AgentEntry): string {
   return `- ${e.id} [${e.scope}] ${state}${origin} — ${e.meta.name}: ${e.meta.description}`;
 }
 
-/** 读面遏制单点（T20 评审修补）：列表面与写面同契约（「不抛死会话」）——catalog 读面失败
- *  （目录竞态不可读等）统一 try/catch → warn 错误行（与写面错误行同形状），不抛死会话
- *  （submit 是 fire-and-forget，handleSlash 拒绝即未处理拒绝杀进程） */
-function readListing<T>(ctrl: SessionController, fn: () => T): T | undefined {
-  try {
-    return fn();
-  } catch (e) {
-    ctrl.pushMsg('system', t(
-      `Subagent listing failed: ${e instanceof Error ? e.message : String(e)}`,
-      `子智能体清单读取失败：${e instanceof Error ? e.message : String(e)}`,
-    ), { level: 'warn' });
-    return undefined;
-  }
-}
+/** 读面/写面遏制与 idle 守卫走 commands-common 单点（D87：原本文件手写三件退役）；名词注入 */
+const NOUN = { en: 'Subagent', zh: '子智能体' };
 
 /** 列表卡（无参查看态 + 带参执行后重绘态共用）：两级位置清单 + 装配告警 + 用法行 */
 function agentsListing(ctrl: SessionController): void {
-  const listing = readListing(ctrl, () => listAgents(ctrl.root));
+  const listing = readListing(ctrl, NOUN, () => listAgents(ctrl.root));
   if (listing === undefined) return; // 读面遏制已出错误行
   const lines = [t(`Subagents (${listing.entries.length}):`, `子智能体（${listing.entries.length} 个）：`)];
   if (listing.entries.length === 0) {
@@ -56,26 +44,9 @@ function agentsListing(ctrl: SessionController): void {
   ctrl.pushMsg('system', lines.join('\n'));
 }
 
-/** catalog 写面收口：CatalogWriteError → 错误行（消息面，不抛死会话），成功 true */
-function runAgentWrite(ctrl: SessionController, fn: () => void): boolean {
-  try {
-    fn();
-    return true;
-  } catch (e) {
-    ctrl.pushMsg('system', e instanceof CatalogWriteError ? t(`${e.code}: ${e.message}`, `${e.code}：${e.message}`) : t(
-      `Agent write failed: ${e instanceof Error ? e.message : String(e)}`,
-      `子智能体写入失败：${e instanceof Error ? e.message : String(e)}`,
-    ), { level: 'error' });
-    return false;
-  }
-}
-
 /** /agents [enable|disable <id>]：无参两级位置列表卡；带参启停写条目所在作用域 agent.md enabled 行（就地手术）。 */
 export function agentsPanel(ctrl: SessionController, rest: string): void {
-  if (ctrl.state.status !== 'idle') {
-    ctrl.pushMsg('system', t('A task is running; /agents unavailable now', '当前有任务进行中，暂不能执行 /agents'), { level: 'warn' });
-    return;
-  }
+  if (!idleGuard(ctrl, 'agents')) return;
   if (rest === '') return agentsListing(ctrl);
   const parts = rest.split(/\s+/);
   const action = parts[0]!;
@@ -85,7 +56,7 @@ export function agentsPanel(ctrl: SessionController, rest: string): void {
     return;
   }
   // 读面一次 + 就地定位（同一遏制单点）：读失败 warn 已出即短路，不落写、不误报 not-found
-  const listing = readListing(ctrl, () => listAgents(ctrl.root));
+  const listing = readListing(ctrl, NOUN, () => listAgents(ctrl.root));
   if (listing === undefined) return;
   const entry = effectiveEntry(listing.entries, id);
   if (entry === undefined) {
@@ -94,7 +65,7 @@ export function agentsPanel(ctrl: SessionController, rest: string): void {
   }
   const enabled = action === 'enable';
   const scope = entry.scope;
-  const ok = runAgentWrite(ctrl, () => setAgentEnabled(ctrl.root, scope, id, enabled));
+  const ok = runCatalogWriteTui(ctrl, NOUN, () => setAgentEnabled(ctrl.root, scope, id, enabled));
   if (!ok) return;
   ctrl.pushMsg('system', t(
     `ok: subagent ${id} ${enabled ? 'enabled' : 'disabled'} (${scope}); takes effect on next assembly`,

@@ -1,8 +1,8 @@
 import { listMcpServers, setMcpServerEnabled } from '../catalog/mcp';
 import type { McpServerEntry } from '../catalog/mcp';
 import { approveMcpServer, denyMcpServer } from '../catalog/approvals';
-import { CatalogWriteError } from '../catalog/io';
 import { t } from '../i18n';
+import { idleGuard, readListing, runCatalogWriteTui } from './commands-common';
 import type { SessionController } from './session';
 
 // Task 20（Phase E）拆分件：/mcp 命令族函数体（commands-model/D52 commands-* 先例——handleSlash 骨架
@@ -29,25 +29,12 @@ function mcpRow(e: McpServerEntry): string {
   return `- ${e.name} [${e.scope}] ${state}${shadowed}${approval}`;
 }
 
-/** 读面遏制单点（T20 评审修补）：catalog 列举读面对畸形 settings fail-fast throw（approvalState →
- *  parseSettingsFile 与装载链同纪律），而 submit 是 fire-and-forget（use-line-edit void 无 await）——
- *  handleSlash 拒绝即未处理拒绝杀进程。面板「不抛死会话」契约读面与写面同履：统一 try/catch →
- *  warn 错误行（与写面错误行同形状），undefined = 已出错误行，调用方短路后续定位/写路径 */
-function readListing<T>(ctrl: SessionController, fn: () => T): T | undefined {
-  try {
-    return fn();
-  } catch (e) {
-    ctrl.pushMsg('system', t(
-      `MCP listing failed: ${e instanceof Error ? e.message : String(e)}`,
-      `MCP 清单读取失败：${e instanceof Error ? e.message : String(e)}`,
-    ), { level: 'warn' });
-    return undefined;
-  }
-}
+/** 读面遏制与 idle 守卫走 commands-common 单点（D87：原本文件手写件退役）；名词注入 */
+const NOUN = { en: 'MCP', zh: 'MCP' };
 
 /** 列表卡（无参查看态 + 带参执行后重绘态共用）：两级清单（global 先 project 后）+ 装配告警 + 用法行 */
 function mcpListing(ctrl: SessionController): void {
-  const listing = readListing(ctrl, () => listMcpServers(ctrl.root));
+  const listing = readListing(ctrl, NOUN, () => listMcpServers(ctrl.root));
   if (listing === undefined) return; // 读面遏制已出错误行
   const lines = [t(`MCP servers (${listing.entries.length}):`, `MCP 服务器（${listing.entries.length} 台）：`)];
   if (listing.entries.length === 0) {
@@ -62,30 +49,13 @@ function mcpListing(ctrl: SessionController): void {
   ctrl.pushMsg('system', lines.join('\n'));
 }
 
-/** catalog 写面收口：CatalogWriteError（COMMENTS/INVALID）→ 错误行（消息面，不抛死会话），成功 true */
-function runMcpWrite(ctrl: SessionController, fn: () => void): boolean {
-  try {
-    fn();
-    return true;
-  } catch (e) {
-    ctrl.pushMsg('system', e instanceof CatalogWriteError ? t(`${e.code}: ${e.message}`, `${e.code}：${e.message}`) : t(
-      `MCP write failed: ${e instanceof Error ? e.message : String(e)}`,
-      `MCP 写入失败：${e instanceof Error ? e.message : String(e)}`,
-    ), { level: 'error' });
-    return false;
-  }
-}
-
 /**
  * /mcp [enable|disable|approve|deny <name>]：无参两级列表卡；带参执行后回显结果行并重绘列表。
  * 启停写条目所在作用域 mcp.json（就地手术——列表即事实源）；approve/deny 是项目级批准阀
  * （写全局 settings mcpApprovals/mcpDenied，全局条目不适用——恒不过阀）。
  */
 export function mcpPanel(ctrl: SessionController, rest: string): void {
-  if (ctrl.state.status !== 'idle') {
-    ctrl.pushMsg('system', t('A task is running; /mcp unavailable now', '当前有任务进行中，暂不能执行 /mcp'), { level: 'warn' });
-    return;
-  }
+  if (!idleGuard(ctrl, 'mcp')) return;
   if (rest === '') return mcpListing(ctrl);
   const parts = rest.split(/\s+/);
   const action = parts[0]!;
@@ -95,7 +65,7 @@ export function mcpPanel(ctrl: SessionController, rest: string): void {
     return;
   }
   // 读面一次 + 就地定位（同一遏制单点）：读失败 warn 已出即短路，不落写、不误报 not-found
-  const listing = readListing(ctrl, () => listMcpServers(ctrl.root));
+  const listing = readListing(ctrl, NOUN, () => listMcpServers(ctrl.root));
   if (listing === undefined) return;
   const entry = effectiveEntry(listing.entries, name);
   if (entry === undefined) {
@@ -111,7 +81,7 @@ export function mcpPanel(ctrl: SessionController, rest: string): void {
       ), { level: 'warn' });
       return;
     }
-    const ok = runMcpWrite(ctrl, () => (action === 'approve' ? approveMcpServer(ctrl.root, name) : denyMcpServer(ctrl.root, name)));
+    const ok = runCatalogWriteTui(ctrl, NOUN, () => (action === 'approve' ? approveMcpServer(ctrl.root, name) : denyMcpServer(ctrl.root, name)));
     if (!ok) return;
     ctrl.pushMsg('system', t(
       `ok: mcp server ${name} ${action}d for project; takes effect on next assembly`,
@@ -121,7 +91,7 @@ export function mcpPanel(ctrl: SessionController, rest: string): void {
   }
   const enabled = action === 'enable';
   const scope = entry.scope;
-  const ok = runMcpWrite(ctrl, () => setMcpServerEnabled(ctrl.root, scope, name, enabled));
+  const ok = runCatalogWriteTui(ctrl, NOUN, () => setMcpServerEnabled(ctrl.root, scope, name, enabled));
   if (!ok) return;
   ctrl.pushMsg('system', t(
     `ok: mcp server ${name} ${enabled ? 'enabled' : 'disabled'} (${scope}); takes effect on next assembly`,

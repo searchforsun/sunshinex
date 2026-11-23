@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import * as http from 'node:http';
-import * as os from 'node:os';
 import * as path from 'node:path';
 import type { SessionRuntime } from './session';
 import { validSessionId } from './session-id';
+import { defaultScratchRootPath, isDefaultWorkspaceSlug } from './session-lifecycle';
 import type { SessionHandlerIo } from './session-handlers';
 import { urlOf } from './daemon-wire';
 import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../tui/session-journal';
@@ -43,16 +43,13 @@ export function handleSessionsRecent(io: SessionHandlerIo, res: http.ServerRespo
       // G14.96 历史档降级:workspace.json 缺失(TUI 时代档/落档失败)但 slug 含默认锚点名
       // → 视为默认工作区(root 回锚定路径,attach 可用),不再被过滤出 RECENTS;
       // 非默认命名维持跳过(项目会话归 PROJECTS 各组,组列表由 /workspaces 承载)
-      if (!ent.name.includes('sunshinex-default')) continue;
-      root = path.join(os.tmpdir(), 'sunshinex-default');
+      if (!isDefaultWorkspaceSlug(ent.name)) continue;
+      root = defaultScratchRootPath();
     }
-    const isDefaultWs = (root: string): boolean => {
-      const base = root.split(/[\\/]+/).filter(Boolean).pop() ?? '';
-      return base === 'default' || base.startsWith('sunshinex-default');
-    };
     for (const r of listSessions(dataDir)) {
       if (r.archived === true) continue; // 2026-10-21 归档滤除:归档会话退出 RECENTS
-      if (!isDefaultWs(root)) continue; // G14.35:RECENTS 只收默认锚点工作区(非项目会话的家;项目会话归各组)
+      // G14.35:RECENTS 只收默认锚点工作区(非项目会话的家;项目会话归各组)——判定走单点(D90)
+      if (!isDefaultWorkspaceSlug(root.split(/[\\/]+/).filter(Boolean).pop() ?? '')) continue;
       out.push({
         id: r.id,
         updatedAt: r.updatedAt,

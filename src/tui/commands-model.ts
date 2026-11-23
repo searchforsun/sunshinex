@@ -2,6 +2,7 @@ import { EFFORT_ORDER, parseEffort } from '../model/adapter';
 import { parseTier } from '../runtime';
 import { formatTokens } from './format';
 import { t } from '../i18n';
+import { idleGuard } from './commands-common';
 import type { SessionController } from './session';
 
 // D17 拆分件步3（docs/TECH-DEBT-SURVEY.md H1）：模型选择命令族（/model /model-tier /model-effort）函数体
@@ -9,10 +10,7 @@ import type { SessionController } from './session';
 
 /** /model：多源多模型切换（settings providers 键）：选择卡即选即切，对后续任务生效（整场恒定，CLAUDE.md §11 重算事件口径） */
 export async function modelSwitch(ctrl: SessionController): Promise<void> {
-  if (ctrl.state.status !== 'idle') {
-    ctrl.pushMsg('system', t('A task is running; /model unavailable now', '当前有任务进行中，暂不能执行 /model'), { level: 'warn' });
-    return;
-  }
+  if (!idleGuard(ctrl, 'model')) return;
   const sw = ctrl.modelSwitcher;
   if (!sw || sw.choices().length === 0) {
     ctrl.pushMsg('system', t(
@@ -51,10 +49,7 @@ export async function modelSwitch(ctrl: SessionController): Promise<void> {
 
 /** /model-tier：用户级档位切换（small/medium/large 选择卡），对后续任务生效 */
 export async function modelTierSwitch(ctrl: SessionController): Promise<void> {
-  if (ctrl.state.status !== 'idle') {
-    ctrl.pushMsg('system', t('A task is running; /model-tier unavailable now', '当前有任务进行中，暂不能执行 /model-tier'), { level: 'warn' });
-    return;
-  }
+  if (!idleGuard(ctrl, 'model-tier')) return;
   const current = ctrl.state.tier;
   const answer = await ctrl.askUser({
     question: t(current ? `Switch model tier (current: ${current})` : 'Switch model tier (current: default)', current ? `切换模型档位（当前 ${current}）` : '切换模型档位（当前默认）'),
@@ -74,10 +69,7 @@ export async function modelTierSwitch(ctrl: SessionController): Promise<void> {
 
 /** /model-effort：思考强度切换（选择卡，default 清除回适配器缺省），对后续任务生效 */
 export async function modelEffortSwitch(ctrl: SessionController): Promise<void> {
-  if (ctrl.state.status !== 'idle') {
-    ctrl.pushMsg('system', t('A task is running; /model-effort unavailable now', '当前有任务进行中，暂不能执行 /model-effort'), { level: 'warn' });
-    return;
-  }
+  if (!idleGuard(ctrl, 'model-effort')) return;
   const current = ctrl.state.effort;
   const answer = await ctrl.askUser({
     question: t(current ? `Switch reasoning effort (current: ${current})` : 'Switch reasoning effort (current: adapter default)', current ? `切换思考强度（当前 ${current}）` : '切换思考强度（当前适配器缺省）'),

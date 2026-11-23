@@ -6,6 +6,7 @@ import { urlOf } from './daemon-wire';
 import { projectsRoot, projectSlug } from '../config/data-dir';
 import { userConfigDir } from '../config/env';
 import { clearAppGuiStatePointer, removePinsByRoot } from './app-state-handlers';
+import { defaultScratchRootPath, isDefaultWorkspaceSlug } from './session-lifecycle';
 import { listSessions } from '../tui/session-journal';
 import type { WorkspaceRow } from './daemon';
 
@@ -199,9 +200,9 @@ export function handleWorkspaces(io: WorkspaceHandlerIo, res: http.ServerRespons
     } catch {
       // 历史工作区无档/坏档 → slug-only（root undefined，前端不可 attach）
     }
-    if (root === undefined && ent.name.includes('sunshinex-default')) {
-      // G14.96 默认锚点历史档降级:slug 自证身份,root 回锚定路径(可 attach/可开回)
-      root = path.join(os.tmpdir(), 'sunshinex-default');
+    if (root === undefined && isDefaultWorkspaceSlug(ent.name)) {
+      // G14.96 默认锚点历史档降级:slug 自证身份,root 回锚定路径(可 attach/可开回)——判定与路径走单点(D90)
+      root = defaultScratchRootPath();
     }
     // G14.32:计数与列表同源(listSessions——side 辅助会话滤除),徽标不再虚高
     // G14.165 回退:注册表恒全量(欢迎页项目下拉要能选到刚建 0 会话的工作区);

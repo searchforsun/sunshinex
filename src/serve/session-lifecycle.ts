@@ -45,11 +45,26 @@ export interface SessionLifecycleIo {
 /** root 缺省锚字面量单点（GUI 欢迎页非项目会话的缺省锚，serve 侧解析面同源引用） */
 export const DEFAULT_ROOT_LITERAL = 'default';
 
+/** 缺省锚点 slug（D90 收敛：路径字面量原三处双写——本函数+两 handler 内联重推导） */
+export const DEFAULT_SCRATCH_SLUG = 'sunshinex-default';
+
+/** 缺省锚点路径（无副作用纯函数；落盘面走 defaultScratchRoot 的 mkdir 形） */
+export function defaultScratchRootPath(): string {
+  return path.join(os.tmpdir(), DEFAULT_SCRATCH_SLUG);
+}
+
+/** 默认锚点工作区判定单点（D90：原 basename 词法与 slug includes 词法两处并存漂移——判定词法
+ *  统一取宽口径 includes）。入参取末段（root 尾段或注册 slug）：'default' 字面量或含
+ *  sunshinex-default 锚点名（G14.96 历史档 slug 自证身份） */
+export function isDefaultWorkspaceSlug(name: string): boolean {
+  return name === DEFAULT_ROOT_LITERAL || name.includes(DEFAULT_SCRATCH_SLUG);
+}
+
 /** G14.10 B 方案:default 工作区锚定专用临时目录——root 字面 'default'(GUI 欢迎页非项目
  *  会话的缺省锚点)解析为 <tmp>/sunshinex-default(缺场 mkdir recursive):临时任务的文件
  *  落在系统临时目录,不再污染仓库/项目目录。非字面 root(显式项目路径)不经过此处。 */
 export function defaultScratchRoot(): string {
-  const dir = path.join(os.tmpdir(), 'sunshinex-default');
+  const dir = defaultScratchRootPath();
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

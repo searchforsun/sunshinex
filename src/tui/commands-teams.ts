@@ -2,6 +2,7 @@ import { listTeams } from '../catalog/teams';
 import type { TeamEntry } from '../catalog/teams';
 import { listAgentDefs } from '../harness/subagent';
 import { t } from '../i18n';
+import { idleGuard, readListing } from './commands-common';
 import type { SessionController } from './session';
 
 // agents-teams P1（Task 5）拆分件：/teams 命令族函数体 + $/# 未知引用提示（commands-agents/
@@ -17,25 +18,13 @@ function teamRow(e: TeamEntry): string {
   return `- ${e.id} [${e.source}] ${state}${origin} — ${e.name}: ${e.description} (${t('members', '成员')}: ${e.members.join(', ')})`;
 }
 
-/** 读面遏制单点（镜像 commands-agents readListing）：catalog 读面失败（目录竞态不可读等）统一
- *  try/catch → warn 错误行（与写面错误行同形状），不抛死会话（submit 是 fire-and-forget，
- *  handleSlash 拒绝即未处理拒绝杀进程） */
-function readListing<T>(ctrl: SessionController, fn: () => T): T | undefined {
-  try {
-    return fn();
-  } catch (e) {
-    ctrl.pushMsg('system', t(
-      `Teams listing failed: ${e instanceof Error ? e.message : String(e)}`,
-      `团队清单读取失败：${e instanceof Error ? e.message : String(e)}`,
-    ), { level: 'warn' });
-    return undefined;
-  }
-}
+/** 读面遏制走 commands-common 单点（D87：原「镜像 commands-agents」手写件退役——镜像注释即漂移温床） */
+const NOUN = { en: 'Teams', zh: '团队' };
 
 /** 列表卡（无参查看态）：两级位置清单（global → project，项目遮蔽全局标 shadowed）+ missing 成员
  *  警示行 + 装配告警 + 用法行 */
 function teamsListing(ctrl: SessionController): void {
-  const listing = readListing(ctrl, () => listTeams(ctrl.root));
+  const listing = readListing(ctrl, NOUN, () => listTeams(ctrl.root));
   if (listing === undefined) return; // 读面遏制已出错误行
   const lines = [t(`Teams (${listing.entries.length}):`, `团队（${listing.entries.length} 个）：`)];
   if (listing.entries.length === 0) {
@@ -61,10 +50,7 @@ function teamsListing(ctrl: SessionController): void {
 /** /teams：无参两级清单卡（只读）；带参一律回写引导行——spec §6.3：TUI 不做写表单，编辑在 GUI
  *  设置（Agent Teams）/CLI catalog API，面板零写盘（与 /providers 只读惯例同款）。 */
 export function teamsPanel(ctrl: SessionController, rest: string): void {
-  if (ctrl.state.status !== 'idle') {
-    ctrl.pushMsg('system', t('A task is running; /teams unavailable now', '当前有任务进行中，暂不能执行 /teams'), { level: 'warn' });
-    return;
-  }
+  if (!idleGuard(ctrl, 'teams')) return;
   if (rest === '') return teamsListing(ctrl);
   ctrl.pushMsg('system', t(
     'Team edits live in the GUI settings (Agent Teams) / CLI catalog API — TUI panel is read-only',
