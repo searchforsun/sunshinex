@@ -36,6 +36,14 @@ interface ChannelsSectionProps {
   readonly onOpenSettings?: () => void;
 }
 
+/** 域目录 → 聊天工作区完整路径（2026-11-22 用户裁定「悬浮卡既要显示会话 id,也要显示工作目录」）:
+ *  `<域目录>/workspace`（channelChatWorkspaceRoot 铸造面;分隔符随行 root 形态）——仅悬浮卡展示,
+ *  行 attach 寻址仍用域目录(root,resolveDataDir 归约回 <域>/data) */
+const workspaceOf = (domainDir: string): string => {
+  const sep = domainDir.includes('\\') ? '\\' : '/';
+  return domainDir.endsWith('\\') || domainDir.endsWith('/') ? `${domainDir}workspace` : `${domainDir}${sep}workspace`;
+};
+
 export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSectionProps): JSX.Element | null {
   useLanguage(); // memo 响应面:语言同步(en→zh)强制重渲染,区块头标签随 t() 调用时求值归位
   const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenArchive, onOpenSettings } = props;
@@ -173,8 +181,8 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                             runs: sr.runs,
                             steps: sr.steps,
                             createdAt: sr.createdAt,
-                            chatId: sr.chatId, // 平台聊天会话标识(2026-11-22 用户裁定:hover 显示+复制)
-                            rootPath: sr.root, // 域目录直寻址(悬浮卡地址段;chatId 在场时被替代)
+                            chatId: sr.chatId, // 平台聊天会话标识(悬浮卡显示+复制)
+                            rootPath: workspaceOf(sr.root), // 悬浮卡工作区行=完整 workspace 目录(2026-11-22 裁定;attach 仍走 sr.root 域目录)
                           }}
                           updatedAt={sr.updatedAt}
                           active={active}

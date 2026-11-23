@@ -259,8 +259,10 @@ function SessionHoverCard(props: {
       {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底);
           2026-11-10 用户裁定:路径/分支行右端复制钮(复制会话名/项目地址/分支名);
           2026-11-11 用户裁定:路径行补文件夹图标(与分支/轮次行同语言);
-          2026-11-22 用户裁定:通道行 chatId 替代根路径行(聊天图标+平台聊天会话 id+复制) */}
-      {chatId !== undefined && chatId !== '' ? (
+          2026-11-22 用户裁定:通道行 chatId+工作区**两行并存**(聊天 id 行=MessagesSquare 图标
+          +平台聊天会话 id;工作区行=完整 workspace 目录+复制——「既要显示会话 id,也要显示
+          工作目录」),非通道行回落单根路径行 */}
+      {chatId !== undefined && chatId !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
           <div className="sx-sess-card-path">
@@ -269,13 +271,14 @@ function SessionHoverCard(props: {
             <CardCopy text={chatId} label={t('Copy chat ID', '复制聊天 ID')} />
           </div>
         </>
-      ) : rootPath !== undefined && rootPath !== '' && (
+      )}
+      {rootPath !== undefined && rootPath !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
           <div className="sx-sess-card-path">
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
             <span>{rootPath}</span>
-            <CardCopy text={rootPath} label={t('Copy project path', '复制项目地址')} />
+            <CardCopy text={rootPath} label={chatId !== undefined && chatId !== '' ? t('Copy workspace path', '复制工作区路径') : t('Copy project path', '复制项目地址')} />
           </div>
         </>
       )}
