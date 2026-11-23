@@ -29,6 +29,43 @@ import type { RewindOps } from './chat-types';
 import { hasUnclosedFence, sealPartialImage, streamMdCut } from './stream-md';
 import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
 
+/** 流式尾块节流渲染(2026-11-20 用户实测「输入卡顿又复现」):ms=0 直通(逐批渲染);
+ *  ms>0 时值最多每 ms 更新一次。场景:长代码块流式期间,尾块=整个未闭合围栏(streamMdCut
+ *  对围栏内空行不切断→head='' tail=全文),每个 32ms 批次都全量重解析+重高亮整个已累积
+ *  围栏——块越长越贵(O(n²)),与贴底布局一起把主线程吃满,键入回显排队=「输入又卡」。
+ *  未闭合围栏期降到 120ms(~8 帧/s)后,代码仍连续出现但阻塞段缩短 4 倍;围栏闭合/流结束
+ *  走各自分支即时渲染,最终态不受影响 */
+const STREAM_FENCE_TAIL_MS = 120;
+function useThrottledValue(value: string, ms: number): string {
+  const [shown, setShown] = useState(value);
+  const lastAtRef = useRef(0);
+  const timerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (ms <= 0) {
+      if (timerRef.current !== null) { clearTimeout(timerRef.current); timerRef.current = null; }
+      setShown(value);
+      return;
+    }
+    const now = performance.now();
+    if (now - lastAtRef.current >= ms) {
+      lastAtRef.current = now;
+      setShown(value);
+      return;
+    }
+    // 值一变即重排(旧定时器闭包是旧值,不清会落后一拍):仍在 ms 窗口内就排到窗口尾
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      lastAtRef.current = performance.now();
+      setShown(value);
+    }, ms - (now - lastAtRef.current));
+  }, [value, ms]);
+  useEffect(() => () => {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+  }, []);
+  return ms <= 0 ? value : shown;
+}
+
 /** 会话条目渲染件群（D32 批C-4 拆分自 Chat.tsx）：run 状态行/思考折叠行/用户胶囊条(含编辑卡/
  *  回退菜单/折叠气泡)/系统行(含旁白着色)与单条渲染单元。memo 语义与 DOM 逐字节不变;md 渲染
  *  工厂(keepUrl/buildUserMdComponents/buildMdComponents/renderUserMd)与 token 工具留 Chat
@@ -629,6 +666,11 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
     () => buildMdComponents(onOpenFile ?? (() => undefined), isDir, { mermaidDraft, onOpenDirectory: openDir ?? undefined }),
     [onOpenFile, isDir, mermaidDraft, openDir],
   );
+  // 未闭合**代码**围栏期尾块降频重渲(见 useThrottledValue 注):仅长代码块这一重灾区;
+  // mermaid 草稿有自己的节流成图链,普通段落/表格尾块照旧逐批实时(表格晋升测试为锚)。
+  // 围栏闭合瞬间 hasUnclosedFence 翻假 → ms=0 直通,尾部即时追平
+  const fenceDraft = streaming && hasUnclosedFence(tailMd) && !mermaidDraft;
+  const tailShown = useThrottledValue(tailMd, fenceDraft ? STREAM_FENCE_TAIL_MS : 0);
   // 办公模式(ui-mode.ts):记忆/技能更新旁白不显示
   if (office && isOfficeHiddenNotice(entry.kind, entry.md)) return <></>;
   if (msg !== null) {
@@ -718,11 +760,12 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
           {streaming ? (
             <>
               <MarkdownHead md={headMd} components={mdc} />
-              {/* 尾块:未闭合 mermaid=live 试渲随流成图;闭合后正式成图(迁头块,缓存命中零闪) */}
-              {tailMd !== '' && (
+              {/* 尾块:未闭合 mermaid=live 试渲随流成图;闭合后正式成图(迁头块,缓存命中零闪)。
+                  渲染串用 tailShown(未闭合围栏期 120ms 节流,见上方注) */}
+              {tailShown !== '' && (
                 <div className="entry-stream-tail-md">
                   {/* draft=true:流式尾块逐批新串绕缓存(不污染窗口);processor 单例仍省装配 */}
-                  <MarkdownCached md={tailMd} components={mdcTail} draft />
+                  <MarkdownCached md={tailShown} components={mdcTail} draft />
                 </div>
               )}
             </>
