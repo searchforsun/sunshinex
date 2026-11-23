@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Clock, NotebookPen, RefreshCw } from 'lucide-react';
+import { useCallback } from 'react';
+import { Clock, NotebookPen } from 'lucide-react';
 import { t } from '../i18n';
 import type { Connection } from '../connection';
-import { shortStampMs, withMinSpin } from '../ui-util';
+import { shortStampMs } from '../ui-util';
+import { useFetch } from '../use-fetch';
+import { BoardEmptyState, TabRefreshButton } from './tab-bits';
 
 /**
  * 计划页签(2026-11-04 用户裁定「侧栏增加计划的页签,每个一行计划,有生成时间,点击打开指定文件」):
@@ -24,53 +26,17 @@ export function PlansTab({
   refreshNonce?: number;
   onOpenFile: (path: string) => void;
 }): JSX.Element {
-  const fetcher = useCallback(() => conn.sessionPlans(sessionId), [conn, sessionId]);
-  const [data, setData] = useState<PlanRow[] | null>(null);
-  const [error, setError] = useState('');
-  const [fetching, setFetching] = useState(true);
-  const [tick, setTick] = useState(0);
-  const reload = useCallback(() => setTick((v) => v + 1), []);
-  useEffect(() => {
-    let alive = true;
-    setFetching(true);
-    withMinSpin(fetcher()).then(
-      (d) => {
-        if (alive) {
-          setData(d.plans);
-          setError('');
-          setFetching(false);
-        }
-      },
-      (e: unknown) => {
-        if (alive) {
-          setError(e instanceof Error ? e.message : String(e));
-          setFetching(false);
-        }
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [fetcher, tick, refreshNonce]);
+  // 拉取骨架=useFetch 共享单点(D93②:InsightTabs 同构体收编;载荷投影 plans,nonce 语义与其余面板对齐)
+  const fetcher = useCallback(() => conn.sessionPlans(sessionId).then((v) => v.plans), [conn, sessionId]);
+  const { data, error, reload, fetching } = useFetch<PlanRow[]>(fetcher, [conn, sessionId], { refreshNonce });
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button
-          type="button"
-          className="sx-changes-act"
-          aria-label="refresh"
-          data-tip={t('Refresh', '刷新')}
-          onClick={reload}
-        >
-          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
-        </button>
+        <TabRefreshButton onClick={reload} fetching={fetching} />
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {data !== null && data.length === 0 && (
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No plans yet', '还没有计划')}</p>
-          <p className="board-empty-hint">{t('Plans presented by the agent (plan card) will appear here.', '智能体出牌的计划（计划卡）会显示在这里。')}</p>
-        </div>
+        <BoardEmptyState title={t('No plans yet', '还没有计划')} hint={t('Plans presented by the agent (plan card) will appear here.', '智能体出牌的计划（计划卡）会显示在这里。')} />
       )}
       {data !== null && data.length > 0 && (
         <ul className="mem-list">

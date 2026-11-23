@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CircleHelp, RefreshCw } from 'lucide-react';
+import { CircleHelp } from 'lucide-react';
 import { SunxIcon, SunxMark } from '../sunx-icon';
 import { t } from '../i18n';
 import type { Connection, SessionRow } from '../connection';
@@ -7,6 +7,7 @@ import { SESSION_KIND_SUNX } from '../connection';
 import { relTime, withMinSpin } from '../ui-util';
 import { wsName } from '../sidebar/project-menu-util';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
+import { TabRefreshButton } from './tab-bits';
 import { aggregateSunxCards, assembleSunxCards, sunxSectionsOf, sunxSnapOf, type SunxCard, type SunxSnapSlice } from './sunx-board';
 
 /**
@@ -139,9 +140,7 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
             </span>
           )}
         </span>
-        <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
-        </button>
+        <TabRefreshButton onClick={reload} fetching={fetching} />
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {cards !== null && cards.length === 0 && (

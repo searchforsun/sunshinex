@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { AlarmClock, Bot, Check, Clock, Copy, Database, RefreshCw, Sparkles, Square, SquareTerminal, Trash2 } from 'lucide-react';
+import { AlarmClock, Bot, Check, Clock, Copy, Database, Sparkles, Square, SquareTerminal, Trash2 } from 'lucide-react';
 import { TipButton } from '../pages/chat/RunFooter';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS, keepUrl } from '../pages/Chat';
@@ -11,6 +11,8 @@ import type { TabParams, TabTypeId } from './tab-state';
 import { shortStampMs, withMinSpin } from '../ui-util';
 import { ClampBlock } from '../clamp-block';
 import { highlightCommand, stripAnsi } from '../highlight';
+import { useFetch } from '../use-fetch';
+import { BoardEmptyState, TabRefreshButton, useArmDelete } from './tab-bits';
 
 /**
  * G10-C6 右栏两面板(spec §7 映射:/tasks /memory 的 GUI 承载;/context 面板未挂载已清,承载归会话流):
@@ -20,52 +22,6 @@ import { highlightCommand, stripAnsi } from '../highlight';
  */
 
 type MemoryRow = { slug: string; type: string; created: string; modified: string; description: string; body: string };
-
-function useFetch<T>(
-  fn: () => Promise<T>,
-  deps: unknown[],
-  opts?: { refreshNonce?: number; catalogNonce?: number },
-): { data: T | null; error: string; reload: () => void; fetching: boolean } {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState('');
-  const [tick, setTick] = useState(0);
-  const [fetching, setFetching] = useState(true);
-  const reload = useCallback(() => setTick((v) => v + 1), []);
-  useEffect(() => {
-    let alive = true;
-    setFetching(true);
-    withMinSpin(fn()).then(
-      (d) => {
-        if (alive) {
-          setData(d);
-          setError('');
-          setFetching(false);
-        }
-      },
-      (err: unknown) => {
-        if (alive) {
-          setError(err instanceof Error ? err.message : String(err));
-          setFetching(false);
-        }
-      },
-    );
-    return () => {
-      alive = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, tick]);
-  // 正文/顶栏打开侧栏:主动刷一次
-  useEffect(() => {
-    if (opts?.refreshNonce === undefined) return;
-    setTick((v) => v + 1);
-  }, [opts?.refreshNonce]);
-  // catalog-changed 直播:清单变点重拉
-  useEffect(() => {
-    if (opts?.catalogNonce === undefined) return;
-    setTick((v) => v + 1);
-  }, [opts?.catalogNonce]);
-  return { data, error, reload, fetching };
-}
 
 /** 运行时长(m→mm:ss,h 进位 h:mm:ss;秒位定宽——tabular-nums 在 CSS 面) */
 const fmtDur = (ms: number): string => {
@@ -174,8 +130,8 @@ export function BgTasksTab({
   };
   /** 停止失败可见化 */
   const [actError, setActError] = useState('');
-  /** 二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击武装,3s 内再击执行 */
-  const [armedId, setArmedId] = useState<string | null>(null);
+  /** 二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击武装,3s 内再击执行——useArmDelete 单点(D93) */
+  const { armed: armedId, arm: setArmedId, disarm: clearArmed } = useArmDelete();
   const stopTask = (e: React.MouseEvent, id: string): void => {
     e.stopPropagation();
     conn.taskStop(sessionId, id)
@@ -186,23 +142,12 @@ export function BgTasksTab({
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button
-          type="button"
-          className="sx-changes-act"
-          aria-label="refresh"
-          data-tip={t('Refresh', '刷新')}
-          onClick={reload}
-        >
-          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
-        </button>
+        <TabRefreshButton onClick={reload} fetching={fetching} />
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
       {rows.length === 0 && (
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No background tasks', '暂无后台任务')}</p>
-          <p className="board-empty-hint">{t('Background exec/spawn tasks will appear here.', '后台 exec/spawn 任务会显示在这里。')}</p>
-        </div>
+        <BoardEmptyState title={t('No background tasks', '暂无后台任务')} hint={t('Background exec/spawn tasks will appear here.', '后台 exec/spawn 任务会显示在这里。')} />
       )}
       {rows.length > 0 && (
         <div className="todo-cards" aria-label="background tasks">
@@ -256,11 +201,10 @@ export function BgTasksTab({
                       onClick={(e) => {
                         e.stopPropagation();
                         if (armedId === r.id) {
-                          setArmedId(null);
+                          clearArmed();
                           stopTask(e, r.id);
                         } else {
                           setArmedId(r.id);
-                          setTimeout(() => setArmedId((cur) => (cur === r.id ? null : cur)), 3000);
                         }
                       }}
                     >
@@ -349,13 +293,8 @@ export function MemoryTab({
   });
   const [deleting, setDeleting] = useState(false);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
-  /** 删除二段确认(共享 ConfirmDeleteButton 同语义):首击武装(红),3s 内再击执行,超时解除 */
-  const [armSlug, setArmSlug] = useState<string | null>(null);
-  useEffect(() => {
-    if (armSlug === null) return;
-    const t = setTimeout(() => setArmSlug(null), 3000);
-    return () => clearTimeout(t);
-  }, [armSlug]);
+  /** 删除二段确认(共享 useArmDelete 单点,D93——settings ConfirmDeleteButton 同语义):首击武装(红),3s 内再击执行,超时解除 */
+  const { armed: armSlug, arm: setArmSlug, disarm: clearArmSlug } = useArmDelete();
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   useEffect(() => {
     if (focus === undefined || data === null) return;
@@ -377,28 +316,14 @@ export function MemoryTab({
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button
-          type="button"
-          className="sx-changes-act"
-          aria-label="refresh"
-          data-tip={t('Refresh', '刷新')}
-          onClick={reload}
-        >
-          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
-        </button>
+        <TabRefreshButton onClick={reload} fetching={fetching} />
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {root === '' && (
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No project selected', '未选择项目')}</p>
-          <p className="board-empty-hint">{t('Select a project to view memory', '选择项目后可查看记忆')}</p>
-        </div>
+        <BoardEmptyState title={t('No project selected', '未选择项目')} hint={t('Select a project to view memory', '选择项目后可查看记忆')} />
       )}
       {root !== '' && data !== null && data.length === 0 && (
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No persistent memory yet', '暂无持久记忆')}</p>
-          <p className="board-empty-hint">{t('Memories saved by the agent will appear here.', '智能体保存的记忆会显示在这里。')}</p>
-        </div>
+        <BoardEmptyState title={t('No persistent memory yet', '暂无持久记忆')} hint={t('Memories saved by the agent will appear here.', '智能体保存的记忆会显示在这里。')} />
       )}
       {root !== '' && data !== null && data.length > 0 && (
         <ul className="mem-list">
@@ -438,7 +363,7 @@ export function MemoryTab({
                     e.stopPropagation();
                     if (armSlug === m.slug) {
                       remove(m.slug);
-                      setArmSlug(null);
+                      clearArmSlug();
                     } else {
                       setArmSlug(m.slug);
                     }
@@ -506,16 +431,11 @@ export function LearnedSkillsTab({
     scrollToSkill(focus.slug);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focus?.nonce, data]);
-  /** 删除二段确认(与记忆行同语义):首击武装(红),3s 内再击执行,超时解除 */
-  const [armId, setArmId] = useState<string | null>(null);
+  /** 删除二段确认(与记忆行同语义,useArmDelete 单点,D93):首击武装(红),3s 内再击执行,超时解除 */
+  const { armed: armId, arm: setArmId, disarm: clearArmId } = useArmDelete();
   const [deleting, setDeleting] = useState(false);
   // 删除失败可见化(D30 口径:无 catch=unhandled rejection+零反馈;InsightTabs 停止失败横幅同款)
   const [actError, setActError] = useState('');
-  useEffect(() => {
-    if (armId === null) return;
-    const t = setTimeout(() => setArmId(null), 3000);
-    return () => clearTimeout(t);
-  }, [armId]);
   const learned = (data?.groups ?? []).filter((g) => g.source === 'learned').flatMap((g) => g.skills);
   const remove = (id: string): void => {
     if (root === '') return;
@@ -528,23 +448,15 @@ export function LearnedSkillsTab({
   return (
     <div className="insight-tab">
       <div className="insight-bar">
-        <button type="button" className="sx-changes-act" aria-label="refresh" data-tip={t('Refresh', '刷新')} onClick={reload}>
-          <RefreshCw size={14} strokeWidth={1.75} className={fetching ? 'sx-fetching' : undefined} />
-        </button>
+        <TabRefreshButton onClick={reload} fetching={fetching} />
       </div>
       {error !== '' && <p className="home-error" role="alert">{error}</p>}
       {actError !== '' && <p className="home-error" role="alert">{actError}</p>}
       {root === '' && (
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No project selected', '未选择项目')}</p>
-          <p className="board-empty-hint">{t('Select a project to view learned skills', '选择项目后可查看学习技能')}</p>
-        </div>
+        <BoardEmptyState title={t('No project selected', '未选择项目')} hint={t('Select a project to view learned skills', '选择项目后可查看学习技能')} />
       )}
       {root !== '' && data !== null && learned.length === 0 && (
-        <div className="board-empty-state" role="status">
-          <p className="board-empty-title">{t('No learned skills yet', '暂无学习技能')}</p>
-          <p className="board-empty-hint">{t('Skills the agent learns will appear here.', '智能体学到的技能会显示在这里。')}</p>
-        </div>
+        <BoardEmptyState title={t('No learned skills yet', '暂无学习技能')} hint={t('Skills the agent learns will appear here.', '智能体学到的技能会显示在这里。')} />
       )}
       {learned.length > 0 && (
         <ul className="mem-list" ref={listRef}>
@@ -576,7 +488,7 @@ export function LearnedSkillsTab({
                     e.stopPropagation();
                     if (armId === s.id) {
                       remove(s.id);
-                      setArmId(null);
+                      clearArmId();
                     } else {
                       setArmId(s.id);
                     }
