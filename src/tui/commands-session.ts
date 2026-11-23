@@ -4,6 +4,7 @@ import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
 import { listSessions, markSessionArchived, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
 import { createKernelRuntime } from '../session/runtime';
+import { ensureEnvWorkdirFact } from '../harness/context';
 import { crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
 import { renderMd } from './md-ansi';
@@ -171,6 +172,9 @@ function restoreFromSession(ctrl: SessionController, meta: SessionMeta): void {
   const messages = entriesToChatItems(entries, () => ctrl.mdWidth(), ctrl.runtime.toolDisplay);
   // 三面还原（直注入不经 pushMsg/订阅——零重复入志、零前缀击穿）：链/压缩归 ContextManager；消息/待办/档位归控制器；UI 现场暂存供 entry 播种
   ctrl.runtime.harness.context.restoreSession({ chain: replay.chain, chainFrom: replay.chainFrom, compacted: replay.compacted });
+  // 环境事实行对齐（2026-11-23 路线一，/resume 与 /rewind 共用本函数）：分档/回退后的链 vs 当前活动根
+  // （worktree 翻转行被锚点截掉/跨会话恢复携带他档翻转行）失配即尾追修正——重建上下文不带入错位
+  ensureEnvWorkdirFact(ctrl.runtime.harness.context, ctrl.runtime.harness.context.root, ctrl.runtime.harness.safety.activeRoot);
   // 快照回种（2026-10-31 spec §4）：落档快照直注入（不重读磁盘,离场变更留首条提交追尾）;旧档无行/坏包
   // 视同不存在——保持 restoreSession 的磁盘现读,并在 attach 后补出生写（快照冻结起点随恢复重建）
   const snapOk = replay.snapshot !== undefined && ctrl.runtime.harness.context.restoreSnapshot(replay.snapshot);

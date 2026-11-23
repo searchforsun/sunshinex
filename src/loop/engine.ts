@@ -32,6 +32,9 @@ export interface LoopDeps {
   model: ModelAdapter;
   /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
   root?: string;
+  /** 活动根提供者（2026-11-23 路线一）：loop 内 Reactor 轮边界环境事实巡检消费——worktree 翻转在
+   *  daemon 主链（loop 模板）同样被尾追 env 行；缺席（fork 图等无接缝装配）=巡检自然 no-op */
+  activeRoot?: () => string | null;
   router?: ModelRouter;
   /** 事件流旁路（5A TUI/GUI 公共地基）：透传给循环内构造的 Reactor；缺省零副作用 */
   onEvent?: (e: SessionEvent) => void;

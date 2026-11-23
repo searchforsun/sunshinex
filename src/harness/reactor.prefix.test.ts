@@ -12,6 +12,7 @@ import { SafetyChain } from './security/chain';
 import { ToolRegistry } from './tools';
 import { builtinTools } from './tools/builtin';
 import { ContextManager } from './context';
+import { envWorkdirLine } from './prompts/shared';
 import { FileStore } from '../storage/adapter';
 import { ModelAdapter } from '../model/adapter';
 import type { ChatRequest } from '../types';
@@ -106,23 +107,27 @@ test('环境事实：提示词注入工作目录绝对路径与工具选择政�
   }
 });
 
-test('workDirLine 随活动根（D19-b）：activeRoot 注入翻转事实行；null/缺省与既有逐字节一致', async () => {
+test('稳定段对活动根零敏感（2026-11-23 路线一）：workDir 行静态化，翻转事实改链尾 env 行', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-envfact-wt-'));
   const tree = path.join(tmp, 'wt-tree');
   fs.mkdirSync(tree);
   try {
-    // 缺省（无提供者）与提供者报主区（null）必须逐字节同prompt——null=主工作区缺省态，非第三种根
+    // 前缀缓存不变量：三态（缺省/null/树内）提示词逐字节一致——稳定段不再随活动根重写（零失效）
     const plain = makeReactor(tmp, scripted([DONE_REPLY]));
     const nullRoot = makeReactor(tmp, scripted([DONE_REPLY]), false, () => null);
+    const inTree = makeReactor(tmp, scripted([DONE_REPLY]), false, () => tree);
     await plain.reactor.run({ goal: 'g' }, { maxSteps: 2 });
     await nullRoot.reactor.run({ goal: 'g' }, { maxSteps: 2 });
-    assert.equal(plain.prompts[0], nullRoot.prompts[0], 'activeRoot() === null 时逐字节回落 deps.root（缺省不变量）');
-
-    const inTree = makeReactor(tmp, scripted([DONE_REPLY]), false, () => tree);
     await inTree.reactor.run({ goal: 'g' }, { maxSteps: 2 });
-    // 事实行整行严格比对（树路径是 tmp 子目录，includes 会前缀误命中）
-    const fact = /Current working directory \(project root\): (.+)/.exec(inTree.prompts[0])?.[1];
-    assert.equal(fact, tree, '事实行应整行报活动根（与 worktree 工具回执一致，不再恒报主根）');
+    assert.equal(plain.prompts[0], nullRoot.prompts[0], 'activeRoot() === null 时逐字节回落 deps.root（缺省不变量）');
+    assert.equal(plain.prompts[0], inTree.prompts[0], 'activeRoot 翻转不再改变提示词（workDir 行静态化，翻转零缓存失效）');
+    // 翻转事实改链行：inTree 收束巡检尾追 env 行（supersedes 措辞）；主区两态零 env 冗余行
+    const inTreeEnv = inTree.context.chainView().filter((s) => s.action === 'env');
+    assert.equal(inTreeEnv.length, 1, '树内收束巡检恰落一行 env 行');
+    assert.equal(inTreeEnv[0]!.observation, envWorkdirLine(tree, tmp), 'env 行=envWorkdirLine 单点文案');
+    for (const c of [plain.context, nullRoot.context]) {
+      assert.equal(c.chainView().some((s) => s.action === 'env'), false, '主区静态 workDir 行已表主根，env 行零冗余');
+    }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

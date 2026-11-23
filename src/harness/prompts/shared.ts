@@ -75,9 +75,20 @@ export const SKILLS_INSTALL_LINE =
 export const TEAMS_INSTALL_LINE =
   'To predefine agent teams, write them directly as <root>/teams/<id>/team.md (frontmatter: name/description/members (space-separated agent ids)/lead/enabled; body = team charter) under the project teams root (.sunshinex/teams) or the global teams root (~/.sunshinex/teams); members must reference registered agent ids (built-in planner/developer/tester/reviewer or .sunshinex/agents/<id>/agent.md). Users reference a team with "#team-id". settings.json files (project and global) are protected and never editable by you.';
 
-/** 工作目录环境事实行（会话级常量；root 由消费点解析后传入） */
+/** 工作目录环境事实行（2026-11-23 路线一静态化：恒报装配根——worktree 翻转事实改由链尾 env 行
+ *  承载（envWorkdirLine 尾追 supersedes），本行回会话级常量零重写，前缀缓存纪律闭合。
+ *  root 由消费点解析后传入） */
 export function workDirLine(root: string): string {
   return `Current working directory (project root): ${root}`;
+}
+
+/** 环境事实行单点（2026-11-23 路线一）：当前工作目录的链行权威文案——worktree 翻转（worktree 工具
+ *  create/exit）、回退/重建对齐（ensureEnvWorkdirFact）、压缩折后重建三面共用，措辞自带 supersedes
+ *  语义（历史旧行按时间序被本行废黜）。恒英文单语（§15 写链面） */
+export function envWorkdirLine(activeRoot: string | null, mainRoot: string): string {
+  return activeRoot === null
+    ? `Working directory: ${mainRoot} (main workspace — supersedes earlier directory facts)`
+    : `Working directory changed to: ${activeRoot} (worktree active — supersedes earlier directory facts)`;
 }
 
 /** 数据域事实行（2026-11-23 用户裁定「说明两个地址：当前项目在 X、数据目录在 Y 及其内容；workspace
@@ -168,9 +179,8 @@ export const SUNX_CHARTER_LINES: readonly string[] = [
 export function stableSegmentOf(opts: {
   /** 输出样式分叉（交互面级 run 常量）：命中面 = 面专用行整行替代 MARKDOWN_LINE 槽位（零双份）；缺省 = 通用约定原文 */
   outputStyle?: OutputStyle;
-  /** 活动根观测（worktree 会话；随进出翻转工作目录行） */
-  activeRoot?: () => string | null;
-  /** 装配根（缺省回落） */
+  /** 装配根（缺省回落）。2026-11-23 路线一：activeRoot 动态槽退役——工作目录行静态报装配根，
+   *  worktree 翻转事实改由链尾 env 行承载（前缀缓存零重写） */
   root?: string;
   /** 上下文根（末级回落——deps.context.root） */
   contextRoot: string;
@@ -199,7 +209,7 @@ export function stableSegmentOf(opts: {
     SESSION_RENEWAL_LINE,
     SKILLS_INSTALL_LINE,
     TEAMS_INSTALL_LINE,
-    workDirLine(opts.activeRoot?.() ?? opts.root ?? opts.contextRoot),
+    workDirLine(opts.root ?? opts.contextRoot),
     // 数据域事实行（2026-11-23 用户裁定「说明两个地址：当前项目在 X、数据目录在 Y 及其内容文件夹；
     // workspace 即原来的工作区，两者分开」）：数据域=root 确定性推导（resolveDataDir），会话级常量→
     // 稳定段字节冻结合规（与 workDir 行同性质）；workspace 地址取静态装配根（workDir 行=活动根动态面，

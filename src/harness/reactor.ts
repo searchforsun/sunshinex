@@ -8,7 +8,8 @@ import { RunLedger } from './ledger';
 import { SafetyChain } from './security/chain';
 import { BatchRunner } from './batch-runner';
 import { stableSegmentOf } from './prompts/shared';
-import { chainToHistoryItems, ContextManager, runCompaction } from './context';
+import { chainToHistoryItems, ContextManager, ensureEnvWorkdirFact, runCompaction } from './context';
+import { envWorkdirLine } from './prompts/shared';
 import { buildMessages, formatToolCallLine, PHASE_ACTION, TOOL_CALL_ACTION, TOOL_RESULT_ACTION } from './context/messages';
 import { resolveMemoryConfig } from '../config/memory-config';
 import { DEFAULT_IMAGE_HISTORY_LIMIT } from '../config/image-history';
@@ -62,7 +63,9 @@ export interface ReactorDeps {
   model: ModelAdapter;
   /** 项目根绝对路径（环境事实注入：提示词告知模型工作目录，杜绝相对路径瞎拼） */
   root?: string;
-  /** 活动根提供者（worktree 会话，D19-b）：workDirLine 事实行随会话工作根翻转；null/缺省=主根（与 deps.root 同字节） */
+  /** 活动根提供者（worktree 会话；原 D19-b 稳定段动态槽已退役——2026-11-23 路线一后仅喂
+   *  轮边界环境事实巡检 ensureEnvFact：翻转/压缩折叠/回退错位统一在 session 作用域边界重建）；
+   *  null/缺省=主根（与 deps.root 同字节） */
   activeRoot?: () => string | null;
   router?: ModelRouter;
   /** 成功沉淀钩子：任一终态收口触发一次（done / failed / stopped，D4 全终态）；返回的说明行尾追为链尾 notice 行（规格 §10）；抛错被吞并记链行（沉淀失败不倒灌任务成败） */
@@ -321,6 +324,7 @@ export class Reactor {
           // 压缩协调单点：确定性选块 → 摘要（当前 run 模型，失败回退确定性）→ 门禁重注入 → 折链（防「链+压缩块」双份）
           const compacted = await runCompaction(this.deps.context, items, compactOpts());
           if (compacted.via !== 'replay') trimmedRows += compactOpts().chainFoldedCount;
+          this.ensureEnvFactInSteps(steps, scope, compactedUpToStep); // 折后本地 steps 补 env 行（本轮后续帧恒见当前工作目录）
           lastCompactStep = step;
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
           est = this.deps.context.window.estimate(items);
@@ -370,6 +374,9 @@ export class Reactor {
         }
         // 轮边界增量入链(2026-10-30 spec §1):本轮链行已完成即落主链;done 轮归收束点(与 reply 行同批)
         appendNewSteps();
+        // 环境事实行巡检(2026-11-23 路线一):worktree 翻转/压缩折叠/回退错位三类失位统一在边界尾追
+        // 重建(尾追=前缀缓存零重写);仅 session 作用域——fork/clean 子代零主链写入不变量
+        if (scope === 'session') this.ensureEnvFact();
       } catch (e) {
         // 用户中断在途模型调用：静默转入中断终态，不 emit error（中断回执由会话层统一发）
         if (this.deps.signal?.aborted) {
@@ -384,6 +391,7 @@ export class Reactor {
           this.emit('error', 'Context overflow at the endpoint — compacting and retrying once');
           const reactive = await runCompaction(this.deps.context, items, compactOpts());
           if (reactive.via !== 'replay') trimmedRows += compactOpts().chainFoldedCount;
+          this.ensureEnvFactInSteps(steps, scope, compactedUpToStep); // 折后本地 steps 补 env 行（同上）
           lastCompactStep = step;
           // 重试本步：步号由链尾派生（steps 未变则下轮同号），重建装配面后 continue
           items = this.deps.context.assemble(this.toHistory(steps, compactedUpToStep));
@@ -415,6 +423,7 @@ export class Reactor {
           .map(toChainRow),
       );
       appendedCount = steps.length;
+      this.ensureEnvFact(); // 收束点巡检:末轮翻转也落 env 行(与轮边界同口,session 块内零再守卫)
       if (done && reply) {
         this.deps.context.appendChain([{
           action: 'reply',
@@ -512,11 +521,30 @@ export class Reactor {
       ...(this.deps.outputStyle ? { outputStyle: this.deps.outputStyle } : {}),
       ...(this.deps.kind ? { kind: this.deps.kind } : {}),
       ...(this.deps.sunxWorker ? { sunxWorkerTail: true } : {}),
-      activeRoot: this.deps.activeRoot,
       ...(this.deps.root !== undefined ? { root: this.deps.root } : {}),
       contextRoot: this.deps.context.root,
       ...(this.deps.dataDir !== undefined ? { dataDir: this.deps.dataDir } : {}),
     });
+  }
+
+  /** 环境事实行巡检（2026-11-23 路线一）：链上最新 env 行 vs 当前活动根失配即尾追重建——worktree
+   *  翻转（工具回执后下一边界）、压缩折叠（局部/全量折后当前事实恒在场）、回退错位三面同口。
+   *  主区且链上从无 env 行 = 静态 workDir 行已表主根，零冗余不追加（ensureEnvWorkdirFact 幂等） */
+  private ensureEnvFact(): void {
+    ensureEnvWorkdirFact(this.deps.context, this.deps.root ?? this.deps.context.root, this.deps.activeRoot?.() ?? null);
+  }
+
+  /** 压缩折后本地 steps 补 env 行（2026-11-23 路线一）：压缩折掉回执行+env 行后，本轮消息视图
+   *  （buildMessages 按 local steps 装配）会失忆当前工作目录——在水位上界注入一行 env（reactor
+   *  自有行，随后续边界照常入链，链侧由 ensureEnvWorkdirFact 幂等不双写）。仅 session 作用域；
+   *  主区（activeRoot=null）静态 workDir 行已表主根，零冗余 */
+  private ensureEnvFactInSteps(steps: StepRecord[], scope: 'session' | 'fork', fromStep: number): void {
+    if (scope !== 'session') return;
+    const active = this.deps.activeRoot?.() ?? null;
+    if (active === null) return;
+    const line = envWorkdirLine(active, this.deps.root ?? this.deps.context.root);
+    if (steps.some((s) => s.action === 'env' && s.observation === line && s.step > fromStep)) return;
+    steps.push({ step: fromStep + 1, action: 'env', observation: line });
   }
 
   /** 模型一轮：buildMessages 消息视图 + tools 字段 → 结构化动作消费。

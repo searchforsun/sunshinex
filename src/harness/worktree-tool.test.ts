@@ -179,7 +179,7 @@ test('T4-8 活动根在场：exec cwd 锚活动根（相对命令执行位置切
     },
   ));
 
-test('T6-N2 create→exit 事实行随活动根翻转；同环境段内相邻帧前缀逐字节稳定（D19-b 口径）', () => {
+test('T6-N2 create→exit 翻转改链行尾追（2026-11-23 路线一）：稳定段恒报主根，全部相邻帧纯前缀追加', () => {
   const prompts: string[] = [];
   // 帧序（5 帧）：create（主区）→ read/read/exit 前置帧（树内）→ done（退出回主区）；
   // worktree 进出=合法前缀重写点（与 cwd 同类的会话级环境事实，非时变字段）——跨进出帧不做字节前缀断言，
@@ -205,26 +205,29 @@ test('T6-N2 create→exit 事实行随活动根翻转；同环境段内相邻帧
       assert.equal(r.done, true);
       assert.equal(prompts.length, 5, `帧数应为 create/read/read/exit/done=5：${prompts.length}`);
       const facts = prompts.map(factOf);
-      // 事实行翻转：create 后进树、exit 后回主区——与 worktree 工具回执「session working root is now ...」一致
-      assert.equal(facts[0], repo, `第 1 帧应报主根：${facts[0]}`);
-      const tree = facts[1];
-      assert.ok(tree && tree !== repo && /nail2/.test(tree), `create 后事实行应报树路径：${tree}`);
-      assert.equal(facts[2], tree, '树内帧事实行恒定');
-      assert.equal(facts[3], tree, 'exit 调用帧仍处树内（exit 在该帧后才执行）');
-      assert.equal(facts[4], repo, `exit 后回主根：${facts[4]}`);
-      // 同环境段内相邻帧：逐字节前缀稳定（第 2→3、3→4 帧）
-      for (const k of [2, 3]) {
+      // 稳定段恒报主根（路线一：翻转不再重写稳定段）
+      for (const [k, f] of facts.entries()) {
+        assert.equal(f, repo, `第 ${k + 1} 帧稳定段应恒报主根：${f}`);
+      }
+      // 翻转事实的本轮可见性=工具回执行（消息视图按 local steps 装配，env 行折后/跨轮才入帧）：
+      // create 回执行第 2 帧起在场（"session working root is now this worktree"），exit 回执行第 5 帧在场
+      for (const k of [1, 2, 3]) {
+        assert.ok(prompts[k]!.includes('the session working root is now this worktree'), `第 ${k + 1} 帧应见 create 回执事实（树内工作）`);
+        assert.ok(!prompts[k]!.includes('the session working root is back to the main workspace'), `第 ${k + 1} 帧（exit 执行前）不见回主区回执`);
+      }
+      assert.ok(prompts[4]!.includes('the session working root is back to the main workspace'), '第 5 帧应见回主区回执');
+      // 全部相邻帧纯前缀追加（翻转不再击穿前缀——本测试的核心新不变量，旧重写 gymnastics 退役）
+      for (const k of [1, 2, 3, 4]) {
         assert.ok(
           prompts[k]!.startsWith(prompts[k - 1]!),
-          `第 ${k + 1} 帧应以第 ${k} 帧为逐字节前缀（同环境段内）`,
+          `第 ${k + 1} 帧应以第 ${k} 帧为逐字节前缀（尾追零重写）`,
         );
       }
-      // 跨进出帧（1→2）：唯一差异必须是工作目录事实行（把事实行换回前帧值后恢复字节前缀）
-      const rewritten = prompts[1]!.replace(`Current working directory (project root): ${tree}`, `Current working directory (project root): ${repo}`);
-      assert.ok(
-        rewritten.startsWith(prompts[0]!),
-        `进出重写点的差异应仅限事实行：\n前帧尾 60：${prompts[0]!.slice(-60)}\n改写帧首 60：${rewritten.slice(0, 60)}`,
-      );
+      // 链侧 env 行持久化（跨轮/下轮 run 的权威事实）：两行——树内行 + 回主区行，文案=envWorkdirLine 单点
+      const envRows = h.context.chainView().filter((s) => s.action === 'env');
+      assert.equal(envRows.length, 2, `链上应恰两行 env（树内+回主区）：${JSON.stringify(envRows.map((e) => e.observation))}`);
+      assert.match(envRows[0]!.observation, /Working directory changed to: .+ \(worktree active — supersedes earlier directory facts\)/);
+      assert.equal(envRows[1]!.observation, `Working directory: ${repo} (main workspace — supersedes earlier directory facts)`);
     }),
   );
 });

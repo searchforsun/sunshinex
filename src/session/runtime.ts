@@ -143,6 +143,9 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     steer: () => harness.steerSource(),
     // 数据域事实行源（2026-11-23 用户裁定「系统上下文说明两个地址」）：loop 内构造的 Reactor 与单发
     // Reactor 同源消费——agent 节点 childDeps 原样下传（全域同给含 channels，2026-11-23 二轮裁定）
+    // 活动根接缝（2026-11-23 路线一）：loop 内 Reactor 轮边界环境事实巡检同源消费——worktree 翻转
+    // 在 daemon 主链（loop 模板）同样被巡检尾追；fork 作用域由 reactor 内 scope 守卫拦截零写入
+    activeRoot: () => harness.safety.activeRoot,
     ...(harness.segmentDataDir !== undefined ? { dataDir: harness.segmentDataDir } : {}),
     // 沉淀双钩子与收尾管线（规格 §3.1/§3.5）：TUI 主链经 loop 构造 Reactor，钩子必须随 LoopDeps 透传才会触发
     ...harness.settleHooks,

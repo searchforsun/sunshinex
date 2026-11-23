@@ -6,6 +6,7 @@ import { ChainAction, ContextItem, HistoryStep } from '../../types';
 import { resolveDataDir } from '../../config/data-dir';
 import { resolveMemoryConfig } from '../../config/memory-config';
 import { formatSkillsIndex, loadSkills } from '../skills';
+import { envWorkdirLine } from '../prompts/shared';
 import { formatTeamsIndex, loadTeams } from '../teams';
 import { listAgentDefs } from '../subagent';
 import { memoryDir, readMemoryIndex } from '../memory/store';
@@ -399,4 +400,23 @@ function memoryIndexText(root: string, dataDir?: string): string {
 /** 链行 → history 条目的唯一拼装格式（reactor toHistory 与 TUI /compact 补链共用，防两处漂移） */
 export function chainToHistoryItems(steps: HistoryStep[]): ContextItem[] {
   return steps.map((s) => ({ kind: 'history' as const, content: `${s.step}: ${s.action ?? ''} -> ${s.observation}` }));
+}
+
+/** 环境事实行对齐（2026-11-23 路线一）：链上最新 env 行与当前活动根失配即尾追重建——worktree 翻转
+ *  （reactor 轮边界巡检调用）、压缩折叠后重建（局部/全量压缩折后当前事实恒在场）、回退/重建上下文
+ *  对齐（restoreSession 后调用）三面同口。幂等：最新 env 行已匹配即 no-op；主区且链上从无 env 行 =
+ *  静态 workDir 行已表主根，零冗余不追加 */
+export function ensureEnvWorkdirFact(cm: ContextManager, mainRoot: string, activeRoot: string | null): void {
+  const line = envWorkdirLine(activeRoot, mainRoot);
+  const view = cm.chainView();
+  let lastEnv: string | undefined;
+  for (let i = view.length - 1; i >= 0; i -= 1) {
+    if (view[i]!.action === 'env') {
+      lastEnv = view[i]!.observation;
+      break;
+    }
+  }
+  if (lastEnv === line) return;
+  if (lastEnv === undefined && activeRoot === null) return;
+  cm.appendChain([{ action: 'env', observation: line }]);
 }

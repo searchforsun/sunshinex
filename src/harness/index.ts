@@ -770,7 +770,8 @@ export class Harness {
       context: this.context,
       model: this.model,
       root: base,
-      // workDirLine 事实行随会话活动根（D19-b）：与 exec cwd / glob 锚同源（safety 单点），worktree 进出即翻转
+      // 活动根接缝（原 D19-b 稳定段动态槽退役,2026-11-23 路线一）：workDir 行静态化后仅喂轮边界
+      // 环境事实巡检（翻转→链尾 env 行尾追,前缀缓存零重写）;与 exec cwd / glob 锚同源（safety 单点）
       activeRoot: () => this.safety.activeRoot,
       // 数据域事实行（2026-11-23 用户裁定）：workspace+data 双地址+内容清单进稳定段（channels 域缺席）
       ...(this.segmentDataDir !== undefined ? { dataDir: this.segmentDataDir } : {}),
@@ -858,7 +859,6 @@ export class Harness {
     return stableSegmentOf({
       ...(this.stableOutputStyle ? { outputStyle: this.stableOutputStyle } : {}),
       ...(this.stableKind ? { kind: this.stableKind } : {}),
-      activeRoot: () => this.safety.activeRoot,
       ...(this.segmentDataDir !== undefined ? { dataDir: this.segmentDataDir } : {}),
       contextRoot: this.context.root,
     });

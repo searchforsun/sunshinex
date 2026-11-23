@@ -558,7 +558,8 @@ export type ChainAction =
   | 'deficit' /* 修正环验收缺口（loop check） */
   | 'node' /* graph/子智能体节点结论行（graph nodes/subagent） */
   | 'memory' /* 记忆注入行（subagent fork 前缀） */
-  | 'role'; /* 角色框定行（subagent fork 前缀） */
+  | 'role' /* 角色框定行（subagent fork 前缀） */
+  | 'env'; /* 环境事实行（2026-11-23 路线一：worktree 翻转/回退对齐/压缩重建——当前工作目录权威行,尾追 supersedes,局部压缩折后由 ensure 重建） */
 
 export interface HistoryStep {
   step: number;
