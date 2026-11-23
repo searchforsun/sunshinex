@@ -14,6 +14,10 @@ import { RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences
 interface SteerQueueProps {
   readonly queued: Array<{ seq: number; text: string; images?: string[] }>;
   readonly queueFolded: boolean;
+  /** 队列暂停态（2026-11-23 用户裁定「中断同时暂停队列」）：真=首条上侧横幅（暂停说明+继续钮） */
+  readonly queuePaused?: boolean;
+  /** 横幅「继续」钮：解除暂停（daemon idle 即按序自动发送;running 由收束 gate 接力） */
+  readonly onResumeQueue?: () => void;
   readonly setQueueFolded: Dispatch<SetStateAction<boolean>>;
   readonly setQueued: Dispatch<SetStateAction<Array<{ seq: number; text: string; images?: string[] }>>>;
   readonly conn: Connection;
@@ -28,7 +32,7 @@ interface SteerQueueProps {
 }
 
 export function SteerQueue(props: SteerQueueProps): JSX.Element {
-  const { queued, queueFolded, setQueueFolded, setQueued, conn, sessionId, refreshQueued, pauseAndSend, setInput, setImages, entryTexts } = props;
+  const { queued, queueFolded, queuePaused, onResumeQueue, setQueueFolded, setQueued, conn, sessionId, refreshQueued, pauseAndSend, setInput, setImages, entryTexts } = props;
   /** 在途条(立即/插入已点、正文未落):seq 集;任一在途=全部行动作锁定(防连点竞态) */
   const [inflight, setInflight] = useState<ReadonlySet<number>>(() => new Set());
   // 收口:队列帧已摘除(daemon 已消费)或文本命中正文(用户条落出)即撤转圈
@@ -79,6 +83,16 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
             conn.moveSteer(sessionId, from, to).then(refreshQueued, () => {});
           }}
         >
+          {/* 暂停横幅（2026-11-23 用户裁定）：中断后队列暂停,首条上侧一行说明+右侧「继续」钮
+             （无框无图标纯文字）——点击解除暂停,daemon idle 即按序自动发送,running 由收束 gate 接力 */}
+          {queuePaused === true && (
+            <div className="steer-paused" role="status">
+              <span className="steer-paused-text">{t('Session interrupted — the queue is paused.', '由于你中断了会话，队列已暂停。')}</span>
+              <button type="button" className="steer-resume" onClick={() => onResumeQueue?.()}>
+                {t('Resume', '继续')}
+              </button>
+            </div>
+          )}
           {queued.map((q, i) => {
             const busy = inflight.has(q.seq);
             return (

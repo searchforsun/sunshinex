@@ -42,12 +42,14 @@ export function useChatSubmit(deps: {
   readonly sendBlocked?: boolean;
   /** 计划模式 pill 同步回调(2026-11-03):/plan 系命令成功后由宿主更新 sessMode 显示 */
   readonly onPlanModeChanged?: (mode: 'read-only' | 'acceptEdits' | 'full-access' | 'plan') => void;
+  /** 队列暂停联动（2026-11-23 用户裁定）：停止钮中断时置 daemon 队列暂停态+本地横幅;可缺省(测试桩/辅助会话) */
+  readonly onInterrupted?: () => void;
 }): {
   submitText: (text: string, images?: string[]) => Promise<void>;
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged, onInterrupted } = deps;
 /** §7 提交路径单点(idle→submit/running→steer):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
  *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
@@ -145,6 +147,7 @@ const send = (): void => {
     submitText(text, images).catch(() => undefined);
 };
 const interrupt = (): void => {
+    onInterrupted?.(); // 队列暂停联动（2026-11-23 用户裁定「中断同时暂停队列,不要自动发出」）
     void conn.sessionInterrupt(sessionId).catch((err: unknown) => {
       setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
     });

@@ -209,7 +209,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   );
   /** 队列面 hook(D32 批B):排队 chips 状态/折叠/refreshQueued/pauseAndSend——会话流可见化与 @ 展开
    *  依赖注入（resolveFileRef 此处已完成声明）；行为零变化（Chat.pause-send.test 为锚） */
-  const { queued, setQueued, queueFolded, setQueueFolded, refreshQueued, pauseAndSend } = useQueue(
+  const { queued, setQueued, queueFolded, setQueueFolded, queuePaused, setQueuePaused, pauseQueue, resumeQueue, refreshQueued, pauseAndSend } = useQueue(
     conn,
     sessionId,
     root,
@@ -244,6 +244,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     setInput,
     setChat,
     setQueued,
+    setQueuePaused,
     setSessMode,
     setSessEffort,
     setArchived,
@@ -405,6 +406,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     onAccepted: () => { setAwaitModelSince(Date.now()); onRunStart?.(); },
     sendBlocked: awaitModelSince !== null,
     onPlanModeChanged: setSessMode,
+    onInterrupted: pauseQueue, // 停止钮联动队列暂停（2026-11-23 用户裁定「中断同时暂停队列」）
   });
   /** G14.213 欢迎页接力取用(ref 跳板,声明前置于事件 hook):恒取最新 submitText */
   submitTextRef.current = submitText;
@@ -773,6 +775,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         setModelInfo={setModelInfo}
         send={send}
         interrupt={interrupt}
+        queuePaused={queuePaused}
+        onResumeQueue={resumeQueue}
         awaitModelSince={awaitModelSince}
       />
       ) : null}

@@ -42,6 +42,10 @@ export function ChatComposerDock(props: {
   queued: QueuedRow[];
   setQueued: Dispatch<SetStateAction<QueuedRow[]>>;
   queueFolded: boolean;
+  /** 队列暂停态（2026-11-23 用户裁定「中断同时暂停队列」）：真=首条上侧横幅（暂停说明+继续钮） */
+  queuePaused?: boolean;
+  /** 横幅「继续」钮：解除暂停（daemon idle 即按序续发） */
+  onResumeQueue?: () => void;
   setQueueFolded: Dispatch<SetStateAction<boolean>>;
   refreshQueued: () => void;
   pauseAndSend: (q: QueuedRow) => Promise<void>;
@@ -120,7 +124,7 @@ export function ChatComposerDock(props: {
 }): JSX.Element {
   const {
     dockRef, conn, sessionId, root, sideChat, connState, queued, setQueued, queueFolded, setQueueFolded,
-    refreshQueued, pauseAndSend, entryTexts, atBottom, chatScrollRef, askCards, approvalCards, planCards,
+    queuePaused, onResumeQueue, refreshQueued, pauseAndSend, entryTexts, atBottom, chatScrollRef, askCards, approvalCards, planCards,
     askPicks, setAskPicks, sendAsk, sendApproval, sendPlanApproval, onOpenAgent, onOpenFile, sessMode, sunxName, emptyChat,
     setSessMode, sessEffort, setSessEffort, refContentsRef, pendingImages, setPendingImages, setLightboxSrc,
     addImageFiles, imgHint, modelSupportsImages, input, setInput, inputRef, running, seeding, composerKeys,
@@ -154,6 +158,8 @@ export function ChatComposerDock(props: {
         <SteerQueue
           queued={queued}
           queueFolded={queueFolded}
+          queuePaused={queuePaused}
+          onResumeQueue={onResumeQueue}
           setQueueFolded={setQueueFolded}
           setQueued={setQueued}
           conn={conn}

@@ -506,6 +506,24 @@ export function handleSessionModelGet(io: SessionHandlerIo, res: http.ServerResp
   });
 }
 
+/** 队列暂停/恢复（2026-11-23 用户裁定「中断同时暂停队列,横幅继续钮解除」）：置/清运行时暂停态——
+ *  暂停态轮收束不自动发出（待发条目留存,快照 queuePaused 面板横幅）;恢复 idle 即按序续发。
+ *  与 interrupt 分立端点：composer 停止钮= interrupt + queue/pause 两连;「暂停并立即发送」仅 interrupt
+ *  （恢复既有自动流）。无排队条目同样受理（状态先行,后入队条目同受暂停管辖） */
+export function handleQueuePause(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  session.queuePause();
+  io.send(res, 200, { ok: true, queuePaused: true });
+}
+
+export function handleQueueResume(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
+  const session = io.sessionFor(res, id);
+  if (session === undefined) return;
+  session.queueResume();
+  io.send(res, 200, { ok: true, queuePaused: false });
+}
+
 export async function handleSessionModel(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
   const parsed = await io.readJson(req);
   if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });

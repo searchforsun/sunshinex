@@ -122,6 +122,9 @@ export interface SnapshotResponse {
   tier?: 'small' | 'medium' | 'large';
   effort?: string;
   queued?: Array<{ seq: number; text: string; images?: string[] }>;
+  /** 队列暂停态（2026-11-23 用户裁定「中断同时暂停队列」）：真=轮收束不自动发出,面板显示暂停横幅;
+   *  可选防旧 daemon（无此字段=未暂停面） */
+  queuePaused?: boolean;
   team?: Array<{ name: string; busy: boolean; teamId?: string; createdAt?: number }>;
   /** 工作区团队注册表（daemon 快照必发） */
   teams?: Array<{ teamId: string; name: string; createdAt: number }>;

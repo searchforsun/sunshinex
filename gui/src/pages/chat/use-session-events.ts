@@ -53,6 +53,9 @@ export function useSessionEvents(deps: {
   setInput: Dispatch<SetStateAction<string>>;
   /** 队列面(reseed 回显 snapshot.queued;P5 起 queue 帧实时推) */
   setQueued: Dispatch<SetStateAction<Array<{ seq: number; text: string }>>>;
+  /** 队列暂停态播种（2026-11-23 用户裁定「中断同时暂停队列」）：快照 queuePaused 回填;
+   *  可缺省（side-chat 等无暂停面板的调用方零破坏） */
+  setQueuePaused?: Dispatch<SetStateAction<boolean>>;
   /** 会话 pill(snapshot 回显面) */
   setSessMode: Dispatch<SetStateAction<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>>;
   setSessEffort: Dispatch<SetStateAction<string | undefined>>;
@@ -87,6 +90,7 @@ export function useSessionEvents(deps: {
     setInput,
     setChat,
     setQueued,
+    setQueuePaused,
     setSessMode,
     setSessEffort,
     setArchived,
@@ -187,6 +191,7 @@ export function useSessionEvents(deps: {
       (snap) => {
         if (seedGenRef.current !== gen) return; // 后继 reseed 已接管(在途窗内重连)
         setQueued(snap.queued ?? []);
+        setQueuePaused?.(snap.queuePaused === true);
         if (typeof snap.mode === 'string') setSessMode(snap.mode as 'read-only' | 'acceptEdits' | 'full-access' | 'plan');
         setSessEffort(snap.effort);
         setArchived(snap.archived === true); // 2026-10-21 归档态播种(sessMode 同链;缺字段=未归档面)

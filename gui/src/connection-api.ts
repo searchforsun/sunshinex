@@ -281,6 +281,10 @@ export interface Connection {
   sessionSteer(id: string, text: string, images?: string[]): Promise<void>;
   /** POST /session/:id/interrupt：中止在跑 run（无在跑 409） */
   sessionInterrupt(id: string): Promise<void>;
+  /** 队列暂停（2026-11-23 用户裁定「中断同时暂停队列」）：置 daemon 暂停态,轮收束不自动发出 */
+  queuePause(id: string): Promise<void>;
+  /** 队列恢复：解除暂停；idle 即按序自动发送待发条目（横幅「继续」按钮） */
+  queueResume(id: string): Promise<void>;
   /** GET /session/:id/snapshot：会话全量快照；lastSeq 同源 seq 泵——本连接层以其抬高该会话
    *  过滤基线（种子替换投影后的迟到补发帧双应用防线） */
   sessionSnapshot(id: string, page?: { before?: number; limit?: number; tail?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }>;

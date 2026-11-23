@@ -18,6 +18,13 @@ export function useQueue(
   setQueued: React.Dispatch<React.SetStateAction<Array<{ seq: number; text: string; images?: string[] }>>>;
   queueFolded: boolean;
   setQueueFolded: React.Dispatch<React.SetStateAction<boolean>>;
+  /** 队列暂停态（2026-11-23 用户裁定「中断同时暂停队列」）：真=收束不自动发出,面板显示暂停横幅 */
+  queuePaused: boolean;
+  setQueuePaused: React.Dispatch<React.SetStateAction<boolean>>;
+  /** 暂停（输入框停止钮联动）：置本地态 + daemon 暂停端点（快照重拉自纠） */
+  pauseQueue: () => void;
+  /** 恢复（横幅「继续」钮）：daemon 解除暂停（idle 即按序续发）+ 本地态清 + 快照重拉 */
+  resumeQueue: () => void;
   refreshQueued: () => void;
   pauseAndSend: (q: { seq: number; text: string; images?: string[] }) => Promise<void>;
 } {
@@ -25,13 +32,29 @@ export function useQueue(
   const [queued, setQueued] = useState<Array<{ seq: number; text: string; images?: string[] }>>([]);
   /** G14.87 队列条折叠:折叠只留摘要行,不推高 dock(正文让位) */
   const [queueFolded, setQueueFolded] = useState(false);
+  /** 队列暂停态（2026-11-23 用户裁定）：快照播种 + 停止钮/横幅钮本地直置（权威态随快照重拉自纠） */
+  const [queuePaused, setQueuePaused] = useState(false);
   /** G14.83 队列操作后同步 daemon 快照(seq 会重排) */
   const refreshQueued = useCallback((): void => {
     conn.sessionSnapshot(sessionId).then(
-      (s2) => setQueued(s2.queued ?? []),
+      (s2) => {
+        setQueued(s2.queued ?? []);
+        setQueuePaused(s2.queuePaused === true);
+      },
       () => {},
     );
   }, [conn, sessionId]);
+  /** 暂停（输入框停止钮联动）：daemon 置暂停态 + 本地态即切（横幅即时出现,快照重拉权威自纠） */
+  const pauseQueue = useCallback((): void => {
+    setQueuePaused(true);
+    conn.queuePause(sessionId).catch(() => {});
+  }, [conn, sessionId]);
+  /** 恢复（横幅「继续」钮）：daemon 解除暂停（idle 即按序自动发送）+ 本地态清 + 快照重拉 */
+  const resumeQueue = useCallback((): void => {
+    setQueuePaused(false);
+    conn.queueResume(sessionId).catch(() => {});
+    refreshQueued();
+  }, [conn, sessionId, refreshQueued]);
   /** G14.83 暂停当前轮并立即发送本条:撤队列→中断当前 run→等 idle→作为新任务提交。
    *  G14.89 本地回显用户气泡(与 submitText 同款)——submit 无回显帧时气泡不缺席 */
   const pauseAndSend = useCallback(
@@ -55,5 +78,5 @@ export function useQueue(
     },
     [conn, sessionId, root, resolveFileRef, expandFileRefs, setChat],
   );
-  return { queued, setQueued, queueFolded, setQueueFolded, refreshQueued, pauseAndSend };
+  return { queued, setQueued, queueFolded, setQueueFolded, queuePaused, setQueuePaused, pauseQueue, resumeQueue, refreshQueued, pauseAndSend };
 }

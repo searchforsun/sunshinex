@@ -1405,6 +1405,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   color: var(--fg); cursor: pointer; font-size: calc(14px * var(--fz));
   transition: background 0.16s ease, border-color 0.16s ease;
 }.ask-dock .card-option:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.ask-dock .card-option.checked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }.ask-dock .card-option input { position: absolute; opacity: 0; pointer-events: none; } /* 原生控件视觉退役,卡片即选中面 */.ask-dock .card-option-icon { display: inline-flex; flex: none; color: var(--fg-tertiary); }.ask-dock .card-option.checked .card-option-icon { color: var(--accent); }.ask-dock .card-option-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }.ask-dock .card-option-desc { color: var(--fg-tertiary); }
+/* 队列暂停横幅（2026-11-23 用户裁定「中断同时暂停队列」）：首条上侧一行说明+右侧「继续」钮
+   （无框无图标纯文字钮,accent 色 hover 提亮——横幅降调不抢队列正文） */.steer-paused { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }.steer-resume { border: none; background: none; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--accent); font: inherit; font-size: calc(14px * var(--fz)); cursor: pointer; flex: none; }.steer-resume:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 /* Other=自由输入卡(合二为一):✎+输入框,聚焦/有字即 custom 选中态 */.ask-dock .card-custom-card {
   flex: none;
   display: flex; align-items: center; gap: 10px;

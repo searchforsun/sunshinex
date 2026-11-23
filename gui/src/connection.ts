@@ -552,6 +552,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     sessionInterrupt(id: string): Promise<void> {
       return post(`/session/${encodeURIComponent(id)}/interrupt`);
     },
+    queuePause(id: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/queue/pause`, {});
+    },
+    queueResume(id: string): Promise<void> {
+      return post(`/session/${encodeURIComponent(id)}/queue/resume`, {});
+    },
     sessionSnapshot(id: string, page?: { before?: number; limit?: number }, opts?: { bumpSeq?: boolean }): Promise<SnapshotResponse & { lastSeq: number }> {
       return fetchSessionSnapshot(id, page, opts);
     },
