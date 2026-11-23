@@ -831,6 +831,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none;
   border-radius: var(--radius-md);
   box-shadow: var(--elev-card);
+  /* 2026-11-23 用户报障「ask 弹窗四角直角阴影」:全局 corner-shape:superellipse(G14.206c) 下
+     box-shadow 不随角形渲染——阴影按标准椭角画,超椭角四角外露方形影残块;本卡拔出级联回标准
+     椭角让阴影随形(tb-status-dot 豁免组同款先例,「仅本选择器特殊处理,不动全局弧度」) */
+  corner-shape: initial;
   padding: 10px 12px;
 }.approval-card, .ask-card { border: none; }.pending-card .card-actions { display: flex; gap: 8px; }.pending-card .approve {
   padding: 3px 12px; border: none; border-radius: var(--radius-sm);
