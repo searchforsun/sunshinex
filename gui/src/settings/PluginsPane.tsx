@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { PluginRow } from '../connection';
 import { Select } from './controls';
 import { zhToolName } from '../pages/chat/ToolEntry';
-import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, Switch } from './components';
 import type { SettingsScope, ScopeOption } from './components';
+import { ResourceToolbar, useResourcePane } from './use-resource-pane';
 
 /**
  * Task 24 PluginsPane 重构(Phase F 第三面板,2026-10-28):一屏式卡片列表——T21 共享组件
@@ -113,53 +114,30 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
   const [rows, setRows] = useState<PluginRow[] | null>(null);
   /** 装载聚合警告(pane 尾展开;可选防旧 daemon——GET 载荷恒带,结构面留宽) */
   const [viewWarnings, setViewWarnings] = useState<string[]>([]);
-  const [loadError, setLoadError] = useState('');
-  const [actionError, setActionError] = useState('');
-  /** 写面在途门(saving 单点——开关/配置提交共用,在途禁再发) */
-  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
   const [drawer, setDrawer] = useState<PluginRow | null>(null);
   const [form, setForm] = useState<ConfigForm | null>(null);
   const [formError, setFormError] = useState('');
-
-  /** 作用域裁定:壳下发优先,缺省按 root 推断(壳缺省同款——无 root 强制 global) */
-  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
-  /** 读面取参:project 作用域带 root(两级清单),global 作用域省参(仅全局清单) */
-  const fetchRoot = myScope === 'project' && root !== '' ? root : undefined;
-  /** 写面取参单点:project 带 root、global 省参(不留空串伪参) */
-  const writeRoot = fetchRoot;
-
-  const load = useCallback((): void => {
-    conn.plugins(fetchRoot).then(
-      (v) => {
-        setRows(v.plugins);
-        setViewWarnings(v.warnings ?? []);
-        setLoadError('');
-      },
-      (err: unknown) => setLoadError(errText(err)),
-    );
-  }, [conn, fetchRoot]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉(config-changed 订阅消费面)
+  /** 骨架单点（useResourcePane,D91）:作用域裁定/读面三态/refreshTick 重拉/开关 runOp——
+   *  写面 putPlugin(root,id,patch) 单发,patch 由开关/配置提交两流各自组装;写面取参随 op
+   *  载荷传入（put 闭包在 hook 实参位,不可回指本解构——fr 由调用面填当前 fetchRoot） */
+  const { myScope, fetchRoot, load, loadError, actionError, saving, setSaving, runOp } = useResourcePane<{ plugins: PluginRow[]; warnings?: string[] }, { fr: string | undefined; id: string; patch: { enabled?: boolean; config?: Record<string, unknown> } }>({
+    root,
+    scope,
+    refreshTick,
+    fetch: (fr) => conn.plugins(fr),
+    onData: (v) => {
+      setRows(v.plugins);
+      setViewWarnings(v.warnings ?? []);
+    },
+    put: (input) => conn.putPlugin(input.fr, input.id, input.patch),
+  });
 
   /** 开关切换:PUT 语义键(显式布尔)按作用域落位,成功后重拉(新会话生效);
-   *  失败行内错误条(actionError,pane 顶) */
+   *  失败行内错误条(actionError,pane 顶)。saving 门/错误条/重拉全在 runOp 单点(D91) */
   const toggle = (p: PluginRow): void => {
-    if (!p.platformSupported || saving) return;
-    setSaving(true);
-    setActionError('');
-    conn.putPlugin(writeRoot, p.id, { enabled: !p.enabled }).then(
-      () => {
-        setSaving(false);
-        load();
-      },
-      (err: unknown) => {
-        setSaving(false);
-        setActionError(errText(err));
-      },
-    );
+    if (!p.platformSupported) return;
+    runOp({ fr: fetchRoot, id: p.id, patch: { enabled: !p.enabled } });
   };
 
   /** 抽屉打开:schema 键逐键播种既有 config 值(String 化;缺省空串=未设);schema 外既有键
@@ -247,7 +225,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
     if (form.disabled.length > 0) config = { ...config, disabledTools: form.disabled }; // 工具停用随提交落 config(装配期 client 逐工具不注册)
     setSaving(true);
     setFormError('');
-    conn.putPlugin(writeRoot, drawer.id, { config }).then(
+    conn.putPlugin(fetchRoot, drawer.id, { config }).then(
       () => {
         setSaving(false);
         setDrawer(null);
@@ -298,10 +276,7 @@ export function PluginsPane({ conn, root, scope, onScopeChange, scopeOptions, re
   return (
     <section className="sx-settings-form" aria-label="settings pane plugins">
       <h2>{t('Plugins', '插件')}</h2>
-      <div className="sx-res-toolbar">
-        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
-        <SearchBar value={query} onChange={setQuery} placeholder={t('Search plugins', '搜索插件')} />
-      </div>
+      <ResourceToolbar root={root} myScope={myScope} scopeOptions={scopeOptions} onScopeChange={onScopeChange} query={query} onQueryChange={setQuery} searchPlaceholder={t('Search plugins', '搜索插件')} />
       {loadError !== '' && <ErrorBanner text={loadError} />}
       {actionError !== '' && <ErrorBanner text={actionError} />}
       {rows === null && loadError === '' && <EmptyState text={t('Loading plugins…', '加载插件清单…')} />}

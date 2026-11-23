@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentEntryView, AgentFrontmatterInput, AgentsOpInput, AgentsView, BuiltinRole } from '../connection';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, Switch } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
+import { ResourceToolbar, canWriteInScope, useResourcePane } from './use-resource-pane';
 
 /**
  * Task 23 AgentsPane 重构（Phase F 第二面板，2026-10-28）：一屏式卡片列表——写面统一走
@@ -98,61 +99,29 @@ interface AgentsPaneProps {
 
 export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, refreshTick }: AgentsPaneProps): JSX.Element {
   const [data, setData] = useState<{ builtins: BuiltinRole[]; view: AgentsView } | null>(null);
-  const [loadError, setLoadError] = useState('');
-  const [actionError, setActionError] = useState('');
-  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<AgentFormState | null>(null);
   const [formError, setFormError] = useState('');
+  /** 骨架单点（useResourcePane,D91）:作用域裁定/读面三态/refreshTick 重拉/runOp 写回收口 */
+  const { myScope, load, loadError, actionError, saving, setSaving, runOp } = useResourcePane<{ builtins: BuiltinRole[]; view: AgentsView }, AgentsOpInput>({
+    root,
+    scope,
+    refreshTick,
+    fetch: (fr) => conn.agentsView(fr),
+    onData: setData,
+    put: (input) => conn.putAgentOp(input),
+  });
 
-  /** 作用域裁定：壳下发优先，缺省按 root 推断（壳缺省同款——无 root 强制 global） */
-  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
-  /** 读面取参：project 作用域带 root（两级清单），global 作用域省参（仅全局清单） */
-  const fetchRoot = myScope === 'project' && root !== '' ? root : undefined;
-
-  const load = useCallback((): void => {
-    conn.agentsView(fetchRoot).then(
-      (v) => {
-        setData(v);
-        setLoadError('');
-      },
-      (err: unknown) => setLoadError(errText(err)),
-    );
-  }, [conn, fetchRoot]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉（config-changed 订阅消费面）
-
-  /** 写作用域守卫（McpPane 同款）：project 卡=project 作用域且有 root；global 卡=global 作用域
-   *  （被遮蔽卡只出现在 project 视图，天然不可写）。不可写卡：开关不下发+Edit/Delete disabled */
-  const canWrite = (e: AgentEntryView): boolean =>
-    e.source === 'project' ? myScope === 'project' && root !== '' : myScope === 'global';
+  /** 写作用域守卫（三面共用判据 canWriteInScope）：project 卡=project 作用域且有 root；global
+   *  卡=global 作用域（被遮蔽卡只出现在 project 视图，天然不可写）。不可写卡：开关不下发+Edit/Delete disabled */
+  const canWrite = (e: AgentEntryView): boolean => canWriteInScope(myScope, root, e.source);
 
   /** op 输入按卡作用域取参单点：project 带 root、global 省参（input 原文即请求体，不留空串伪参） */
   const opFor = (e: AgentEntryView, op: Extract<AgentsOpInput, { op: 'enable' | 'disable' | 'delete' }>['op']): AgentsOpInput =>
     op === 'delete'
       ? { op: 'delete', scope: e.source, ...(e.source === 'project' ? { root } : {}), id: e.id }
       : { op, scope: e.source, ...(e.source === 'project' ? { root } : {}), id: e.id };
-
-  /** op 写回收口单点（McpPane runOp 同款）：saving 门 → putAgentOp → 成功重拉（失败 saving
-   *  复位+行内错误条；409 hint 由 errText 呈现 status 行） */
-  const runOp = (input: AgentsOpInput): void => {
-    if (saving) return;
-    setSaving(true);
-    setActionError('');
-    conn
-      .putAgentOp(input)
-      .then(() => {
-        setSaving(false);
-        load();
-      })
-      .catch((err: unknown) => {
-        setSaving(false);
-        setActionError(errText(err));
-      });
-  };
 
   /** 启停开关渲染判据（REST 富化 gating）：enabled 恒布尔契约的字段在场才出开关——现 daemon
    *  （缺键）不渲染（无误导态），富化 daemon 落地即自动点亮；可写性另乘 canWrite */
@@ -270,13 +239,7 @@ export function AgentsPane({ conn, root, scope, onScopeChange, scopeOptions, ref
   return (
     <section className="sx-settings-form" aria-label="settings pane agents">
       <h2>{t('Agents', '智能体')}</h2>
-      <div className="sx-res-toolbar">
-        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
-        <SearchBar value={query} onChange={setQuery} placeholder={t('Search agents', '搜索智能体')} />
-        <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
-          {t('+ New', '+ 新增')}
-        </button>
-      </div>
+      <ResourceToolbar root={root} myScope={myScope} scopeOptions={scopeOptions} onScopeChange={onScopeChange} query={query} onQueryChange={setQuery} searchPlaceholder={t('Search agents', '搜索智能体')} onNew={() => openDrawer(null)} />
       {loadError !== '' && <ErrorBanner text={loadError} />}
       {actionError !== '' && <ErrorBanner text={actionError} />}
       {data === null && loadError === '' && <EmptyState text={t('Loading agents…', '加载智能体清单…')} />}

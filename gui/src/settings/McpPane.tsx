@@ -3,9 +3,10 @@ import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { McpRow, McpProbeResult, McpOpInput } from '../connection';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ModalTabs, ResourceCard, Switch } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
+import { ResourceToolbar, canWriteInScope, useResourcePane } from './use-resource-pane';
 
 /**
  * Task 22 McpPane 重构(Phase F 首面板,2026-10-28):一屏式卡片列表——写面全部走
@@ -109,37 +110,24 @@ interface McpPaneProps {
 
 export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refreshTick }: McpPaneProps): JSX.Element {
   const [servers, setServers] = useState<McpRow[] | null>(null);
-  const [loadError, setLoadError] = useState('');
-  const [actionError, setActionError] = useState('');
   /** 探测结果按名落位(卡内状态点+工具清单);HTTP 层失败也归一为 ok:false 行内呈现 */
   const [probes, setProbes] = useState<Record<string, McpProbeResult>>({});
   const [probing, setProbing] = useState<string[]>([]);
-  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<DrawerForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
   /** 挂载自动探测去重面(状态圆点数据源):每名一次,重拉清单不重探;作用域切换经 fetchKey 复位放行重探 */
   const autoProbed = useRef<Set<string>>(new Set());
-
-  /** 作用域裁定:壳下发优先,缺省按 root 推断(壳缺省同款——无 root 强制 global) */
-  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
-  /** 读面取参:project 作用域带 root(两级清单),global 作用域省参(仅全局清单) */
-  const fetchRoot = myScope === 'project' && root !== '' ? root : undefined;
-
-  const load = useCallback((): void => {
-    conn.mcpServers(fetchRoot).then(
-      (v) => {
-        setServers(v.servers);
-        setLoadError('');
-      },
-      (err: unknown) => setLoadError(errText(err)),
-    );
-  }, [conn, fetchRoot]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉(config-changed 订阅消费面)
+  /** 骨架单点（useResourcePane,D91）:作用域裁定/读面三态/refreshTick 重拉/runOp 写回收口 */
+  const { myScope, fetchRoot, load, loadError, actionError, setActionError, saving, setSaving, runOp } = useResourcePane<McpRow[], McpOpInput>({
+    root,
+    scope,
+    refreshTick,
+    fetch: (fr) => conn.mcpServers(fr).then((v) => v.servers),
+    onData: setServers,
+    put: (input) => conn.putMcpOp(input),
+  });
 
   /** 作用域/清单切换复位探测面(旧作用域的探测结果不串屏) */
   const fetchKey = fetchRoot ?? '';
@@ -177,10 +165,10 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
     }
   }, [servers, probe]);
 
-  /** 写作用域守卫:项目卡=project 作用域且有 root;全局卡=global 作用域(被遮蔽卡只出现在
-   *  project 视图,天然不可写)。不可写卡:开关不下发(无 switch)+ Edit/Delete disabled+tip */
-  const canWrite = (s: McpRow): boolean =>
-    s.source === 'project' ? myScope === 'project' && root !== '' : myScope === 'global';
+  /** 写作用域守卫（三面共用判据 canWriteInScope）:项目卡=project 作用域且有 root;全局卡=
+   *  global 作用域(被遮蔽卡只出现在 project 视图,天然不可写)。不可写卡:开关不下发
+   *  (无 switch)+ Edit/Delete disabled+tip */
+  const canWrite = (s: McpRow): boolean => canWriteInScope(myScope, root, s.source);
 
   /** op 输入按卡作用域取参单点:project 带 root、global 省参(input 原文即请求体,不留空串伪参) */
   const opFor = (s: McpRow, op: McpOpInput['op'], server?: Record<string, unknown>): McpOpInput => ({
@@ -190,24 +178,6 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
     name: s.name,
     ...(server !== undefined ? { server } : {}),
   });
-
-  /** op 写回收口单点:saving 门 → putMcpOp → 成功重拉(失败 saving 复位+行内错误条;
-   *  409 hint 'use raw editor' 由 errText 呈现 status 行,引流 raw 编辑面) */
-  const runOp = (input: McpOpInput): void => {
-    if (saving) return;
-    setSaving(true);
-    setActionError('');
-    conn
-      .putMcpOp(input)
-      .then(() => {
-        setSaving(false);
-        load();
-      })
-      .catch((err: unknown) => {
-        setSaving(false);
-        setActionError(errText(err));
-      });
-  };
 
   /** raw 原文条目读取(编辑 seed/逐工具开关底稿):content 缺/条目缺 → null;文件不可解析 →
    *  抛错(调用方行内呈报——引流「源码」Tab/raw 编辑面) */
@@ -526,13 +496,7 @@ export function McpPane({ conn, root, scope, onScopeChange, scopeOptions, refres
   return (
     <section className="sx-settings-form" aria-label="settings pane MCP">
       <h2>{t('MCP servers', 'MCP 服务器')}</h2>
-      <div className="sx-res-toolbar">
-        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
-        <SearchBar value={query} onChange={setQuery} placeholder={t('Search MCP servers', '搜索 MCP 服务器')} />
-        <button type="button" className="sx-add-button" onClick={() => void openDrawer(null)}>
-          {t('+ Add', '+ 添加')}
-        </button>
-      </div>
+      <ResourceToolbar root={root} myScope={myScope} scopeOptions={scopeOptions} onScopeChange={onScopeChange} query={query} onQueryChange={setQuery} searchPlaceholder={t('Search MCP servers', '搜索 MCP 服务器')} onNew={() => void openDrawer(null)} newLabel={t('+ Add', '+ 添加')} />
       {loadError !== '' && <ErrorBanner text={loadError} />}
       {actionError !== '' && <ErrorBanner text={actionError} />}
       {servers === null && loadError === '' && <EmptyState text={t('Loading MCP servers…', '加载 MCP 清单…')} />}

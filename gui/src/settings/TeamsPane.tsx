@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, ChevronDown, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../i18n';
 import { errText } from '../ui-util';
 import type { AgentsView, BuiltinRole, TeamEntryView, TeamFrontmatterInput, TeamsOpInput, TeamsView } from '../connection';
-import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, ScopeSelect, SearchBar, Switch, defaultScopeOptions } from './components';
+import { ConfirmDeleteButton, EditorModal, EmptyState, ErrorBanner, ModalField, ResourceCard, Switch } from './components';
 import type { SettingsScope, ScopeOption } from './components';
 import { Select } from './controls';
 import { ClampBlock } from '../clamp-block';
+import { ResourceToolbar, canWriteInScope, useResourcePane } from './use-resource-pane';
 
 /**
  * agents-teams P1 Task 3 TeamsPane（Settings 页「智能体团队」面，AgentsPane 逐件对应镜像）：
@@ -116,13 +117,24 @@ interface TeamsPaneProps {
 export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions, refreshTick }: TeamsPaneProps): JSX.Element {
   const [data, setData] = useState<TeamsView | null>(null);
   const [known, setKnown] = useState<{ builtins: BuiltinRole[]; view: AgentsView }>({ builtins: [], view: { entries: [], warnings: [] } });
-  const [loadError, setLoadError] = useState('');
-  const [actionError, setActionError] = useState('');
-  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const [form, setForm] = useState<TeamFormState | null>(null);
   const [formError, setFormError] = useState('');
+  /** 骨架单点（useResourcePane,D91）:作用域裁定/读面三态/refreshTick 重拉/runOp 写回收口 */
+  const { myScope, load, loadError, actionError, saving, setSaving, runOp } = useResourcePane<TeamsView, TeamsOpInput>({
+    root,
+    scope,
+    refreshTick,
+    fetch: (fr) => {
+      // 成员复选数据源（known agents）：选择器辅助面并行拉取——读失败静默降级空集（teams 主面
+      // 不受牵连，复选列表空、手输 extra id 兜底仍在）
+      conn.agentsView(fr).then(setKnown, () => setKnown({ builtins: [], view: { entries: [], warnings: [] } }));
+      return conn.teamsView(fr).then((v) => v.view);
+    },
+    onData: setData,
+    put: (input) => conn.putTeamOp(input),
+  });
   /** 额外成员 chips(不在上方卡片中的既有 id):extraMembers 空格串存储形态不变(提交合并单点
    *  不触),chip 列表只是可视形态,摘除回写;自定义 id 添加入口按裁定移除(先到智能体页创建) */
   const customMembers = form?.extraMembers.split(/\s+/).filter((x) => x !== '') ?? [];
@@ -132,28 +144,6 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
   /** 详情展开键(2026-11-17 用户实测「左右还是没对齐」:details display:contents 的匿名内容盒使
    *  展开面宽度算错=右侧留白——改显式展开态,详情面板作为卡片内整宽块渲染) */
   const [openKey, setOpenKey] = useState<string>('');
-
-  /** 作用域裁定：壳下发优先，缺省按 root 推断（壳缺省同款——无 root 强制 global） */
-  const myScope: SettingsScope = scope ?? (root === '' ? 'global' : 'project');
-  /** 读面取参：project 作用域带 root（两级清单），global 作用域省参（仅全局清单） */
-  const fetchRoot = myScope === 'project' && root !== '' ? root : undefined;
-
-  const load = useCallback((): void => {
-    conn.teamsView(fetchRoot).then(
-      (v) => {
-        setData(v.view);
-        setLoadError('');
-      },
-      (err: unknown) => setLoadError(errText(err)),
-    );
-    // 成员复选数据源（known agents）：选择器辅助面——读失败静默降级空集（teams 主面不受牵连，
-    // 复选列表空、手输 extra id 兜底仍在）
-    conn.agentsView(fetchRoot).then(setKnown, () => setKnown({ builtins: [], view: { entries: [], warnings: [] } }));
-  }, [conn, fetchRoot]);
-
-  useEffect(() => {
-    load();
-  }, [load, refreshTick]); // refreshTick 变化=外部改动信号 → 重拉（config-changed teams 键消费面）
 
   /** 已知 agent 面（成员卡片数据源，R3；2026-11-17 用户裁定「卡片展示信息,不要 checkbox」）：
    *  builtins 四角色先+注册清单后，按 id 去重保首现；desc=卡片描述行(builtins framing/注册 description) */
@@ -172,10 +162,9 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
     }
   }
 
-  /** 写作用域守卫（AgentsPane 同款）：project 卡=project 作用域且有 root；global 卡=global 作用域
-   *  （被遮蔽卡只出现在 project 视图，天然不可写）。不可写卡：开关不下发+Edit/Delete disabled */
-  const canWrite = (e: TeamEntryView): boolean =>
-    e.source === 'project' ? myScope === 'project' && root !== '' : myScope === 'global';
+  /** 写作用域守卫（三面共用判据 canWriteInScope）：project 卡=project 作用域且有 root；global
+   *  卡=global 作用域（被遮蔽卡只出现在 project 视图，天然不可写）。不可写卡：开关不下发+Edit/Delete disabled */
+  const canWrite = (e: TeamEntryView): boolean => canWriteInScope(myScope, root, e.source);
 
   /** op 输入按卡作用域取参单点：project 带 root、global 省参（input 原文即请求体，不留空串伪参） */
   const opFor = (e: TeamEntryView, op: Extract<TeamsOpInput, { op: 'enable' | 'disable' | 'delete' }>['op']): TeamsOpInput => ({
@@ -184,24 +173,6 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
     ...(e.source === 'project' ? { root } : {}),
     id: e.id,
   });
-
-  /** op 写回收口单点（runOp 同款）：saving 门 → putTeamOp → 成功重拉（失败 saving 复位+行内
-   *  错误条；409 hint 由 errText 呈现 status 行） */
-  const runOp = (input: TeamsOpInput): void => {
-    if (saving) return;
-    setSaving(true);
-    setActionError('');
-    conn
-      .putTeamOp(input)
-      .then(() => {
-        setSaving(false);
-        load();
-      })
-      .catch((err: unknown) => {
-        setSaving(false);
-        setActionError(errText(err));
-      });
-  };
 
   /** 启停开关渲染判据（REST 富化 gating）：enabled 恒布尔契约的字段在场才出开关——daemon 缺键
    *  不渲染（无误导态）；可写性另乘 canWrite */
@@ -333,13 +304,7 @@ export function TeamsPane({ conn, root = '', scope, onScopeChange, scopeOptions,
   return (
     <section className="sx-settings-form" aria-label="settings pane teams">
       <h2>{t('Agent Teams', '智能体团队')}</h2>
-      <div className="sx-res-toolbar">
-        <ScopeSelect value={myScope === 'project' ? root : ''} options={scopeOptions ?? defaultScopeOptions(root)} onChange={(v) => onScopeChange?.(v)} />
-        <SearchBar value={query} onChange={setQuery} placeholder={t('Search teams', '搜索团队')} />
-        <button type="button" className="sx-add-button" onClick={() => openDrawer(null)}>
-          {t('+ New', '+ 新增')}
-        </button>
-      </div>
+      <ResourceToolbar root={root} myScope={myScope} scopeOptions={scopeOptions} onScopeChange={onScopeChange} query={query} onQueryChange={setQuery} searchPlaceholder={t('Search teams', '搜索团队')} onNew={() => openDrawer(null)} />
       {loadError !== '' && <ErrorBanner text={loadError} />}
       {actionError !== '' && <ErrorBanner text={actionError} />}
       {data === null && loadError === '' && <EmptyState text={t('Loading teams…', '加载团队清单…')} />}
