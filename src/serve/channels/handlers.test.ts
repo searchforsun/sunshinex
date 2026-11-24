@@ -268,44 +268,35 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
   });
 });
 
-test('GET /channels/sessions:Sunx 域通道会话并集（2026-11-25「Sunx编排没有gui回显」根修）——sunx 容器 meta.channel 行入列,纯 sunx 手建不混入', () => {
+test('GET /channels/sessions:Sunx 域行不并入（2026-11-25 用户裁定「不能直接改到 channels 下,不然和 sunx 重叠了」）——sunx 容器行（含 meta.channel）零混入,SUNX 组独家承载', () => {
   const container = path.join(tmpdir('sunshinex-ch-handlers-'), 'channels');
-  const dataDir = tmpdir('sunshinex-ch-data-');
+  const sunxDir = tmpdir('sunshinex-ch-sunx-');
   const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
   const prevSunx = process.env.SUNSHINEX_SUNX_DIR;
   process.env.SUNSHINEX_CHANNELS_DIR = container;
-  process.env.SUNSHINEX_SUNX_DIR = path.join(dataDir, 'sunx');
+  process.env.SUNSHINEX_SUNX_DIR = sunxDir;
   try {
     // channels 容器:一个普通通道会话
     const domainA = path.join(container, 'im-m1-c1');
     const sessionsA = path.join(domainA, 'data', 'sessions');
     fs.mkdirSync(sessionsA, { recursive: true });
     fs.writeFileSync(path.join(sessionsA, 'j-ch-a.jsonl'), '{"t":"header","createdAt":"2026-01-01T00:00:00.000Z"}\n', 'utf8');
-    // sunx 容器:一个 Sunx 模式通道会话（meta.channel 在场）+ 一个纯 sunx 手建会话（无 channel,不混入）
-    const sunxDomain = path.join(dataDir, 'sunx', 'j-sx-a', 'data', 'sessions');
+    // sunx 容器:带通道标的 Sunx 会话（历史形态/手建+channel 标）——即便 meta.channel 在场也不入通道列
+    const sunxDomain = path.join(sunxDir, 'j-sx-a', 'data', 'sessions');
     fs.mkdirSync(sunxDomain, { recursive: true });
     fs.writeFileSync(path.join(sunxDomain, 'j-sx-a.jsonl'), '{"t":"header","createdAt":"2026-01-02T00:00:00.000Z"}\n', 'utf8');
     fs.writeFileSync(path.join(sunxDomain, 'j-sx-a.meta.json'), JSON.stringify({ channel: 'm1', chatId: 'oc-x', chatTitle: '评审群' }), 'utf8');
-    const pureDomain = path.join(dataDir, 'sunx', 'j-sx-pure', 'data', 'sessions');
-    fs.mkdirSync(pureDomain, { recursive: true });
-    fs.writeFileSync(path.join(pureDomain, 'j-sx-pure.jsonl'), '{"t":"header","createdAt":"2026-01-03T00:00:00.000Z"}\n', 'utf8');
     const { io, replies } = stubIo({ bindings: makeStore(path.dirname(container)) });
     handleChannelsSessions(io, {} as http.ServerResponse);
     assert.equal(replies[0]?.status, 200);
     const rows = replies[0].body as Array<Record<string, unknown>>;
-    assert.deepEqual(rows.map((r) => r['id']), ['j-sx-a', 'j-ch-a'], 'sunx 通道行并集+全局 updatedAt 降序;纯 sunx 手建不混入');
-    const sx = rows[0]!;
-    assert.equal(sx['channel'], 'm1');
-    assert.equal(sx['chatId'], 'oc-x');
-    assert.equal(sx['chatTitle'], '评审群');
-    assert.equal(sx['root'], path.join(dataDir, 'sunx', 'j-sx-a'), '行 root=sunx 域目录(GUI attach 直寻址)');
-    assert.equal(sx['kind'], 'channel');
+    assert.deepEqual(rows.map((r) => r['id']), ['j-ch-a'], '只列通道容器;sunx 域行零混入（防两组重叠）');
   } finally {
     if (prevCh === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
     else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;
     if (prevSunx === undefined) delete process.env.SUNSHINEX_SUNX_DIR;
     else process.env.SUNSHINEX_SUNX_DIR = prevSunx;
     fs.rmSync(path.dirname(container), { recursive: true, force: true });
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    fs.rmSync(sunxDir, { recursive: true, force: true });
   }
 });

@@ -178,7 +178,11 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     domainDir = adoptDomain;
   } else if (isSunx) {
     journalId = newSessionId();
-    domainDir = sunxDomainDir(journalId);
+    // 通道域 Sunx 会话（2026-11-25 用户裁定「sunx 模式下的 session data 也应该放到同一个应用的
+    // 某个会话下」）：channelMeta 在场=通道聊天会话——域落**聊天域 data**（resolveDataDir 归约
+    // channels/<chatKey>/data,与该聊天 standard 会话同域:通道组直觉入口,SUNX 组零重叠）;
+    // 缺省=手建 Sunx,域落全局 sunx 容器（既有语义零变化）
+    domainDir = opts?.channelMeta !== undefined ? resolveDataDir(abs) : sunxDomainDir(journalId);
     fs.mkdirSync(domainDir, { recursive: true });
   }
   // P6 §4 挂起表下沉会话:daemon 只注入网络寻址两接缝(mintPid/broadcast)——注册/守卫(ghost 硬化

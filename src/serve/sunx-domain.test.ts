@@ -492,3 +492,50 @@ test('⑥ 分支子档出生 meta：sunx 域内 fork 子档 meta 落 root/kind�
     }
   }
 });
+
+// ═══════════════ ⑦通道域 Sunx 会话落位（2026-11-25 用户裁定「sunx 模式下的 session data 也应该
+// 放到同一个应用的某个会话下」+「不能直接改到 channels 下,不然和 sunx 重叠了」）═══════════════
+// kind=sunx + channelMeta（通道聊天会话,直调方自律）→ 域=resolveDataDir(root)=channels/<chatKey>/data
+// ——与该聊天 standard 会话同域（通道组直觉入口,SUNX 组零重叠）;无 channelMeta=手建 → 全局 sunx
+// 容器（既有语义零变化）
+test('⑦ 通道域 Sunx 落位:channelMeta 在场→域=聊天域 data（通道容器内,sunx 容器零落档）;缺省→sunx 容器（既有）', async () => {
+  const base = tmpdir('sunshinex-serve-sunxdom-g-');
+  const restore = pinSunxEnv(base);
+  let close: (() => Promise<void>) | undefined;
+  try {
+    const home = path.join(base, 'home');
+    const chatDomain = path.join(home, '.sunshinex', 'channels', 'im-m1-oc-x');
+    const root = path.join(chatDomain, 'workspace');
+    fs.mkdirSync(root, { recursive: true });
+    const d = await startDaemon(new ScriptedAdapter(['{"done":true,"reply":"ok"}']), base);
+    close = d.close;
+    // 直调 daemon.createSession（channelMeta 直调方自律,HTTP /session/new 面不透传）
+    const created = d.daemon.createSession(root, { kind: 'sunx', name: '通道Sunx', charter: 'CH-1', activate: false, channelMeta: { platform: 'feishu', chatId: 'oc-x', appName: '应用甲' } });
+    assert.ok(created.ok, '通道 Sunx 创建成功');
+    const s1 = d.daemon.get(created.value.sessionId)!;
+    const jid1 = s1.attachedJournalId;
+    assert.ok(jid1 !== undefined, '出生即铸 journalId');
+    // 域=聊天域 data（channels 容器内,与该聊天 standard 会话同域）
+    assert.equal(s1.dataDir, path.join(chatDomain, 'data'), '域=channels/<chatKey>/data（resolveDataDir 归约）');
+    const file1 = path.join(sessionsDir(path.join(chatDomain, 'data')), `${jid1}.jsonl`);
+    assert.ok(fs.existsSync(file1), 'journal 落聊天域');
+    const meta1 = readSessionMeta(path.join(chatDomain, 'data'), jid1!);
+    assert.equal(meta1.kind, 'sunx', '出生 meta kind（sunx 语义齐全:品性/charterRev 随档）');
+    assert.equal(meta1.title, '通道Sunx');
+    // 全局 sunx 容器零落档（与手建 Sunx 零重叠）
+    assert.equal(fs.existsSync(sunxDomainDir(jid1!)), false, 'sunx 容器零落档');
+    // 出生品性冻结行随档（ctx-snap 合成品性,domain ①同口径）
+    const events = parseJournalFile(file1).events;
+    const snap = events.find((e) => e.t === 'ctx-snap') as { sig?: { charter?: string } } | undefined;
+    assert.equal(snap?.sig?.charter, 'Your name: 通道Sunx.\n\nCH-1', '出生快照品性合成随档');
+    // 对照:无 channelMeta 手建 Sunx → 全局 sunx 容器（既有语义零变化）
+    const created2 = d.daemon.createSession(root, { kind: 'sunx', name: '手建Sunx', activate: false });
+    assert.ok(created2.ok);
+    const jid2 = d.daemon.get(created2.value.sessionId)!.attachedJournalId;
+    assert.ok(jid2 !== undefined && jid2 !== jid1);
+    assert.ok(fs.existsSync(sunxDomainDir(jid2!)), '手建 Sunx 域落全局 sunx 容器（既有）');
+  } finally {
+    restore();
+    if (close !== undefined) await close();
+  }
+});

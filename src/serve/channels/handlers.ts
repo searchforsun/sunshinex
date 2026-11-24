@@ -22,7 +22,6 @@ import { loadGlobalSettings } from '../../config/settings';
 import { writeJsonAtomic } from '../../catalog/io';
 import { slugify } from '../../slug';
 import { enumerateContainerSessions } from '../sessions-list-handlers';
-import { sunxContainerDir } from '../../config/data-dir';
 import { readStrictSettingsRootForWrite } from '../config-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
@@ -246,22 +245,8 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
       ...(rowChatTitle(r, chatTitleByJournal) !== undefined ? { chatTitle: rowChatTitle(r, chatTitleByJournal) } : {}),
     }),
   });
-  // Sunx 域内的通道会话并集（2026-11-25 用户裁定「Sunx编排没有gui回显」根修）：sessionKind=
-  // 'sunx' 通道的聊天会话走 sunx 出生路径——journal 落 **sunx 容器**（sunxDomainDir）,通道容器
-  // 扫描天然不见,SUNX 组虽列但通道组=通道对话的直觉入口缺席=GUI 无回显感。并集过滤 meta.channel
-  // 在场者（纯 sunx 手建会话不混入）,行 root=sunx 域目录（GUI attach 直寻址同款归约）
-  const sunxChannelRows = enumerateContainerSessions({
-    containerDir: sunxContainerDir(),
-    kind: 'channel',
-    sessions: io.sessions,
-    domainColumns: (r, domainDir) => ({
-      root: domainDir,
-      ...(r.channel !== undefined ? { channel: r.channel } : {}),
-      ...(rowChatId(r, domainDir, chatIdByJournal) !== undefined ? { chatId: rowChatId(r, domainDir, chatIdByJournal) } : {}),
-      ...(rowChatTitle(r, chatTitleByJournal) !== undefined ? { chatTitle: rowChatTitle(r, chatTitleByJournal) } : {}),
-    }),
-  }).filter((r) => r.channel !== undefined);
-  const merged = [...out, ...sunxChannelRows];
-  merged.sort((a, b) => (b.updatedAt as number) - (a.updatedAt as number)); // 两容器归并后全局按最近活动排序（GUI 侧栏呈现序）
-  io.send(res, 200, merged); // 裸 SessionRow[]（sunx 面同款，GUI 消费形对齐）
+  // Sunx 模式通道的聊天会话**不并入**本列（2026-11-25 用户裁定「不能直接改到 channels 下,
+  // 不然和 sunx 重叠了」）：sessionKind='sunx' 通道的聊天会话走 sunx 出生路径——journal 落
+  // sunx 容器,由 GET /sunx/sessions（SUNX 组）独家承载;通道组只扫通道容器,两组零重叠。
+  io.send(res, 200, out); // 裸 SessionRow[]（sunx 面同款，GUI 消费形对齐）
 }
