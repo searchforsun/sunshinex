@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, parseJournalFile, reduceJournal } from './session-journal';
+import { listSessions, parseJournalFile, reduceJournal } from '../session/journal';
 
 // agents-teams P1（Task 5）未知 $/# 引用提示（spec §3.2 TUI 面；GUI ref-palette R5 同语义）：
 // 普通文本派发前只读对照在册集合（listAgentDefs ids ∪ listTeams ids），未命中 token 聚合一条

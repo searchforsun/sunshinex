@@ -72,7 +72,7 @@ import type { ModelAdapter } from '../../dist/model/adapter';
 // @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
 import { resolveDataDir } from '../../dist/config/data-dir';
 // @ts-expect-error dist 发布形态（tsc 不发声明；门禁收编 D63——被测 DOM/HTTP 面走 gui 侧真类型）
-import { SessionJournal } from '../../dist/tui/session-journal';
+import { SessionJournal } from '../../dist/session/journal';
 import type { ChatRequest, ChatResult, SessionEvent } from '../../src/types';
 import { createConnection } from './connection';
 import type { Connection, ConnectionState } from './connection';

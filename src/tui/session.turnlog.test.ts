@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, parseJournalFile, sessionsDir, type JournalEvent } from './session-journal';
+import { listSessions, parseJournalFile, sessionsDir, type JournalEvent } from '../session/journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

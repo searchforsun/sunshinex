@@ -9,7 +9,7 @@ import { ensureEnvWorkdirFact } from '../harness/context';
 import type { DaemonFrame } from './daemon-wire';
 import { ModelAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
-import { SessionJournal, journalDisplayTitle, newSessionId, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../tui/session-journal';
+import { SessionJournal, journalDisplayTitle, newSessionId, parseJournalFile, purgeSession, readSessionMeta, reduceJournal, sessionsDir, type JournalEvent } from '../session/journal';
 import { reduceSteerRows, reduceSegRows, crashWindowEntries, entriesToChainSteps } from '../session/seglog';
 import type { RestoredInterrupted } from '../session/wake';
 import { projectsRoot, projectSlug, resolveDataDir, sunxDomainDir, worktreeMainRootOf } from '../config/data-dir';

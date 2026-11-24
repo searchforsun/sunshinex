@@ -8,7 +8,7 @@ import type { DaemonFrame } from './daemon-wire';
 import type { SessionRuntimeOpts } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { SessionJournal } from '../tui/session-journal';
+import { SessionJournal } from '../session/journal';
 
 /** serve 计划模式 e2e（2026-11-03 无感化,ask_question 同构）：armed 提交=会话作用域 run（read-only
  *  覆盖在座）,exit_plan executor 弹卡阻塞等裁决（run 不收口——无感锚:挂卡期 status running）,

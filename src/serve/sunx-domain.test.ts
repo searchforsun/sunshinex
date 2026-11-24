@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { parseJournalFile, readSessionMeta, sessionsDir } from '../tui/session-journal';
+import { parseJournalFile, readSessionMeta, sessionsDir } from '../session/journal';
 import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
 import { memoryStats } from './config-helpers';
 import { Harness } from '../harness';

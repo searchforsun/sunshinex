@@ -8,7 +8,7 @@ import { userConfigDir } from '../config/env';
 import { clearAppGuiStatePointer, removePinsByRoot } from './app-state-handlers';
 import { writeJsonAtomic } from '../catalog/io';
 import { defaultScratchRootPath, isDefaultWorkspaceSlug } from './session-lifecycle';
-import { listSessions } from '../tui/session-journal';
+import { listSessions } from '../session/journal';
 import type { WorkspaceRow } from './daemon';
 
 /** 工作区面 HTTP 处理器（D31 批3 拆分自 daemon.ts 类）：locate（标记文件全盘定位）/create（注册+建

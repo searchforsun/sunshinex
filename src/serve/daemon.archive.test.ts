@@ -7,7 +7,7 @@ import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
-import { parseJournalFile, readSessionMeta } from '../tui/session-journal';
+import { parseJournalFile, readSessionMeta } from '../session/journal';
 import { reduceSegRows } from '../session/seglog';
 
 /** 挂起适配器(同 daemon.gui-state.test.ts 惯例):模型调用永挂直至 signal 中止——running 409

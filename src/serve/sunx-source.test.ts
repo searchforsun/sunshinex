@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { readSessionMeta, sessionsDir } from '../tui/session-journal';
+import { readSessionMeta, sessionsDir } from '../session/journal';
 import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
 
 /**
@@ -439,7 +439,7 @@ test('⑥ 归档可达：GET /sunx/sessions 携带 archived 行（archived:true 
     // unarchive 可达：archived:false 按 journalId → 域 meta 撤标（旧实现兜底只扫 projects 区=404 死态）
     const un = await fetch(`${d2.http}/session/${jid}/archive`, { method: 'POST', headers: AUTH, body: JSON.stringify({ archived: false }) });
     assert.equal(un.status, 200, `unarchive 按 journalId 可达：${un.status}`);
-    const { readSessionMeta: readMeta } = await import('../tui/session-journal');
+    const { readSessionMeta: readMeta } = await import('../session/journal');
     assert.equal(readMeta(sunxDomainDir(jid), jid).archived, undefined, '域 meta 撤标（unarchive 真达）');
     assert.equal((await sunxRows(d2.http)).find((r) => r.id === jid)!.archived, undefined, '撤销后行无 archived 标记');
     // delete 可达：再归档 → journalId 删 → 域整删（独占域既有语义）
@@ -450,7 +450,7 @@ test('⑥ 归档可达：GET /sunx/sessions 携带 archived 行（archived:true 
     // standard 锚:projects 区 journalId 兜底照旧（字节不变——既有 daemon.archive 双寻址族已锚,此处直证 sunx 不扰）
     const rowsAfter = await sunxRows(d2.http);
     assert.equal(rowsAfter.some((r) => r.id === jid), false, '删后行出列');
-    await import('../tui/session-journal');
+    await import('../session/journal');
   } finally {
     await close1?.();
     await close2?.();

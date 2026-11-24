@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
-import { parseJournalFile } from './session-journal';
+import { parseJournalFile } from '../session/journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

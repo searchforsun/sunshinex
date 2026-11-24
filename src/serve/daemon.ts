@@ -8,7 +8,7 @@ import { ModelAdapter, parseEffort } from '../model/adapter';
 import type { Result } from '../result';
 import type { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
-import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../tui/session-journal";
+import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../session/journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles, fetchRemoteBranches } from './session-changes';

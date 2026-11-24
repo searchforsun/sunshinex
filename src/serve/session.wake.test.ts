@@ -12,7 +12,7 @@ import { wakeOfRun, scheduledWakeOfRun, sessionRestoredOfRun, SCHEDULE_WAKE_TAG,
 import { isQuietNotice } from '../session/entry';
 import { reduceWakeScheduleRows } from '../session/seglog';
 import { WAKE_HINT } from '../harness/tasks';
-import { SessionJournal, parseJournalFile, sessionsDir } from '../tui/session-journal';
+import { SessionJournal, parseJournalFile, sessionsDir } from '../session/journal';
 import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
 import { createSessionIn, attachSessionIn, attachSunxIn } from './session-lifecycle';
 import type { SessionLifecycleIo } from './session-lifecycle';

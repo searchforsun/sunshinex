@@ -11,7 +11,7 @@ import { ChannelRouter } from './router';
 import type { ChannelsSessionIo, ChannelRouterDeps } from './router';
 import { ChannelsBindingsStore } from './store';
 import { channelChatWorkspaceRoot } from '../../config/channels';
-import { readSessionMeta } from '../../tui/session-journal';
+import { readSessionMeta } from '../../session/journal';
 import { bindingKey } from './model';
 import type { Binding, ChannelConfig, InboundMessage } from './model';
 import type { SessionRuntime } from '../session';

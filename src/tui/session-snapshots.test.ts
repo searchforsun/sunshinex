@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { collectRestorePlan, applyRestorePlan } from './session-snapshots';
-import { sessionsDir } from './session-journal';
+import { sessionsDir } from '../session/journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

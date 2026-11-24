@@ -7,7 +7,7 @@ import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { slashHelp } from './chat-model';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, parseJournalFile, reduceJournal } from './session-journal';
+import { listSessions, parseJournalFile, reduceJournal } from '../session/journal';
 
 // 关断 learned 沉淀（控制面键 SUNSHINEX_LEARNED_SKILLS，env > 缺省 on）：本套件的成功任务
 // 会经 settle 管线把 goal 沉淀为 learned 技能、写进数据目录，目录跨运行残留会污染

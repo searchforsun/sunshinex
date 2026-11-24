@@ -3,7 +3,7 @@ import { defaultScratchRoot } from '../session-lifecycle';
 import type { CreateSessionOpts } from '../session-lifecycle';
 import type { Result } from '../../result';
 import type { RunEndInfo, SessionRuntime } from '../session';
-import { purgeSession, writeSessionMeta } from '../../tui/session-journal';
+import { purgeSession, writeSessionMeta } from '../../session/journal';
 import type { RunRecord, RunStatus, RunTrigger, ScheduleJob } from './model';
 import type { ScheduleStore } from './store';
 

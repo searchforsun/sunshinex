@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { handleBranch, handleSessionTasks } from './session-handlers';
 import { TaskRegistry } from '../harness/tasks';
-import { SessionJournal, copySessionStores, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { SessionJournal, copySessionStores, readSessionMeta, sessionsDir, writeSessionMeta } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 test('handleSessionTasks 过滤板任务派发登记(boardDispatch):GUI 后台任务面只剩 exec/后台 spawn(2026-11-03 用户裁定)', () => {

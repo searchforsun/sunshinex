@@ -1,6 +1,6 @@
 import type { AskUserRequest, AskUserSeam, Artifact } from '../../types';
 import { buildDeclaredArtifact } from './artifact-collector';
-import type { SnapshotEntry } from '../../tui/session-journal';
+import type { SnapshotEntry } from '../../session/journal';
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegisteredTool, CodedToolError } from '../tools';

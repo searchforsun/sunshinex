@@ -5,7 +5,7 @@ import * as os from 'os';
 import { test } from 'node:test';
 import {
   branchFrom, listAnchors, parseJournalFile, sessionsDir,
-} from './session-journal';
+} from '../session/journal';
 
 function tmpRoot(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'journal-branch-'));

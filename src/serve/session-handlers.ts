@@ -14,7 +14,7 @@ const FORK_ABORT_TIMEOUT_MS = 180_000;
 
 /** 旧 /session/new 裸软重置的迁移提示（G3 裸端点兼容裁定：无 root 的旧语义让位 /session/:id/reset） */
 const ROOT_REQUIRED_HINT = 'root required — the old soft-reset moved to /session/:id/reset';
-import { branchFrom, copySessionStores, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, rewindCutOfTurn, rewindCutOfUser, rewindSessionStores, sessionsDir, writeSessionMeta, type RewindCut } from '../tui/session-journal';
+import { branchFrom, copySessionStores, forkIncludeCut, journalDisplayTitle, listAnchors, parseJournalFile, pruneSideForkArchive, readSessionMeta, rewindCutOfTurn, rewindCutOfUser, rewindSessionStores, sessionsDir, writeSessionMeta, type RewindCut } from '../session/journal';
 import { repointPin } from './app-state-handlers';
 import { t } from '../i18n';
 import { applyRestorePlan, collectRestorePlan } from '../tui/session-snapshots';

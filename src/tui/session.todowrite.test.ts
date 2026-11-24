@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { resolveDataDir } from '../config/data-dir';
-import { parseJournalFile, sessionsDir } from './session-journal';
+import { parseJournalFile, sessionsDir } from '../session/journal';
 
 test('todo_write 端到端：模型调用 → 待办状态 → journal 落盘（规格 D1/D6/D8）', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-todowrite-'));

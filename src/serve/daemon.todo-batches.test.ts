@@ -8,7 +8,7 @@ import type { SessionLifecycleIo } from './session-lifecycle';
 import { SessionRuntime } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { SessionJournal } from '../tui/session-journal';
+import { SessionJournal } from '../session/journal';
 
 /** todo 批次权威投影（2026-10-31 用户裁定「任务历史持久化可见」）：journal 全量行派生（seedTodoBatches，
  *  attach 播种）+ live 增量（trackTodoEvent）+ 快照载荷直显——内核环窗/尾窗之外的老批次由此可见。

@@ -28,7 +28,7 @@ import { resolveRunWindow } from '../config/termination-config';
 import { sunshineInitGoal } from '../harness/sunshine-init';
 import * as fs from 'fs';
 import * as path from 'path';
-import { SessionJournal, newSessionId, markSessionArchived, purgeSession, readSessionMeta, writeSessionMeta } from './session-journal';
+import { SessionJournal, newSessionId, markSessionArchived, purgeSession, readSessionMeta, writeSessionMeta } from '../session/journal';
 import { SessionKernel, type KernelEvent, type SteerItem } from '../session/kernel';
 import { isQuietNotice, type KernelEntry, type WakeRef } from '../session/entry';
 import { WakeController, WAKE_GOAL, toWakeRefs } from '../session/wake';

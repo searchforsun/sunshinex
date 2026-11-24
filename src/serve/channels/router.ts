@@ -9,7 +9,7 @@
  *  spec §9.3）；cfg.root==='auto'（缺省形态）→ channelChatWorkspaceRoot 聊天专属域 workspace 铸造。
  *  契约（Task 5 预检裁定）：handleInbound **绝不抛**——整体 try/catch，失败尽力 ack「处理失败」；
  *  io.onFrame/resolveApproval router 自身不消费（engine Task 7 装配 projector/审批回执用），接口面收全。 */
-import { writeSessionMeta } from '../../tui/session-journal';
+import { writeSessionMeta } from '../../session/journal';
 import { channelChatWorkspaceRoot } from '../../config/channels';
 import { bindingKey, CHANNEL_COMMANDS } from './model';
 import type { Binding, ChannelConfig, InboundMessage } from './model';

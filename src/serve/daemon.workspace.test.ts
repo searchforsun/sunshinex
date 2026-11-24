@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { SessionJournal, listSessions, sessionsDir, parseJournalFile, type JournalEvent, type SessionMeta } from '../tui/session-journal';
+import { SessionJournal, listSessions, sessionsDir, parseJournalFile, type JournalEvent, type SessionMeta } from '../session/journal';
 import { resolveDataDir, projectsRoot } from '../config/data-dir';
 
 /** T2 工作区注册表 + attach 恢复 + dirpicker：/workspaces 扫描（workspace.json 反解 root）、

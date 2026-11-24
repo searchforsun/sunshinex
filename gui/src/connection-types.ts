@@ -151,7 +151,7 @@ export interface WorkspaceRow {
   createdAt?: number;
 }
 
-/** GET /sessions?root= 行（T2，对齐主仓 session-journal.ts SessionMeta 实际返回）：id=journal id；
+/** GET /sessions?root= 行（T2，对齐主仓 session/journal.ts SessionMeta 实际返回）：id=journal id；
  *  title=自定义会话名 + 会话级统计（G14.17 旁车 meta：runs/steps/tokens/缓存/上文/模型档位，回溯面） */
 /** Sunx 会话 kind 判别单点值（wire 由 daemon SessionKind 定死;gui 判据面统一引用——2026-11-16 补审 J） */
 export const SESSION_KIND_SUNX = 'sunx' as const;

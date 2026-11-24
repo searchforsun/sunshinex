@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { ModelSwitcher } from '../model/catalog';
-import { SessionJournal, listSessions, newSessionId, parseJournalFile, reduceJournal, sessionsDir } from './session-journal';
+import { SessionJournal, listSessions, newSessionId, parseJournalFile, reduceJournal, sessionsDir } from '../session/journal';
 
 const tmpRoot = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-persist-'));
 

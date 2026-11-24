@@ -9,7 +9,7 @@ import { SessionRuntime } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { handleBranch, handleRestorePlan } from './session-handlers';
 import type { RewindTarget } from './session-handlers';
-import { listSessions, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta } from '../tui/session-journal';
+import { listSessions, parseJournalFile, readSessionMeta, sessionsDir, writeSessionMeta } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 /** 真 SessionRuntime + 真 attach(不桩):rewind 的失败面全在 attach 与内存投影上,桩掉就测不到 */

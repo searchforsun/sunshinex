@@ -17,7 +17,7 @@ import {
   sessionsDir,
   writeSessionMeta,
   type JournalEvent,
-} from './session-journal';
+} from '../session/journal';
 type ParsedJournal = ReturnType<typeof parseJournalFile>;
 
 const tmp = (): string => fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-jr-'));

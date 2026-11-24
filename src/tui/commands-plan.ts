@@ -1,7 +1,7 @@
 import { t } from '../i18n';
 import { derivePlanName, parseNumberedSteps } from '../harness/plan-flow';
 import type { PlanDecision, PlanLandMode } from '../harness/plan-flow';
-import { writePlanDoc } from './session-journal';
+import { writePlanDoc } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 import { suspendAskerFor, interrupt } from './approval';
 import type { SessionController } from './session';

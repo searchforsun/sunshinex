@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { userConfigDir } from '../config/env';
-import { listSessions, purgeSideJournals, purgeSession } from '../tui/session-journal';
+import { listSessions, purgeSideJournals, purgeSession } from '../session/journal';
 import { listScanDataDirs } from './sessions-list-handlers';
 
 /**

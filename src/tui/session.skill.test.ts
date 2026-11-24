@@ -7,7 +7,7 @@ import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import { readSkillUsage } from '../catalog/skill-usage';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, parseJournalFile, reduceJournal } from './session-journal';
+import { listSessions, parseJournalFile, reduceJournal } from '../session/journal';
 
 // 关断 learned 沉淀（控制面键 SUNSHINEX_LEARNED_SKILLS，env > 缺省 on）：消费点
 // （MemoryPipeline.runDeterministic / consumeLearned）对该键逐项实时判门，off 即零落盘；

@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { GuiDaemon } from './daemon';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { parseJournalFile, readSessionMeta, sessionsDir } from '../tui/session-journal';
+import { parseJournalFile, readSessionMeta, sessionsDir } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 import type { ScheduleStore } from './schedules/store';
 

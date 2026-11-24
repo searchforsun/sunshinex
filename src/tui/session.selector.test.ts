@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
-import { listSessions } from './session-journal';
+import { listSessions } from '../session/journal';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;

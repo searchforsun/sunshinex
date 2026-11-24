@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { t } from '../i18n';
 import { resolveDataDir } from '../config/data-dir';
-import { listSessions, markSessionArchived, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from './session-journal';
+import { listSessions, markSessionArchived, parseJournalFile, reduceJournal, listAnchors, branchFrom, sessionsDir, writeSessionMeta, type SessionMeta } from '../session/journal';
 import { createKernelRuntime } from '../session/runtime';
 import { ensureEnvWorkdirFact } from '../harness/context';
 import { crashWindowEntries, entriesToChainSteps } from '../session/seglog';

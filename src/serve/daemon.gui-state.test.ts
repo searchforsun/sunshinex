@@ -19,7 +19,7 @@ class HangingAdapter implements ModelAdapter {
     });
   }
 }
-import { listSessions } from '../tui/session-journal';
+import { listSessions } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 import { validSessionId } from './session-handlers';
 

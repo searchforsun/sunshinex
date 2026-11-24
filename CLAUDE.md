@@ -70,7 +70,7 @@ src/
   config.ts           # SUNSHINE.md 解析器
   catalog/            # 设置存储结构化单点（io 读写纪律 / providers、agents、teams、plugins、mcp、skills、approvals、permissions、sunx 品性模板读写面 / watch 目录监听；两级合并读 + 结构化写，CLI/TUI/serve 三面共用）
   config/             # env.ts、settings.ts（settings.json 装载，两级只填缺省）、agent-teams.ts / permissions / providers / termination-config / memory-config / data-dir（sunx 域目录 sunxDomainDir/sunxContainerDir，settings 语义键 sunxDir） / channels（settings.json channels 键解析单点，全局豁免单档） / plugins / image-history
-  tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/、markdown/md-ansi/highlight 呈现、md-theme 双链共享常量单点、session-journal（v3 段级行；INDEX.md 索引 + <id>.transcript.md 可读镜像，jsonl 为逐字节权威）/session-snapshots、ui-state-disk（§13 分层）、clipboard-image（Ctrl+V 贴图）
+  tui/                # 交互式终端（ink + React）：session 会话控制器、tui-loop/tail-rewrite 渲染循环、components/、markdown/md-ansi/highlight 呈现、md-theme 双链共享常量单点、session-snapshots、ui-state-disk（§13 分层）、clipboard-image（Ctrl+V 贴图）、selfcheck-smoke（自检 TUI 流式冒烟单点，cli 单向分发）
   harness/
     index.ts          # Harness 门面（生产主链唯一入口=KernelRuntime.runTask→Loop 模板；stableSegment 观测面薄委托）
     perception.ts     # 项目感知（目录/依赖/SUNSHINE.md/Git）
@@ -106,7 +106,7 @@ src/
   eval/               # 长任务基准集（eval-run.mjs 数据面）
   taskboard/          # 智能体团队域模型与协调器（model/board/store/translate/teammate/team-registry/inbox/executors）
   delegation/         # 委派投影（spawn/后台/graph 节点统一生命周期，TUI/GUI 同源）
-  session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）、timer.ts（sunx 定时唤醒/派发 Timer）、wake-host.ts（daemon/TUI 宿主装配件：板名解析+通知文装配）
+  session/            # 会话内核：kernel.ts（applyEvent 纯 reducer）、entry.ts、journal.ts（会话档持久化单点，D80① 自 tui 外迁：v3 段级行；INDEX.md 索引 + <id>.transcript.md 可读镜像，jsonl 为逐字节权威）、seglog.ts（kernelEventRows→journal v3）、runtime.ts（createKernelRuntime，TUI/GUI 共用）、wake.ts（bg-wake 唤醒判定与合批控制器，daemon/TUI 宿主注入）、timer.ts（sunx 定时唤醒/派发 Timer）、wake-host.ts（daemon/TUI 宿主装配件：板名解析+通知文装配）
   serve/              # GUI daemon（HTTP+WS、静态资源、PTY 中继、catalog 全量结构化配置面，settings 变更锚根两层重装+模型层热生效；转录 v3 单档唯一写者链路 kernelEventRows；/sunx 组路由=域枚举/attach/rename/charter，sessionKind 'sunx' 域绑定 dataDir）；schedules/（daemon 级定时任务引擎：engine/executor/handlers/model/recurrence/store——到点新建普通会话派发,schedules.json 落 userConfigDir）；channels/（IM 通道域：engine 调和/router 入站指令/reply 出站投影/handlers 运维面/store 持久化/model+adapters 配置与飞书·Telegram·mock 适配,绑定会话落 channelsDir 独立容器）；retention.ts / cache-inventory.ts / cache-handlers.ts（归档保留期清扫+缓存清点清理面）
   storage/            # 本地 JSON 存储底座；archive.ts（归档读写单点）
 gui/                 # 浏览器 GUI 前端（React 18 + Vite 工作区包；直接 import 主仓 TS 源保类型同源）

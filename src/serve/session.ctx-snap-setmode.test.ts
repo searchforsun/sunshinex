@@ -8,7 +8,7 @@ import type { SessionLifecycleIo } from './session-lifecycle';
 import { SessionRuntime } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { parseJournalFile, sessionsDir } from '../tui/session-journal';
+import { parseJournalFile, sessionsDir } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 /** setMode 换铸快照内存直传（2026-10-31 session-snapshot-freeze spec §4,Task 6）：同会话中途换运行时

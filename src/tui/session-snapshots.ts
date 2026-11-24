@@ -1,7 +1,7 @@
 /** 代码回退算法（规格 2026-09-20 rewind+fork §6.2）：单一档案收集 + pre-image 写回；纯模块零会话依赖 */
 import * as fs from 'fs';
 import * as path from 'path';
-import { parseJournalFile, type SnapshotEntry } from './session-journal';
+import { parseJournalFile, type SnapshotEntry } from '../session/journal';
 
 /** 收集行号 ≥ anchorLine 的 user 事件 files 与 snapshots 事件 files（两载体，≥ 含锚点轮自身写入），每路径取行号最早一条，行号序输出 */
 export function collectRestorePlan(file: string, anchorLine: number): SnapshotEntry[] {

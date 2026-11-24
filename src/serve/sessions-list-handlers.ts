@@ -6,7 +6,7 @@ import { validSessionId } from './session-id';
 import { defaultScratchRootPath, isDefaultWorkspaceSlug } from './session-lifecycle';
 import type { SessionHandlerIo } from './session-handlers';
 import { urlOf } from './daemon-wire';
-import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../tui/session-journal';
+import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../session/journal';
 import { projectsRoot, resolveDataDir, sunxContainerDir, sunxDomainDir, channelsContainerDir } from '../config/data-dir';
 
 /**

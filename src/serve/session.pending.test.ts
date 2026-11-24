@@ -11,7 +11,7 @@ import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import type { DaemonFrame } from './daemon-wire';
 import { reducePendingRows } from '../session/seglog';
-import { SessionJournal, parseJournalFile, sessionsDir } from '../tui/session-journal';
+import { SessionJournal, parseJournalFile, sessionsDir } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 /** 挂起持久化（2026-11-15 sunx P2 Task 4）控制器级端到端（不起 HTTP——session.wake.test.ts 直构形态）：

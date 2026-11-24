@@ -2,7 +2,7 @@ import { chainToHistoryItems, runCompaction, contextBreakdown } from '../harness
 import { removeLearnedSkill } from '../harness/skills';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
-import { markSessionArchived, purgeSession, purgeSideJournals, readSessionMeta } from '../tui/session-journal';
+import { markSessionArchived, purgeSession, purgeSideJournals, readSessionMeta } from '../session/journal';
 import type { SessionRuntime } from './session';
 
 /** command 直跑通道(G10 spec §6):TUI handleSlash 分支的 daemon 移植层。

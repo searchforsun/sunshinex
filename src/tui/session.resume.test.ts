@@ -5,7 +5,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
-import { listSessions, parseJournalFile, reduceJournal, sessionsDir } from './session-journal';
+import { listSessions, parseJournalFile, reduceJournal, sessionsDir } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 async function waitFor(pred: () => boolean, timeoutMs = 5000): Promise<void> {

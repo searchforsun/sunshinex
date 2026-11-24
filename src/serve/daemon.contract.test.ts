@@ -10,7 +10,7 @@ import type { ModelAdapter } from '../model/adapter';
 import type { ChatRequest, ChatResult, SessionEvent } from '../types';
 import { MemoryAgentTeamStore } from '../taskboard/team-registry';
 import type { AgentTeamRegistry } from '../taskboard/team-registry';
-import { parseJournalFile, readSessionMeta, sessionsDir } from '../tui/session-journal';
+import { parseJournalFile, readSessionMeta, sessionsDir } from '../session/journal';
 import { resolveDataDir, sunxDomainDir } from '../config/data-dir';
 import { SUNX_BRIEF_LINE, SUNX_IDENTITY_LINE } from '../harness/prompts/shared';
 

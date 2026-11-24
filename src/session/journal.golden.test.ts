@@ -1,4 +1,4 @@
-/** journal 黄金档钉测（D80① 批D）：src/tui/session-journal.ts 外迁 session/journal.ts 前的回归锚。
+/** journal 黄金档钉测（D80① 批D）：src/session/journal.ts 外迁 session/journal.ts 前的回归锚。
  *  一份覆盖全词汇的 <id>.jsonl（header(v:3) + v1/v2 面行 + v3 全部段级/机制行，行形态逐字取自
  *  session-journal.test.ts / seglog.test.ts / session-journal.branch.test.ts / session.resume.test.ts
  *  的既有合法样本，零自造字段）→ parseJournalFile / reduceJournal / reduceSegRows / reduceSteerRows /
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { parseJournalFile, reduceJournal, sessionsDir, type JournalEvent } from './session-journal';
+import { parseJournalFile, reduceJournal, sessionsDir, type JournalEvent } from './journal';
 import { reducePendingRows, reduceSegRows, reduceSteerRows, reduceWakeScheduleRows } from '../session/seglog';
 
 // 文件级数据目录钉定（sunx-face.test.ts 先例）：单文件直跑时统一落本文件临时沙箱

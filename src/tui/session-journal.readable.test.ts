@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SessionJournal, listSessions, purgeSession, sessionsDir, SESSIONS_INDEX_NAME } from './session-journal';
+import { SessionJournal, listSessions, purgeSession, sessionsDir, SESSIONS_INDEX_NAME } from '../session/journal';
 
 /** 会话账本可读面钉（OKF index/log 件）：INDEX.md 派生索引随 listSessions 重建；
  *  <id>.transcript.md 镜像只收 user/终态 seg 行（机械行不入镜），失败旁路不阻断主档 */

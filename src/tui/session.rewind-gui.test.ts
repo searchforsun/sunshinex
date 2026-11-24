@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { copySessionStores, forkIncludeCut, listAnchors, parseJournalFile, readSessionMeta, retractDanglingUser, rewindSessionStores, sessionsDir, writeSessionMeta } from './session-journal';
+import { copySessionStores, forkIncludeCut, listAnchors, parseJournalFile, readSessionMeta, retractDanglingUser, rewindSessionStores, sessionsDir, writeSessionMeta } from '../session/journal';
 
 function tmpdir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

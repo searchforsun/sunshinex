@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SnapshotEntry } from '../../tui/session-journal';
+import type { SnapshotEntry } from '../../session/journal';
 
 /**
  * write 影子快照收集器（规格 2026-09-20 rewind+fork §6.1）：

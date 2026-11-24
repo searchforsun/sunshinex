@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { SessionController } from './session';
 import { ScriptedAdapter } from '../model/adapter';
-import { readSessionMeta, sessionsDir } from './session-journal';
+import { readSessionMeta, sessionsDir } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 test('/archive:/delete 门禁与真清(TUI)', async () => {

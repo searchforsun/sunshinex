@@ -6,7 +6,7 @@ import * as path from 'path';
 import { SessionController } from './session';
 import type { ChatRequest, ChatResult } from '../types';
 import { ModelAdapter, ScriptedAdapter, UsageHooks } from '../model/adapter';
-import { listSessions, readSessionMeta, sessionsDir } from './session-journal';
+import { listSessions, readSessionMeta, sessionsDir } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 
 function tmpdir(prefix: string): string {

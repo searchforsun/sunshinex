@@ -8,7 +8,7 @@ import type { SessionLifecycleIo } from './session-lifecycle';
 import { SessionRuntime } from './session';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
-import { SessionJournal, parseJournalFile, sessionsDir, reduceJournal, writeSessionMeta } from '../tui/session-journal';
+import { SessionJournal, parseJournalFile, sessionsDir, reduceJournal, writeSessionMeta } from '../session/journal';
 import { resolveDataDir } from '../config/data-dir';
 import type { CtxSnapshot } from '../harness/context/index';
 

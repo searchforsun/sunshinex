@@ -1,6 +1,6 @@
 import { sanitizeArtifacts, sanitizeChanges, sanitizeTurn, parseWakeRefs, type KernelEntry, type RunMeta } from './entry';
 import type { KernelEvent, SteerItem } from './kernel';
-import type { JournalEvent } from '../tui/session-journal';
+import type { JournalEvent } from './journal';
 import type { ChainAction } from '../types';
 
 /**

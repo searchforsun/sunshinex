@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readSessionMeta } from '../tui/session-journal';
+import { readSessionMeta } from '../session/journal';
 import { listSunxDataDirs, listWorkspaceDataDirs } from './sessions-list-handlers';
 import { readRetentionState, resolveRetentionDays, RetentionSweeper, selectExpiredArchived, sweepArchivedExpired } from './retention';
 
