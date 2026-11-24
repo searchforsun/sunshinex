@@ -18,7 +18,8 @@ import type { SessionRuntime } from '../session';
 
 process.env.SUNSHINEX_CHANNELS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'chan-router-'));
 
-/** 桩 SessionRuntime:计数面(submits/steers/interrupts)+ 可塑状态(_status/409 注入) */
+/** 桩 SessionRuntime:计数面(submits/steers/interrupts)+ 可塑状态(_status/409 注入);命令面
+ *  (snapshotResponse/setModel/setEffort/modelSwitcher/cancelSteer)测试按需补桩 */
 interface RtStub {
   _status: 'idle' | 'running';
   status: () => 'idle' | 'running';
@@ -32,6 +33,11 @@ interface RtStub {
   submitExternal: (text: string, images?: string[]) => { ok: boolean; status?: number };
   steers: Array<{ text: string; images?: string[] }>;
   interrupts: number;
+  cancelSteer?: (seq: number) => boolean;
+  snapshotResponse?: () => { queued: Array<{ seq: number; text: string }>; effort?: string };
+  setModel?: (id: string | undefined) => boolean;
+  setEffort?: (v: string) => boolean;
+  modelSwitcher?: { currentId(): string | undefined; choices(): Array<{ id: string; model: string }> } | null;
 }
 
 function makeRuntime(opts: { status?: 'idle' | 'running'; journalId?: string; submit409?: boolean } = {}): RtStub {
@@ -78,6 +84,9 @@ interface HarnessOpts {
   pendingReply?: (sessionId: string, text: string) => boolean;
   attachFail?: boolean;
   runtimeFactory?: (id: string) => RtStub;
+  workspaceRoots?: () => string[];
+  /** noteRunSubmit 捕获(bug2 run 起源):[sessionId, msgId] 序对 */
+  noteRunSubmits?: Array<{ sessionId: string; msgId: string }>;
 }
 
 function makeHarness(opts: HarnessOpts = {}) {
@@ -125,6 +134,14 @@ function makeHarness(opts: HarnessOpts = {}) {
     noteSender: (sessionId, sender) => {
       noteSenders.push({ sessionId, ...sender });
     },
+    ...(opts.noteRunSubmits !== undefined
+      ? {
+          noteRunSubmit: (sessionId: string, msg: InboundMessage) => {
+            opts.noteRunSubmits!.push({ sessionId, msgId: msg.msgId });
+          },
+        }
+      : {}),
+    ...(opts.workspaceRoots !== undefined ? { workspaceRoots: opts.workspaceRoots } : {}),
   };
   return { router: new ChannelRouter(deps), io, bindings, acks, createCalls, released, attached, noteSenders, runtimes };
 }
@@ -432,4 +449,143 @@ test('⑭ ack 二态回执:running/409 回退 ack「排队」;idle 受理 ack「
   await h3.router.handleInbound(mkMsg({ msgId: 'q4', text: '直答' }));
   assert.ok(h3.acks[0]!.text.includes('已受理'));
   assert.ok(!h3.acks[0]!.text.includes('排队'));
+});
+
+// ⑯ /workspace（2026-11-24 用户裁定「加切换工作区」）：无绑定引导;无参列表;序号切换写
+// rootOverride（下次新会话生效,零会话动作）;同根幂等;未知提示;切换后 /new 落新根
+test('⑯ /workspace:无参列表;序号切换写 rootOverride;幂等/未知提示;/new 落新根', async () => {
+  const h0 = makeHarness({ workspaceRoots: () => ['/proj/a', '/proj/b'] });
+  await h0.router.handleInbound(mkMsg({ msgId: 'w0', text: '/workspace' }));
+  assert.ok(h0.acks[0]!.text.includes('发送任意消息开始对话'));
+  assert.equal(h0.createCalls.length, 0); // 未建会话
+
+  const h = makeHarness({ workspaceRoots: () => ['/proj/a', '/proj/b'] });
+  await h.router.handleInbound(mkMsg({ msgId: 'w1', text: '先聊一句' })); // 建绑定
+  await h.router.handleInbound(mkMsg({ msgId: 'w2', text: '/workspace' }));
+  assert.ok(h.acks[1]!.text.includes('当前工作区'));
+  assert.ok(h.acks[1]!.text.includes('1. /proj/a'));
+  assert.ok(h.acks[1]!.text.includes('2. /proj/b'));
+  await h.router.handleInbound(mkMsg({ msgId: 'w3', text: '/workspace 2' }));
+  assert.equal(h.createCalls.length, 1); // 切换零会话动作(当前会话不动)
+  assert.equal(h.bindings.get(bindingKey('m1', 'c1'))!.rootOverride, '/proj/b');
+  assert.ok(h.acks[2]!.text.includes('已切换工作区到 /proj/b'));
+  assert.ok(h.acks[2]!.text.includes('/new'));
+  await h.router.handleInbound(mkMsg({ msgId: 'w4', text: '/workspace 2' }));
+  assert.ok(h.acks[3]!.text.includes('已经是当前工作区'));
+  await h.router.handleInbound(mkMsg({ msgId: 'w5', text: '/workspace /nope' }));
+  assert.ok(h.acks[4]!.text.includes('未找到该工作区'));
+  await h.router.handleInbound(mkMsg({ msgId: 'w6', text: '/new' }));
+  assert.equal(h.createCalls[1]!.root, '/proj/b'); // rootOverride 优先(既有裁定)
+});
+
+// ⑰ /model:无参列表(切换器桩);序号切换 rt.setModel;未知提示;单模型装配如实说明
+test('⑰ /model:无参列表;序号切换 setModel;未知提示;无切换器说明', async () => {
+  let rtRef: RtStub | undefined;
+  const h = makeHarness({
+    runtimeFactory: () => {
+      const rt = makeRuntime();
+      rt.modelSwitcher = { currentId: () => 'glm', choices: () => [{ id: 'glm', model: 'glm-4.6' }, { id: 'ds', model: 'deepseek-v3' }] };
+      rt.setModel = () => true;
+      rtRef = rt;
+      return rt;
+    },
+  });
+  await h.router.handleInbound(mkMsg({ msgId: 'd1', text: '先聊一句' }));
+  const rt = rtRef!;
+  await h.router.handleInbound(mkMsg({ msgId: 'd2', text: '/model' }));
+  assert.ok(h.acks[1]!.text.includes('当前模型：glm'));
+  assert.ok(h.acks[1]!.text.includes('2. deepseek-v3（ds）'));
+  const setIds: Array<string | undefined> = [];
+  rt.setModel = (id) => {
+    setIds.push(id);
+    return true;
+  };
+  await h.router.handleInbound(mkMsg({ msgId: 'd3', text: '/model 2' }));
+  assert.deepEqual(setIds, ['ds']);
+  assert.ok(h.acks[2]!.text.includes('已切换模型到 ds'));
+  await h.router.handleInbound(mkMsg({ msgId: 'd4', text: '/model nope' }));
+  assert.ok(h.acks[3]!.text.includes('未找到该模型'));
+
+  const h2 = makeHarness({
+    runtimeFactory: () => {
+      const r2 = makeRuntime();
+      r2.modelSwitcher = null;
+      return r2;
+    },
+  });
+  await h2.router.handleInbound(mkMsg({ msgId: 'd5', text: '先聊一句' }));
+  await h2.router.handleInbound(mkMsg({ msgId: 'd6', text: '/model' }));
+  assert.ok(h2.acks[1]!.text.includes('单一模型'));
+});
+
+// ⑱ /effort:无参列表(EFFORT_ORDER 序,显示名镜像 GUI);序号/档位名切换 rt.setEffort;非法提示
+test('⑱ /effort:无参列表;序号/名切换 setEffort;非法提示', async () => {
+  const h = makeHarness();
+  await h.router.handleInbound(mkMsg({ msgId: 'f1', text: '先聊一句' }));
+  const rt = rtOf(h, bindingKey('m1', 'c1'));
+  rt.snapshotResponse = () => ({ queued: [], effort: 'medium' });
+  const efforts: string[] = [];
+  rt.setEffort = (v) => {
+    efforts.push(v);
+    return true;
+  };
+  await h.router.handleInbound(mkMsg({ msgId: 'f2', text: '/effort' }));
+  assert.ok(h.acks[1]!.text.includes('当前思考强度：中'));
+  assert.ok(h.acks[1]!.text.includes('1. 关（最快）'));
+  assert.ok(h.acks[1]!.text.includes('7. 最大'));
+  await h.router.handleInbound(mkMsg({ msgId: 'f3', text: '/effort 5' })); // 序号 5=high
+  assert.deepEqual(efforts, ['high']);
+  assert.ok(h.acks[2]!.text.includes('已切换思考强度到 高'));
+  await h.router.handleInbound(mkMsg({ msgId: 'f4', text: '/effort xhigh' })); // 档位名直切
+  assert.deepEqual(efforts, ['high', 'xhigh']);
+  await h.router.handleInbound(mkMsg({ msgId: 'f5', text: '/effort ultra' }));
+  assert.ok(h.acks[4]!.text.includes('未识别该思考强度'));
+  assert.equal(efforts.length, 2); // 非法值未落 setEffort
+});
+
+// ⑲ 排队两选项（2026-11-24 用户裁定 bug1「正常进入队列中,同时给用户两个选项:1 插入当前
+// 会话,2 暂停当前会话发出新消息」）：排队回执照发且附选项;「1」保持排队零动作;「2」撤队列+
+// 中断+立即执行（run 起源=原消息气泡）;非序号回复不作选择照常分派
+test('⑲ 排队两选项:回执附选项;1=保持排队;2=撤队列+中断+立即执行;非序号照常分派', async () => {
+  const noteRunSubmits: Array<{ sessionId: string; msgId: string }> = [];
+  const h = makeHarness({ noteRunSubmits });
+  await h.router.handleInbound(mkMsg({ msgId: 'p1', text: '开场' })); // idle submit
+  const rt = rtOf(h, bindingKey('m1', 'c1'));
+  rt._status = 'running';
+  rt.snapshotResponse = () => ({ queued: [{ seq: 0, text: '加个需求' }] });
+  await h.router.handleInbound(mkMsg({ msgId: 'p2', text: '加个需求' })); // 排队+选项回执
+  assert.equal(rt.steers.length, 1);
+  assert.ok(h.acks[1]!.text.includes('已加入排队'));
+  assert.ok(h.acks[1]!.text.includes('2. 暂停当前任务'));
+
+  await h.router.handleInbound(mkMsg({ msgId: 'p3', text: '1' })); // 保持排队:零会话动作
+  assert.ok(h.acks[2]!.text.includes('保持排队'));
+  assert.equal(rt.interrupts, 0);
+  assert.equal(rt.steers.length, 1); // 未撤未重排
+
+  await h.router.handleInbound(mkMsg({ msgId: 'p4', text: '再排一条' }));
+  assert.equal(rt.steers.length, 2);
+  rt.snapshotResponse = () => ({ queued: [{ seq: 0, text: '再排一条' }] });
+  rt.cancelSteer = (seq) => {
+    rt._status = 'idle'; // 桩:撤队列即 run 收口(idle)
+    rt.snapshotResponse = () => ({ queued: [] });
+    return seq === 0;
+  };
+  await h.router.handleInbound(mkMsg({ msgId: 'p5', text: '2' })); // 暂停并立即执行
+  assert.equal(rt.interrupts, 1);
+  assert.equal(rt.steers.length, 2); // 无新增穿插
+  assert.equal(rt.submits[rt.submits.length - 1]!.text, '再排一条'); // 原文本重提交
+  assert.ok(h.acks[4]!.text.includes('已暂停当前任务'));
+  const sid = h.bindings.get(bindingKey('m1', 'c1'))!.sessionId;
+  // run 起源两次落账:p1 idle submit 起源=p1;p5 暂停重发起源=p4（原消息气泡,bug2 语义）
+  assert.deepEqual(noteRunSubmits, [
+    { sessionId: sid, msgId: 'p1' },
+    { sessionId: sid, msgId: 'p4' },
+  ]);
+
+  rt._status = 'running';
+  rt.snapshotResponse = () => ({ queued: [{ seq: 0, text: '普通消息' }] });
+  await h.router.handleInbound(mkMsg({ msgId: 'p6', text: '普通消息' })); // 非序号:照常 steer 分派
+  assert.equal(rt.steers.length, 3);
+  assert.ok(h.acks[5]!.text.includes('已加入排队'));
 });

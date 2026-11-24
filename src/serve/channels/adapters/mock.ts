@@ -28,6 +28,8 @@ export class MockChannelAdapter implements ChannelAdapter {
   private sink: ((msg: InboundMessage) => void) | null = null;
   /** 出站日志(测试断言用):send/reply 全量追加 */
   readonly sent: OutboundMessage[] = [];
+  /** reply 寻址日志(测试断言用,bug2 气泡绑定):reply 收到的入站 msgId+出站内容全量追加 */
+  readonly replied: Array<{ msgId: string; msg: OutboundMessage }> = [];
   /** 流式日志(测试断言用):stream 增量全量追加(选择「记录」而非直通 send,便于下游断言降级链) */
   readonly streamed: StreamDelta[] = [];
 
@@ -57,8 +59,9 @@ export class MockChannelAdapter implements ChannelAdapter {
     this.sent.push(msg);
   }
 
-  /** 回执式回复与 send 同义(mock 无平台回执语义),target 取 inbound 自带坐标 */
+  /** 回执式回复与 send 同义(mock 无平台回执语义),target 取 inbound 自带坐标;寻址入站记 replied 日志 */
   async reply(inbound: InboundMessage, msg: OutboundMessage): Promise<void> {
+    this.replied.push({ msgId: inbound.msgId, msg });
     await this.send({ channelId: inbound.channel, chatId: inbound.chatId }, msg);
   }
 

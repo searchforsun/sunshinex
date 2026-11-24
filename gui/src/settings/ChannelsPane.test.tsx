@@ -233,7 +233,8 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
   });
 
   /** ⑪ 聊天命令多选（2026-11-22 用户裁定「配置可以给聊天执行的命令,一个下拉多选」）:
-   *  弹层行=命令+说明；去掉 /stop 保存 → putChannels 行 commands=子集（全选省键） */
+   *  弹层行=命令+说明；去掉 /stop 保存 → putChannels 行 commands=子集（全选省键;全集 7 项
+   *  镜像 model.ts CHANNEL_COMMANDS——2026-11-24 加 /workspace /model /effort） */
   it('writes the chat commands subset via the multi-select', async () => {
     const cfg: ChannelConfigMsg = { id: 'telegram-9', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } };
     const { conn, putChannels } = makeConn([healthRow({ id: 'telegram-9' })], { cfg: [cfg] });
@@ -244,7 +245,7 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
     await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
     const row = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
-    expect(row.commands).toEqual(['/help', '/new', '/status']);
+    expect(row.commands).toEqual(['/help', '/new', '/status', '/workspace', '/model', '/effort']);
   });
 
   /** ⑫ 自动取名（2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」）:应用名称留空

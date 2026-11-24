@@ -11,6 +11,7 @@
  *  io.onFrame/resolveApproval router 自身不消费（engine Task 7 装配 projector/审批回执用），接口面收全。 */
 import { writeSessionMeta } from '../../session/journal';
 import { channelChatWorkspaceRoot } from '../../config/channels';
+import { EFFORT_ORDER, parseEffort } from '../../model/effort';
 import { bindingKey, CHANNEL_COMMANDS } from './model';
 import type { Binding, ChannelConfig, InboundMessage } from './model';
 import type { ChannelsBindingsStore } from './store';
@@ -53,6 +54,12 @@ export interface ChannelRouterDeps {
    *  终态观察（armed-once onRunEnd，Task 7）。target 形同 ReplyTarget（reply.ts 结构同构类型——
    *  router 不 import reply，reply.ts 头注防环裁定） */
   onSubmitted?: (sessionId: string, target: { channelId: string; chatId: string }) => void;
+  /** run 起源消息回写（2026-11-24 用户裁定 bug2「回复没有正确回复给正确的气泡」根修,engine 接线）：
+   *  submitExternal 成功即回调——engine 记该会话当前 run 的起源入站,run 产物（正文/终态/挂起投影）
+   *  reply 寻址优先回此气泡,不随更新入站漂移;缺席回退最近入站 */
+  noteRunSubmit?: (sessionId: string, msg: InboundMessage) => void;
+  /** 注册工作区根清单（/workspace 候选,engine 缺省装配 workspace-registry 扫描;测试注入桩） */
+  workspaceRoots?: () => string[];
   now?: () => number;
 }
 
@@ -62,9 +69,37 @@ const DEDUP_MAX = 4096;
  *  提交模型（/stop 之类当任务发没有意义），一句人性化提示即可——不暴露命令配置细节 */
 const COMMAND_DISABLED_TEXT = '该命令未开启，可直接发送任务描述。';
 
+/** 排队回执+处理方式选择（2026-11-24 用户裁定 bug1「正常进入队列中,同时给用户两个选项」）：
+ *  消息照常排队,回执附两序号选项——保持排队 / 暂停当前任务本条立即执行;下一条恰为序号的回复
+ *  被消费为选择（takeQueueChoice 截胡） */
+const QUEUE_CHOICE_TEXT = '已加入排队，当前任务完成后处理。\n回复序号可改变处理方式：\n1. 保持排队，随当前任务完成后处理\n2. 暂停当前任务，本条消息立即执行';
+
+/** 排队选择待答 TTL：超时未选择即作废（防陈座截胡——用户此后发的「1」是真实消息不再是选择） */
+const QUEUE_CHOICE_TTL_MS = 10 * 60_000;
+
+/** /workspace 候选列表展示上限 */
+const WORKSPACE_LIST_MAX = 8;
+
+/** 思考强度显示名（GUI effort-slider EFFORT_ZH 镜像 + none 档补位;协议值恒英文 EFFORT_ORDER 序） */
+const EFFORT_LABELS: Partial<Record<string, string>> = { none: '关（最快）', minimal: '极简', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' };
+
+/** 排队选择待答条目（bug1）：seq=撤队列寻址键（rt.cancelSteer）;text/images=立即执行重提交原料;
+ *  inbound=原消息（「2」成功后 noteRunSubmit 的 run 起源——回答回原气泡）;at=武装时刻（TTL） */
+interface QueueChoice {
+  sessionId: string;
+  seq: number;
+  text: string;
+  images?: string[];
+  inbound: InboundMessage;
+  at: number;
+}
+
 export class ChannelRouter {
   /** 去重表：Map 插入序即 LRU 序（触达重插刷新、超限逐出最旧） */
   private readonly seen = new Map<string, true>();
+  /** 排队选择待答表（bug1）：绑定键 → 待答条目——排队回执武装,下一条恰为「1/2」的回复消费;
+   *  每键单条（新排队覆盖旧待答,同审批/提问挂起「最新覆盖」口径） */
+  private readonly queueChoices = new Map<string, QueueChoice>();
 
   constructor(private readonly deps: ChannelRouterDeps) {}
 
@@ -92,6 +127,15 @@ export class ChannelRouter {
     // ⑪ 审批回复截胡：有绑定且 pendingReply 判 true → 消息已被消费，不发 ack
     if (binding !== undefined && msg.text !== undefined && this.deps.pendingReply?.(binding.sessionId, msg.text) === true) return;
     const text = (msg.text ?? '').trim();
+    // 排队处理方式选择截胡（bug1）：排队回执给出两序号选项,恰为「1/2」的下一条回复消费为选择;
+    // 位于审批/提问截胡之后（会话内 ask 序号语义优先）,命令门之前（序号非命令）
+    if (binding !== undefined && text !== '') {
+      const hit = this.takeQueueChoice(key, text);
+      if (hit !== undefined) {
+        await this.applyQueueChoice(msg, hit.choice, hit.n);
+        return;
+      }
+    }
     // 命令门（命令配置化,权威口径 model.ts CHANNEL_COMMANDS 头注）：cfg.commands 缺席=全部开放，
     // 在场=子集；被关掉的命令一句提示即返回（不提交模型——/stop 当任务发没有意义）
     const cmd = CHANNEL_COMMANDS.find((c) => (c.match === 'prefix' ? text.startsWith(c.cmd) : text === c.cmd));
@@ -113,6 +157,18 @@ export class ChannelRouter {
     }
     if (cmd?.cmd === '/new') {
       await this.cmdNew(msg, cfg, key, binding);
+      return;
+    }
+    if (cmd?.cmd === '/workspace') {
+      await this.cmdWorkspace(msg, cfg, binding, text.slice('/workspace'.length).trim());
+      return;
+    }
+    if (cmd?.cmd === '/model') {
+      await this.cmdModel(msg, binding, text.slice('/model'.length).trim());
+      return;
+    }
+    if (cmd?.cmd === '/effort') {
+      await this.cmdEffort(msg, binding, text.slice('/effort'.length).trim());
       return;
     }
     await this.dispatch(msg, cfg, key, binding); // ⑦⑧⑨⑫ 绑定解析三态 + 提交分派 + ack
@@ -146,6 +202,102 @@ export class ChannelRouter {
           ? '当前空闲，可直接发送任务。'
           : '发送任意消息即可开始。';
     await this.deps.ack(msg, text);
+  }
+
+  /** /workspace（2026-11-24 用户裁定「加切换工作区」）：无参=当前+注册工作区候选列表（序号）;
+   *  带参=序号或注册根全等（大小写不敏感）→ 写 binding.rootOverride——**下次新会话生效**（spec
+   *  §9.3 同款语义:会话 root 出生定版不可变,当前会话不动），ack 明示发 /new 立即切换。无绑定
+   *  先引导开对话。候选上限 WORKSPACE_LIST_MAX（注册表大时列表可读性优先） */
+  private async cmdWorkspace(msg: InboundMessage, cfg: ChannelConfig, binding: Binding | undefined, arg: string): Promise<void> {
+    if (binding === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /workspace 查看与切换工作区。');
+      return;
+    }
+    const roots = this.deps.workspaceRoots?.() ?? [];
+    if (arg === '') {
+      const lines = [`当前工作区：${this.resolveRoot(cfg, msg.chatId, binding)}`];
+      if (roots.length === 0) lines.push('暂无其他已注册工作区。');
+      else {
+        lines.push('', '回复序号切换工作区（下次新会话生效）：');
+        for (let i = 0; i < Math.min(roots.length, WORKSPACE_LIST_MAX); i++) lines.push(`${i + 1}. ${roots[i]}`);
+        lines.push('切换后发送 /new 立即在新工作区开始新会话。');
+      }
+      await this.deps.ack(msg, lines.join('\n'));
+      return;
+    }
+    const picked = /^\d+$/.test(arg) ? roots[Number.parseInt(arg, 10) - 1] : roots.find((r) => r.toLowerCase() === arg.toLowerCase());
+    if (picked === undefined) {
+      await this.deps.ack(msg, '未找到该工作区，回复 /workspace 查看可选列表。');
+      return;
+    }
+    if (picked === this.resolveRoot(cfg, msg.chatId, binding)) {
+      await this.deps.ack(msg, '已经是当前工作区，新会话将继续在此进行。');
+      return;
+    }
+    this.deps.bindings.upsert({ ...binding, rootOverride: picked, updatedAt: this.nowMs() });
+    await this.deps.ack(msg, `已切换工作区到 ${picked}。当前会话不变——发送 /new 立即在新工作区开始新会话。`);
+  }
+
+  /** /model：无参=当前+可选列表（序号,id 括注）;带参=序号或 id → rt.setModel（daemon 级切换,
+   *  下一条消息生效;运行中可切,提示呈现由会话 pendingModelNotice 面自会承担）。单模型装配
+   *  （无切换器）如实说明 */
+  private async cmdModel(msg: InboundMessage, binding: Binding | undefined, arg: string): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /model 查看与切换模型。');
+      return;
+    }
+    const sw = rt.modelSwitcher;
+    if (sw === null) {
+      await this.deps.ack(msg, '当前装配为单一模型，无需切换。');
+      return;
+    }
+    const choices = sw.choices();
+    if (arg === '') {
+      const lines = [`当前模型：${sw.currentId() ?? '默认主模型'}`];
+      if (choices.length === 0) lines.push('暂无可切换的模型。');
+      else {
+        lines.push('', '回复序号切换模型（下一条消息生效）：');
+        for (let i = 0; i < choices.length; i++) lines.push(`${i + 1}. ${choices[i]!.model}（${choices[i]!.id}）`);
+      }
+      await this.deps.ack(msg, lines.join('\n'));
+      return;
+    }
+    const picked = /^\d+$/.test(arg) ? choices[Number.parseInt(arg, 10) - 1]?.id : choices.find((c) => c.id === arg)?.id;
+    if (picked === undefined || picked === sw.currentId()) {
+      await this.deps.ack(msg, picked !== undefined ? '已经是当前模型。' : '未找到该模型，回复 /model 查看可选列表。');
+      return;
+    }
+    if (!rt.setModel(picked)) {
+      await this.deps.ack(msg, '模型切换未生效，请稍后重试。');
+      return;
+    }
+    await this.deps.ack(msg, `已切换模型到 ${picked}，下一条消息生效。`);
+  }
+
+  /** /effort：无参=当前+档位列表（EFFORT_ORDER 权威序,显示名镜像 GUI effort-slider）;
+   *  带参=序号或档位名（parseEffort 校验）→ rt.setEffort（per-run 注入,下一条消息生效,
+   *  即改即落 meta 重启不回落） */
+  private async cmdEffort(msg: InboundMessage, binding: Binding | undefined, arg: string): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /effort 查看与切换思考强度。');
+      return;
+    }
+    if (arg === '') {
+      const cur = rt.snapshotResponse().effort;
+      const lines = [`当前思考强度：${cur !== undefined ? (EFFORT_LABELS[cur] ?? cur) : '跟随全局默认'}`, '', '回复序号切换思考强度（下一条消息生效）：'];
+      for (let i = 0; i < EFFORT_ORDER.length; i++) lines.push(`${i + 1}. ${EFFORT_LABELS[EFFORT_ORDER[i]!] ?? EFFORT_ORDER[i]}`);
+      await this.deps.ack(msg, lines.join('\n'));
+      return;
+    }
+    const byIdx = /^\d+$/.test(arg) ? EFFORT_ORDER[Number.parseInt(arg, 10) - 1] : undefined;
+    const v = byIdx ?? parseEffort(arg);
+    if (v === undefined || !rt.setEffort(v)) {
+      await this.deps.ack(msg, '未识别该思考强度，回复 /effort 查看档位列表。');
+      return;
+    }
+    await this.deps.ack(msg, `已切换思考强度到 ${EFFORT_LABELS[v] ?? v}，下一条消息生效。`);
   }
 
   /** 去重（①）：(channel,msgId) LRU 4096——触达重插刷新序，超限逐出最旧 */
@@ -203,6 +355,7 @@ export class ChannelRouter {
    *  影响之前会话的内容，就放着就可以」）：/new 不 release 旧座——GUI 开着旧会话时 snapshot/
    *  pty 等会话维端点照常寻址（404 根修），旧转录/终端原样可回看，注册表容量交 daemon 既有面 */
   private async cmdNew(msg: InboundMessage, cfg: ChannelConfig, key: string, binding: Binding | undefined): Promise<void> {
+    this.queueChoices.delete(key); // 旧会话排队条目的选择待答随之作废（绑定将换新座,选择语义失效）
     const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg, msg.chatId));
     if (!created.ok) {
       await this.deps.ack(msg, `新会话创建失败：${created.error.message}`);
@@ -267,15 +420,93 @@ export class ChannelRouter {
       if (!r.ok && r.status === 409) {
         rt.steer(submitText, msg.images); // 受理间隙竞态：回退穿插
         queued = true;
+      } else if (r.ok) {
+        this.deps.noteRunSubmit?.(sessionId, msg); // run 起源=本消息气泡（bug2 根修:run 产物回此气泡）
       }
     } else {
       rt.steer(submitText, msg.images); // running → steer
       queued = true;
     }
     this.deps.onSubmitted?.(sessionId, target); // 裁定 1：分派成功（submit 直达/409 回退 steer/running steer）即回调
+    if (queued) this.armQueueChoice(sessionId, rt, msg, submitText); // bug1:排队即武装两选项待答
     // ack 二态回执（计划 §4 第 6 条）：kind 二态受理标随行（engine 据此走平台 ack 面/文本回退——
-    // 飞书 accepted=OnIt「处理中」表情免文本;排队态仍发文本说明）
-    await this.deps.ack(msg, queued ? '已加入排队，当前任务完成后处理' : '已受理，处理中', queued ? 'queued' : 'accepted');
+    // 飞书 accepted=OnIt「处理中」表情免文本;排队回执附两序号选项(QUEUE_CHOICE_TEXT)）
+    await this.deps.ack(msg, queued ? QUEUE_CHOICE_TEXT : '已受理，处理中', queued ? 'queued' : 'accepted');
+  }
+
+  /** 排队选择待答武装（bug1）：steer 入列后取快照队尾 seq（同循环内同步入列,队尾即本条）——
+   *  选择「2」凭 seq 撤队列;快照失败=无待答,回执照发不阻断 */
+  private armQueueChoice(sessionId: string, rt: SessionRuntime, msg: InboundMessage, submitText: string): void {
+    try {
+      const items = rt.snapshotResponse().queued;
+      const last = items[items.length - 1];
+      if (last !== undefined) {
+        this.queueChoices.set(bindingKey(msg.channel, msg.chatId), {
+          sessionId,
+          seq: last.seq,
+          text: submitText,
+          ...(msg.images !== undefined ? { images: msg.images } : {}),
+          inbound: msg,
+          at: this.nowMs(),
+        });
+      }
+    } catch {
+      /* 尽力而为 */
+    }
+  }
+
+  /** 排队选择截胡判定（bug1）：待答在座且 trim 后恰为「1/2」（容尾标点 . 。 、）→ 消费并摘座;
+   *  非序号回复时仅作 TTL 兜底清座（超时未选择,此后「1」是真实消息不再是选择） */
+  private takeQueueChoice(key: string, text: string): { choice: QueueChoice; n: 1 | 2 } | undefined {
+    const ch = this.queueChoices.get(key);
+    if (ch === undefined) return undefined;
+    const m = /^([12])[.。、]?$/.exec(text.trim());
+    if (m === null) {
+      if (this.nowMs() - ch.at > QUEUE_CHOICE_TTL_MS) this.queueChoices.delete(key);
+      return undefined;
+    }
+    this.queueChoices.delete(key);
+    return { choice: ch, n: Number(m[1]) as 1 | 2 };
+  }
+
+  /** 排队选择消费（bug1，2026-11-24 用户裁定「1 插入当前会话,2 暂停当前会话发出新消息」）：
+   *  1=保持排队（已入列,一句确认零动作）;2=暂停当前任务并立即执行本条——撤队列（cancelSteer,
+   *  GUI pauseAndSend 同款）→ 中断当前 run → 等 idle（≤10s,40×250ms 覆盖在飞模型调用收尾）→
+   *  submitExternal 立即执行（run 起源=原消息气泡,noteRunSubmit）;提交失败退回排队不丢消息。
+   *  条目已出列（已自然接续）则如实告知,零动作 */
+  private async applyQueueChoice(msg: InboundMessage, ch: QueueChoice, n: 1 | 2): Promise<void> {
+    if (n === 1) {
+      await this.deps.ack(msg, '好的，本条保持排队，当前任务完成后处理。');
+      return;
+    }
+    const rt = this.deps.io.getSession(ch.sessionId);
+    if (rt === undefined) {
+      await this.deps.ack(msg, '会话已结束，请直接发送新消息。');
+      return;
+    }
+    const stillQueued = rt.snapshotResponse().queued.some((q) => q.seq === ch.seq);
+    if (!stillQueued) {
+      await this.deps.ack(msg, '本条已开始处理，无需暂停。');
+      return;
+    }
+    rt.cancelSteer(ch.seq); // 撤队列：条目已确认在列;失败不阻断（下方 idle 等待兜底）
+    try {
+      rt.interrupt();
+    } catch {
+      /* 中断失败不阻断：下方等 idle,超时 submit 竞态由 409 回退如实提示 */
+    }
+    for (let i = 0; i < 40 && rt.status() !== 'idle'; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const r = rt.submitExternal(ch.text, ch.images);
+    if (r.ok) {
+      this.deps.noteRunSubmit?.(ch.sessionId, ch.inbound); // run 起源=原消息气泡（回答回原气泡）
+      this.deps.onSubmitted?.(ch.sessionId, { channelId: msg.channel, chatId: msg.chatId }); // 终态武装同 dispatch
+      await this.deps.ack(msg, '已暂停当前任务，本条消息立即执行。');
+      return;
+    }
+    rt.steer(ch.text, ch.images); // 立即执行未成（收口竞态撞 409）：退回排队不丢消息
+    await this.deps.ack(msg, '暂停成功，但立即执行未成功——本条已回到排队，任务停止后会处理。');
   }
 
   /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel, chatId})（⑩ 通道标出生写一次，

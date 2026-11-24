@@ -279,3 +279,32 @@ test('⑤ 终态武装补漏(F2):未武装绑定会话直接来 token 帧(模拟
   h.pushFrame({ kind: 'event', sessionId: 's2', seq: 3, e: { type: 'token', text: '野帧', ts: 0 } });
   assert.equal(h.runtimes.get('s2')!.runEndCbs.length, 0);
 });
+
+// ⑥c run 起源气泡绑定（2026-11-24 用户裁定 bug2「回复没有正确回复给正确的气泡,固定绑定到了
+// 第一个气泡」）：run 产物（token 缓冲 done 冲刷）回**触发消息气泡**（submitExternal 起源,经
+// noteRunSubmit 记 runOrigin）,不随后续入站漂移;回执（受理/排队说明）显式回各自触发消息
+test('⑥c run 起源气泡绑定:run 产物回触发消息,不随后续入站漂移;回执照各自触发消息', async () => {
+  const cfg = mkCfg({ ident: { mockCaps: JSON.stringify({ streaming: false }) } }); // 分段档:token 缓冲 done 冲刷走 deliver/reply 面
+  const h = makeHarness([cfg]);
+  h.engine.start();
+  const mock = h.engine.mockAdapter('m1')!;
+  mock.emit(mkMsg({ msgId: 'e-a1', text: '开场任务' })); // msg A:idle submit → run 起源=A
+  await drain();
+  const b = h.bindings.get(bindingKey('m1', 'c1'));
+  assert.ok(b !== undefined);
+  const rt = h.runtimes.get(b.sessionId)!;
+  rt._status = 'running'; // A 的 run 进行中
+  mock.emit(mkMsg({ msgId: 'e-b1', text: '穿插消息' })); // msg B:排队
+  await drain();
+  // 回执寻址:受理回执回 A;排队说明回 B（deliverTo 显式入站寻址,不查 runOrigin）
+  assert.ok(mock.replied.some((r) => r.msgId === 'e-a1' && r.msg.text.includes('已受理')));
+  const queuedReceipt = mock.replied.find((r) => r.msgId === 'e-b1');
+  assert.ok(queuedReceipt !== undefined && queuedReceipt.msg.text.includes('回复序号'), '排队回执附两选项(2026-11-24 bug1)');
+  // run 产物:token 缓冲 → done 冲刷 → 回 A（bug2 根修:此前恒回最近入站 B）
+  h.pushFrame({ kind: 'event', sessionId: b.sessionId, seq: 1, e: { type: 'token', text: '回答正文', ts: 0 } });
+  h.pushFrame({ kind: 'event', sessionId: b.sessionId, seq: 2, e: { type: 'done', ts: 0 } });
+  await drain();
+  const body = mock.replied.filter((r) => r.msg.text.includes('回答正文'));
+  assert.equal(body.length, 1);
+  assert.equal(body[0]!.msgId, 'e-a1', 'run 产物回起源气泡,不随后续入站漂移');
+});

@@ -47,6 +47,9 @@ export const CHANNEL_COMMANDS: ReadonlyArray<{ cmd: string; desc: string; match?
   { cmd: '/stop', desc: '停止当前任务' },
   { cmd: '/new', desc: '开始新对话（聊天设置保留）', match: 'prefix' },
   { cmd: '/status', desc: '查看任务状态' },
+  { cmd: '/workspace', desc: '查看/切换工作区（下次新会话生效）', match: 'prefix' },
+  { cmd: '/model', desc: '查看/切换模型（下一条消息生效）', match: 'prefix' },
+  { cmd: '/effort', desc: '查看/切换思考强度（下一条消息生效）', match: 'prefix' },
 ];
 
 const COMMAND_WORDS: ReadonlySet<string> = new Set(CHANNEL_COMMANDS.map((c) => c.cmd));

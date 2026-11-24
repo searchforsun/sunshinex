@@ -29,6 +29,9 @@ export const COMMAND_OPTIONS: ReadonlyArray<{ v: string; en: string; zh: string 
   { v: '/stop', en: '/stop — Stop the current task', zh: '/stop — 停止当前任务' },
   { v: '/new', en: '/new — Start a new conversation', zh: '/new — 开始新对话' },
   { v: '/status', en: '/status — Check task status', zh: '/status — 查看任务状态' },
+  { v: '/workspace', en: '/workspace — View or switch workspace (next new session)', zh: '/workspace — 查看/切换工作区（下次新会话生效）' },
+  { v: '/model', en: '/model — View or switch model', zh: '/model — 查看/切换模型' },
+  { v: '/effort', en: '/effort — View or switch reasoning effort', zh: '/effort — 查看/切换思考强度' },
 ];
 export const COMMAND_KEYS: readonly string[] = COMMAND_OPTIONS.map((o) => o.v);
 

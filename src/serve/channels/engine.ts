@@ -34,6 +34,7 @@ import type { ReplyTarget } from './reply';
 import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
 import type { ChannelAdapter, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
+import { registeredWorkspaceRoots } from '../workspace-registry';
 
 /** 健康快照行:enabled 取当前配置快照(移除/停用即 false);connected 取在座适配器 health(缺席/起失败即 false) */
 export interface ChannelHealthRow {
@@ -67,6 +68,12 @@ export class ChannelsEngine {
   /** 最近入站表:`${channelId}:${chatId}` → 最近一条 InboundMessage——回执式 adapter.reply(inbound)
    *  需要原始入站坐标,sink 记最近一条供 deliver 查用 */
   private readonly lastInbound = new Map<string, InboundMessage>();
+  /** run 起源表（bug2 根修,2026-11-24 用户裁定「回复没有正确回复给正确的气泡,固定绑定到了
+   *  第一个气泡」）:sessionId → 当前 run 的起源入站——run 产物（正文/终态注记/挂起投影/主动
+   *  推送）reply 寻址**优先回起源气泡**,不随更新入站漂移（此前恒回最近入站:多消息穿插后回答
+   *  全绑到最后一条气泡上）。submitExternal 成功即覆写（router noteRunSubmit 回调）;不清位——
+   *  排队续跑轮链式接续共享同一起源气泡;缺席（无 IM 提交过）回退 lastInbound 旧语义 */
+  private readonly runOrigin = new Map<string, InboundMessage>();
   /** GUI 发起轮抑制集（2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到,两者是隔离的,
    *  只是同一个显示在上下文中,过滤一下」;复裁定「共享轮正常显示给飞书用户回答」）:daemon HTTP
    *  **空闲提交**面对通道绑定会话打标(markGuiRun)——GUI 发起的新轮,投影器帧过滤跳过该会话全部
@@ -126,13 +133,17 @@ export class ChannelsEngine {
           }
           if (acked && kind === 'accepted') return; // 受理=纯表情免文本;排队/失败继续发说明文本
         }
-        await this.deliver({ channelId: m.channel, chatId: m.chatId }, { text });
+        await this.deliverTo(m, { text }); // 回执显式入站寻址:回触发消息气泡,不查 runOrigin
       },
       pendingReply: (sessionId, text) => this.projector.pendingReply(sessionId, text),
       noteSender: (sessionId, sender) => {
         this.lastSender.set(sessionId, sender);
       },
       onSubmitted: (sessionId, target) => this.armRunEnd(sessionId, target),
+      noteRunSubmit: (sessionId, msg) => {
+        this.runOrigin.set(sessionId, msg);
+      },
+      workspaceRoots: () => registeredWorkspaceRoots(),
     });
   }
 
@@ -230,8 +241,8 @@ export class ChannelsEngine {
     }
   }
 
-  /** 测试注入面:mock 平台在座适配器(emit/sent/streamed),非 mock/未起 → undefined */
-  mockAdapter(id: string): { emit(msg: InboundMessage): void; sent: OutboundMessage[]; streamed: StreamDelta[] } | undefined {
+  /** 测试注入面:mock 平台在座适配器(emit/sent/replied/streamed),非 mock/未起 → undefined */
+  mockAdapter(id: string): { emit(msg: InboundMessage): void; sent: OutboundMessage[]; replied: Array<{ msgId: string; msg: OutboundMessage }>; streamed: StreamDelta[] } | undefined {
     const a = this.adapters.get(id);
     return a instanceof MockChannelAdapter ? a : undefined;
   }
@@ -305,8 +316,21 @@ export class ChannelsEngine {
   /** 出站投递(裁定 2①):lastSender 查表命中(经绑定反解 sessionId)且**群聊**才注入定向 @——
    *  结构化 mention 交适配器按平台语法渲染(feishu `<at user_id>` 服务端渲人名,caps.mention);
    *  无平台提及面 → 文本前缀 @<display> 退化(telegram 等);单聊零 @(回执式回复天然指向本人,
-   *  权威口径 model.ts 定向提及字段注)。适配器分派 reply 优先(回执式,需原始入站),退 send */
+   *  权威口径 model.ts 定向提及字段注)。适配器分派 reply 优先(回执式),寻址=run 起源气泡
+   *  (bug2:run 产物回触发消息,不随更新入站漂移),缺席回退最近入站 */
   private async deliver(t: ReplyTarget, msg: OutboundMessage): Promise<void> {
+    const sid = this.sessionIdFor(t);
+    const inbound = (sid !== undefined ? this.runOrigin.get(sid) : undefined) ?? this.lastInbound.get(`${t.channelId}:${t.chatId}`);
+    await this.deliverInbound(t, inbound, msg);
+  }
+
+  /** 回执寻址投递（router ack 面）：**显式入站寻址**——回执必须回触发消息气泡（受理/排队说明/
+   *  命令回执/处理失败），不查 runOrigin（回执不是 run 产物,随起源漂移反而绑错气泡） */
+  private async deliverTo(m: InboundMessage, msg: OutboundMessage): Promise<void> {
+    await this.deliverInbound({ channelId: m.channel, chatId: m.chatId }, m, msg);
+  }
+
+  private async deliverInbound(t: ReplyTarget, inbound: InboundMessage | undefined, msg: OutboundMessage): Promise<void> {
     const adapter = this.adapters.get(t.channelId);
     if (adapter === undefined) throw new Error(`通道 ${t.channelId} 未启动,投递丢弃`);
     const sid = this.sessionIdFor(t);
@@ -317,7 +341,6 @@ export class ChannelsEngine {
           ? { ...msg, mention: { userId: sender.userId, display: sender.display } }
           : { ...msg, text: `@${sender.display} ${msg.text}` }
         : msg;
-    const inbound = this.lastInbound.get(`${t.channelId}:${t.chatId}`);
     if (adapter.reply !== undefined && inbound !== undefined) await adapter.reply(inbound, out);
     else await adapter.send(t, out);
   }
