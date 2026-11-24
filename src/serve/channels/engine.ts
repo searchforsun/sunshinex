@@ -49,6 +49,9 @@ export interface ChannelHealthRow {
 /** 免密平台清单(mock=测试夹具无外连;新增免密平台在此登记)——secretGateError 单点消费 */
 const SECRET_FREE_PLATFORMS: ReadonlySet<string> = new Set(['mock']);
 
+/** 投递暂存每通道上限（boot 唤醒轮窗口量级;溢出丢最旧） */
+const PENDING_OUT_MAX = 20;
+
 export class ChannelsEngine {
   readonly router: ChannelRouter;
   readonly projector: ReplyProjector;
@@ -75,6 +78,11 @@ export class ChannelsEngine {
    *  全绑到最后一条气泡上）。submitExternal 成功即覆写（router noteRunSubmit 回调）;不清位——
    *  排队续跑轮链式接续共享同一起源气泡;缺席（无 IM 提交过）回退 lastInbound 旧语义 */
   private readonly runOrigin = new Map<string, InboundMessage>();
+  /** 投递暂存队列（2026-11-25 用户裁定「中断自动唤醒和任务自动唤醒不要被过滤,要显示给飞书」
+   *  根修:boot 恢复唤醒轮在适配器长连接建立完成前起跑——token 帧到投影时 deliver 撞「未启动,
+   *  投递丢弃」直接丢失。通道启用但适配器未就绪(缺席/health 未连)的投递改**暂存**,适配器
+   *  start 成功即按序冲刷;每通道上限 PENDING_OUT_MAX,溢出丢最旧 */
+  private readonly pendingOut = new Map<string, Array<{ target: ReplyTarget; msg: OutboundMessage }>>();
   /** GUI 发起轮抑制集（2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到,两者是隔离的,
    *  只是同一个显示在上下文中,过滤一下」;复裁定「共享轮正常显示给飞书用户回答」）:daemon HTTP
    *  **空闲提交**面对通道绑定会话打标(markGuiRun)——GUI 发起的新轮,投影器帧过滤跳过该会话全部
@@ -287,10 +295,13 @@ export class ChannelsEngine {
       const adapter = createChannelAdapter(cfg, { secret: cfg.secret ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
       this.adapters.set(cfg.id, adapter);
       this.startErrors.delete(cfg.id);
-      void adapter.start((msg) => this.onInbound(msg)).catch((e) => {
-        if (this.adapters.get(cfg.id) === adapter) this.adapters.delete(cfg.id);
-        this.startErrors.set(cfg.id, e instanceof Error ? e.message : String(e));
-      });
+      void adapter
+        .start((msg) => this.onInbound(msg))
+        .then(() => this.flushPendingOut(cfg.id)) // 就绪即冲刷暂存投递(boot 唤醒轮丢失根修,见 pendingOut 注)
+        .catch((e) => {
+          if (this.adapters.get(cfg.id) === adapter) this.adapters.delete(cfg.id);
+          this.startErrors.set(cfg.id, e instanceof Error ? e.message : String(e));
+        });
     } catch (e) {
       this.startErrors.set(cfg.id, e instanceof Error ? e.message : String(e)); // 失败→health error 记 detail,不抛
     }
@@ -361,8 +372,42 @@ export class ChannelsEngine {
           ? { ...msg, mention: { userId: sender.userId, display: sender.display } }
           : { ...msg, text: `@${sender.display} ${msg.text}` }
         : msg;
-    if (adapter.reply !== undefined && inbound !== undefined) await adapter.reply(inbound, out);
-    else await adapter.send(t, out);
+    try {
+      if (adapter.reply !== undefined && inbound !== undefined) await adapter.reply(inbound, out);
+      else await adapter.send(t, out);
+    } catch (e) {
+      // 未就绪暂存（根修见 pendingOut 字段注）：通道启用而适配器缺席/未连=时序窗,暂存待冲刷;
+      // 其余投递异常(平台 API 错误等)原样上抛——调用方面(safeDeliver/sendToSessionChat)语义不变
+      const cfg = this.snapshot.find((c) => c.id === t.channelId);
+      const ready = adapter.health().connected;
+      if (cfg !== undefined && cfg.enabled && !ready) {
+        this.queuePendingOut(t.channelId, t, msg);
+        this.log(`deliver 暂存(适配器未就绪): ${t.channelId}/${t.chatId} — ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      throw e;
+    }
+  }
+
+  /** 暂存入队单点：每通道 FIFO,超上限丢最旧 */
+  private queuePendingOut(channelId: string, target: ReplyTarget, msg: OutboundMessage): void {
+    const q = this.pendingOut.get(channelId) ?? [];
+    q.push({ target, msg });
+    while (q.length > PENDING_OUT_MAX) q.shift();
+    this.pendingOut.set(channelId, q);
+  }
+
+  /** 暂存冲刷（adapter start 成功后调用）：按序重投;冲刷期再失败=真失败,落日志丢弃不回队 */
+  private flushPendingOut(channelId: string): void {
+    const q = this.pendingOut.get(channelId);
+    if (q === undefined || q.length === 0) return;
+    this.pendingOut.delete(channelId);
+    this.log(`flushPendingOut(${channelId}): ${q.length} 条暂存投递冲刷`);
+    for (const { target, msg } of q) {
+      void this.deliver(target, msg).catch((e) =>
+        this.log(`flushPendingOut(${channelId}) 丢弃: ${e instanceof Error ? e.message : String(e)}`),
+      );
+    }
   }
 
   /** 流式投递(裁定 2① 例外面):同气泡全量替换帧**不加** @前缀(reply 流式已不发前缀);

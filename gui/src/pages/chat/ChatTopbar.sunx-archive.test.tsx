@@ -30,30 +30,19 @@ function openSessionMenu(): void {
   fireEvent.click(screen.getByRole('button', { name: '会话操作' }));
 }
 
-/** 2026-11-24 用户实测三联修:①「归档怎么没有二次确认」——sunx-archive 菜单项对齐标准
- *  归档会话 askArchive 流(归档向先弹确认,撤销向直执行);确认文案随域=确认归档 Sunx。
- *  (「归档后没有生效/归档层找不到」两端在 ProjectMenu 事件联动+SunxSection 渲染面滤行,彼处有钉) */
-describe('ChatTopbar 归档 Sunx 二次确认', () => {
-  it('归档向:菜单点「归档 Sunx」不直执行,弹「确认归档 Sunx」;确认才 onArchive(true)', () => {
+/** 2026-11-25 用户裁定「归档 sunx 怎么会存在?只留归档会话」:顶栏「归档 Sunx/取消归档 Sunx」
+ *  菜单项退役(手建 Sunx 归档唯一入口=侧栏 SUNX 组头归档层;通道会话走 归档会话)。本文件钉
+ *  退役面:sunx 菜单零归档项+确认弹窗文案统一「确认归档」(随域变体文案随项一并退役)。 */
+describe('ChatTopbar 归档 Sunx 项退役(2026-11-25)', () => {
+  it('sunx 菜单零「归档 Sunx/取消归档 Sunx」项(归档唯一入口=SUNX 组头归档层)', () => {
     const onArchive = vi.fn();
     render(<ChatTopbar {...base} onArchive={onArchive} />);
     openSessionMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: '归档 Sunx' }));
-    expect(onArchive).not.toHaveBeenCalled(); // 确认前零落库
-    fireEvent.click(screen.getByRole('menuitem', { name: '确认归档 Sunx' }));
-    expect(onArchive).toHaveBeenCalledTimes(1);
-    expect(onArchive).toHaveBeenCalledWith(true);
-  });
-  it('取消归档直执行(与标准归档会话同口径):archived 态点「取消归档 Sunx」即 onArchive(false),无确认弹窗', () => {
-    const onArchive = vi.fn();
-    render(<ChatTopbar {...base} archived onArchive={onArchive} />);
-    openSessionMenu();
-    fireEvent.click(screen.getByRole('menuitem', { name: '取消归档 Sunx' }));
-    expect(onArchive).toHaveBeenCalledTimes(1);
-    expect(onArchive).toHaveBeenCalledWith(false);
+    expect(screen.queryByRole('menuitem', { name: '归档 Sunx' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: '取消归档 Sunx' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: '确认归档 Sunx' })).toBeNull();
   });
-  it('确认文案随域:标准会话仍「确认归档」(与 sunx 变体区分)', () => {
+  it('确认文案统一「确认归档」:标准会话归档向仍弹确认(随域变体随项退役)', () => {
     render(<ChatTopbar {...base} sessionKind={undefined} />);
     openSessionMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: '归档会话' }));

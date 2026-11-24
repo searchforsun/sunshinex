@@ -264,6 +264,12 @@ export class SessionRuntime {
   get sunxName(): string | undefined {
     return this.sessionName;
   }
+  /** 通道绑定外窥（2026-11-25 用户裁定「每个会话的名称和普通会话一样」）：channelMeta 在场=
+   *  通道聊天会话——title GET 的出生名回落对其关闭（顶栏随首条消息总结/重命名走,不再钉
+   *  应用名;手建 Sunx 回落保持「打开即显姓名」既有语义） */
+  get channelMeta(): { platform: string; chatId: string; appName?: string } | undefined {
+    return this.opts.channelMeta;
+  }
   /** 持久化域目录外窥（2026-11-15 sunx P3 Task 2 寻址面单点）：注入（sunx 出生即铸档）=域目录；
    *  缺席=resolveDataDir(root) 既有推导——handler/attach 链/会话内落盘面统一改走本外窥后，
    *  standard 字节不变、sunx 全部持久化面（journal/meta/台账/板/记忆/计划书/快照）自动随域 */

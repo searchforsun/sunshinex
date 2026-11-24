@@ -195,8 +195,15 @@ export function handleSessionTitleGet(io: SessionHandlerIo, res: http.ServerResp
     return io.send(res, 200, { ...(kind === 'sunx' && name !== undefined ? { title: name } : {}), kind });
   }
   const meta = readSessionMeta(session.dataDir, journalId); // 域绑定寻址（P3 Task 3）：sunx 随域,standard 字节不变
+  // 出生名回落仅手建 Sunx（2026-11-25 用户裁定「每个会话的名称和普通会话一样显示成第一句
+  // 消息的总结」+「内部会话名称没有实时更新」根修）:通道聊天会话(channelMeta 在场)不回落
+  // 应用名——顶栏随首条消息总结/重命名走,不再钉应用名
   io.send(res, 200, {
-    ...(meta.title !== undefined ? { title: meta.title } : kind === 'sunx' && name !== undefined ? { title: name } : {}),
+    ...(meta.title !== undefined
+      ? { title: meta.title }
+      : kind === 'sunx' && name !== undefined && session.channelMeta === undefined
+        ? { title: name }
+        : {}),
     kind,
   });
 }
