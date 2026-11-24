@@ -295,6 +295,11 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   // 通道会话:置顶退役(2026-11-22 用户裁定「三个点操作下拉行去掉置顶」——归档走通道组头专域)
   const isSunx = sessionKind === SESSION_KIND_SUNX;
   const isChannel = channelChatId !== undefined && channelChatId !== '';
+  // 通道 Sunx 会话（sessionKind='sunx' + 通道聊天,2026-11-25 用户裁定「品行和工作区是在通道
+  // 配置的,页面上不再支持配置,只可重命名会话」）：菜单按**普通通道会话**呈现——归档/重命名
+  // 会话/复制会话 ID(平台聊天 id)/标记未读/复制路径,「编辑 Sunx」「复制 Sunx ID」退役
+  // （品性编辑入口只属于手建 Sunx）
+  const isChannelSunx = isSunx && isChannel;
   const menuItems = [
     ...(!isSunx && !isChannel
       ? [
@@ -313,14 +318,15 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           },
         ]
       : []),
-    ...(!isSunx
+    ...(!(isSunx && !isChannel)
       ? [
           {
             id: 'archive',
             label: archived ? t('Unarchive session', '取消归档会话') : t('Archive session', '归档会话'),
             icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
             // 2026-11-07 用户裁定撤运行中禁用:归档运行中会话=切换显示位置(卷起),不杀运行;
-            // 通道会话归档保留(2026-11-22 用户裁定只去置顶——归档走「归档通道」专域)
+            // 通道会话归档保留(2026-11-22 用户裁定只去置顶——归档走「归档通道」专域);
+            // 通道 Sunx 同权(2026-11-25:归档随普通通道菜单回归)
             disabled: false,
             onSelect: () => {
               if (archived) onArchive(false);
@@ -332,11 +338,13 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
       : []),
     {
       id: 'rename',
-      label: sessionKind === SESSION_KIND_SUNX ? t('Edit Sunx', '编辑 Sunx') : t('Rename session', '重命名会话'),
+      // 手建 Sunx=编辑 Sunx(品性/定义;名称即身份走创建名);通道 Sunx=重命名会话(品性在通道
+      // 配置,页面只可重命名——2026-11-25 用户裁定);standard=重命名会话
+      label: isChannelSunx || sessionKind !== SESSION_KIND_SUNX ? t('Rename session', '重命名会话') : t('Edit Sunx', '编辑 Sunx'),
       icon: <PenLine size={14} strokeWidth={1.75} aria-hidden="true" />,
       onSelect: () => {
-        if (sessionKind === SESSION_KIND_SUNX) {
-          setCharterOpen(true); // sunx:重命名语义=编辑这个 Sunx(品性/定义;名称即身份走创建名)
+        if (sessionKind === SESSION_KIND_SUNX && !isChannelSunx) {
+          setCharterOpen(true); // 手建 sunx:重命名语义=编辑这个 Sunx(品性/定义;名称即身份走创建名)
           return;
         }
         setTitleDraft(displayTitle);
@@ -354,7 +362,7 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     { id: 'divider-2', divider: true, label: '', onSelect: () => undefined },
     {
       id: 'copy-id',
-      label: sessionKind === SESSION_KIND_SUNX ? t('Copy Sunx ID', '复制 Sunx ID') : t('Copy session ID', '复制会话 ID'),
+      label: sessionKind === SESSION_KIND_SUNX && !isChannelSunx ? t('Copy Sunx ID', '复制 Sunx ID') : t('Copy session ID', '复制会话 ID'),
       icon: copiedTag === 'id' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />,
       keepOpen: true,
       // 通道会话复制**平台聊天 id**(2026-11-22 用户裁定「复制会话 ID 改成飞书的会话 ID」——

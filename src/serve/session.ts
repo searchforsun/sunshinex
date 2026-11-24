@@ -1272,7 +1272,10 @@ ${this.sessionCharter ?? ''}` }
     if (journalId === undefined) return;
     writeSessionMeta(this.dataDir, journalId, {
       kind: 'sunx',
-      ...(this.sessionName !== undefined ? { title: this.sessionName } : {}),
+      // title（2026-11-25 用户裁定「每个会话的名称和普通会话一样显示成第一句消息的总结」）：
+      // **通道聊天会话不题名**——journalDisplayTitle 落到首条用户消息总结（重命名经 ⋯ 菜单落
+      // meta.title 同普通会话）;手建 Sunx 保持 name 题名（名称即身份,创建名即显示名）
+      ...(this.sessionName !== undefined && this.opts.channelMeta === undefined ? { title: this.sessionName } : {}),
       charterRev: 1,
       root: this.root, // 域旁车带 root（P3 Task 2）：attachSunx 重开壳根的唯一定位源——出生未跑也有
     });

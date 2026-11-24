@@ -521,7 +521,9 @@ test('⑦ 通道域 Sunx 落位:channelMeta 在场→域=聊天域 data（通道
     assert.ok(fs.existsSync(file1), 'journal 落聊天域');
     const meta1 = readSessionMeta(path.join(chatDomain, 'data'), jid1!);
     assert.equal(meta1.kind, 'sunx', '出生 meta kind（sunx 语义齐全:品性/charterRev 随档）');
-    assert.equal(meta1.title, '通道Sunx');
+    // 题名退役(2026-11-25 用户裁定「每个会话的名称和普通会话一样显示成第一句消息的总结」):
+    // 通道聊天会话出生不落 title——显示名走首条用户消息派生,重命名经 ⋯ 菜单
+    assert.equal(meta1.title, undefined);
     // 全局 sunx 容器零落档（与手建 Sunx 零重叠）
     assert.equal(fs.existsSync(sunxDomainDir(jid1!)), false, 'sunx 容器零落档');
     // 出生品性冻结行随档（ctx-snap 合成品性,domain ①同口径）

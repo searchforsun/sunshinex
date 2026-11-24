@@ -143,7 +143,7 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
               />
             )}
             <textarea
-              className="sx-setting-input"
+              className="sx-charter-area"
               aria-label={t('Charter', '品性')}
               rows={6}
               value={form.charter}
