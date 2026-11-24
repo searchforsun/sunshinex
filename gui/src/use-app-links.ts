@@ -21,7 +21,7 @@ interface AppLinksConn {
  * (sunx P2 Task 8,attachSunx 直寻址重开);后台任务页签+行定位(task_wait 链);工具行定位
  * (`bg:`=账本行/`team:`=队卡/其余=板任务行)。
  */
-export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, openSession, openTabInSession, openBoardTab, setTaskFocus, setMenuClosed, showOpError }: {
+export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, openSession, openTabInSession, openBoardTab, setTaskFocus, setMenuClosed, showOpError, pulseTabJump }: {
   connInstance: AppLinksConn | null;
   connRef: { current: AppLinksConn | null };
   openRoot: string;
@@ -32,6 +32,7 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
   setTaskFocus: (v: { ref: string; nonce: number; kind?: 'task' | 'team' } | null) => void;
   setMenuClosed: (v: boolean) => void;
   showOpError: (err: unknown) => void;
+  pulseTabJump: (type: TabTypeId) => void;
 }): {
   memoryFocus: { slug: string; nonce: number } | undefined;
   openMemoryTab: (focus?: string) => void;
@@ -51,16 +52,18 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
    *  下发 MemoryTab,展开并滚至对应行;nonce 保证同 slug 重复点击仍触发 */
   const [memoryFocus, setMemoryFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);
   const openMemoryTab = useCallback((focus?: string): void => {
+    pulseTabJump('memory');
     openTabInSession('memory');
     setMemoryFocus(focus !== undefined && focus !== '' ? { slug: focus, nonce: Date.now() } : undefined);
-  }, [openTabInSession]);
+  }, [openTabInSession, pulseTabJump]);
   /** 学习技能页签+定位(2026-11-01 用户裁定「点击正文 学习|更新技能 → 侧栏展开指定技能,内容原样展示」):
    *  与记忆同构——focus slug 随 render props 下发 LearnedSkillsTab,展开并滚至对应行 */
   const [learnedFocus, setLearnedFocus] = useState<{ slug: string; nonce: number } | undefined>(undefined);
   const openLearnedTab = useCallback((focus?: string): void => {
+    pulseTabJump('learned');
     openTabInSession('learned');
     setLearnedFocus(focus !== undefined && focus !== '' ? { slug: focus, nonce: Date.now() } : undefined);
-  }, [openTabInSession]);
+  }, [openTabInSession, pulseTabJump]);
   /** 2026-10-27 目录树入左菜单层(用户裁定):menuDir={root,sessionId,locate?} 驱动 ProjectMenu 目录视图;
    *  locate=相对目录,树打开后逐层展开定位;sessionId 由 ensureSessionForRoot 落值 */
   const [menuDir, setMenuDir] = useState<{ root: string; sessionId: string; locate?: string } | null>(null);
@@ -181,9 +184,10 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
   /** 后台任务页签+行定位(task_wait 链路;与板面 openTaskFocus 分立——账本≠板) */
   const [bgFocus, setBgFocus] = useState<{ id: string; nonce: number } | undefined>(undefined);
   const openBgTaskFocus = useCallback((id: string): void => {
+    pulseTabJump('bgtasks');
     openTabInSession('bgtasks');
     if (id !== '') setBgFocus({ id, nonce: Date.now() });
-  }, [openTabInSession]);
+  }, [openTabInSession, pulseTabJump]);
   /** 工具行定位:开任务板页签 + focus。`bg:` 前缀=后台任务账本行(task_wait);
    *  `team:` 前缀=队卡定位；其余=板任务行高亮(create_agent_team_task/agent_team_task_wait 等) */
   const openTaskFocus = useCallback((ref: string): void => {
@@ -191,10 +195,11 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
       openBgTaskFocus(ref.slice(3));
       return;
     }
+    pulseTabJump('agents');
     openBoardTab();
     if (ref.startsWith('team:')) setTaskFocus({ ref: ref.slice(5), nonce: Date.now(), kind: 'team' });
     else setTaskFocus({ ref, nonce: Date.now(), kind: 'task' });
-  }, [openBoardTab, openBgTaskFocus, setTaskFocus]);
+  }, [openBoardTab, openBgTaskFocus, pulseTabJump, setTaskFocus]);
   return {
     memoryFocus, openMemoryTab, learnedFocus, openLearnedTab, menuDir,
     openProjectDirectory, openDirectoryPath, openFileTab, openFileFromTree, openSunxInstance,

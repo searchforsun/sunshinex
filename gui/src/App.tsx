@@ -441,7 +441,7 @@ function AppShell(): JSX.Element {
   const {
     startSideChat, sideGoals, setSideGoals, upgradeSideChat, sideListing, sideReleased,
     tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, tabCloseActiveStable,
-    panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab,
+    panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab, tabJump, pulseTabJump,
     openBoardTab, openTabType, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
     handlePtyAllocated, ptyIdFor, webPoolItems, curSeatRef,
   } = useAppTabs({ connInstance, connRef, sessionRef, openJournalIdRef, backHomeRef, page, isWelcome, openSessionId, openRoot, tabStates, tabState, setTabStates, agentTeamsOn, sideSinksRef, sideParentRef, probe: PROBE });
@@ -462,6 +462,7 @@ function AppShell(): JSX.Element {
     openTabInSession('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command });
   });
   const todoLocateStable = useStableCallback((todos: Array<{ text: string; status: string }>): void => {
+    pulseTabJump('tasks');
     openTabType('tasks');
     setTodoLocateSig({ sig: todos.map((t2) => t2.text).join('\n'), nonce: Date.now() });
   });
@@ -575,7 +576,7 @@ function AppShell(): JSX.Element {
     memoryFocus, openMemoryTab, learnedFocus, openLearnedTab, menuDir,
     openProjectDirectory, openDirectoryPath, openFileTab, openFileFromTree, openSunxInstance,
     bgFocus, openTaskFocus, setMenuDir,
-  } = useAppLinks({ connInstance, connRef, openRoot, openSessionId, openSession, openTabInSession, openBoardTab, setTaskFocus, setMenuClosed, showOpError });
+  } = useAppLinks({ connInstance, connRef, openRoot, openSessionId, openSession, openTabInSession, openBoardTab, setTaskFocus, setMenuClosed, showOpError, pulseTabJump });
   /** 菜单包装回调簇收口 use-app-menu(D62 专项 二段五段 自 App.tsx 逐字平迁,行为零变化):菜单头导航/
    *  侧栏入口包装/定时任务层开合/在座直达/新建与合成入口/文件树点开。原「延迟闭包判例」留宿主;
    *  环解(use-app-overlays 早位)后诸输入全数就位,收口成钩——调用置于 useAppLinks 之后
@@ -784,6 +785,7 @@ function AppShell(): JSX.Element {
     memoryFocus,
     learnedFocus,
     bgFocus,
+    tabJump,
     panelRefreshNonce,
     catalogTick,
     dev,

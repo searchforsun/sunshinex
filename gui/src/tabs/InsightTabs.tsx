@@ -8,7 +8,7 @@ import type { Connection } from '../connection';
 import type { BgTaskRow } from '../projection';
 import { t } from '../i18n';
 import type { TabParams, TabTypeId } from './tab-state';
-import { shortStampMs, withMinSpin } from '../ui-util';
+import { markJumpHighlight, shortStampMs, withMinSpin } from '../ui-util';
 import { ClampBlock } from '../clamp-block';
 import { highlightCommand, stripAnsi } from '../highlight';
 import { useFetch } from '../use-fetch';
@@ -109,7 +109,9 @@ export function BgTasksTab({
     if (row.kind !== 'subagent') {
       setExpanded((cur) => new Set(cur).add(focus.id));
     }
-    rowRefs.current.get(focus.id)?.scrollIntoView({ block: 'center' });
+    const el = rowRefs.current.get(focus.id);
+    el?.scrollIntoView({ block: 'center' });
+    if (el !== null && el !== undefined) markJumpHighlight(el);
   }, [focus, liveRows]);
   /** 运行时长:终态=endedAt,运行中=now 实时跳 */
   const durOf = (r: BgTaskRow): string => fmtDur(Math.max(0, (r.endedAt ?? now) - r.startedAt));
@@ -301,6 +303,7 @@ export function MemoryTab({
     setExpandedSlug(focus.slug);
     const li = rowRefs.current.get(focus.slug);
     li?.scrollIntoView({ block: 'center' });
+    if (li !== null && li !== undefined) markJumpHighlight(li);
   }, [focus, data]);
   const remove = (slug: string): void => {
     if (root === '') return;
@@ -418,6 +421,7 @@ export function LearnedSkillsTab({
   const scrollToSkill = (slug: string): void => {
     const el = listRef.current?.querySelector(`[data-skill-id="${slug}"]`);
     el?.scrollIntoView({ block: 'center' });
+    if (el !== null && el !== undefined) markJumpHighlight(el);
   };
   useEffect(() => {
     if (focus === undefined || focus.slug === '') return;

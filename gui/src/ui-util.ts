@@ -440,3 +440,21 @@ export function applyFilePick(
   }
   return base;
 }
+
+/** 跳转定位蓝色高亮(2026-11-24 用户推翻 2026-11-08「跳转定位不加闪光」裁定):跨页签/行级
+ *  跳转落点打 `.jump-hl` 蓝标——确认点击已生效+对应关系。恒常驻 8s 自动解除(纯 DOM 类+
+ *  WeakMap 计时,不经 React 状态:与既有 imperative scrollIntoView 定位同型,重渲染换节点
+ *  即自然消失)。同元素重跳重置计时 */
+const jumpTimers = new WeakMap<Element, number>();
+export function markJumpHighlight(el: Element, ms = 8000): void {
+  el.classList.add('jump-hl');
+  const prev = jumpTimers.get(el);
+  if (prev !== undefined) window.clearTimeout(prev);
+  jumpTimers.set(
+    el,
+    window.setTimeout(() => {
+      el.classList.remove('jump-hl');
+      jumpTimers.delete(el);
+    }, ms),
+  );
+}

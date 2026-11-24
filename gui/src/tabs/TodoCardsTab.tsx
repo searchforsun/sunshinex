@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowRight, ChevronDown, ChevronRight, Check, Clock, RefreshCw } from 'lucide-react';
 import { t } from '../i18n';
-import { shortStampMs, withMinSpin } from '../ui-util';
+import { markJumpHighlight, shortStampMs, withMinSpin } from '../ui-util';
 import type { Connection } from '../connection';
 import type { TodoBatch } from '../pages/Chat';
 
@@ -63,7 +63,9 @@ export function TodoCardsTab({ batches, conn, sessionId, refreshNonce, onLocate,
     const hit = view.find((b) => b.items.map((x) => x.text).join('\n') === locateSig.sig);
     if (hit === undefined) return;
     setExpanded((s) => new Set([...s, hit.key]));
-    document.querySelector(`[data-batch-key="${CSS.escape(hit.key)}"]`)?.scrollIntoView({ block: 'center' });
+    const el = document.querySelector(`[data-batch-key="${CSS.escape(hit.key)}"]`);
+    el?.scrollIntoView({ block: 'center' });
+    if (el !== null) markJumpHighlight(el);
   }, [locateSig, view]);
   const toggle = (key: string): void => {
     setExpanded((s) => {

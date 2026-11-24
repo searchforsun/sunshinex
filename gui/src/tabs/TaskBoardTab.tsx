@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AlarmClock, Bot, Clock, RefreshCw, Square } from 'lucide-react';
 import type { TaskBoardState, Delegation, BoardTask } from '../projection';
 import { t } from '../i18n';
-import { dateStampMs, fmtDurMs, withMinSpin } from '../ui-util';
+import { dateStampMs, fmtDurMs, markJumpHighlight, withMinSpin } from '../ui-util';
 /** DAG 视图懒载面(React Flow + dagre)。节点与列表行共用五态点色与停钮。 */
 const TaskDag = lazy(() => import('./TaskDag'));
 
@@ -383,9 +383,11 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   );
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
-    // 定位共体（team/task 两分型仅选择器与判别面不同,滚动单点承载;2026-11-08 用户裁定撤闪光）
+    // 定位共体（team/task 两分型仅选择器与判别面不同,滚动单点承载;瞬跳到位。2026-11-24 用户
+    // 推翻「撤闪光」裁定:落点加蓝色高亮 markJumpHighlight(8s 常驻自动解除)——确认点击生效+对应关系）
     const flashAndScroll = (hit: Element): (() => void) => {
       hit.scrollIntoView({ block: 'center' }); // 2026-11-08 用户裁定「去掉滑动」:瞬跳到位
+      markJumpHighlight(hit);
       return () => undefined;
     };
     if (focus.kind === 'team') {
