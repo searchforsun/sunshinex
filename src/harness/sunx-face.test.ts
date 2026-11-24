@@ -13,7 +13,7 @@ import { Harness, SUNX_FACE_TOOLS } from './index';
 import { ScriptedAdapter } from '../model/adapter';
 import type { ModelAdapter } from '../model/adapter';
 import { createKernelRuntime } from '../session/runtime';
-import { TOOL_VERBS, toolCallLine } from '../tui/tool-verbs';
+import { toolCallLine } from '../tui/tool-verbs';
 import type { ChatRequest } from '../types';
 
 // 文件级数据目录钉定（沿 runtime.test.ts 先例）：单文件直跑时统一落本文件临时沙箱
@@ -104,11 +104,12 @@ test('createKernelRuntime：sunx 主链 face=白名单派生——模型 wire �
       [...SUNX_FACE_TOOLS].sort(),
       `loop 主链模型面必须恰见白名单七件：实际 ${seen.toolNames.flat().join(', ')}`,
     );
-    // 呈现表随 effective face（setToolDisplayMeta(face.displayMeta())）：分派动词在册、执行面动词不在册
-    assert.equal(toolCallLine('dispatch_task', {}), 'DISPATCH', '呈现层经注入表取分派动词');
-    assert.equal(toolCallLine('task_status', {}), 'TASK_STATUS', '呈现层经注入表取窥视动词');
-    assert.equal(TOOL_VERBS.has('DISPATCH'), true, 'sunx face 呈现动词集合含 DISPATCH');
-    assert.equal(TOOL_VERBS.has('EXEC'), false, 'sunx face 不含执行面工具（exec 不在白名单）');
+    // 呈现表随 effective face（rt.toolDisplay 装配快照，D80② 后经返回值消费——单例兜底接线归 TUI 装配侧）：
+    // 分派动词在册、执行面动词不在册
+    assert.equal(toolCallLine('dispatch_task', {}, rt.toolDisplay), 'DISPATCH', '呈现层经注入表取分派动词');
+    assert.equal(toolCallLine('task_status', {}, rt.toolDisplay), 'TASK_STATUS', '呈现层经注入表取窥视动词');
+    assert.equal(rt.toolDisplay['dispatch_task'] !== undefined, true, 'sunx face 呈现表含分派工具');
+    assert.equal(rt.toolDisplay['exec'], undefined, 'sunx face 不含执行面工具（exec 不在白名单）');
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
@@ -132,8 +133,8 @@ test('createKernelRuntime：standard 主链 face 原样——wire 含 exec、零
     assert.ok(names.includes('exec'), 'standard 主链保持执行面（face 基线）');
     assert.equal(names.includes('dispatch_task'), false, 'standard 主链零 dispatch_task');
     assert.equal(names.includes('task_status'), false, 'standard 主链零 task_status');
-    assert.equal(TOOL_VERBS.has('EXEC'), true, 'standard 呈现表回主链全量');
-    assert.equal(TOOL_VERBS.has('DISPATCH'), false, 'standard 呈现表零分派动词');
+    assert.equal(rt.toolDisplay['exec'] !== undefined, true, 'standard 呈现表回主链全量');
+    assert.equal(rt.toolDisplay['dispatch_task'], undefined, 'standard 呈现表零分派动词');
   } finally {
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
