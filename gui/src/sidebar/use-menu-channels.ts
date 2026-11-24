@@ -31,6 +31,15 @@ export interface ChannelSessionRow extends SessionRow {
   chatTitle?: string;
 }
 
+/** 通道变更事件（2026-11-25 用户裁定「删除后要立即隐藏对应的通道显示」):设置页删除/保存
+ *  成功即广播,ProjectMenu 监听 bump channelReload——通道组立即重拉(容器域/配置双源),不再等
+ *  30s tick;窗口事件与 SESSION_ARCHIVE_CHANGED 同款跨组件信号 */
+export const CHANNELS_CHANGED_EVENT = 'sunshinex:channels-changed';
+
+export function notifyChannelsChanged(): void {
+  window.dispatchEvent(new CustomEvent(CHANNELS_CHANGED_EVENT));
+}
+
 /** 平台目录单点（图标 + 双语名 + 新增可选）：侧栏行 / Chat 信息条 / ChannelsPane 下拉三面共用
  *  ——此前 ChannelsPane PLATFORMS 与本表两张注册表并行维护（钉钉/企微启用须双改，已收敛）。
  *  supports=「新增通道」平台下拉可选；mock=daemon 测试夹具（e2e 用），生产下拉不可选；

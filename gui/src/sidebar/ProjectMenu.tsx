@@ -24,6 +24,7 @@ import { ProjectsSection } from './project-menu-projects';
 import { RecentsSection } from './project-menu-recents';
 import { SunxSection } from './project-menu-sunx';
 import { ChannelsSection } from './project-menu-channels';
+import { CHANNELS_CHANGED_EVENT } from './use-menu-channels';
 import { ArchiveSection } from './archive-group';
 import { PinnedSection } from './pinned-section';
 import type { PinEntry } from './pin-store';
@@ -440,6 +441,14 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     };
     window.addEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onArchiveChanged);
     return () => window.removeEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onArchiveChanged);
+  }, []);
+  useEffect(() => {
+    // 通道变更信号(2026-11-25 用户裁定「删除后要立即隐藏对应的通道显示」):设置页删除/保存
+    // 成功即广播,此处 bump 通道域枚举 nonce——通道组立即重拉(容器域已删/配置已改双源即时)
+    const onChannelsChanged = (): void => setChannelReload((v) => v + 1);
+    window.addEventListener(CHANNELS_CHANGED_EVENT, onChannelsChanged);
+    return () => window.removeEventListener(CHANNELS_CHANGED_EVENT, onChannelsChanged);
+  }, []);
   }, [loadArchived, reloadOpenGroups]);
 
 

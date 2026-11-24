@@ -205,12 +205,20 @@ export class ChannelsEngine {
     for (const id of [...this.adapters.keys()]) {
       if (!nextIds.has(id)) this.teardown(id); // 移除 → stop+删表
     }
+    // 已知表随删即清（2026-11-25 用户裁定「不要有配置缓存,彻底清除」根修):原 union 保留已移除
+    // 通道行——GET /channels 健康行僵尸复活,设置页重进即见死卡(disconnected 默认字段),重启才清。
+    // 停用≠移除:停用条目仍在快照,行保留(enabled:false);移除=快照缺席,行即清
+    for (const id of [...this.knownConfigs.keys()]) {
+      if (!nextIds.has(id)) this.knownConfigs.delete(id);
+    }
   }
 
-  /** 健康快照:已知通道 union 逐行——在座查 adapter.health,缺席/起失败 connected:false + detail */
+  /** 健康快照:当前配置快照逐行(2026-11-25 用户裁定「彻底清除」:移除的通道零残留行)——
+   *  在座查 adapter.health,缺席/起失败 connected:false + detail;停用条目行保留(enabled:false) */
   health(): ChannelHealthRow[] {
     const rows: ChannelHealthRow[] = [];
     for (const [id, cfg] of this.knownConfigs) {
+      if (!this.snapshot.some((c) => c.id === id)) continue; // 已移除(快照缺席)=零残留
       const enabled = this.snapshot.some((c) => c.id === id && c.enabled);
       const adapter = this.adapters.get(id);
       if (adapter === undefined) {

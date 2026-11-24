@@ -116,7 +116,7 @@ async function drain(): Promise<void> {
   await new Promise((r) => setImmediate(r));
 }
 
-test('① applyConfigs 调和:启用 mock → health connected;再 applyConfigs 空表 → 全停 disconnected', () => {
+test('① applyConfigs 调和:启用 mock → health connected;移除(快照缺席) → 健康行零残留(2026-11-25「彻底清除」);停用 → 行保留 enabled:false', () => {
   const h = makeHarness([mkCfg()]);
   h.engine.start(); // applyConfigs(configs()) 调和
   const up = h.engine.health();
@@ -126,11 +126,17 @@ test('① applyConfigs 调和:启用 mock → health connected;再 applyConfigs 
   assert.equal(up[0]!.enabled, true);
   assert.equal(up[0]!.connected, true);
 
-  h.engine.applyConfigs([]); // 幂等调和:空表 → 全适配器 stop + 删表
-  const down = h.engine.health();
-  assert.equal(down.length, 1); // 已知通道保留健康快照行
-  assert.equal(down[0]!.enabled, false);
-  assert.equal(down[0]!.connected, false);
+  // 移除(快照缺席,2026-11-25 用户裁定「不要有配置缓存,彻底清除」):健康行零残留——
+  // 原 union 保留行=设置页重进见死卡(disconnected 默认字段播种),重启才清
+  h.engine.applyConfigs([]);
+  assert.equal(h.engine.health().length, 0, '移除=健康行零残留');
+
+  // 停用≠移除:条目仍在快照 → 行保留 enabled:false(设置页开关态照显)
+  h.engine.applyConfigs([mkCfg({ enabled: false })]);
+  const off = h.engine.health();
+  assert.equal(off.length, 1);
+  assert.equal(off[0]!.enabled, false);
+  assert.equal(off[0]!.connected, false);
 });
 
 // 密钥门读 cfg.secret（2026-11-22 用户裁定：密钥内联条目可回显，env 槽退役）

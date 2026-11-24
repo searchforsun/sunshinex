@@ -7,6 +7,7 @@ import { EditorModal, EmptyState, ErrorBanner, ModalShell } from './components';
 import { ChannelCard } from './ChannelCard';
 import { ChannelModalForm } from './ChannelModalForm';
 import { displayNameOf, identityOf, EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
+import { notifyChannelsChanged } from '../sidebar/use-menu-channels';
 import type { ChannelDraft, ChannelForm, ChannelModal } from './channel-drafts';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 import type { SunxTemplateEntry } from '../connection-types';
@@ -171,6 +172,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         setDelAsk(null);
         removedRef.current.add(id);
         setDrafts((prev) => (prev ?? []).filter((d) => d.id !== id));
+        notifyChannelsChanged(); // 侧栏通道组立即重拉(2026-11-25 用户裁定「删除后要立即隐藏」)
         load();
       }, (err: unknown) => {
         setSavingId('');
@@ -291,6 +293,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     conn
       .putChannels(next.map(toMsg))
       .then(() => {
+        notifyChannelsChanged(); // 侧栏组名/增删立即重拉(同上)
         setDrafts(next);
         setModal(null);
         setForm(EMPTY_FORM);
