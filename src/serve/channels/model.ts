@@ -32,6 +32,13 @@ export interface ChannelConfig {
   effort?: string;
   /** 平台非密钥标识（feishu 自建应用 URL 等扩展位） */
   ident?: Record<string, string>;
+  /** 会话模式（2026-11-24 用户裁定「创建通道时支持选择模式:普通会话还是 Sunx」）：'sunx'=该通道
+   *  各聊天建 Sunx 编排会话（品性冻结层;/new 重建仅品性复用——会话级,不跨聊天共享,全异步驱动）;
+   *  缺席=普通会话（standard 路径零变化） */
+  sessionKind?: 'sunx';
+  /** Sunx 品性原文（sessionKind==='sunx' 时生效）：装配透传 ContextManager 品性冻结层,
+   *  /new 重建沿用同一段品性;逐字保存不 trim（自撰物料纪律,同 GUI newSession 口径） */
+  charter?: string;
   /** 开放的聊天命令（命令配置化裁定**权威注**——用户可配开放子集,一个下拉多选）：
    *  子集出自 CHANNEL_COMMANDS 目录；缺席=全部开放；router 门控与 /help 列举共用此目录 */
   commands?: string[];
@@ -50,6 +57,7 @@ export const CHANNEL_COMMANDS: ReadonlyArray<{ cmd: string; desc: string; match?
   { cmd: '/workspace', desc: '查看/切换工作区（下次新会话生效）', match: 'prefix' },
   { cmd: '/model', desc: '查看/切换模型（下一条消息生效）', match: 'prefix' },
   { cmd: '/effort', desc: '查看/切换思考强度（下一条消息生效）', match: 'prefix' },
+  { cmd: '/compact', desc: '压缩上下文（释放窗口空间）' },
 ];
 
 const COMMAND_WORDS: ReadonlySet<string> = new Set(CHANNEL_COMMANDS.map((c) => c.cmd));
@@ -65,6 +73,10 @@ export interface Binding {
   /** 聊天形态（spec §9.3 单聊/群聊标）：首绑定时自入站消息取，聊天信息条单聊/群聊标消费；
    *  绑定元数据，/new 重绑保留语义同 lockedUserId/rootOverride */
   chatKind?: 'direct' | 'group';
+  /** 聊天名称（2026-11-24 用户裁定「hover 显示聊天名称,单聊=聊天人名称,群聊=群聊名称」）：
+   *  首绑定时自入站取（chatTitle 优先,单聊回落发送者姓名），绑定元数据 /new 重绑保留同 chatKind;
+   *  侧栏悬浮卡显示面（handlers 行透出） */
+  chatTitle?: string;
   updatedAt: number;
 }
 
@@ -75,6 +87,9 @@ export interface InboundMessage {
   userId: string;
   /** 发送者展示名（平台昵称），缺省回退 userId */
   userDisplay?: string;
+  /** 聊天名称（2026-11-24 用户裁定「hover 显示聊天名称」）：群聊=群名（聊天信息 API）,单聊=
+   *  对方名;平台尽力富化,缺席由调用方回落（单聊回落发送者姓名） */
+  chatTitle?: string;
   msgId: string;
   text?: string;
   images?: string[];
@@ -213,6 +228,31 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
         else effort = v;
       }
     }
+    // sessionKind 会话模式解析（2026-11-24 用户裁定「普通会话还是 Sunx」）：仅收 'sunx'；
+    // 其他非空串 warning 跳该字段（回退普通会话）不致命；缺席/空=普通会话
+    let sessionKind: 'sunx' | undefined;
+    const kindRaw = item['sessionKind'];
+    if (kindRaw !== undefined && kindRaw !== null) {
+      if (kindRaw === 'sunx') sessionKind = 'sunx';
+      else if (typeof kindRaw === 'string' && kindRaw.trim() !== '') {
+        warnings.push(`channels[${i}](${id}) sessionKind 非法（${kindRaw}），按普通会话处理`);
+      }
+    }
+    // charter 品性原文解析（sessionKind==='sunx' 消费）：串即收,逐字不 trim（自撰物料纪律）,
+    // 上限 20000 字防配置膨胀;空串=未配置;非串/超长 warning 跳该字段不致命
+    let charter: string | undefined;
+    const charterRaw = item['charter'];
+    if (charterRaw !== undefined && charterRaw !== null) {
+      if (typeof charterRaw !== 'string') {
+        warnings.push(`channels[${i}](${id}) charter 非串，跳过该字段`);
+      } else if (charterRaw === '') {
+        charter = undefined;
+      } else if (charterRaw.length > 20000) {
+        warnings.push(`channels[${i}](${id}) charter 超 20000 字，跳过该字段`);
+      } else {
+        charter = charterRaw;
+      }
+    }
     value.push({
       id,
       platform: platform as ChannelPlatform,
@@ -225,6 +265,8 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
       ...(ident !== undefined && Object.keys(ident).length > 0 ? { ident } : {}),
       ...(commands !== undefined ? { commands } : {}),
       ...(effort !== undefined ? { effort } : {}),
+      ...(sessionKind !== undefined ? { sessionKind } : {}),
+      ...(charter !== undefined ? { charter } : {}),
       allow: {
         kind: allowCfg['kind'] as AllowKind,
         ...(strArr(allowCfg['userIds']) !== undefined ? { userIds: strArr(allowCfg['userIds']) } : {}),

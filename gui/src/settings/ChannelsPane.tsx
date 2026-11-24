@@ -9,6 +9,7 @@ import { ChannelModalForm } from './ChannelModalForm';
 import { displayNameOf, identityOf, EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
 import type { ChannelDraft, ChannelForm, ChannelModal } from './channel-drafts';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
+import type { SunxTemplateEntry } from '../connection-types';
 import type { WorkspaceRow } from '../connection';
 
 /**
@@ -39,6 +40,9 @@ export interface ChannelsPaneConn {
   deleteChannel(id: string): Promise<{ ok: true }>;
   /** GET /models:全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」)——弹窗缺省档数据源 */
   models(): Promise<{ choices: Array<{ id: string; model: string }> }>;
+  /** GET /settings/sunx-templates(2026-11-24 用户裁定通道支持 Sunx 模式):品性模板清单,弹窗
+   *  模式=Sunx 时挑选数据源;可选——旧桩缺省时模板下拉隐藏,textarea 直填不受影响 */
+  sunxTemplates?(): Promise<{ entries: SunxTemplateEntry[]; warnings: string[] }>;
   workspaces(): Promise<WorkspaceRow[]>;
 }
 
@@ -75,6 +79,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   /** 全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」):弹窗模型下拉数据源;
    *  拉取失败静默=空列(强度档静态不受影响) */
   const [modelChoices, setModelChoices] = useState<Array<{ id: string; model: string }>>([]);
+  /** 品性模板清单(2026-11-24 通道 Sunx 模式;弹窗开启时拉取一次,连接面缺席=空列下拉隐藏) */
+  const [sunxTemplates, setSunxTemplates] = useState<SunxTemplateEntry[]>([]);
   const applySources = useCallback((): void => {
     setHealth(healthRef.current);
     setDrafts((prev) => mergeDrafts(prev ?? [], healthRef.current, cfgRef.current, removedRef.current));
@@ -215,10 +221,15 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     if (d === null) {
       setForm(EMPTY_FORM);
       setModal({ mode: 'add' });
-      return;
+    } else {
+      setForm({ platform: d.platform, name: d.name, secret: d.secret, appId: d.appId, rootText: d.rootText, mode: d.mode, model: d.model, effort: d.effort, sessionKind: d.sessionKind, charter: d.charter, commands: d.commands, allowKind: d.allowKind, userIdsText: d.userIdsText });
+      setModal({ mode: 'edit', id: d.id });
     }
-    setForm({ platform: d.platform, name: d.name, secret: d.secret, appId: d.appId, rootText: d.rootText, mode: d.mode, model: d.model, effort: d.effort, commands: d.commands, allowKind: d.allowKind, userIdsText: d.userIdsText });
-    setModal({ mode: 'edit', id: d.id });
+    // 品性模板拉取(尽力而为:连接面缺席/失败=空列,模板下拉隐藏,textarea 直填不受影响)
+    void conn.sunxTemplates?.().then(
+      (v) => setSunxTemplates(v.entries.filter((e) => !e.shadowed)),
+      () => setSunxTemplates([]),
+    );
   };
 
   /** 弹窗保存:putChannels 全表读改写(secret 随条目内联,2026-11-22 裁定)→ 成功关弹窗 + 重拉 +
@@ -267,6 +278,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       effort: form.effort,
       appId: form.appId.trim(),
       ident: base?.ident,
+      sessionKind: form.sessionKind,
+      charter: form.sessionKind === 'sunx' ? form.charter : '',
       commands: form.commands,
       allowKind: form.allowKind,
       userIdsText: form.userIdsText,
@@ -369,7 +382,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
           onClose={() => setModal(null)}
           onSubmit={submitChannel}
         >
-          <ChannelModalForm modal={modal} form={form} setForm={setForm} formError={formError} onPickFolder={pickWorkspaceFolder} modelChoices={modelChoices} />
+          <ChannelModalForm modal={modal} form={form} setForm={setForm} formError={formError} onPickFolder={pickWorkspaceFolder} modelChoices={modelChoices} sunxTemplates={sunxTemplates} />
         </EditorModal>
       )}
       {/* 删除确认弹窗(2026-11-23 用户裁定「弹窗确认,不是原地二次确认」):文案明示真删除
@@ -377,6 +390,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       {delAsk !== null && (
         <ModalShell title={t('Delete channel', '删除通道')} onClose={() => setDelAsk(null)} modifier="sx-turn-confirm">
           <form
+            id="sx-channel-del-form"
             className="sx-turn-confirm-body"
             onSubmit={(e) => {
               e.preventDefault();
@@ -389,17 +403,18 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                 `即将删除「${delAsk.name}」以及它的全部会话记录和数据目录，此操作不可恢复。`,
               )}
             </p>
-            {/* 按钮位(2026-11-23 用户裁定「取消应该在左侧」):取消左/红实心删除右;固定紧凑宽
-                (sx-turn-confirm 460px 覆写,不随内容变长) */}
-            <div className="sx-turn-confirm-actions">
-              <button type="button" disabled={savingId === delAsk.id} onClick={() => setDelAsk(null)}>
-                {t('Cancel', '取消')}
-              </button>
-              <button type="submit" className="sx-danger-solid" disabled={savingId === delAsk.id}>
-                {savingId === delAsk.id ? t('Deleting…', '删除中…') : t('Delete', '删除')}
-              </button>
-            </div>
           </form>
+          {/* 按钮位(2026-11-24 用户报障「按钮离边框太远,和其他弹窗不一致」):actions 移出 body
+              form 成弹窗直接子级(sx-turn-confirm-actions 同构 EditorModal 尾栏——22px 侧衬/
+              全出血分隔线);提交钮经 form 属性关联上方表单,回车提交不变 */}
+          <div className="sx-turn-confirm-actions">
+            <button type="button" disabled={savingId === delAsk.id} onClick={() => setDelAsk(null)}>
+              {t('Cancel', '取消')}
+            </button>
+            <button type="submit" form="sx-channel-del-form" className="sx-danger-solid" disabled={savingId === delAsk.id}>
+              {savingId === delAsk.id ? t('Deleting…', '删除中…') : t('Delete', '删除')}
+            </button>
+          </div>
         </ModalShell>
       )}
       {testToast !== null && (

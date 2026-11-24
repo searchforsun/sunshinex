@@ -201,6 +201,14 @@ function rowChatId(r: { id: string; chatId?: string }, domainDir: string, chatId
   return m !== null ? m[1].replace('-', '_') : undefined;
 }
 
+/** 行 chatTitle 双兜底（2026-11-24 用户裁定「hover 显示聊天名称,单聊=聊天人名称,群聊=群聊名称」）：
+ *  ① 出生档 meta chatTitle（seatAndTag 落档,权威源）；② 绑定档 journalId 反查（现行绑定）;
+ *  都缺=undefined（卡回落显示 chatId 旧行） */
+function rowChatTitle(r: { id: string; chatTitle?: string }, chatTitleByJournal: ReadonlyMap<string, string>): string | undefined {
+  if (r.chatTitle !== undefined && r.chatTitle !== '') return r.chatTitle;
+  return chatTitleByJournal.get(r.id);
+}
+
 /** GET /channels/sessions（spec §2 运维面；Task 13 侧栏「通道」数据源）：扫 channels 容器各域
  *  （`<容器>/<域>/data` 逐域 listSessions 归并——GET /sunx/sessions 同构镜像，域列举换成
  *  channelsContainerDir()）。行形白名单同源（剔 charterText 全文与其余旁车超集）；行 root=域目录
@@ -216,10 +224,12 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
   // （key=`<channelId>:<chatId>` 首冒号切分）——平台聊天会话标识（飞书 oc_/Telegram chat id），
   // GUI 会话悬浮卡显示与复制用；未绑定行（异常）缺席=卡回落根路径行
   const chatIdByJournal = new Map<string, string>();
+  const chatTitleByJournal = new Map<string, string>();
   for (const b of io.bindings.all()) {
     const i = b.key.indexOf(':');
     if (i <= 0 || b.journalId === undefined) continue;
     chatIdByJournal.set(b.journalId, b.key.slice(i + 1));
+    if (b.chatTitle !== undefined && b.chatTitle !== '') chatTitleByJournal.set(b.journalId, b.chatTitle);
   }
   const out = enumerateContainerSessions({
     containerDir: channelsContainerDir(),
@@ -231,6 +241,8 @@ export function handleChannelsSessions(io: ChannelsHandlerIo, res: http.ServerRe
       ...(r.channel !== undefined ? { channel: r.channel } : {}), // 通道配置 id（Task 13 分组键）
       // 平台聊天会话标识（悬浮卡显示/复制）——meta 出生档 → 绑定反查 → 域名反查三重兜底
       ...(rowChatId(r, domainDir, chatIdByJournal) !== undefined ? { chatId: rowChatId(r, domainDir, chatIdByJournal) } : {}),
+      // 聊天名称（悬浮卡聊天名称行,2026-11-24 裁定）——meta 出生档 → 绑定反查双兜底
+      ...(rowChatTitle(r, chatTitleByJournal) !== undefined ? { chatTitle: rowChatTitle(r, chatTitleByJournal) } : {}),
     }),
   });
   io.send(res, 200, out); // 裸 SessionRow[]（sunx 面同款，GUI 消费形对齐）

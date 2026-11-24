@@ -11,15 +11,17 @@ const EFFORT_OPTIONS: ReadonlyArray<{ v: string }> = ['minimal', 'low', 'medium'
 import { COMMAND_OPTIONS, NAME_MAX, NAME_PLACEHOLDERS, platformLabel } from './channel-drafts';
 import { effortLabel } from '../effort-slider';
 import type { AllowKind, ChannelForm, ChannelModal, ModeValue } from './channel-drafts';
+import type { SunxTemplateEntry } from '../connection-types';
 
 /**
  * 通道弹窗表单件（D112 拆分件二，自 ChannelsPane 平迁零行为变化）：EditorModal 的字段面——
  * 平台(新增可选/编辑锁定)/应用名称/按平台凭证(飞书 App ID+App Secret;Telegram Bot Token,均
- * SecretInput 回显)/工作区(文本框+pickFolder 钮,空=聊天专属)/权限模式(full-access 红字警示)/
- * 准入(list 展开 userIds textarea,all 红字警示)/聊天命令(MultiSelect)。表单真值经 setForm
- * 上抛（Pane 自持），校验错误行内（formError）。
+ * SecretInput 回显)/工作区(文本框+pickFolder 钮,空=聊天专属)/会话模式(普通会话|Sunx 编排,
+ * 2026-11-24 用户裁定——Sunx 展开品性模板下拉+品性 textarea,/new 仅品性复用)/权限模式
+ * (full-access 红字警示)/准入(list 展开 userIds textarea,all 红字警示)/聊天命令(MultiSelect)。
+ * 表单真值经 setForm 上抛（Pane 自持），校验错误行内（formError）。
  */
-export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder, modelChoices }: {
+export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder, modelChoices, sunxTemplates }: {
   readonly modal: ChannelModal;
   readonly form: ChannelForm;
   readonly setForm: Dispatch<SetStateAction<ChannelForm>>;
@@ -28,6 +30,9 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
   readonly onPickFolder: () => void;
   /** 全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」):GET /models choices */
   readonly modelChoices: ReadonlyArray<{ id: string; model: string }>;
+  /** 品性模板清单(GET /settings/sunx-templates 未遮蔽行,Pane 弹窗开启时拉取):选中即全文回填
+   *  品性 textarea(可改)——GUI 新建 Sunx 弹窗同款挑选交互(2026-11-24 用户裁定通道支持 Sunx 模式) */
+  readonly sunxTemplates: ReadonlyArray<SunxTemplateEntry>;
 }): JSX.Element {
   return (
     <>
@@ -110,6 +115,45 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
           </button>
         </div>
       </ModalField>
+      {/* 会话模式(2026-11-24 用户裁定「创建通道时支持选择模式:普通会话还是 Sunx」):Sunx=各聊天
+          建 Sunx 编排会话(品性冻结层,/new 重建仅品性复用——会话级,全异步驱动);展开品性模板下拉+
+          textarea,模板选中即全文回填可改(GUI 新建 Sunx 同款交互) */}
+      <ModalField label={t('Session mode', '会话模式')}>
+        <Select
+          ariaLabel={t('Session mode', '会话模式')}
+          value={form.sessionKind}
+          options={[
+            { v: 'standard', l: t('Standard chat', '普通会话') },
+            { v: 'sunx', l: t('Sunx orchestration', 'Sunx 编排') },
+          ]}
+          onChange={(v) => setForm({ ...form, sessionKind: v as ChannelForm['sessionKind'] })}
+        />
+        {form.sessionKind === 'sunx' && (
+          <>
+            {sunxTemplates.length > 0 && (
+              <Select
+                ariaLabel={t('Charter template', '品性模板')}
+                value=""
+                placeholder={t('Pick a template…', '从模板选择…')}
+                options={sunxTemplates.map((tp) => ({ v: tp.id, l: tp.description !== undefined ? `${tp.name} — ${tp.description}` : tp.name }))}
+                onChange={(id) => {
+                  const tp = sunxTemplates.find((x) => x.id === id);
+                  if (tp !== undefined) setForm({ ...form, charter: tp.charter });
+                }}
+              />
+            )}
+            <textarea
+              className="sx-setting-input"
+              aria-label={t('Charter', '品性')}
+              rows={6}
+              value={form.charter}
+              placeholder={t('Charter text applied to every new Sunx in this channel.', '品性章程原文——此通道每个新 Sunx 沿用。')}
+              spellCheck={false}
+              onChange={(e) => setForm({ ...form, charter: e.target.value })}
+            />
+          </>
+        )}
+      </ModalField>
       <ModalField label={t('Access mode', '权限模式')}>
         <Select
           ariaLabel={t('Access mode', '权限模式')}
@@ -130,7 +174,9 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
           </p>
         )}
       </ModalField>
-      <ModalField label={t('Default model', '默认模型')} hint={t('Model used for chats on this channel.', '此通道的聊天使用的模型。')}>
+      {/* 字段说明退役(2026-11-24 用户裁定「不要加多余的解释」):默认模型/思考强度/聊天命令的
+          hint 与标签同义反复,全部摘除;Bot Token 获取途径与两类红字警示是有用信息,保留 */}
+      <ModalField label={t('Default model', '默认模型')}>
         <Select
           ariaLabel={t('Default model', '默认模型')}
           value={form.model}
@@ -141,7 +187,7 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
           onChange={(v) => setForm({ ...form, model: v })}
         />
       </ModalField>
-      <ModalField label={t('Reasoning effort', '思考强度')} hint={t('Higher = deeper thinking, slower and more tokens.', '越高思考越深，越慢且消耗越多。')}>
+      <ModalField label={t('Reasoning effort', '思考强度')}>
         <Select
           ariaLabel={t('Reasoning effort', '思考强度')}
           value={form.effort}
@@ -183,7 +229,7 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
           </p>
         )}
       </ModalField>
-      <ModalField label={t('Chat commands', '聊天命令')} hint={t('Choose which commands work in the chat.', '选择聊天里可以使用的命令。')}>
+      <ModalField label={t('Chat commands', '聊天命令')}>
         <MultiSelect
           ariaLabel={t('Chat commands', '聊天命令')}
           values={form.commands}

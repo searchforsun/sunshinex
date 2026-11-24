@@ -211,7 +211,9 @@ function ArchiveConfirmButton(props: {
 /** 会话行悬浮卡数据(2026-10-26 用户裁定四段制):完整会话名/分支/轮次步数/建档时刻;
  *  2026-10-27 增补:rootPath=所属项目根路径(名下细分割线后换行展示);
  *  2026-11-22 用户裁定:chatId=平台聊天会话标识(飞书 oc_ 等)——在场时替代根路径行
- *  (聊天图标+id+复制钮,「hover 显示飞书会话 id,可复制」) */
+ *  (聊天图标+id+复制钮,「hover 显示飞书会话 id,可复制」);
+ *  2026-11-24 用户裁定:chatTitle=聊天名称(单聊=聊天人名称,群聊=群聊名称)——**替代 chatId
+ *  显示**(id 复制仍走行 ⋯ 菜单;chatTitle 缺席回落 chatId 旧行,旧会话兜底) */
 interface SessionRowInfo {
   readonly branch?: string;
   readonly runs?: number;
@@ -219,6 +221,7 @@ interface SessionRowInfo {
   readonly createdAt?: string;
   readonly rootPath?: string;
   readonly chatId?: string;
+  readonly chatTitle?: string;
 }
 
 /** 会话行悬浮卡(2026-10-26 用户裁定,文本 data-tip 退役):固定宽 280,仅应用宽度不够时收缩
@@ -239,7 +242,10 @@ function SessionHoverCard(props: {
   // 低应用宽度不越视口:余量不足时收缩,下限 120(2026-10-27 用户裁定「不要超出视口」)
   const avail = (window.innerWidth - props.anchor.menuRight - 12) / z;
   const width = Math.max(120, Math.min(280, avail));
-  const { branch, runs, steps, createdAt, rootPath, chatId } = props.info;
+  const { branch, runs, steps, createdAt, rootPath, chatId, chatTitle } = props.info;
+  // 聊天名称行(2026-11-24 用户裁定「会话 id 换成显示聊天名称」):chatTitle 在场=显示名称
+  // (截断风险 data-tip 全名;id 复制走行 ⋯ 菜单不设复制钮);缺席=回落 chatId 旧行(带复制)
+  const chatName = chatTitle !== undefined && chatTitle !== '' ? chatTitle : chatId;
   // 用量统计开关(2026-11-14):关=悬停卡隐轮次步数行
   const usageOn = readUsageStats();
   const stats: string[] = [];
@@ -259,16 +265,19 @@ function SessionHoverCard(props: {
       {/* 2026-10-27 用户裁定:名下细分割线+所属项目根路径(换行不省略,越视口由宽度钳制兜底);
           2026-11-10 用户裁定:路径/分支行右端复制钮(复制会话名/项目地址/分支名);
           2026-11-11 用户裁定:路径行补文件夹图标(与分支/轮次行同语言);
-          2026-11-22 用户裁定:通道行 chatId+工作区**两行并存**(聊天 id 行=MessagesSquare 图标
-          +平台聊天会话 id;工作区行=完整 workspace 目录+复制——「既要显示会话 id,也要显示
-          工作目录」),非通道行回落单根路径行 */}
-      {chatId !== undefined && chatId !== '' && (
+          2026-11-22 用户裁定:通道行 chatId+工作区**两行并存**(工作区行=完整 workspace 目录+
+          复制——「既要显示会话 id,也要显示工作目录」),非通道行回落单根路径行;
+          2026-11-24 用户裁定:聊天行显示**聊天名称**(chatTitle,单聊人名/群聊群名),缺席回落
+          chatId+复制钮旧行(旧会话兜底) */}
+      {chatName !== undefined && chatName !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />
-          <div className="sx-sess-card-path">
+          <div className="sx-sess-card-path" data-tip={chatName}>
             <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
-            <span>{chatId}</span>
-            <CardCopy text={chatId} label={t('Copy chat ID', '复制聊天 ID')} />
+            <span>{chatName}</span>
+            {(chatTitle === undefined || chatTitle === '') && chatId !== undefined && chatId !== '' && (
+              <CardCopy text={chatId} label={t('Copy chat ID', '复制聊天 ID')} />
+            )}
           </div>
         </>
       )}

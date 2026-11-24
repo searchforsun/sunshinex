@@ -134,9 +134,16 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                       <PlatformIcon size={16} strokeWidth={1.75} />
                     </span>
                     <span className="ws-slug sx-ws-name">{g.name}</span>
-                    {/* 展开/收起指示(2026-11-23 用户裁定「名称后面增加 >V 图标」):随组开合旋转,
-                        与分区头 sx-side-chev 同款(收起=向右,展开=向下) */}
-                    <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${gOpen ? ' open' : ''}`} />
+                    {/* 展开/收起指示(2026-11-24 用户裁定「应用右侧加上 >V」:常显+紧跟应用名)——
+                        sx-side-chev 基类默认 opacity:0+margin-left:auto(分区头 hover 形),组行内联
+                        覆写为常显紧跟(与项目分区头同款旋转:收起=向右,展开=向下) */}
+                    <ChevronRight
+                      size={14}
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      style={{ marginLeft: 6, opacity: 1, flex: 'none' }}
+                      className={`sx-side-chev${gOpen ? ' open' : ''}`}
+                    />
                   </button>
                   {/* 行尾簇(2026-11-22 用户裁定:计数在图标钮左,最右=通道配置跳转钮) */}
                   <span className="ws-row-actions">
@@ -185,7 +192,8 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                             runs: sr.runs,
                             steps: sr.steps,
                             createdAt: sr.createdAt,
-                            chatId: sr.chatId, // 平台聊天会话标识(悬浮卡显示+复制)
+                            chatId: sr.chatId, // 平台聊天会话标识(悬浮卡回退显示+复制)
+                            chatTitle: sr.chatTitle, // 聊天名称(2026-11-24 裁定「hover 显示聊天名称」:单聊=人名/群聊=群名,缺席回落 chatId)
                             rootPath: workspaceOf(sr.root), // 悬浮卡工作区行=完整 workspace 目录(2026-11-22 裁定;attach 仍走 sr.root 域目录)
                           }}
                           updatedAt={sr.updatedAt}

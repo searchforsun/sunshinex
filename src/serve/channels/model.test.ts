@@ -96,3 +96,30 @@ test('parseChannelsKey: commands 开放命令解析（2026-11-22 用户裁定命
   const absent = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', allow: { kind: 'all' } }]);
   assert.equal(absent.value[0]!.commands, undefined);
 });
+
+test('parseChannelsKey: sessionKind/charter 解析（2026-11-24 用户裁定「普通会话还是 Sunx」）——sunx 收口/非法跳字段/charter 逐字/空串=缺席', () => {
+  // sunx 收口 + charter 逐字保存（不 trim）
+  const ok = parseChannelsKey([{ id: 'tg1', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', sessionKind: 'sunx', charter: '  品性原文带首尾空白  ', allow: { kind: 'all' } }]);
+  assert.equal(ok.warnings.length, 0);
+  assert.equal(ok.value[0]!.sessionKind, 'sunx');
+  assert.equal(ok.value[0]!.charter, '  品性原文带首尾空白  ');
+  // 缺席=普通会话;空串 charter=缺席
+  const absent = parseChannelsKey([{ id: 'tg2', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', charter: '', allow: { kind: 'all' } }]);
+  assert.equal(absent.value[0]!.sessionKind, undefined);
+  assert.equal(absent.value[0]!.charter, undefined);
+  assert.equal(absent.warnings.length, 0);
+  // 非法 sessionKind（非 sunx 非空串）→ warning 跳字段回退普通;charter 非串 → warning 跳字段
+  const bad = parseChannelsKey([
+    { id: 'tg3', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', sessionKind: 'oracle', charter: '品性', allow: { kind: 'all' } },
+    { id: 'tg4', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', sessionKind: 'sunx', charter: 42, allow: { kind: 'all' } },
+  ]);
+  assert.equal(bad.value[0]!.sessionKind, undefined);
+  assert.equal(bad.value[0]!.charter, '品性', 'sessionKind 跳字段不影响 charter');
+  assert.equal(bad.value[1]!.charter, undefined);
+  assert.equal(bad.warnings.length, 2);
+  // 超 20000 字 → warning 跳字段
+  const long = 'x'.repeat(20001);
+  const over = parseChannelsKey([{ id: 'tg5', platform: 'telegram', enabled: true, root: 'D:/w', mode: 'read-only', charter: long, allow: { kind: 'all' } }]);
+  assert.equal(over.value[0]!.charter, undefined);
+  assert.equal(over.warnings.length, 1);
+});

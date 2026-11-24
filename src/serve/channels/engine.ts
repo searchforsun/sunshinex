@@ -35,6 +35,7 @@ import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
 import type { ChannelAdapter, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
 import { registeredWorkspaceRoots } from '../workspace-registry';
+import { runCommand } from '../session-commands';
 
 /** 健康快照行:enabled 取当前配置快照(移除/停用即 false);connected 取在座适配器 health(缺席/起失败即 false) */
 export interface ChannelHealthRow {
@@ -144,6 +145,9 @@ export class ChannelsEngine {
         this.runOrigin.set(sessionId, msg);
       },
       workspaceRoots: () => registeredWorkspaceRoots(),
+      // /compact 压缩执行单点(2026-11-24 用户裁定「sunx 模式也支持 workspace、compact 等命令」):
+      // serve runCommand 直通——GUI/TUI 聊天命令同链路(命令气泡/工具三态行/压缩回执全落转录)
+      compact: (rt) => runCommand(rt, '/compact'),
     });
   }
 

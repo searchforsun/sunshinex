@@ -34,7 +34,7 @@ const healthRow = (over: Partial<ChannelHealthRowMsg> = {}): ChannelHealthRowMsg
  *  opts.cfg = GET /settings/channels 配置读面初始应答——已有通道弹窗回填真值的数据源。
  *  写面回显语义：putChannels 成功后配置读面返回刚写的全表（daemon 写盘后 handleChannelsGet
  *  同语义）——保存后的卡片与行内试连结果经重拉存活，真实链路同径） */
-function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfigMsg[] } = {}) {
+function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfigMsg[]; templates?: Array<{ id: string; name: string; description?: string; charter: string; shadowed?: boolean }> } = {}) {
   let current: ChannelConfigMsg[] = opts.cfg ?? [];
   const channelsView = vi.fn(async () => ({ channels: chans }));
   const settingsChannels = vi.fn(async () => ({ channels: current, warnings: [] }));
@@ -46,8 +46,9 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
   const deleteChannel = vi.fn(async (): Promise<{ ok: true }> => ({ ok: true }));
   const models = vi.fn(async (): Promise<{ choices: Array<{ id: string; model: string }> }> => ({ choices: [{ id: 'bigmodel/glm-5.3', model: 'glm-5.3' }] }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
-  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces };
+  const sunxTemplates = vi.fn(async () => ({ entries: opts.templates ?? [], warnings: [] }));
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces, sunxTemplates } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces, sunxTemplates };
 }
 
 describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联回显）', () => {
@@ -245,7 +246,7 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
     await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
     const row = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
-    expect(row.commands).toEqual(['/help', '/new', '/status', '/workspace', '/model', '/effort']);
+    expect(row.commands).toEqual(['/help', '/new', '/status', '/workspace', '/model', '/effort', '/compact']);
   });
 
   /** ⑫ 自动取名（2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」）:应用名称留空
@@ -296,5 +297,44 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     expect(await screen.findByText(bi('This app is already connected.', '该通道应用已接入。'))).toBeDefined();
     expect(container.querySelector('.sx-toast-warn')).not.toBeNull();
     expect(putChannels).not.toHaveBeenCalled();
+  });
+
+  /** ⑯ 会话模式 Sunx（2026-11-24 用户裁定「普通会话还是 Sunx…品性会话级,/new 仅品性复用」）：
+   *  模式切 Sunx → 品性模板下拉+textarea 展开;模板选中全文回填;保存 → putChannels 行载
+   *  sessionKind/charter;改回普通 → 双键全省 */
+  it('writes sessionKind/charter when the session mode is Sunx', async () => {
+    const cfg: ChannelConfigMsg = { id: 'telegram-9', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } };
+    const { conn, putChannels, sunxTemplates } = makeConn([healthRow({ id: 'telegram-9' })], {
+      cfg: [cfg],
+      templates: [{ id: 't-review', name: '评审助手', description: '严谨评审', charter: '# 评审品性\n结论先行', shadowed: false }],
+    });
+    render(<ChannelsPane conn={conn} />);
+    await waitFor(() => expect(sunxTemplates).not.toHaveBeenCalled()); // 挂载零拉取:弹窗开启才拉
+    fireEvent.click(await screen.findByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    await waitFor(() => expect(sunxTemplates).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: bi('Session mode', '会话模式') }));
+    fireEvent.click(await screen.findByRole('option', { name: bi('Sunx orchestration', 'Sunx 编排') }));
+    const charter = await screen.findByRole('textbox', { name: bi('Charter', '品性') });
+    expect(charter).toBeDefined(); // 品性 textarea 展开
+    fireEvent.click(await screen.findByRole('button', { name: bi('Charter template', '品性模板') }));
+    fireEvent.click(await screen.findByRole('option', { name: /评审助手/ }));
+    expect((screen.getByRole('textbox', { name: bi('Charter', '品性') }) as HTMLTextAreaElement).value).toBe('# 评审品性\n结论先行'); // 模板全文回填
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
+    const row = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
+    expect(row.sessionKind).toBe('sunx');
+    expect(row.charter).toBe('# 评审品性\n结论先行');
+    // 保存成功弹窗自动关——重开编辑(回填真值:模式=Sunx+品性原文)改回普通会话:双键全省
+    // (后端缺席=普通,旧档零迁移)
+    fireEvent.click(screen.getByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    expect((await screen.findByRole('button', { name: bi('Session mode', '会话模式') })).textContent).toContain('Sunx orchestration');
+    expect((screen.getByRole('textbox', { name: bi('Charter', '品性') }) as HTMLTextAreaElement).value).toBe('# 评审品性\n结论先行');
+    fireEvent.click(screen.getByRole('button', { name: bi('Session mode', '会话模式') }));
+    fireEvent.click(await screen.findByRole('option', { name: bi('Standard chat', '普通会话') }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
+    await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(2));
+    const row2 = (putChannels.mock.calls[1]![0] as ChannelConfigMsg[])[0]!;
+    expect(row2.sessionKind).toBeUndefined();
+    expect(row2.charter).toBeUndefined();
   });
 });

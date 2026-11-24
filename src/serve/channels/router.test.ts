@@ -34,6 +34,7 @@ interface RtStub {
   steers: Array<{ text: string; images?: string[] }>;
   interrupts: number;
   cancelSteer?: (seq: number) => boolean;
+  steerFront?: (seq: number) => boolean;
   snapshotResponse?: () => { queued: Array<{ seq: number; text: string }>; effort?: string };
   setModel?: (id: string | undefined) => boolean;
   setEffort?: (v: string) => boolean;
@@ -85,6 +86,8 @@ interface HarnessOpts {
   attachFail?: boolean;
   runtimeFactory?: (id: string) => RtStub;
   workspaceRoots?: () => string[];
+  /** /compact 执行桩(㉑;缺省不注=deps.compact 缺席,cmdCompact 走 unsupported 分支) */
+  compact?: (rt: SessionRuntime) => Promise<'ok' | 'unsupported' | 'busy'>;
   /** noteRunSubmit 捕获(bug2 run 起源):[sessionId, msgId] 序对 */
   noteRunSubmits?: Array<{ sessionId: string; msgId: string }>;
 }
@@ -142,6 +145,7 @@ function makeHarness(opts: HarnessOpts = {}) {
         }
       : {}),
     ...(opts.workspaceRoots !== undefined ? { workspaceRoots: opts.workspaceRoots } : {}),
+    ...(opts.compact !== undefined ? { compact: opts.compact } : {}),
   };
   return { router: new ChannelRouter(deps), io, bindings, acks, createCalls, released, attached, noteSenders, runtimes };
 }
@@ -543,29 +547,35 @@ test('⑱ /effort:无参列表;序号/名切换 setEffort;非法提示', async (
   assert.equal(efforts.length, 2); // 非法值未落 setEffort
 });
 
-// ⑲ 排队两选项（2026-11-24 用户裁定 bug1「正常进入队列中,同时给用户两个选项:1 插入当前
-// 会话,2 暂停当前会话发出新消息」）：排队回执照发且附选项;「1」保持排队零动作;「2」撤队列+
-// 中断+立即执行（run 起源=原消息气泡）;非序号回复不作选择照常分派
-test('⑲ 排队两选项:回执附选项;1=保持排队;2=撤队列+中断+立即执行;非序号照常分派', async () => {
+// ⑲ 排队两选项（2026-11-24 用户裁定「默认是 daemon 排队,1/2=模拟插入和立即发出」）：消息照常
+// steer 入 daemon 队列,回执附选项;「1」=模拟插入（steerFront 置首,running;idle=直接发出）;
+// 「2」=撤队列+中断+立即执行（run 起源=原消息气泡）;非序号回复不作选择照常分派
+test('⑲ 排队两选项:回执附选项;1=置首模拟插入(idle=直接发出);2=撤队列+中断+立即执行;非序号照常分派', async () => {
   const noteRunSubmits: Array<{ sessionId: string; msgId: string }> = [];
   const h = makeHarness({ noteRunSubmits });
   await h.router.handleInbound(mkMsg({ msgId: 'p1', text: '开场' })); // idle submit
   const rt = rtOf(h, bindingKey('m1', 'c1'));
   rt._status = 'running';
   rt.snapshotResponse = () => ({ queued: [{ seq: 0, text: '加个需求' }] });
-  await h.router.handleInbound(mkMsg({ msgId: 'p2', text: '加个需求' })); // 排队+选项回执
-  assert.equal(rt.steers.length, 1);
+  const fronts: number[] = [];
+  rt.steerFront = (seq) => {
+    fronts.push(seq);
+    return true;
+  };
+  await h.router.handleInbound(mkMsg({ msgId: 'p2', text: '加个需求' })); // daemon 队列+选项回执
+  assert.equal(rt.steers.length, 1); // 默认=daemon 队列(非通道侧托管)
   assert.ok(h.acks[1]!.text.includes('已加入排队'));
+  assert.ok(h.acks[1]!.text.includes('1. 插入当前对话'));
   assert.ok(h.acks[1]!.text.includes('2. 暂停当前任务'));
 
-  await h.router.handleInbound(mkMsg({ msgId: 'p3', text: '1' })); // 保持排队:零会话动作
-  assert.ok(h.acks[2]!.text.includes('保持排队'));
+  await h.router.handleInbound(mkMsg({ msgId: 'p3', text: '1' })); // 模拟插入:置首,零 steer 增量零中断
+  assert.deepEqual(fronts, [0]);
+  assert.equal(rt.steers.length, 1);
   assert.equal(rt.interrupts, 0);
-  assert.equal(rt.steers.length, 1); // 未撤未重排
+  assert.ok(h.acks[2]!.text.includes('已插入当前对话'));
 
   await h.router.handleInbound(mkMsg({ msgId: 'p4', text: '再排一条' }));
   assert.equal(rt.steers.length, 2);
-  rt.snapshotResponse = () => ({ queued: [{ seq: 0, text: '再排一条' }] });
   rt.cancelSteer = (seq) => {
     rt._status = 'idle'; // 桩:撤队列即 run 收口(idle)
     rt.snapshotResponse = () => ({ queued: [] });
@@ -588,4 +598,89 @@ test('⑲ 排队两选项:回执附选项;1=保持排队;2=撤队列+中断+立�
   await h.router.handleInbound(mkMsg({ msgId: 'p6', text: '普通消息' })); // 非序号:照常 steer 分派
   assert.equal(rt.steers.length, 3);
   assert.ok(h.acks[5]!.text.includes('已加入排队'));
+
+  // 「1」当会话已空闲:队列不动不跑——插入=直接发出
+  rt._status = 'running';
+  rt.snapshotResponse = () => ({ queued: [{ seq: 0, text: '空闲前排队' }] });
+  await h.router.handleInbound(mkMsg({ msgId: 'p7', text: '空闲前排队' }));
+  assert.equal(rt.steers.length, 4);
+  rt._status = 'idle'; // run 自然收束,条目仍在队列
+  await h.router.handleInbound(mkMsg({ msgId: 'p8', text: '1' }));
+  assert.equal(rt.submits[rt.submits.length - 1]!.text, '空闲前排队');
+  assert.ok(h.acks[7]!.text.includes('当前空闲，本条已直接开始处理'));
+});
+
+// ⑳ Sunx 模式（2026-11-24 用户裁定「通道支持 Sunx,品性会话级,/new 仅品性复用」）：新建腿
+// createOpts 透传 kind/name/charter;/new 同样透传（品性沿用,对话全新）;ack 文案明示品性沿用
+test('⑳ Sunx 模式:新建与 /new 都透传 kind/name/charter;ack 明示品性沿用', async () => {
+  const cfg = mkCfg({ sessionKind: 'sunx', name: '飞书助手', charter: '品行章程原文' });
+  const h = makeHarness({ configs: [cfg] });
+  await h.router.handleInbound(mkMsg({ msgId: 'sx1', text: '开场' }));
+  assert.deepEqual(h.createCalls[0]!.opts, {
+    mode: 'acceptEdits',
+    activate: false,
+    kind: 'sunx',
+    name: '飞书助手',
+    charter: '品行章程原文',
+    channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手' },
+  });
+  await h.router.handleInbound(mkMsg({ msgId: 'sx2', text: '/new' }));
+  assert.deepEqual(h.createCalls[1]!.opts, {
+    mode: 'acceptEdits',
+    activate: false,
+    kind: 'sunx',
+    name: '飞书助手',
+    charter: '品行章程原文',
+    channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手' },
+  });
+  assert.ok(h.acks[1]!.text.includes('品性沿用'));
+  // 普通会话通道:opts 无 sunx 三键（零变化面）;ack 旧文案
+  const h2 = makeHarness();
+  await h2.router.handleInbound(mkMsg({ msgId: 'sx3', text: '开场' }));
+  assert.equal(h2.createCalls[0]!.opts?.kind, undefined);
+  assert.equal(h2.createCalls[0]!.opts?.charter, undefined);
+  await h2.router.handleInbound(mkMsg({ msgId: 'sx4', text: '/new' }));
+  assert.ok(h2.acks[1]!.text.includes('已开启新会话'));
+  assert.ok(!h2.acks[1]!.text.includes('品性'));
+});
+
+// ㉑ /compact（2026-11-24 用户裁定「sunx 模式也支持 workspace、compact 等命令」）：无绑定引导;
+// 运行中拒绝;idle → 先回执「正在压缩」再执行,ok/busy/异常三终态各有回执
+test('㉑ /compact:无绑定引导;运行中拒绝;idle 执行 ok/busy/异常三终态', async () => {
+  // 无绑定
+  const h0 = makeHarness();
+  await h0.router.handleInbound(mkMsg({ msgId: 'k0', text: '/compact' }));
+  assert.ok(h0.acks[0]!.text.includes('发送任意消息开始对话'));
+  assert.equal(h0.createCalls.length, 0);
+
+  // 运行中拒绝
+  const hRun = makeHarness();
+  await hRun.router.handleInbound(mkMsg({ msgId: 'k1', text: '开场' }));
+  const rtRun = rtOf(hRun, bindingKey('m1', 'c1'));
+  rtRun._status = 'running';
+  await hRun.router.handleInbound(mkMsg({ msgId: 'k2', text: '/compact' }));
+  assert.ok(hRun.acks[1]!.text.includes('任务进行中'));
+
+  // idle → ok 终态:先「正在压缩」后「已压缩」
+  let calls = 0;
+  const compactResults: Array<'ok' | 'busy'> = ['ok', 'busy'];
+  const h = makeHarness({
+    compact: () => Promise.resolve(compactResults[calls++] ?? 'ok'),
+  });
+  await h.router.handleInbound(mkMsg({ msgId: 'k3', text: '开场' }));
+  await h.router.handleInbound(mkMsg({ msgId: 'k4', text: '/compact' }));
+  assert.equal(calls, 1);
+  assert.ok(h.acks[1]!.text.includes('正在压缩'));
+  assert.ok(h.acks[2]!.text.includes('上下文已压缩'));
+  // busy 终态(执行间隙被任务抢占)
+  await h.router.handleInbound(mkMsg({ msgId: 'k5', text: '/compact' }));
+  assert.ok(h.acks[3]!.text.includes('正在压缩'));
+  assert.ok(h.acks[4]!.text.includes('任务抢先开始'));
+
+  // 执行抛异常 → 失败终态回执,不击穿 handleInbound
+  const hBad = makeHarness({ compact: () => Promise.reject(new Error('summarize boom')) });
+  await hBad.router.handleInbound(mkMsg({ msgId: 'k6', text: '开场' }));
+  await hBad.router.handleInbound(mkMsg({ msgId: 'k7', text: '/compact' }));
+  assert.ok(hBad.acks[2]!.text.includes('压缩失败'));
+  assert.ok(!hBad.acks.some((a) => a.text.includes('处理失败')), 'cmdCompact 自捕异常,不走外层处理失败兜底');
 });

@@ -67,6 +67,11 @@ export interface ChannelConfigMsg {
   /** 思考强度（2026-11-23 用户裁定「可以选择默认的模型和强度」）：EFFORT_ORDER 子集；
    *  缺席=跟随全局默认（镜像 serve/channels/model.ts ChannelConfig.effort） */
   effort?: string;
+  /** 会话模式（2026-11-24 用户裁定「普通会话还是 Sunx」）：'sunx'=各聊天建 Sunx 编排会话;
+   *  缺席=普通会话（镜像 serve/channels/model.ts ChannelConfig.sessionKind） */
+  sessionKind?: 'sunx';
+  /** Sunx 品性原文（sessionKind==='sunx' 消费;/new 仅品性复用）：逐字保存（镜像 charter） */
+  charter?: string;
   allow: { kind: 'first-user' | 'list' | 'all'; userIds?: string[]; chatIds?: string[] };
 }
 export interface ChannelHealthRowMsg { id: string; platform: string; enabled: boolean; connected: boolean; detail?: string }

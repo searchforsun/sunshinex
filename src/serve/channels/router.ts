@@ -23,7 +23,7 @@ import type { Result } from '../../result';
 /** 会话 IO 面（engine/Task 7 装配 daemon 既有单点：createSession/attach 走 session-lifecycle、
  *  resolveApproval 接审批回执路由同款方法） */
 export interface ChannelsSessionIo {
-  createSession(root: string, opts?: { mode?: 'read-only' | 'acceptEdits' | 'full-access'; activate?: boolean; model?: string; channelMeta?: { platform: string; chatId: string; appName?: string } }): Result<{ sessionId: string }>;
+  createSession(root: string, opts?: { mode?: 'read-only' | 'acceptEdits' | 'full-access'; activate?: boolean; model?: string; effort?: string; kind?: 'sunx'; name?: string; charter?: string; channelMeta?: { platform: string; chatId: string; appName?: string } }): Result<{ sessionId: string }>;
   getSession(id: string): SessionRuntime | undefined;
   attach(id: string, journalId: string): Result<{ sessionId: string; root: string }>;
   releaseSession(id: string): void;
@@ -60,6 +60,9 @@ export interface ChannelRouterDeps {
   noteRunSubmit?: (sessionId: string, msg: InboundMessage) => void;
   /** 注册工作区根清单（/workspace 候选,engine 缺省装配 workspace-registry 扫描;测试注入桩） */
   workspaceRoots?: () => string[];
+  /** /compact 压缩执行单点（engine 缺省装配 serve runCommand——GUI/TUI 同链路;测试注入桩）：
+   *  返回三态同 session-commands CommandRunResult */
+  compact?: (rt: SessionRuntime) => Promise<'ok' | 'unsupported' | 'busy'>;
   now?: () => number;
 }
 
@@ -69,10 +72,10 @@ const DEDUP_MAX = 4096;
  *  提交模型（/stop 之类当任务发没有意义），一句人性化提示即可——不暴露命令配置细节 */
 const COMMAND_DISABLED_TEXT = '该命令未开启，可直接发送任务描述。';
 
-/** 排队回执+处理方式选择（2026-11-24 用户裁定 bug1「正常进入队列中,同时给用户两个选项」）：
- *  消息照常排队,回执附两序号选项——保持排队 / 暂停当前任务本条立即执行;下一条恰为序号的回复
- *  被消费为选择（takeQueueChoice 截胡） */
-const QUEUE_CHOICE_TEXT = '已加入排队，当前任务完成后处理。\n回复序号可改变处理方式：\n1. 保持排队，随当前任务完成后处理\n2. 暂停当前任务，本条消息立即执行';
+/** 排队回执+处理方式选择（2026-11-24 用户裁定「默认是 daemon 排队,1/2=模拟插入和立即发出」）：
+ *  消息照常 rt.steer 入 **daemon 队列**（非通道侧——GUI 队列 chips 同源可见,收束续跑既有语义）,
+ *  回执附两序号选项;下一条恰为序号的回复被消费为选择（takeQueueChoice 截胡） */
+const QUEUE_CHOICE_TEXT = '已加入排队，当前任务完成后处理。\n回复序号可改变处理方式：\n1. 插入当前对话，让助手立即看到\n2. 暂停当前任务，本条消息立即执行';
 
 /** 排队选择待答 TTL：超时未选择即作废（防陈座截胡——用户此后发的「1」是真实消息不再是选择） */
 const QUEUE_CHOICE_TTL_MS = 10 * 60_000;
@@ -83,8 +86,9 @@ const WORKSPACE_LIST_MAX = 8;
 /** 思考强度显示名（GUI effort-slider EFFORT_ZH 镜像 + none 档补位;协议值恒英文 EFFORT_ORDER 序） */
 const EFFORT_LABELS: Partial<Record<string, string>> = { none: '关（最快）', minimal: '极简', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' };
 
-/** 排队选择待答条目（bug1）：seq=撤队列寻址键（rt.cancelSteer）;text/images=立即执行重提交原料;
- *  inbound=原消息（「2」成功后 noteRunSubmit 的 run 起源——回答回原气泡）;at=武装时刻（TTL） */
+/** 排队选择待答条目：seq=daemon 队列寻址键（steerFront 置首/cancelSteer 撤销）;text/images=
+ *  「2 暂停新发」的重提交原料;inbound=原消息（重提交成功后 noteRunSubmit 的 run 起源——回答回
+ *  原气泡）;at=武装时刻（TTL） */
 interface QueueChoice {
   sessionId: string;
   seq: number;
@@ -97,7 +101,7 @@ interface QueueChoice {
 export class ChannelRouter {
   /** 去重表：Map 插入序即 LRU 序（触达重插刷新、超限逐出最旧） */
   private readonly seen = new Map<string, true>();
-  /** 排队选择待答表（bug1）：绑定键 → 待答条目——排队回执武装,下一条恰为「1/2」的回复消费;
+  /** 排队选择待答表：绑定键 → 待答条目——排队回执武装,下一条恰为「1/2」的回复消费;
    *  每键单条（新排队覆盖旧待答,同审批/提问挂起「最新覆盖」口径） */
   private readonly queueChoices = new Map<string, QueueChoice>();
 
@@ -169,6 +173,10 @@ export class ChannelRouter {
     }
     if (cmd?.cmd === '/effort') {
       await this.cmdEffort(msg, binding, text.slice('/effort'.length).trim());
+      return;
+    }
+    if (cmd?.cmd === '/compact') {
+      await this.cmdCompact(msg, binding);
       return;
     }
     await this.dispatch(msg, cfg, key, binding); // ⑦⑧⑨⑫ 绑定解析三态 + 提交分派 + ack
@@ -300,6 +308,35 @@ export class ChannelRouter {
     await this.deps.ack(msg, `已切换思考强度到 ${EFFORT_LABELS[v] ?? v}，下一条消息生效。`);
   }
 
+  /** /compact（2026-11-24 用户裁定「sunx 模式也支持 workspace、compact 等命令」;普通会话同样
+   *  可用）：先回执「正在压缩」再执行（deps.compact 单点=serve runCommand,GUI/TUI 同链路——
+   *  压缩经模型摘要可能数十秒,IM 侧不能无声等待）;完成/失败/让位（busy=执行间隙被任务抢占）
+   *  各有终态回执,回 /compact 命令气泡。运行中直接拒绝（压缩要求 idle,runCommand IDLE_ONLY
+   *  同语义） */
+  private async cmdCompact(msg: InboundMessage, binding: Binding | undefined): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /compact 压缩上下文。');
+      return;
+    }
+    if (rt.status() !== 'idle') {
+      await this.deps.ack(msg, '任务进行中，等当前任务完成后再压缩。');
+      return;
+    }
+    await this.deps.ack(msg, '正在压缩上下文，完成后会通知你。');
+    try {
+      const r = await (this.deps.compact?.(rt) ?? Promise.resolve('unsupported'));
+      if (r === 'ok') {
+        await this.deps.ack(msg, '上下文已压缩，窗口空间已释放。');
+      } else {
+        await this.deps.ack(msg, r === 'busy' ? '任务抢先开始，本次未压缩——稍后再试。' : '压缩未执行，请稍后重试。');
+      }
+    } catch {
+      // 压缩异常:终态回执可见化即可（router 无日志面,handleInbound 外层契约继续兜底）
+      await this.deps.ack(msg, '压缩失败，请稍后重试。');
+    }
+  }
+
   /** 去重（①）：(channel,msgId) LRU 4096——触达重插刷新序，超限逐出最旧 */
   private isDup(channelId: string, msgId: string): boolean {
     const k = `${channelId}:${msgId}`;
@@ -355,14 +392,15 @@ export class ChannelRouter {
    *  影响之前会话的内容，就放着就可以」）：/new 不 release 旧座——GUI 开着旧会话时 snapshot/
    *  pty 等会话维端点照常寻址（404 根修），旧转录/终端原样可回看，注册表容量交 daemon 既有面 */
   private async cmdNew(msg: InboundMessage, cfg: ChannelConfig, key: string, binding: Binding | undefined): Promise<void> {
-    this.queueChoices.delete(key); // 旧会话排队条目的选择待答随之作废（绑定将换新座,选择语义失效）
+    this.queueChoices.delete(key); // 旧会话排队条目的选择待答随之作废（绑定将换新座,选择语义失效;
+    // daemon 队列本体不动——旧座生命照旧「就放着就可以」,队列条目随旧座既有语义自然接续）
     const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg, msg.chatId));
     if (!created.ok) {
       await this.deps.ack(msg, `新会话创建失败：${created.error.message}`);
       return;
     }
     const sessionId = created.value.sessionId;
-    const seat = this.seatAndTag(cfg, sessionId, msg.chatId);
+    const seat = this.seatAndTag(cfg, sessionId, msg.chatId, this.chatTitleOf(binding, msg));
     if (seat.rt === undefined) {
       await this.deps.ack(msg, '新会话创建失败：运行时未入注册表');
       return;
@@ -370,12 +408,16 @@ export class ChannelRouter {
     // 旧运行时**不释放**（2026-11-23 用户裁定「就放着就可以」）：旧座留注册表——GUI 开着旧
     // 会话的 snapshot/pty 等端点不 404
     this.upsertBinding(key, sessionId, seat, cfg, binding, msg);
-    await this.deps.ack(msg, '已开启新会话，原会话留档可回看');
+    // Sunx 通道（2026-11-24 用户裁定「/new 重新创建一个新的 Sunx,只是品行复用」）：新建腿走
+    // createOpts 的 kind/charter 透传——品性冻结层随配置沿用,对话上下文全新
+    await this.deps.ack(msg, cfg.sessionKind === 'sunx' ? '已开启新的 Sunx（品性沿用），原会话留档可回看' : '已开启新会话，原会话留档可回看');
   }
 
   /** 绑定解析三态（⑦⑧⑨）+ 提交分派：在座直用 → attach 重开（失败释放残座）→ 新建；
-   *  idle→submit（409 回退 steer）、running→steer；群聊注入发送者前缀（⑫）；
-   *  绑定解析成功后 noteSender 回写（Task 7 lastSender 消费）；ack 二态回执（计划 §4 第 6 条） */
+   *  idle→submit（409 回退 daemon 队列）、running→daemon 队列（默认排队,GUI 队列 chips 同源;
+   *  「1 插入」=steerFront 置首注入当前轮、「2 暂停」=撤队列+中断+立即执行,见 applyQueueChoice）；
+   *  群聊注入发送者前缀（⑫）；绑定解析成功后 noteSender 回写（Task 7 lastSender 消费）；
+   *  ack 二态回执（计划 §4 第 6 条） */
   private async dispatch(msg: InboundMessage, cfg: ChannelConfig, key: string, existing: Binding | undefined): Promise<void> {
     let sessionId: string | undefined;
     let rt: SessionRuntime | undefined;
@@ -395,7 +437,7 @@ export class ChannelRouter {
         await this.deps.ack(msg, `会话创建失败：${created.error.message}`);
         return;
       }
-      const seat = this.seatAndTag(cfg, created.value.sessionId, msg.chatId);
+      const seat = this.seatAndTag(cfg, created.value.sessionId, msg.chatId, this.chatTitleOf(existing, msg));
       if (seat.rt === undefined) {
         await this.deps.ack(msg, '会话创建失败：运行时未入注册表');
         return;
@@ -424,18 +466,18 @@ export class ChannelRouter {
         this.deps.noteRunSubmit?.(sessionId, msg); // run 起源=本消息气泡（bug2 根修:run 产物回此气泡）
       }
     } else {
-      rt.steer(submitText, msg.images); // running → steer
+      rt.steer(submitText, msg.images); // running → daemon 队列（默认排队,GUI 队列 chips 同源）
       queued = true;
     }
     this.deps.onSubmitted?.(sessionId, target); // 裁定 1：分派成功（submit 直达/409 回退 steer/running steer）即回调
-    if (queued) this.armQueueChoice(sessionId, rt, msg, submitText); // bug1:排队即武装两选项待答
+    if (queued) this.armQueueChoice(sessionId, rt, msg, submitText); // 排队即武装两选项待答
     // ack 二态回执（计划 §4 第 6 条）：kind 二态受理标随行（engine 据此走平台 ack 面/文本回退——
     // 飞书 accepted=OnIt「处理中」表情免文本;排队回执附两序号选项(QUEUE_CHOICE_TEXT)）
     await this.deps.ack(msg, queued ? QUEUE_CHOICE_TEXT : '已受理，处理中', queued ? 'queued' : 'accepted');
   }
 
-  /** 排队选择待答武装（bug1）：steer 入列后取快照队尾 seq（同循环内同步入列,队尾即本条）——
-   *  选择「2」凭 seq 撤队列;快照失败=无待答,回执照发不阻断 */
+  /** 排队选择待答武装：steer 入 daemon 队列后取快照队尾 seq（同循环内同步入列,队尾即本条）——
+   *  「1 插入」凭 seq 置首、「2 暂停」凭 seq 撤队列;快照失败=无待答,回执照发不阻断 */
   private armQueueChoice(sessionId: string, rt: SessionRuntime, msg: InboundMessage, submitText: string): void {
     try {
       const items = rt.snapshotResponse().queued;
@@ -455,7 +497,7 @@ export class ChannelRouter {
     }
   }
 
-  /** 排队选择截胡判定（bug1）：待答在座且 trim 后恰为「1/2」（容尾标点 . 。 、）→ 消费并摘座;
+  /** 排队选择截胡判定：待答在座且 trim 后恰为「1/2」（容尾标点 . 。 、）→ 消费并摘座;
    *  非序号回复时仅作 TTL 兜底清座（超时未选择,此后「1」是真实消息不再是选择） */
   private takeQueueChoice(key: string, text: string): { choice: QueueChoice; n: 1 | 2 } | undefined {
     const ch = this.queueChoices.get(key);
@@ -469,22 +511,40 @@ export class ChannelRouter {
     return { choice: ch, n: Number(m[1]) as 1 | 2 };
   }
 
-  /** 排队选择消费（bug1，2026-11-24 用户裁定「1 插入当前会话,2 暂停当前会话发出新消息」）：
-   *  1=保持排队（已入列,一句确认零动作）;2=暂停当前任务并立即执行本条——撤队列（cancelSteer,
-   *  GUI pauseAndSend 同款）→ 中断当前 run → 等 idle（≤10s,40×250ms 覆盖在飞模型调用收尾）→
-   *  submitExternal 立即执行（run 起源=原消息气泡,noteRunSubmit）;提交失败退回排队不丢消息。
-   *  条目已出列（已自然接续）则如实告知,零动作 */
+  /** 排队选择消费（2026-11-24 用户裁定「默认 daemon 排队,1=模拟插入,2=暂停立即发出」）：
+   *  1=插入当前对话——running 时 steerFront 置首（下一 step 边界即注入当前轮,助手立即看到）;
+   *  idle 时队列不动不跑,插入即直接发出（cancelSteer+submitExternal）;2=暂停当前任务并立即
+   *  执行本条——cancelSteer 撤队列 → interrupt 中断当前 run → 等 idle（≤10s,40×250ms 覆盖在飞
+   *  模型调用收尾）→ submitExternal 立即执行（run 起源=原消息气泡,noteRunSubmit）;提交失败
+   *  退回队列不丢消息。条目已出列（已自然注入/接续）则如实告知,零动作 */
   private async applyQueueChoice(msg: InboundMessage, ch: QueueChoice, n: 1 | 2): Promise<void> {
-    if (n === 1) {
-      await this.deps.ack(msg, '好的，本条保持排队，当前任务完成后处理。');
-      return;
-    }
     const rt = this.deps.io.getSession(ch.sessionId);
     if (rt === undefined) {
       await this.deps.ack(msg, '会话已结束，请直接发送新消息。');
       return;
     }
     const stillQueued = rt.snapshotResponse().queued.some((q) => q.seq === ch.seq);
+    if (n === 1) {
+      if (!stillQueued) {
+        await this.deps.ack(msg, '本条已进入对话，无需插入。');
+        return;
+      }
+      if (rt.status() === 'running') {
+        rt.steerFront(ch.seq); // 模拟插入:置首,下一 step 边界即注入当前轮
+        await this.deps.ack(msg, '已插入当前对话，助手接下来会看到这条消息。');
+        return;
+      }
+      rt.cancelSteer(ch.seq); // 已空闲:队列不动不跑——插入即直接发出
+      const r = rt.submitExternal(ch.text, ch.images);
+      if (r.ok) {
+        this.deps.noteRunSubmit?.(ch.sessionId, ch.inbound);
+        this.deps.onSubmitted?.(ch.sessionId, { channelId: msg.channel, chatId: msg.chatId });
+        await this.deps.ack(msg, '当前空闲，本条已直接开始处理。');
+      } else {
+        await this.deps.ack(msg, '插入未成功，请稍后重试。');
+      }
+      return;
+    }
     if (!stillQueued) {
       await this.deps.ack(msg, '本条已开始处理，无需暂停。');
       return;
@@ -509,11 +569,12 @@ export class ChannelRouter {
     await this.deps.ack(msg, '暂停成功，但立即执行未成功——本条已回到排队，任务停止后会处理。');
   }
 
-  /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel, chatId})（⑩ 通道标出生写一次，
-   *  侧栏「通道」分组消费 Task 13；chatId=平台聊天会话标识出生落档(2026-11-23)——悬浮卡
-   *  显示/复制在绑定反查缺席（旧会话//new 后解绑）时仍可达；缺席=普通会话）——各步尽力而为
+  /** 新建后仪式：ensureJournalMinted → writeSessionMeta({channel, chatId, chatTitle})（⑩ 通道标
+   *  出生写一次，侧栏「通道」分组消费 Task 13；chatId=平台聊天会话标识出生落档(2026-11-23)——
+   *  悬浮卡显示/复制在绑定反查缺席（旧会话//new 后解绑）时仍可达；chatTitle=聊天名称出生落档
+   *  (2026-11-24 用户裁定「hover 显示聊天名称」)；缺席=普通会话）——各步尽力而为
    *  try/catch；返回 runtime 与 journalId 供绑定 upsert */
-  private seatAndTag(cfg: ChannelConfig, sessionId: string, chatId: string): { rt: SessionRuntime | undefined; journalId?: string } {
+  private seatAndTag(cfg: ChannelConfig, sessionId: string, chatId: string, chatTitle?: string): { rt: SessionRuntime | undefined; journalId?: string } {
     const rt = this.deps.io.getSession(sessionId);
     if (rt === undefined) return { rt: undefined };
     try {
@@ -524,7 +585,11 @@ export class ChannelRouter {
     const journalId = rt.attachedJournalId;
     if (journalId !== undefined) {
       try {
-        writeSessionMeta(rt.dataDir, journalId, { channel: cfg.id, ...(chatId !== '' ? { chatId } : {}) });
+        writeSessionMeta(rt.dataDir, journalId, {
+          channel: cfg.id,
+          ...(chatId !== '' ? { chatId } : {}),
+          ...(chatTitle !== undefined && chatTitle !== '' ? { chatTitle } : {}),
+        });
       } catch {
         /* 尽力而为：通道标缺席=普通会话 */
       }
@@ -539,15 +604,21 @@ export class ChannelRouter {
     return cfg.root === 'auto' ? channelChatWorkspaceRoot(cfg.id, chatId) : cfg.root;
   }
 
-  /** createSession opts：mode 透传配置、activate:false（通道会话不抢 GUI 焦点）、model 可选透传；
-   *  channelMeta（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）——出生定版冻结层,
-   *  同一聊天逐字节一致（前缀缓存零损失;动态发言用户走 ⑫ 消息级 [来自 x]: 前缀不入此层） */
-  private createOpts(cfg: ChannelConfig, chatId: string): { mode: ChannelConfig['mode']; activate: false; model?: string; effort?: string; channelMeta: { platform: string; chatId: string; appName?: string } } {
+  /** createSession opts：mode 透传配置、activate:false（通道会话不抢 GUI 焦点）、model/effort 可选
+   *  透传；sunx 三键（2026-11-24 用户裁定「通道支持 Sunx 模式,品性会话级,/new 仅品性复用」）——
+   *  sessionKind==='sunx' 时 kind/name/charter 透传（name=应用名称作出生 title;charter 逐字进
+   *  品性冻结层）；channelMeta（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）——出生
+   *  定版冻结层,同一聊天逐字节一致（前缀缓存零损失;动态发言用户走 ⑫ 消息级 [来自 x]: 前缀不入此层） */
+  private createOpts(cfg: ChannelConfig, chatId: string): { mode: ChannelConfig['mode']; activate: false; model?: string; effort?: string; kind?: 'sunx'; name?: string; charter?: string; channelMeta: { platform: string; chatId: string; appName?: string } } {
+    const sunx = cfg.sessionKind === 'sunx';
     return {
       mode: cfg.mode,
       activate: false,
       ...(cfg.model !== undefined ? { model: cfg.model } : {}),
       ...(cfg.effort !== undefined ? { effort: cfg.effort } : {}), // 通道缺省档(2026-11-23 用户裁定「可以选择默认的模型和强度」)
+      ...(sunx ? { kind: 'sunx' as const } : {}),
+      ...(sunx && cfg.name !== undefined && cfg.name !== '' ? { name: cfg.name } : {}),
+      ...(sunx && cfg.charter !== undefined && cfg.charter !== '' ? { charter: cfg.charter } : {}),
       channelMeta: { platform: cfg.platform, chatId, ...(cfg.name !== undefined ? { appName: cfg.name } : {}) },
     };
   }
@@ -557,10 +628,21 @@ export class ChannelRouter {
     return binding?.lockedUserId ?? (cfg.allow.kind === 'first-user' ? msg.userId : undefined);
   }
 
-  /** 绑定 upsert 收敛单点（/new 重绑与 dispatch 新建腿共用）：journalId/lock/rootOverride/chatKind
-   *  保留优先拼装 + updatedAt——七元字段面一处承载，两调用点零漂移 */
+  /** 聊天名称（2026-11-24 用户裁定「hover 显示聊天名称,单聊=聊天人名称,群聊=群聊名称」）：
+   *  既有绑定名保留优先（含 /new 原样带过）;首绑自入站取——chatTitle（平台聊天信息 API,群聊名）
+   *  优先,单聊回落发送者姓名（通讯录富化面 userDisplay） */
+  private chatTitleOf(binding: Binding | undefined, msg: InboundMessage): string | undefined {
+    if (binding?.chatTitle !== undefined && binding.chatTitle !== '') return binding.chatTitle;
+    if (msg.chatTitle !== undefined && msg.chatTitle !== '') return msg.chatTitle;
+    if (msg.chatKind === 'direct') return msg.userDisplay !== undefined && msg.userDisplay !== '' ? msg.userDisplay : undefined;
+    return undefined;
+  }
+
+  /** 绑定 upsert 收敛单点（/new 重绑与 dispatch 新建腿共用）：journalId/lock/rootOverride/chatKind/
+   *  chatTitle 保留优先拼装 + updatedAt——字段面一处承载，两调用点零漂移 */
   private upsertBinding(key: string, sessionId: string, seat: { journalId?: string }, cfg: ChannelConfig, binding: Binding | undefined, msg: InboundMessage): void {
     const lock = this.lockOf(cfg, binding, msg);
+    const title = this.chatTitleOf(binding, msg);
     this.deps.bindings.upsert({
       key,
       sessionId,
@@ -568,6 +650,7 @@ export class ChannelRouter {
       ...(lock !== undefined ? { lockedUserId: lock } : {}),
       ...(binding?.rootOverride !== undefined ? { rootOverride: binding.rootOverride } : {}),
       chatKind: binding?.chatKind ?? msg.chatKind, // 绑定元数据：保留优先，首绑自入站消息取（spec §9.3 信息条单聊/群聊标）
+      ...(title !== undefined ? { chatTitle: title } : {}),
       updatedAt: this.nowMs(),
     });
   }

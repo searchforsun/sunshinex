@@ -3543,9 +3543,10 @@ input.sx-setting-input { width: 100%; }
 .sx-editor-modal-fields { flex: 1 1 auto; overflow-y: auto; }
 .sx-editor-modal-actions {
   flex: none;
-  margin: 6px -12px -12px;
-  /* 左右内衬 22px=容器圆角半径:按钮落进圆角曲线区即视觉贴边穿角（2026-11-23 用户实测「按钮都贴着边」）,
-     底部 16px 呼吸;负 margin 全出血结构不变 */
+  /* 负 margin 抵消 body 侧 padding(20px)/底 padding(18px)到全出血——2026-11-24 用户报障「和你
+     截图不一致」:旧 -12px 抵消不了 20px,实测落点 30px 比删除确认弹窗(24px)还远;现统一落位:
+     按钮侧衬 22px=容器圆角半径(按钮起于直边区,不穿角),底衬 16px 呼吸,分隔线全出血到边 */
+  margin: 6px -20px -18px;
   padding: 10px 22px 16px;
   border-top: 1px solid var(--border);
   justify-content: flex-end; /* 2026-11-23 用户裁定:双钮成组靠右,取消在确认左侧(重命名会话弹窗同语言;首版两端分布拆散视觉作废) */
@@ -3684,7 +3685,11 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-turn-confirm-files { list-style: none; margin: 0; padding: 6px 8px; max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-mono); }
 .sx-turn-confirm-files li { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; overflow-wrap: anywhere; }
 .sx-turn-confirm-tag { flex: none; color: var(--fg-secondary); font-family: inherit; }
-.sx-turn-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
+/* 确认弹窗按钮栏=EditorModal 尾栏同构（2026-11-24 用户报障「删除弹窗按钮离边框太远,和其他
+   弹窗不一致」:旧值在 460px 弹窗侧衬 24px(嵌 body 12px 时)/rewind 面 12px 三面三个值——
+   统一侧衬 22px=圆角半径、底衬 16px、分隔线全出血;本类必须是弹窗直接子级
+   (rewind 本就如此;channels 删除弹窗已把 actions 移出 body form 同构) */
+.sx-turn-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 22px 16px; border-top: 1px solid var(--border); }
 .sx-turn-confirm-actions button { padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); cursor: pointer; }
 .sx-turn-confirm-actions button:hover:not(:disabled) { border-color: var(--border-strong); }
 .sx-turn-confirm-actions button:disabled { opacity: 0.5; cursor: default; }

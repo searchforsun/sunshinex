@@ -32,6 +32,7 @@ export const COMMAND_OPTIONS: ReadonlyArray<{ v: string; en: string; zh: string 
   { v: '/workspace', en: '/workspace — View or switch workspace (next new session)', zh: '/workspace — 查看/切换工作区（下次新会话生效）' },
   { v: '/model', en: '/model — View or switch model', zh: '/model — 查看/切换模型' },
   { v: '/effort', en: '/effort — View or switch reasoning effort', zh: '/effort — 查看/切换思考强度' },
+  { v: '/compact', en: '/compact — Compact context', zh: '/compact — 压缩上下文' },
 ];
 export const COMMAND_KEYS: readonly string[] = COMMAND_OPTIONS.map((o) => o.v);
 
@@ -80,6 +81,10 @@ export interface ChannelDraft {
   appId: string;
   /** 平台其余非密钥标识(raw 配置既有值原样携带,编辑不丢) */
   ident?: Record<string, string>;
+  /** 会话模式(2026-11-24 用户裁定「普通会话还是 Sunx」)：'sunx'=各聊天建 Sunx 编排会话 */
+  sessionKind: 'standard' | 'sunx';
+  /** Sunx 品性原文(/new 仅品性复用);'' = 未配置 */
+  charter: string;
   /** 开放的聊天命令(2026-11-22 裁定命令配置化):子集;落盘=全选省键(absent=全部开放) */
   commands: string[];
   allowKind: AllowKind;
@@ -101,6 +106,8 @@ const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   effort: '',
   appId: '',
   ident: undefined,
+  sessionKind: 'standard',
+  charter: '',
   commands: [...COMMAND_KEYS],
   allowKind: 'first-user',
   userIdsText: '',
@@ -121,6 +128,8 @@ const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
   effort: cfg.effort ?? '',
   appId: cfg.ident?.appId ?? '',
   ident: cfg.ident,
+  sessionKind: cfg.sessionKind === 'sunx' ? 'sunx' : 'standard',
+  charter: cfg.charter ?? '',
   commands: cfg.commands ?? [...COMMAND_KEYS],
   allowKind: cfg.allow.kind,
   userIdsText: (cfg.allow.userIds ?? []).join(' '),
@@ -191,6 +200,10 @@ export const toMsg = (d: ChannelDraft): ChannelConfigMsg => {
     mode: d.mode,
     ...(d.model !== '' ? { model: d.model } : {}),
     ...(d.effort !== '' ? { effort: d.effort } : {}),
+    // Sunx 三键(2026-11-24 用户裁定「普通会话还是 Sunx」):sunx=落 sessionKind(charter 空省键);
+    // 普通=双键全省(后端缺席=普通会话,旧档零迁移)
+    ...(d.sessionKind === 'sunx' ? { sessionKind: 'sunx' as const } : {}),
+    ...(d.sessionKind === 'sunx' && d.charter !== '' ? { charter: d.charter } : {}),
     ...(Object.keys(ident).length > 0 ? { ident } : {}),
     ...(allSelected ? {} : { commands }),
     allow: d.allowKind === 'list' ? { kind: 'list', userIds: splitUserIds(d.userIdsText) } : { kind: d.allowKind },
@@ -228,12 +241,14 @@ export interface ChannelForm {
   mode: ModeValue;
   model: string;
   effort: string;
+  sessionKind: 'standard' | 'sunx';
+  charter: string;
   commands: string[];
   allowKind: AllowKind;
   userIdsText: string;
 }
 
-export const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', model: '', effort: '', commands: [...COMMAND_KEYS], allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定);命令缺省全开放
+export const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', model: '', effort: '', sessionKind: 'standard', charter: '', commands: [...COMMAND_KEYS], allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定);模式缺省普通会话;命令缺省全开放
 
 /** 弹窗开合态:add=新增(平台待选);edit=编辑(锁定 original id) */
 export interface ChannelModal {

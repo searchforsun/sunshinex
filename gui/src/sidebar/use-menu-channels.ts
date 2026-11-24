@@ -26,6 +26,9 @@ export interface ChannelSessionRow extends SessionRow {
   channelLabel: string;
   channelName?: string;
   platform?: ChannelConfigMsg['platform'];
+  /** 聊天名称(2026-11-24 用户裁定「hover 显示聊天名称,单聊=聊天人名称,群聊=群聊名称」):
+   *  daemon 行透出(meta 出生档/绑定反查双兜底);悬浮卡聊天行显示面,缺席回落 chatId 旧行 */
+  chatTitle?: string;
 }
 
 /** 平台目录单点（图标 + 双语名 + 新增可选）：侧栏行 / Chat 信息条 / ChannelsPane 下拉三面共用
@@ -82,6 +85,9 @@ export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | n
             platform: x.channel !== undefined ? byId.get(x.channel)?.platform : undefined,
             channelName: x.channel !== undefined ? byId.get(x.channel)?.name : undefined,
             channelLabel: x.channel !== undefined && x.channel !== '' ? x.channel : pathBasename(x.root ?? ''),
+            // 聊天名称(2026-11-24 用户裁定「hover 显示聊天名称」):daemon 行透出(SessionRow 未
+            // 收该键——通道行富化列,随 JSON 直达;cast 窄化取值)
+            chatTitle: (x as SessionRow & { chatTitle?: string }).chatTitle,
           }));
           setChannelRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
         })

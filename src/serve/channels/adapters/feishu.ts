@@ -152,6 +152,11 @@ interface LarkUserResponse {
   data?: { user?: { name?: string } };
 }
 
+/** Lark 聊天信息响应体最小形状(GET im/v1/chats/:chat_id:data.name——群聊名;单聊常空) */
+interface LarkChatResponse {
+  data?: { name?: string };
+}
+
 export class FeishuAdapter implements ChannelAdapter {
   readonly id: string;
   private connected = false;
@@ -162,6 +167,8 @@ export class FeishuAdapter implements ChannelAdapter {
   private readonly processingReactions = new Map<string, string>();
   /** 发送者姓名缓存（含失败=undefined——权限未开不再反复打 403） */
   private readonly nameCache = new Map<string, Promise<string | undefined>>();
+  /** 聊天名称缓存（chatId → 群名,含失败=undefined 不再反复打）：hover 聊天名称行富化面 */
+  private readonly chatCache = new Map<string, Promise<string | undefined>>();
 
   constructor(_cfg: ChannelConfig, private readonly deps: AdapterDeps) {
     this.id = _cfg.id;
@@ -195,10 +202,15 @@ export class FeishuAdapter implements ChannelAdapter {
         const receiptMessageId = (inbound.raw as { message?: { message_id?: string } } | undefined)?.message?.message_id;
         if (receiptMessageId !== undefined && receiptMessageId !== '') void this.markProcessing(receiptMessageId);
         try {
-          // 发送者姓名富化（缓存命中零等待；首见一次通讯录查询）：群聊 [来自 x]: 前缀与
-          // 绑定锁定展示可读；权限未开/失败静默保 open_id（@ 标签由飞书侧渲名不受影响）
-          const name = inbound.userId !== '' ? await this.userName(inbound.userId) : undefined;
-          sink(name !== undefined ? { ...inbound, userDisplay: name } : inbound);
+          // 发送者姓名+聊天名称富化（缓存命中零等待;首见各一次查询）：群聊 [来自 x]: 前缀、
+          // 绑定锁定展示与悬浮卡聊天名称行可读;权限未开/失败静默降级（姓名保 open_id——@
+          // 标签由飞书侧渲名不受影响;聊天名称缺席由 router 单聊回落发送者姓名）
+          const [name, chat] = await Promise.all([
+            inbound.userId !== '' ? this.userName(inbound.userId) : Promise.resolve(undefined),
+            this.chatName(inbound.chatId),
+          ]);
+          const enriched: InboundMessage = { ...inbound, ...(name !== undefined ? { userDisplay: name } : {}), ...(chat !== undefined ? { chatTitle: chat } : {}) };
+          sink(enriched);
         } catch (e) {
           log(`feishu sink error: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -229,6 +241,7 @@ export class FeishuAdapter implements ChannelAdapter {
     this.connected = false;
     this.processingReactions.clear();
     this.nameCache.clear();
+    this.chatCache.clear();
     try {
       this.ws?.close(true);
     } catch {
@@ -329,6 +342,26 @@ export class FeishuAdapter implements ChannelAdapter {
       }
     })();
     this.nameCache.set(openId, p);
+    return p;
+  }
+
+  /** 聊天名称（GET im/v1/chats/:chat_id 的 name + 进程内缓存,含失败缓存;需 im:chat:readonly 域）：
+   *  群聊=群名（悬浮卡聊天名称行,2026-11-24 用户裁定「群聊就是群聊名称」）;单聊常空 → router
+   *  回落发送者姓名（「单聊就是聊天人名称」）。尽力而为失败静默 */
+  private chatName(chatId: string): Promise<string | undefined> {
+    const hit = this.chatCache.get(chatId);
+    if (hit !== undefined) return hit;
+    const p = (async () => {
+      if (this.client === undefined) return undefined;
+      try {
+        const resp = (await this.client.request({ method: 'GET', url: `/open-apis/im/v1/chats/${chatId}` })) as LarkChatResponse;
+        const name = resp?.data?.name;
+        return typeof name === 'string' && name !== '' ? name : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    this.chatCache.set(chatId, p);
     return p;
   }
 }
