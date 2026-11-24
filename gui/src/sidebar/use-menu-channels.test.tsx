@@ -47,7 +47,7 @@ describe('useMenuChannels(通道组行集刷新驱动)', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(result.current).toEqual([]); // 空容器合法空态(组整块不渲染由组内自守卫)
+    expect(result.current.rows).toEqual([]); // 空容器合法空态(组整块不渲染由组内自守卫)
     expect(conn.channelSessions).toHaveBeenCalledTimes(1);
 
     // IM 侧来了一条通道会话(宿主零变化——rerender 同参不触发 effect,只靠 tick 自驱)
@@ -61,8 +61,8 @@ describe('useMenuChannels(通道组行集刷新驱动)', () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(conn.channelSessions).toHaveBeenCalledTimes(2); // tick 到点重拉
-    expect(result.current).toHaveLength(1);
-    expect(result.current![0]!.id).toBe('j-new');
+    expect(result.current.rows).toHaveLength(1);
+    expect(result.current.rows![0]!.id).toBe('j-new');
   });
 
   it('③reloadNonce(recentVersion bump)变化即重拉(同 conn,nonce 单变)', async () => {
@@ -73,14 +73,14 @@ describe('useMenuChannels(通道组行集刷新驱动)', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(result.current).toEqual([]);
+    expect(result.current.rows).toEqual([]);
     conn.channelSessions.mockImplementation(async () => [row('j-bumped')]);
     rerender({ nonce: 1 }); // bump → effect 重跑(conn/rows 引用未变,nonce 即刷新信号)
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(result.current).toHaveLength(1);
-    expect(result.current![0]!.id).toBe('j-bumped');
+    expect(result.current.rows).toHaveLength(1);
+    expect(result.current.rows![0]!.id).toBe('j-bumped');
   });
 
   it('④conn 缺 channelSessions 方法(旧桩守卫):行集保持 null 零调用', async () => {
@@ -89,6 +89,6 @@ describe('useMenuChannels(通道组行集刷新驱动)', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
-    expect(result.current).toBeNull(); // 缺方法守卫:装载态原样(组不渲染同口径)
+    expect(result.current.rows).toBeNull(); // 缺方法守卫:装载态原样(组不渲染同口径)
   });
 });

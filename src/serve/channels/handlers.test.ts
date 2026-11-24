@@ -266,6 +266,49 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
       else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;
     }
   });
+
+  test('raw 守卫可删解析弃条目+sunx 容器滞留域顺带清（2026-11-25「删除也删除不掉」根修）', () => {
+    const dir = tmpdir('sunshinex-ch-del-');
+    const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
+    const prevSunx = process.env.SUNSHINEX_SUNX_DIR;
+    const container = path.join(dir, 'channels');
+    const sunxDir = path.join(dir, 'sunx');
+    process.env.SUNSHINEX_CHANNELS_DIR = container;
+    process.env.SUNSHINEX_SUNX_DIR = sunxDir;
+    try {
+      // settings:bad 条目(mode 非法=parseChannelsKey 跳过——解析态无此条目,raw 在)
+      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ version: 1, channels: [
+          { id: 'bad', platform: 'feishu', enabled: true, root: 'auto', mode: 'weird-mode', allow: { kind: 'all' } },
+        ] }),
+        'utf8',
+      );
+      // sunx 容器滞留域:meta.channel='bad'(旧布局通道 Sunx 会话)+纯手建(no channel)
+      const stranded = path.join(sunxDir, 'j-sx-stranded', 'data', 'sessions');
+      fs.mkdirSync(stranded, { recursive: true });
+      fs.writeFileSync(path.join(stranded, 'j-sx-stranded.jsonl'), '{"t":"header"}\n', 'utf8');
+      fs.writeFileSync(path.join(stranded, 'j-sx-stranded.meta.json'), JSON.stringify({ channel: 'bad' }), 'utf8');
+      const pure = path.join(sunxDir, 'j-sx-pure', 'data', 'sessions');
+      fs.mkdirSync(pure, { recursive: true });
+      fs.writeFileSync(path.join(pure, 'j-sx-pure.jsonl'), '{"t":"header"}\n', 'utf8');
+      const store = makeStore(dir);
+      const { io, replies } = stubIo({ bindings: store });
+      handleChannelsDelete(io, {} as http.ServerResponse, 'bad');
+      assert.equal(replies[0]!.status, 200, 'raw 在=可删(解析弃条目不再 404 永卡)');
+      const onDisk = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { channels: Array<{ id: string }> };
+      assert.deepEqual(onDisk.channels.map((c) => c.id), [], '条目已移除');
+      assert.ok(!fs.existsSync(path.join(sunxDir, 'j-sx-stranded')), 'sunx 容器滞留域顺带清');
+      assert.ok(fs.existsSync(path.join(sunxDir, 'j-sx-pure')), '纯手建 Sunx 零波及');
+    } finally {
+      if (prevCh === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
+      else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;
+      if (prevSunx === undefined) delete process.env.SUNSHINEX_SUNX_DIR;
+      else process.env.SUNSHINEX_SUNX_DIR = prevSunx;
+    }
+  });
 });
 
 test('GET /channels/sessions:Sunx 域行不并入（2026-11-25 用户裁定「不能直接改到 channels 下,不然和 sunx 重叠了」）——sunx 容器行（含 meta.channel）零混入,SUNX 组独家承载', () => {

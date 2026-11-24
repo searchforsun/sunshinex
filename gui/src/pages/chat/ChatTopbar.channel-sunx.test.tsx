@@ -27,7 +27,7 @@ const base = {
 };
 
 async function openMenu(props: Record<string, unknown>): Promise<void> {
-  render(<ChatTopbar {...(base as object)} {...(props as object)} />);
+  render(<ChatTopbar {...base} {...props} />);
   fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
   await screen.findByText('Rename session');
 }
@@ -43,7 +43,7 @@ describe('通道 Sunx 顶栏菜单=普通通道（2026-11-25）', () => {
   });
 
   it('手建 Sunx:保持 编辑 Sunx+复制 Sunx ID,无归档（SUNX 组头专域）', async () => {
-    render(<ChatTopbar {...(base as object)} sessionKind="sunx" />);
+    render(<ChatTopbar {...base} sessionKind="sunx" />);
     fireEvent.click(screen.getByRole('button', { name: 'Session actions' }));
     expect(await screen.findByText('Edit Sunx')).toBeTruthy();
     expect(screen.queryByText('Archive session')).toBeNull();

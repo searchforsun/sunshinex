@@ -16,9 +16,10 @@ import type * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SessionRuntime } from '../session';
-import { channelsContainerDir } from '../../config/data-dir';
+import { channelsContainerDir, sunxContainerDir } from '../../config/data-dir';
 import { loadChannels } from '../../config/channels';
 import { loadGlobalSettings } from '../../config/settings';
+import { readSessionMeta } from '../../session/journal';
 import { writeJsonAtomic } from '../../catalog/io';
 import { slugify } from '../../slug';
 import { enumerateContainerSessions } from '../sessions-list-handlers';
@@ -102,11 +103,10 @@ export async function handleChannelsSecretPut(io: ChannelsHandlerIo, req: http.I
  *  （`im-<slugify(id)>-*` 前缀匹配递归删——配置+会话记录+工作区产物一体清除，弹窗确认后执行）。
  *  条目缺失 404（secret 写面同文案） */
 export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResponse, id: string, afterWrite?: (channels: ChannelConfig[]) => void): void {
-  if (loadChannels().value.find((c) => c.id === id) === undefined) {
-    io.send(res, 404, { error: `channel not found: ${id}` });
-    return;
-  }
-  // ① settings 条目移除（其余条目原样保留——raw 数组过滤,不重归一防手编档字段固化/丢失）
+  // ① settings 条目移除（其余条目原样保留——raw 数组过滤,不重归一防手编档字段固化/丢失）。
+  // 守卫走 **raw 数组**（2026-11-25 用户裁定「删除也删除不掉,再进入后就报错了」根修：原守卫走
+  // parseChannelsKey 归一清单——装载/解析任何异常（整档读失败/单条目 warning 跳过）都会让条目
+  // 404 永不可删,设置页卡死;raw 在=可删,解析态不再握删除权）
   const target = loadGlobalSettings();
   const guarded = readStrictSettingsRootForWrite(target);
   if (!guarded.ok) {
@@ -115,7 +115,10 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   }
   const obj = guarded.root;
   const listRaw = obj['channels'];
-  if (!Array.isArray(listRaw)) return io.send(res, 404, { error: `channel not found: ${id}` });
+  if (!Array.isArray(listRaw) || !listRaw.some((item) => (item as { id?: unknown } | null)?.['id'] === id)) {
+    io.send(res, 404, { error: `channel not found: ${id}` });
+    return;
+  }
   obj['channels'] = listRaw.filter((item) => (item as { id?: unknown } | null)?.['id'] !== id);
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n');
   afterWrite?.(loadChannels().value); // daemon 注入:applyConfigs(teardown 该通道适配器)+config-changed
@@ -138,6 +141,19 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
     }
   } catch {
     /* 容器缺席/不可读=无域可删（合法空态） */
+  }
+  // ③b sunx 容器滞留域清扫（2026-11-25 布局迁移前的通道 Sunx 会话落在 sunx 容器——删通道
+  // 一并真删,防幽灵档永驻 SUNX 组;meta.channel===id 判据,手建 Sunx 零波及;尽力而为）
+  try {
+    const sunxRoot = sunxContainerDir();
+    for (const ent of fs.readdirSync(sunxRoot, { withFileTypes: true })) {
+      if (!ent.isDirectory()) continue;
+      if (readSessionMeta(path.join(sunxRoot, ent.name, 'data'), ent.name).channel !== id) continue;
+      fs.rmSync(path.join(sunxRoot, ent.name), { recursive: true, force: true });
+      removedDomains += 1;
+    }
+  } catch {
+    /* 容器缺席/不可读=无滞留域（合法空态） */
   }
   io.send(res, 200, { ok: true, removedDomains });
 }

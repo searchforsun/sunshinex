@@ -82,6 +82,19 @@ describe('ChannelsSection(侧栏「通道」分组,项目式布局)', () => {
     expect(loading.container.querySelector('.sx-side-head')).toBeNull();
   });
 
+  it('③b 配置驱动空组(2026-11-25 用户裁定「sunx 类型通道怎么不显示了」根修):无会话的通道照显组行(名称=配置名回退 id,计数 0)', () => {
+    renderSection([], {
+      channels: [{ id: 'feishu-amtr8', name: '飞书八号', platform: 'feishu' }],
+    });
+    expect(screen.getByText('通道')).toBeDefined();
+    expect(screen.getByText('飞书八号')).toBeDefined(); // 组行=配置名(无会话组照显)
+    expect(screen.getByRole('button', { name: '会话数 0' })).toBeDefined();
+    // name 缺席回退 id
+    const rerender = renderSection([], { channels: [{ id: 'tg-1', platform: 'telegram' }] });
+    expect(screen.getByText('tg-1')).toBeDefined();
+    rerender.unmount();
+  });
+
   it('④行内归档两段确认 → onArchiveRow(id, true)(T6 同款链)', () => {
     const onArchiveRow = vi.fn();
     const { container } = renderSection([channelRow('j-arch')], { onArchiveRow });

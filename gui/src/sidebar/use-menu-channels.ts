@@ -60,8 +60,11 @@ export function platformMeta(platform?: string): { Icon: LucideIcon; en: string;
  */
 const CHANNELS_REFRESH_MS = 30_000;
 
-export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | null, reloadNonce = 0): ChannelSessionRow[] | null {
+export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | null, reloadNonce = 0): { rows: ChannelSessionRow[] | null; cfgs: ChannelConfigMsg[] } {
   const [channelRows, setChannelRows] = useState<ChannelSessionRow[] | null>(null);
+  /** 通道配置清单（2026-11-25 用户裁定「sunx 类型通道怎么不显示了」根修:组存在性改配置驱动
+   *  ——同一次 settingsChannels 拉取顺带回传,通道组播种消费） */
+  const [cfgs, setCfgs] = useState<ChannelConfigMsg[]>([]);
   useEffect(() => {
     // 旧桩缺方法守卫(schedules? 同口径):不出「通道」组
     if (typeof conn.channelSessions !== 'function') {
@@ -76,9 +79,10 @@ export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | n
           ? conn.settingsChannels().catch(() => ({ channels: [], warnings: [] }))
           : Promise.resolve({ channels: [], warnings: [] }),
       ])
-        .then(([list, cfgs]) => {
+        .then(([list, cfgView]) => {
           if (!alive) return;
-          const byId = new Map(cfgs.channels.map((c) => [c.id, c]));
+          setCfgs(cfgView.channels);
+          const byId = new Map(cfgView.channels.map((c) => [c.id, c]));
           const mapped = list.map((x) => ({
             ...x,
             root: x.root ?? '',
@@ -102,5 +106,5 @@ export function useMenuChannels(conn: MenuChannelsConn, rows: WorkspaceRow[] | n
       window.clearInterval(timer);
     };
   }, [rows, conn, reloadNonce]);
-  return channelRows;
+  return { rows: channelRows, cfgs };
 }

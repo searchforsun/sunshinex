@@ -20,6 +20,10 @@ import type { ChannelSessionRow } from './use-menu-channels';
 interface ChannelsSectionProps {
   /** 通道域聚合行(跨域;null=装载中);空列=组整块不渲染 */
   readonly rows: ChannelSessionRow[] | null;
+  /** 通道配置清单(2026-11-25 用户裁定「sunx 类型通道怎么不显示了」根修):组存在性改**配置
+   *  驱动**——每条通道配置必有组(无会话=空组,项目组行同构),不再依赖容器会话档;可选=旧
+   *  测试桩零牵连(缺席=纯会话驱动,既有语义) */
+  readonly channels?: ReadonlyArray<{ id: string; name?: string; platform: ChannelSessionRow['platform'] }>
   readonly activeSessionId: string;
   readonly runningIds: ReadonlySet<string>;
   readonly journalOfSession: ReadonlyMap<string, string>;
@@ -47,7 +51,7 @@ const workspaceOf = (domainDir: string | undefined): string | undefined => {
 
 export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSectionProps): JSX.Element | null {
   useLanguage(); // memo 响应面:语言同步(en→zh)强制重渲染,区块头标签随 t() 调用时求值归位
-  const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenArchive, onOpenSettings } = props;
+  const { rows, channels, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenArchive, onOpenSettings } = props;
   /** 分区折叠(本组件自持) */
   const [open, setOpen] = useState(true);
   /** 通道组开合(2026-11-22 项目式布局:缺省全展开,收起集自持——与项目 openSlugs 缺省收起刻意
@@ -68,6 +72,10 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
   const groups = useMemo(() => {
     if (rows === null) return null;
     const byKey = new Map<string, { key: string; name: string; platform?: ChannelSessionRow['platform']; sessions: ChannelSessionRow[] }>();
+    // 配置驱动播种：每条通道配置必有组（空组=尚无聊天会话,照显;组序沉底由 updatedAt 排序承载）
+    for (const c of channels ?? []) {
+      byKey.set(c.id, { key: c.id, name: c.name !== undefined && c.name !== '' ? c.name : c.id, platform: c.platform, sessions: [] });
+    }
     for (const r of rows) {
       if (r.archived === true) continue; // 归档行进归档层(见组件注),组列表滤除
       const key = r.channel !== undefined && r.channel !== '' ? r.channel : r.channelLabel;
