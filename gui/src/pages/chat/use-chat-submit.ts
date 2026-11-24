@@ -29,6 +29,9 @@ export function useChatSubmit(deps: {
   /** /commands 在途/已决 Promise 取用(2026-11-24 接力窗根修):清单未达时门控 await 它再判,
    *  不再把 null 当「非命令」静默降级纯文本;缺省(测试桩/旧调用面)=不等待,行为同旧 */
   readonly getCmdDataReady?: () => Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>;
+  /** 命令回显对账(2026-11-24「发送命令看不到,切换后才看到」):命令派发成功后 ~900ms 轻量
+   *  重播种核对——WS 帧偶发未达时命令行只落账不上屏,靠此自动补齐;帧已到则 seedSig 判同零成本 */
+  readonly onCommandEcho?: () => void;
   readonly setChat: Dispatch<SetStateAction<import('../../chat-reducer').ChatState>>;
   readonly onSideChat?: () => void;
   readonly refreshQueued: () => void;
@@ -52,7 +55,7 @@ export function useChatSubmit(deps: {
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, getCmdDataReady, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged, onInterrupted } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, getCmdDataReady, onCommandEcho, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged, onInterrupted } = deps;
 /** §7 提交路径单点(idle→submit/running→steer):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
  *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
@@ -113,7 +116,10 @@ const submitText = useCallback(
               if (!/unsupported|400|bad request/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
               await conn.sessionSubmit(sessionId, trimmed); // 清单过期兜底:命令通道拒即回退纯文本
             })
-            .then(() => refreshQueued());
+            .then(() => {
+              refreshQueued();
+              onCommandEcho?.(); // 回显对账(见 onCommandEcho 注):帧丢了 ~900ms 后自动补齐
+            });
         }
         return conn.sessionSubmit(sessionId, trimmed).then(() => refreshQueued());
       };
@@ -149,7 +155,7 @@ const submitText = useCallback(
     if (!needsGate) return runWith(cmdData);
     return (getCmdDataReady?.() ?? Promise.resolve(null)).then(runWith, () => runWith(null));
   },
-  [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, getCmdDataReady, onAccepted, onPlanModeChanged],
+  [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, getCmdDataReady, onCommandEcho, onAccepted, onPlanModeChanged],
 );
 const send = (): void => {
     if (sendBlocked === true) return;

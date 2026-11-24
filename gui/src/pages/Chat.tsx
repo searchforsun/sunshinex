@@ -237,7 +237,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const expandRefsRef = useRef<(text: string) => string>((text) => text);
   /** 会话事件 hook(D32 批C):播种门/种子窗缓冲/挂起卡/事件分流 sink 装配 + G5 idle 清卡——
    *  投影态与队列/pill 设定器注入(G6 工具 input 旁路暂存 P11 T7 退役);行为零变化(Chat.test 为锚) */
-  const { cards, seeding, sendApproval, sendAsk, sendPlanApproval } = useSessionEvents({
+  const { cards, seeding, sendApproval, sendAsk, sendPlanApproval, nudgeEcho } = useSessionEvents({
     conn,
     active,
     sessionId,
@@ -405,6 +405,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     refEntries: liveRefEntries, // 2026-11-20 名称→id 发送期展开(目录+本会话实时同源)
     cmdData,
     getCmdDataReady,
+    onCommandEcho: nudgeEcho,
     setChat,
     onSideChat,
     refreshQueued,

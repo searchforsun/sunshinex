@@ -74,6 +74,9 @@ export function useSessionEvents(deps: {
   sendAsk: (pid: string, answer: GuiAskAnswer) => void;
   /** 阶段三 plan-arm 裁决回执(approval/ask 同口径:成功移卡,失败 404 也移) */
   sendPlanApproval: (pid: string, decision: GuiPlanDecision) => void;
+  /** 命令回显对账(2026-11-24「发送命令看不到,切换后才看到」):提交侧命令派发成功后调用,
+   *  ~900ms 后轻量 reseed 补齐可能丢帧的命令行(帧已到=seedSig 判同零成本) */
+  nudgeEcho: () => void;
 } {
   const {
     conn,
@@ -267,6 +270,24 @@ export function useSessionEvents(deps: {
       },
     );
   }, [conn, sessionId, addCard, addPlanCard]);
+
+  /** 命令回显对账(2026-11-24 用户实测「发 / 命令看不到,切换后才看到」):命令行经 daemon pump
+   *  广播,WS 帧偶发未达/未路由(瞬态——直调与键入实测 171-179ms 实时上屏;失败窗与座切换/重启
+   *  邻域重合)时只落账不上屏,要手动切换(=重播种)才可见。命令派发成功后 ~900ms 轻量 reseed
+   *  对账:帧已到则快照与缓存 seedSig 判同免整替(零重渲零请求面之外零成本);帧丢了即自动补齐,
+   *  不再依赖用户手动切换。仅命令路径调用(普通文本有本地回显兜底,不靠 WS 帧显示) */
+  const echoTimerRef = useRef<number | null>(null);
+  const nudgeEcho = useCallback((): void => {
+    if (echoTimerRef.current !== null) clearTimeout(echoTimerRef.current);
+    echoTimerRef.current = window.setTimeout(() => {
+      echoTimerRef.current = null;
+      if (seedingRef.current) return; // 播种在途:权威快照马上落,无需对账
+      reseed();
+    }, 900);
+  }, [reseed]);
+  useEffect(() => () => {
+    if (echoTimerRef.current !== null) clearTimeout(echoTimerRef.current);
+  }, []);
 
   /** G4 回执收口单点(2026-10-27 技术债轮 G8:approval/ask/plan 三通道同构块收敛):寻址用帧顶层
    *  pid(T1 契约);成功移卡,失败(404 已决等)也移——不悬挂。失败面不再倒 error 条:挂起生命周期
@@ -464,5 +485,5 @@ export function useSessionEvents(deps: {
     if (prev !== null && prev !== 'idle' && chat.status === 'idle') setCards((cs) => cs.filter((c) => c.kind === 'plan-approval'));
   }, [chat.status]);
 
-  return { cards, seeding, sendApproval, sendAsk, sendPlanApproval };
+  return { cards, seeding, sendApproval, sendAsk, sendPlanApproval, nudgeEcho };
 }
