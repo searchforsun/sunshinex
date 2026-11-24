@@ -372,11 +372,11 @@ export class Reactor {
           this.emit('step', 'done', { step });
           break;
         }
-        // 轮边界增量入链(2026-10-30 spec §1):本轮链行已完成即落主链;done 轮归收束点(与 reply 行同批)
+        // 轮边界增量入链(2026-10-30 spec §1):本轮链行已完成即落主链;done 轮归收束点(与 reply 行同批)。
+        // 环境事实巡检不放边界(2026-11-23 二轮修正「env 行不得破坏最近前缀缓存」):边界级追加会把 env 行
+        // 插进历史中段(后续轮行+reply 在其后落链)——下次 run 从该位置起整段历史失效;统一延迟到收束
+        // 块尾(reply 行之后)=链尾纯尾追,翻转零失效。本轮内事实可见性=工具回执行;压缩折后=steps 注入
         appendNewSteps();
-        // 环境事实行巡检(2026-11-23 路线一):worktree 翻转/压缩折叠/回退错位三类失位统一在边界尾追
-        // 重建(尾追=前缀缓存零重写);仅 session 作用域——fork/clean 子代零主链写入不变量
-        if (scope === 'session') this.ensureEnvFact();
       } catch (e) {
         // 用户中断在途模型调用：静默转入中断终态，不 emit error（中断回执由会话层统一发）
         if (this.deps.signal?.aborted) {
@@ -423,7 +423,6 @@ export class Reactor {
           .map(toChainRow),
       );
       appendedCount = steps.length;
-      this.ensureEnvFact(); // 收束点巡检:末轮翻转也落 env 行(与轮边界同口,session 块内零再守卫)
       if (done && reply) {
         this.deps.context.appendChain([{
           action: 'reply',
@@ -436,6 +435,9 @@ export class Reactor {
       } else {
         this.deps.context.appendChain([{ action: 'note', observation: `Task ended without completion (${stopReason ?? 'unknown'})` }]);
       }
+      // 环境事实行收束巡检（2026-11-23 路线一+二轮修正）：末轮翻转/压缩折叠/回退错位在此尾追重建——
+      // 位于 reply/note 行之后=链尾纯尾追，下次 run 请求=上次最后请求+纯追加，翻转零缓存失效
+      this.ensureEnvFact();
     }
 
     // 收口说明行（规格 §10）：settle/settleMemory 产出的说明尾追为链尾 notice 行（模型面）+ notice 事件（用户面）；

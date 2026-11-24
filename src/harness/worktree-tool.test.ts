@@ -223,11 +223,11 @@ test('T6-N2 create→exit 翻转改链行尾追（2026-11-23 路线一）：稳�
           `第 ${k + 1} 帧应以第 ${k} 帧为逐字节前缀（尾追零重写）`,
         );
       }
-      // 链侧 env 行持久化（跨轮/下轮 run 的权威事实）：两行——树内行 + 回主区行，文案=envWorkdirLine 单点
+      // 链侧 env 行口径（收束尾追,链尾纯追加零缓存失效）：单 run 内进出=终态即主区=静态 workDir 行
+      // 已表主根,零 env 冗余行（helper no-op 分支）；env 行仅在「run 收束时仍处树内」（落树内行,待
+      // 下次回主区时 supersedes）或「链上存在陈旧树行需废黜」时落链——跨轮事实由回执行+静态行承载
       const envRows = h.context.chainView().filter((s) => s.action === 'env');
-      assert.equal(envRows.length, 2, `链上应恰两行 env（树内+回主区）：${JSON.stringify(envRows.map((e) => e.observation))}`);
-      assert.match(envRows[0]!.observation, /Working directory changed to: .+ \(worktree active — supersedes earlier directory facts\)/);
-      assert.equal(envRows[1]!.observation, `Working directory: ${repo} (main workspace — supersedes earlier directory facts)`);
+      assert.equal(envRows.length, 0, `单 run 进出终态主区应零 env 行：${JSON.stringify(envRows.map((e) => e.observation))}`);
     }),
   );
 });
