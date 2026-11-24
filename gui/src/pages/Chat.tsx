@@ -673,7 +673,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         onEntryRestore={onEntryRestore}
         onOpenTurn={onTurnOpen}
         onTurnRestore={onTurnRestore}
-        onFork={onForkRun}
+        onFork={kindHint === 'sunx' ? undefined : onForkRun} // Sunx fork=域内新线程入口,旧会话级 fork 关闭(2026-11-21)
         onOpenSession={onOpenSession}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
