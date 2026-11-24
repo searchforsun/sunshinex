@@ -232,8 +232,11 @@ export class ChannelRouter {
       await this.cmdCompact(msg, binding);
       return;
     }
-    if (cmd?.cmd === '/context') {
-      await this.cmdContext(msg, binding);
+    // 只读/记忆命令族（2026-11-25 用户裁定「/memory-gc /memory 等命令 gui 也要加上」）:统一
+    // 走 deps.commandText 单点（engine 装配——/context=t() 摘要;memory 族=runCommand capture,
+    // 回执 t() 双语）——整行透传（/memory-rm 2 的参数随行）
+    if (cmd?.cmd === '/context' || cmd?.cmd === '/memory' || cmd?.cmd === '/memory-rm' || cmd?.cmd === '/memory-gc' || cmd?.cmd === '/memory-on' || cmd?.cmd === '/memory-off') {
+      await this.cmdViaCommandText(msg, binding, text);
       return;
     }
     if (cmd?.cmd === '/skills-list') {
@@ -445,17 +448,15 @@ export class ChannelRouter {
     }
   }
 
-  /** /context（2026-11-25 用户裁定「tui 的 /context 等等其他业务的命令也加上」）：deps.commandText
-   *  单点执行（engine 缺省=runCommand capture 旁路——命令气泡/三态行照落转录,回执文本给 IM）,
-   *  输出即 TUI 同款构成清单;缺席/异常各自如实提示 */
-  private async cmdContext(msg: InboundMessage, binding: Binding | undefined): Promise<void> {
+  /** 只读/记忆命令族单点（/context /memory /memory-rm /memory-gc /memory-on /memory-off,
+   *  2026-11-25 用户裁定「/memory-gc /memory 等命令 gui 也要加上」;原 /context 专点泛化）:
+   *  deps.commandText 单点执行（engine 缺省=/context t() 摘要、其余 runCommand capture 旁路——
+   *  命令气泡/三态行照落转录,回执文本给 IM）;idle 门按命令自带语义（IDLE_ONLY 集）在
+   *  runCommand 内承载,此处不再前置拦;缺席/异常各自如实提示 */
+  private async cmdViaCommandText(msg: InboundMessage, binding: Binding | undefined, line: string): Promise<void> {
     const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
     if (rt === undefined) {
-      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /context 查看上下文构成。');
-      return;
-    }
-    if (rt.status() !== 'idle') {
-      await this.deps.ack(msg, '任务进行中，等当前任务完成后再查看。');
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可使用该命令。');
       return;
     }
     if (this.deps.commandText === undefined) {
@@ -463,10 +464,10 @@ export class ChannelRouter {
       return;
     }
     try {
-      const text = await this.deps.commandText(rt, '/context');
-      await this.deps.ack(msg, text !== undefined && text !== '' ? text : '上下文构成暂不可用，请稍后重试。');
+      const text = await this.deps.commandText(rt, line);
+      await this.deps.ack(msg, text !== undefined && text !== '' ? text : '该命令未执行成功，请稍后重试。');
     } catch {
-      await this.deps.ack(msg, '查看失败，请稍后重试。');
+      await this.deps.ack(msg, '执行失败，请稍后重试。');
     }
   }
 

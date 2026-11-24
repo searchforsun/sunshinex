@@ -860,6 +860,9 @@ ${this.sessionCharter ?? ''}` }
       // 学习沉淀关闸（P2 遗留义务清偿,P3 Task 2 裁定）：sunx 装配 learnSkills:false——编排轮不沉淀
       // 伪技能（域目录零 learned/ 基座）;standard 不传=既有推导逐字节不变
       ...(this.sessionKind === 'sunx' ? { learnSkills: false } : {}),
+      // 聊天域共享板（2026-11-25 用户裁定「一个聊天下的任务板也要互通」）：通道聊天会话 teams
+      // 根落聊天域常量段——记忆互通之外,板/注册表/inbox 同域共享(新会话不空板)
+      ...(this.opts.channelMeta !== undefined ? { chatScopedTeams: true } : {}),
       onEvent: (e) => this.pump(e),
       onApproval: (req) => this.suspendApproval(req),
       onAskUser: (req) => this.suspendAsk(req),

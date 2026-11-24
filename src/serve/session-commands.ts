@@ -3,6 +3,8 @@ import { t } from '../i18n';
 import { removeLearnedSkill } from '../harness/skills';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
+import { MemoryStore } from '../harness/memory/store';
+import { consolidateMemory } from '../harness/memory/consolidate';
 import { markSessionArchived, purgeSession, purgeSideJournals, readSessionMeta } from '../session/journal';
 import type { SessionRuntime } from './session';
 
@@ -16,11 +18,11 @@ import type { SessionRuntime } from './session';
  *  影响回执,改文案须与 GUI 模式表两处同添) */
 
 /** 当前通道支持集(gui 命令面板置灰判定源;随分支移植批扩) */
-export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan', '/skills-rm'] as const;
+export const COMMAND_SUPPORT = ['/status', '/compact', '/context', '/memory', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off', '/archive', '/unarchive', '/delete', '/plan', '/skills-rm'] as const;
 
 type CommandRunResult = 'ok' | 'unsupported' | 'busy';
 
-const IDLE_ONLY = new Set(['/compact', '/archive', '/unarchive', '/delete']);
+const IDLE_ONLY = new Set(['/compact', '/archive', '/unarchive', '/delete', '/memory-rm', '/memory-gc']);
 
 function isCommandSupported(line: string): boolean {
   return (COMMAND_SUPPORT as readonly string[]).includes(line.split(/\s/)[0] ?? '');
@@ -167,10 +169,66 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
     return 'ok';
   }
 
+  if (cmd === '/memory') {
+    // 持久记忆清单（2026-11-25 用户裁定「/memory-gc /memory 等命令 gui 也要加上」;TUI memoryList
+    // 同源 MemoryStore(root)——root=会话工作区,通道聊天域会话天然按聊天共享）。只读不设 idle 门
+    const records = new MemoryStore(s.root).list();
+    if (records.length === 0) {
+      notice(t('No memories yet', '暂无记忆'));
+      return 'ok';
+    }
+    notice(
+      t(`Persistent memories (${records.length}):`, `持久记忆（${records.length} 条）：`) +
+        '\n' +
+        records.map((r, i) => `${i + 1}. ${r.slug} [${r.type}] ${r.description}`).join('\n'),
+    );
+    return 'ok';
+  }
+
+  if (cmd === '/memory-rm') {
+    // 删除记忆（arg=名称或清单序号;无交互选择面——IM/GUI 面按参数直删,裸命令回清单+用法）
+    const store = new MemoryStore(s.root);
+    const records = store.list();
+    if (records.length === 0) {
+      notice(t('No memories yet — nothing to remove', '暂无记忆——没有可删除的内容'));
+      return 'ok';
+    }
+    const arg = line.slice('/memory-rm'.length).trim();
+    if (arg === '') {
+      notice(
+        t('Usage: /memory-rm <name or index>. Memories:', '用法：/memory-rm <名称或序号>。持久记忆：') +
+          '\n' +
+          records.map((r, i) => `${i + 1}. ${r.slug} [${r.type}] ${r.description}`).join('\n'),
+      );
+      return 'ok';
+    }
+    const byIdx = /^\d+$/.test(arg) ? records[Number.parseInt(arg, 10) - 1] : undefined;
+    const rec = byIdx ?? records.find((r) => r.slug === arg);
+    if (rec === undefined) {
+      notice(t(`Unknown memory: ${arg}`, `没有这条记忆：${arg}`));
+      return 'ok';
+    }
+    const r = store.remove(rec.slug);
+    notice(r.ok ? t(`Memory removed: ${rec.slug}`, `已删除记忆：${rec.slug}`) : t('Removal failed', '删除失败'));
+    return 'ok';
+  }
+
+  if (cmd === '/memory-gc') {
+    // 显式整理（TUI /memory-gc 同源 consolidateMemory force;阈值外强制）;空清单早退零模型调用
+    const records = new MemoryStore(s.root).list();
+    if (records.length === 0) {
+      notice(t('No memories yet — nothing to consolidate', '暂无记忆——没有可整理的内容'));
+      return 'ok';
+    }
+    await consolidateMemory({ model: s.runtime.harness.model, root: s.root, force: true });
+    notice(t('Memory consolidated', '记忆整理完成'));
+    return 'ok';
+  }
+
   if (cmd === '/memory-on' || cmd === '/memory-off') {
     const on = cmd === '/memory-on';
     setMemorySessionOverride(on); // 会话内覆盖单点(与 TUI 同一全局控制面;daemon 侧即全局生效)
-    notice(`Persistent memory ${on ? 'on' : 'off'} for this session`);
+    notice(t(`Persistent memory ${on ? 'on' : 'off'} for this session`, `本会话持久记忆已${on ? '开启' : '关闭'}`));
     return 'ok';
   }
 

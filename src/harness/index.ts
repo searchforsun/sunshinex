@@ -144,6 +144,11 @@ export interface HarnessOptions {
   /** 会话团队根键（journalId）。缺省未绑定时团队/板/inbox 驻内存；daemon/TUI 在 journal 铸造后
    *  经 adoptSessionTeams 收养。测试可直接传入以落盘。 */
   teamsSessionId?: string;
+  /** 聊天域共享板（2026-11-25 用户裁定「一个聊天下的任务板也要互通」）：通道聊天会话
+   *  （channelMeta 在场）teams 根落 `<dataDir>/teams/chat`（chat 常量段代 journalId）——同聊天
+   *  各会话(/new 重建)采纳同一注册表/板/inbox/名册,新会话继承在途任务不空板;手建会话缺席=
+   *  既有 per-journal 隔离零变化 */
+  chatScopedTeams?: boolean;
   /** 会话形态（2026-11-14 sunx 设计：装配期按 kind 分叉 profile）。提示词面已消费（2026-11-15）：
    *  'sunx' = 稳定段身份槽替换 + 编排章程行（prompts/shared.ts 单点，stableSegment 观测面与单发
    *  Reactor 同源）；缺席=standard 零变化。工具面/serve 生命周期分叉在后续任务 */
@@ -215,6 +220,8 @@ export class Harness {
   readonly segmentDataDir: string | undefined;
   /** 已绑定的会话团队键；同键重复收养幂等 */
   private teamsBoundJournalId: string | undefined;
+  /** 聊天域共享板（见 HarnessOpts.chatScopedTeams 注） */
+  private readonly chatScopedTeams: boolean;
   /** 未落盘前的内存板（adopt 时若盘空则回流事件） */
   private memoryBoardStore: MemoryTeamStore | undefined;
   /** 未绑 journal 时的成员名册（首绑回流）；绑后改写 TeammateRosterStore */
@@ -544,6 +551,7 @@ export class Harness {
     this.inbox = new FileInbox();
     this.inboxCursors = new InboxCursorStore();
     this.teamsBoundJournalId = undefined;
+    this.chatScopedTeams = opts.chatScopedTeams === true;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
     // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/worktree/板面五件套 + 注
@@ -825,7 +833,7 @@ export class Harness {
     if (this.teamsBoundJournalId === journalId) return;
     const wasUnbound = this.teamsBoundJournalId === undefined;
     if (!wasUnbound) this.team.clear();
-    const root = sessionTeamsRoot(this.dataDir, journalId);
+    const root = this.chatScopedTeams === true ? path.join(this.dataDir, 'teams', 'chat') : sessionTeamsRoot(this.dataDir, journalId);
     const regStore = new AgentTeamRegistryStore(root);
     const priorTeams = this.agentTeams.list();
     if (wasUnbound && priorTeams.length > 0 && regStore.load().length === 0) regStore.save(priorTeams);

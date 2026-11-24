@@ -246,7 +246,7 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') }));
     await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
     const row = (putChannels.mock.calls[0]![0] as ChannelConfigMsg[])[0]!;
-    expect(row.commands).toEqual(['/help', '/new', '/status', '/workspace', '/model', '/effort', '/compact', '/context', '/skills-list', '/agents-list', '/teams-list']);
+    expect(row.commands).toEqual(['/help', '/new', '/status', '/workspace', '/model', '/effort', '/compact', '/context', '/memory', '/memory-rm', '/memory-gc', '/memory-on', '/memory-off', '/skills-list', '/agents-list', '/teams-list']);
   });
 
   /** ⑫ 自动取名（2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」）:应用名称留空
