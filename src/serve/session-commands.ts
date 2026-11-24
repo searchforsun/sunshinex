@@ -1,4 +1,5 @@
 import { chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
+import { t } from '../i18n';
 import { removeLearnedSkill } from '../harness/skills';
 import { resolveRunWindow } from '../config/termination-config';
 import { setMemorySessionOverride } from '../config/memory-config';
@@ -83,10 +84,11 @@ export async function runCommand(s: SessionRuntime, line: string, capture?: (tex
   }
 }
 
-/** 通道面 /context 摘要（2026-11-25 用户裁定「context 根据当前语言 i18n 化」;IM 回执与通道
- *  其他回执同语言=中文;TUI /context 英文分支不受影响）:与 runCommandBody /context 同一计算
- *  （contextBreakdown 单点),仅标签中文化——GUI 观看该命令的转录帧仍走 runCommand 三态行 */
-export function channelContextNotice(s: SessionRuntime): string {
+/** /context 摘要单点（2026-11-25 用户裁定「根据 settings 里的语言设置返回,gui 侧渲染按当前
+ *  设置语言实时显示」;CLAUDE.md §15 外观双语——命令回执走 t() 调用时求值,语言经 settings
+ *  装载链尾 setLanguage 跟随、设置改即热生效）:runCommandBody /context 分支(GUI/TUI 转录面)
+ *  与通道 commandText（IM 回执面)共用本单点,零第二实现 */
+export function contextBreakdownNotice(s: SessionRuntime): string {
   const ctx = s.runtime.harness.context;
   const parts = ctx.snapshotPartsView();
   const b = contextBreakdown({
@@ -102,13 +104,19 @@ export function channelContextNotice(s: SessionRuntime): string {
     chainFrom: ctx.chainFromView(),
   });
   const LABELS: Record<string, string> = {
-    stableSegment: '稳定段', instructions: '指令', skills: '技能', agents: '子智能体',
-    teams: '团队', memory: '记忆', compacted: '压缩块', chain: '主链',
+    stableSegment: t('stable segment', '稳定段'),
+    instructions: t('instructions', '指令'),
+    skills: t('skills', '技能'),
+    agents: t('subagents', '子智能体'),
+    teams: t('teams', '团队'),
+    memory: t('memory', '记忆'),
+    compacted: t('compacted', '压缩块'),
+    chain: t('chain', '主链'),
   };
   return (
-    '上下文构成：\n' +
+    `${t('Context breakdown', '上下文构成')}:\n` +
     b.parts.map((p) => `${LABELS[p.id] ?? p.id}: ${p.tokens} (${Math.round((p.tokens / Math.max(1, b.total)) * 100)}%)`).join('\n') +
-    `\n合计 ${b.total} / ${b.window}`
+    `\n${t(`total ${b.total} / ${b.window}`, `合计 ${b.total} / ${b.window}`)}`
   );
 }
 
@@ -152,27 +160,10 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
   }
 
   if (cmd === '/context') {
-    // 上下文构成观测(只读零副作用):不经 assemble、不写链(TUI /context 同形移植)
-    const ctx = s.runtime.harness.context;
-    const parts = ctx.snapshotPartsView();
-    const b = contextBreakdown({
-      stableSegment: s.runtime.harness.stableSegment(),
-      instructions: parts.instructions,
-      skills: parts.skills,
-      agents: parts.agents,
-      teams: parts.teams,
-      memory: parts.memory,
-      compacted: ctx.compactedView(),
-      chain: ctx.chainView(),
-      window: resolveRunWindow(s.runtime.harness.model),
-      chainFrom: ctx.chainFromView(),
-    });
-    notice(
-      'Context breakdown' +
-        ':\n' +
-        b.parts.map((p) => `${p.id}: ${p.tokens} (${Math.round((p.tokens / Math.max(1, b.total)) * 100)}%)`).join('\n') +
-        `\ntotal ${b.total} / ${b.window}`,
-    );
+    // 上下文构成观测(只读零副作用):不经 assemble、不写链(TUI /context 同形移植)。
+    // 文案单点 contextBreakdownNotice(2026-11-25 用户裁定「根据 settings 语言设置返回」:
+    // t() 调用时求值——GUI/TUI/通道三面同语言,设置改经装载链尾 setLanguage 热生效)
+    notice(contextBreakdownNotice(s));
     return 'ok';
   }
 

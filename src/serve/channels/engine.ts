@@ -35,7 +35,7 @@ import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
 import type { ChannelAdapter, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
 import { registeredWorkspaceRoots } from '../workspace-registry';
-import { runCommand, channelContextNotice } from '../session-commands';
+import { runCommand, contextBreakdownNotice } from '../session-commands';
 
 /** 健康快照行:enabled 取当前配置快照(移除/停用即 false);connected 取在座适配器 health(缺席/起失败即 false) */
 export interface ChannelHealthRow {
@@ -157,7 +157,7 @@ export class ChannelsEngine {
       commandText: async (rt, line) => {
         // /context=通道面中文摘要(2026-11-25 用户裁定「context 根据当前语言 i18n 化」;命令气泡
         // /三态行仍走 runCommand 落转录——runCommand 不重复执行,此处只取格式化面)
-        if (line === '/context') return channelContextNotice(rt);
+        if (line === '/context') return contextBreakdownNotice(rt);
         let text: string | undefined;
         const r = await runCommand(rt, line, (t) => {
           text = t;
