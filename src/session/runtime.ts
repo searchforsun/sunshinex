@@ -5,7 +5,6 @@ import type { PermissionMode } from '../harness/security/modes';
 import type { ToolDisplayMeta } from '../harness/tools';
 import { makeCreateScheduledTaskTool } from '../harness/tools/schedule-create-tool';
 import type { ScheduleCreateDefaults, ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
-import { setToolDisplayMeta } from '../tui/tool-verbs';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import type { BackgroundTask } from '../harness/tasks';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
@@ -122,11 +121,11 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
   // guard ask:true 决策(acceptEdits 交互面 + 插件 act 类强制问线——后者任何档位不自动放行);
   // full-access 的常规 ask 仍在 guard 层自动放行(不经 asker),注入无档位副作用
   if (opts.onApproval) harness.security.setAsker(opts.onApproval);
-  // 工具呈现表接线（D26/J1；2026-11-15 P2 Task 1 去单例）：表随 effective face 装配快照进返回值
-  // （toolDisplay）——TUI 持有运行时的消费点显式注入；进程级 set 保留为 TUI 单会话兼容兜底，
-  // daemon 路径不再依赖（混合 kind 两次 assemble 各自返回各自表，末装配者不再覆盖先装配者）
+  // 工具呈现表接线（D26/J1；2026-11-15 P2 Task 1 去单例；D80② 反向边拔除——内核不再触呈现层）：
+  // 表随 effective face 装配快照进返回值（toolDisplay）——消费点显式注入（TUI 显式传参为主）；
+  // 进程级单例兜底接线归 TUI 装配侧（tui/session.ts 构造段 setToolDisplayMeta），daemon 路径不依赖
+  // （混合 kind 两次 assemble 各自返回各自表，末装配者不再覆盖先装配者）
   const toolDisplay = face.displayMeta();
-  setToolDisplayMeta(toolDisplay);
 
   // 主链唯一入口（D5）：提交经 Loop 长任务模板（内嵌 Reactor），不再直连 harness.reactor
   const loopDeps: LoopDeps = {

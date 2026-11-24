@@ -21,7 +21,7 @@ import {
 import { confirmPlanOn, planAwaitDecisionOn } from './commands-plan';
 import { PLAN_MODE_NOTE } from '../harness/plan-flow';
 import { skillMenuEntriesOn } from './commands-skills';
-import { toolCallLine } from './tool-verbs';
+import { setToolDisplayMeta, toolCallLine } from './tool-verbs';
 import { describeIncomplete } from './stop-reason';
 import { ContextManager, chainToHistoryItems, runCompaction, contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
@@ -485,6 +485,9 @@ export class SessionController {
         awaitDecision: (name, doc) => planAwaitDecisionOn(this, name, doc),
       },
     });
+    // 进程级呈现表兜底接线（D80② 自 session/runtime 拔边归此）：显式注入消费面为主
+    // （toolCallLine/applyTaskState 第三四参传 this.runtime.toolDisplay），单例只兜未显式传参的残留面
+    setToolDisplayMeta(this.runtime.toolDisplay);
     this.autoAsker = opts.asker;
     // 终端化审批闭包迁拆分件 approval（挂起语义不变：guard ask → 挂起 → 裁决回填 → 继续）
     // 注入不限档(2026-11-01 同 GUI 侧裁定:插件 act 类强制问线任何档位都要弹审批;full-access
