@@ -295,7 +295,10 @@ export function makeTaskWaitTool(
  *  receiptBody/formatReceipt 单点（回执头=既有窥视措辞）、终态行即置 markReceipted（bg-wake spec §3.1
  *  「窥视即消费」同口径——回执面出现过的终态行不再唤醒）。kinds=exec+subagent 双档（编排器名下两类
  *  后台工作全可见）。仅 sunx 会话注册（harness/index.ts kind 分叉） */
-export function makeTaskStatusTool(tasks: TaskRegistry): RegisteredTool {
+export function makeTaskStatusTool(
+  tasks: TaskRegistry,
+  scheduleList?: () => Array<{ name: string; nextRunAt: number | null }>,
+): RegisteredTool {
   return {
     parameters: {
       type: 'object',
@@ -317,10 +320,25 @@ export function makeTaskStatusTool(tasks: TaskRegistry): RegisteredTool {
     executor: async (input) => {
       const raw = input as { taskIds?: string[] | null };
       let ids: string[];
+      const scheduledSection = (): string => {
+        const jobs = scheduleList?.() ?? [];
+        if (jobs.length === 0) return '';
+        const rows = jobs
+          .map((j) => {
+            const eta = j.nextRunAt !== null ? new Date(j.nextRunAt).toISOString() : 'unscheduled';
+            const inSec = j.nextRunAt !== null ? Math.max(0, Math.round((j.nextRunAt - Date.now()) / 1000)) : null;
+            return `- ${j.name} — next ${eta}${inSec !== null ? ` (in ${inSec}s)` : ''}`;
+          })
+          .join('\n');
+        return `scheduled dispatches (auto-wake this session on completion):\n${rows}`;
+      };
       if (raw.taskIds === null || raw.taskIds === undefined) {
         ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
         if (ids.length === 0) {
-          return { exitCode: 0, stdout: 'no background tasks running', stderr: '', timedOut: false };
+          const sched = scheduledSection();
+          return { exitCode: 0, stdout: sched !== '' ? `no background tasks running
+
+${sched}` : 'no background tasks running', stderr: '', timedOut: false };
         }
       } else {
         if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0) {

@@ -208,6 +208,8 @@ export interface SessionRuntimeOpts {
    *  ContextManager 会话冻结层——出生定版一次不重写（前缀缓存纪律：同一聊天逐字节一致；
    *  动态发言用户走消息级 [来自 x]: 前缀不入此层）；缺席=普通会话装配字节不变 */
   channelMeta?: { platform: string; chatId: string; appName?: string };
+  /** 定时分派清单接缝（2026-11-25 用户裁定④,session-lifecycle io 透传）：task_status 工具回执附段 */
+  schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
   /** 持久化域目录（2026-11-15 sunx P3 Task 2 域绑定）：sunx 出生即铸档时由 createSessionIn 注入
    *  `~/.sunshinex/sunx/<journalId>/data`——assemble() 透传 buildHarness（持久化数据面全落域），
    *  `dataDir` 外窥供 handler 寻址；缺席（standard/TUI/CLI）=resolveDataDir(root) 既有推导逐字节不变 */

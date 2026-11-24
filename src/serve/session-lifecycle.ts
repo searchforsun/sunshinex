@@ -45,6 +45,9 @@ export interface SessionLifecycleIo {
    *  按 sessionId 产出通道推送出口（daemon channelsEngine.sendToSessionChat 绑定反查投递）——
    *  create/attach 构造 SessionRuntime 时按当次 id 取值透传；缺席=工具不注册 */
   readonly channelSendFor?: (sessionId: string) => { send(text: string): Promise<boolean> };
+  /** 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示」）：按工作区根回列
+   *  启用中的分派（daemon 注入 ScheduleEngine root 过滤）——task_status 工具回执附段 */
+  readonly schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
 }
 
 /** root 缺省锚字面量单点（GUI 欢迎页非项目会话的缺省锚，serve 侧解析面同源引用） */
@@ -207,6 +210,7 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     // 域绑定（2026-11-15 sunx P3 Task 2）：dataDir=域——持久化数据面全落域,handler 寻址走 dataDir 外窥
     ...(domainDir !== undefined ? { dataDir: domainDir } : {}),
     ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
+    ...(io.schedulesFor !== undefined ? { schedulesFor: io.schedulesFor } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);
@@ -498,6 +502,7 @@ export function attachSunxIn(io: SessionLifecycleIo, journalId: string): Result<
     ...(charter !== null ? { charter } : {}),
     dataDir: domain,
     ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
+    ...(io.schedulesFor !== undefined ? { schedulesFor: io.schedulesFor } : {}),
     ...(io.channelSendFor !== undefined ? { channelSend: io.channelSendFor(id) } : {}),
     mintPid: io.mintPid,
   });

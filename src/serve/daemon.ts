@@ -247,6 +247,16 @@ export class GuiDaemon {
     // `--require scripts/test-env.cjs`（批量走测试 runner 已自动注入），或用 opts.schedulesFile 注入临时档。
     this.scheduleStore = new ScheduleStore(opts.schedulesFile ?? schedulesFile());
     this.scheduleExecutor = new ScheduleExecutor({
+      // 通道绑定会话复用（2026-11-25 用户裁定②「定时/唤醒落最新会话,sunx 只有一个活的」）：
+      // 同根+通道绑定+在座的会话即触发目标（闲=新轮,忙=排队）——不另建席
+      reuseChannelSession: (root) => {
+        for (const [, sess] of this.sessions.entries()) {
+          if (sess.channelMeta === undefined || sess.root !== root) continue;
+          const bound = [...this.channelsBindings.all()].some((b) => b.sessionId === sess.id);
+          if (bound) return sess;
+        }
+        return undefined;
+      },
       createSession: (root, opts) => this.createSession(root, opts),
       getSession: (id) => this.sessions.get(id),
       releaseSession: (id) => this.releaseSession(id),
@@ -325,6 +335,13 @@ export class GuiDaemon {
       channelSendFor: (sessionId) => ({
         send: async (text: string) => this.channelsEngine.sendToSessionChat(sessionId, text),
       }),
+      // 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示,显示何时执行」）:
+      // ScheduleEngine root 过滤——启用中/未结束的分派随 task_status 回执附段
+      schedulesFor: (root) =>
+        this.scheduleEngine
+          .list()
+          .filter((j) => j.enabled && j.ended !== true && j.root === root && j.nextRunAt !== null)
+          .map((j) => ({ name: j.name, nextRunAt: j.nextRunAt })),
     };
   }
 

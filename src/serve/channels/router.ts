@@ -16,7 +16,7 @@ import { channelChatWorkspaceRoot } from '../../config/channels';
 import { EFFORT_ORDER, parseEffort } from '../../model/effort';
 import { listAgents } from '../../catalog/agents';
 import { listTeams } from '../../catalog/teams';
-import { bindingKey, CHANNEL_COMMANDS } from './model';
+import { bindingKey, inboundSubmitText, CHANNEL_COMMANDS } from './model';
 import type { Binding, ChannelConfig, InboundMessage } from './model';
 import type { ChannelsBindingsStore } from './store';
 import type { SessionRuntime } from '../session';
@@ -680,9 +680,11 @@ export class ChannelRouter {
     // 旧运行时**不释放**（2026-11-23 用户裁定「就放着就可以」）：旧座留注册表——GUI 开着旧
     // 会话的 snapshot/pty 等端点不 404
     this.upsertBinding(key, sessionId, seat, cfg, binding, msg);
-    // Sunx 通道（2026-11-24 用户裁定「/new 重新创建一个新的 Sunx,只是品行复用」）：新建腿走
-    // createOpts 的 kind/charter 透传——品性冻结层随配置沿用,对话上下文全新
-    await this.deps.ack(msg, cfg.sessionKind === 'sunx' ? '已开启新的 Sunx（品性沿用），原会话留档可回看' : '已开启新会话，原会话留档可回看');
+    // /new 回执（2026-11-25 用户裁定「显示成功切换+当前模型和思考强度,调整用 /model /effort
+    // 等,/help 查看」——不再提品性复用/留档可回看）:快照读当轮生效档
+    const snap = seat.rt.snapshotResponse();
+    const effort = snap.effort !== undefined ? (EFFORT_LABELS[snap.effort] ?? snap.effort) : '跟随全局默认';
+    await this.deps.ack(msg, `已切换到新会话。当前模型：${snap.model ?? '默认主模型'}，思考强度：${effort}。调整请使用 /model、/effort 等命令——发送 /help 查看。`);
   }
 
   /** 绑定解析三态（⑦⑧⑨）+ 提交分派：在座直用 → attach 重开（失败释放残座）→ 新建；
@@ -719,8 +721,7 @@ export class ChannelRouter {
       this.upsertBinding(key, sessionId, seat, cfg, existing, msg);
     }
     this.deps.noteSender?.(sessionId, { display: msg.userDisplay ?? msg.userId, userId: msg.userId, chatKind: msg.chatKind }); // ⑫ 绑定解析成功即回写
-    const body = msg.text ?? '';
-    const submitText = msg.chatKind === 'group' ? `[来自 ${msg.userDisplay ?? msg.userId}]: ${body}` : body; // ⑫ 单聊原文
+    const submitText = inboundSubmitText(msg); // ⑫ 群聊前缀/单聊原文（单点,drain 回显匹配同源）
     const target = { channelId: cfg.id, chatId: msg.chatId };
     // ack 二态回执（计划 §4 第 6 条「受理即回执」，Task 8 e2e 回修）：idle submit 受理 →
     // 「已受理，处理中」；steer 排队（running 直排 / 409 竞态回退）→「已加入排队，当前任务完成后处理」

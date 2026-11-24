@@ -344,3 +344,69 @@ test('run：ensureJournalMinted/meta 写失败也不抛，释放并记录 failed
   assert.equal(runB.status, 'failed');
   assert.notEqual(runB.error, undefined);
 });
+
+test('run：通道绑定会话复用（2026-11-25 用户裁定②「定时/唤醒落最新会话」）——提交进复用座(submitExternal),忙=steer,零建席,finish 不释放', () => {
+  const dir = tmpData();
+  const store = new ScheduleStore(path.join(dir, 'schedules.json'));
+  const j = job();
+  store.upsert(j);
+  // 复用座:通道绑定(带 channelMeta/root)闲态——submitExternal 直提
+  const session = new FakeSession(dir);
+  (session as unknown as { id: string }).id = 's1'; // 复用座 id(run 记录寻址)
+  (session as unknown as { root: string }).root = '/chat/root';
+  (session as unknown as { channelMeta: { platform: string; chatId: string } }).channelMeta = { platform: 'feishu', chatId: 'oc-x' };
+  const extSubmitted: string[] = [];
+  (session as unknown as { submitExternal: (goal: string) => { ok: boolean; status?: number; error?: string } }).submitExternal = (goal) => {
+    extSubmitted.push(goal);
+    return { ok: true };
+  };
+  (session as unknown as { steer: (goal: string) => void }).steer = (goal) => {
+    session.submitted.push(`steer:${goal}`);
+  };
+  const created: Array<string | null> = [];
+  const released: string[] = [];
+  const ex = new ScheduleExecutor({
+    createSession: (root) => {
+      created.push(root);
+      return { ok: true, value: { sessionId: 'fresh' } };
+    },
+    getSession: () => session as never,
+    releaseSession: (id) => released.push(id),
+    activeSessionId: () => undefined,
+    reuseChannelSession: () => session as never,
+  }, store);
+  const runId = ex.run(j, 'schedule', 5)!;
+  assert.ok(runId.startsWith('run-'));
+  assert.equal(extSubmitted.length, 1, 'submitExternal 直提');
+  assert.equal(session.submitted.length, 0, '非 steer');
+  assert.equal(created.length, 0, '零建席(复用座)');
+  const run = store.get('j')!.runs[0]!;
+  assert.equal(run.sessionId, 's1');
+  assert.equal(run.status, 'running');
+  // finish:不进 retained(复用座不释放)
+  session.finish('done');
+  assert.equal(store.get('j')!.runs[0]!.status, 'succeeded');
+  assert.deepEqual(released, [], '复用座永不释放');
+  // 忙(409)=steer 排队不丢
+  const session2 = new FakeSession(dir);
+  (session2 as unknown as { id: string }).id = 's2';
+  (session2 as unknown as { root: string }).root = '/chat/root';
+  (session2 as unknown as { channelMeta: { platform: string; chatId: string } }).channelMeta = { platform: 'feishu', chatId: 'oc-x' };
+  const steered: string[] = [];
+  (session2 as unknown as { submitExternal: (goal: string) => { ok: boolean; status?: number; error?: string } }).submitExternal = () => ({ ok: false, status: 409, error: 'run in progress' });
+  (session2 as unknown as { steer: (goal: string) => void }).steer = (goal) => steered.push(goal);
+  const ex2 = new ScheduleExecutor({
+    createSession: () => {
+      created.push('should-not-create' as string | null);
+      return { ok: true, value: { sessionId: 'fresh2' } };
+    },
+    getSession: () => session2 as never,
+    releaseSession: () => undefined,
+    activeSessionId: () => undefined,
+    reuseChannelSession: () => session2 as never,
+  }, store);
+  const id2 = ex2.run(j, 'schedule')!;
+  assert.ok(id2.startsWith('run-'));
+  assert.deepEqual(steered, ['检查'], '忙=steer 排队不丢');
+  assert.equal(created.length, 0, '忙路径同样零建席');
+});

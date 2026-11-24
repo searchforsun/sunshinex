@@ -15,6 +15,10 @@ interface ScheduleExecutorIo {
   getSession(id: string): SessionRuntime | undefined;
   releaseSession(id: string): void;
   activeSessionId(): string | undefined;
+  /** 通道绑定会话复用（2026-11-25 用户裁定②「定时/唤醒落最新会话,sunx 只有一个活的」）：
+   *  按工作区根回列通道绑定且在座的会话（daemon 按绑定档+channelMeta 判定）——定时触发提交进
+   *  它（闲=新轮,忙=排队）,不再另建会话;缺席=按既有建席流程 */
+  reuseChannelSession?(root: string): SessionRuntime | undefined;
   now?: () => number;
 }
 
@@ -39,6 +43,8 @@ function stamp(now: number): string {
 export class ScheduleExecutor {
   private readonly now: () => number;
   private readonly retained: Array<{ id: string; endedAt: number }> = [];
+  /** 复用座集（裁定②）：finish 的 LRU 释放对其跳过——释放=通道聊天断链 */
+  private readonly reused = new Set<string>();
 
   constructor(private readonly io: ScheduleExecutorIo, private readonly store: ScheduleStore) {
     this.now = io.now ?? (() => Date.now());
@@ -59,6 +65,34 @@ export class ScheduleExecutor {
     try {
       startedAt = this.now();
       root = job.root === 'default' ? defaultScratchRoot() : job.root;
+      // 通道绑定会话复用（裁定②,见 io 注）：提交进最新绑定会话,零新席;忙=steer 排队不丢;
+      // 复用座标记 reused——finish 不进 retained LRU（释放=聊天断链）
+      const reused = this.io.reuseChannelSession?.(root);
+      if (reused !== undefined) {
+        const submitted = reused.submitExternal(job.prompt);
+        if (!submitted.ok && submitted.status === 409) reused.steer(job.prompt);
+        else if (!submitted.ok) {
+          this.addFailed(id, job, trigger, plannedAt, startedAt, root, submitted.error);
+          return id;
+        }
+        this.reused.add(reused.id);
+        this.store.addRun(job.id, {
+          id,
+          trigger,
+          ...(plannedAt !== undefined ? { scheduledAt: plannedAt } : {}),
+          startedAt,
+          status: 'running',
+          sessionId: reused.id,
+          ...(reused.attachedJournalId !== undefined ? { journalId: reused.attachedJournalId } : {}),
+          root,
+        });
+        try {
+          reused.onRunEnd((info) => this.finish(job.id, id, reused.id, info));
+        } catch {
+          /* 观测面注册失败不改已受理事实：记录停在 running,daemon 重启对账兜底 */
+        }
+        return id;
+      }
       const created = this.io.createSession(root, { mode: job.mode, activate: false, ...(job.model !== undefined ? { model: job.model } : {}) });
       if (!created.ok) {
         this.addFailed(id, job, trigger, plannedAt, startedAt, root, created.error.message);
@@ -137,6 +171,7 @@ export class ScheduleExecutor {
   /** LRU（spec §6.10）：保留至多 RETAIN_MAX 个已结束运行时，释放最旧的非 active；active 永不释放
    *  （全为 active 的极端下宁超留断循环——内存卫生不得牺牲在座会话） */
   private retain(sessionId: string, endedAt: number): void {
+    if (this.reused.has(sessionId)) return; // 复用座永不释放(聊天活链)
     this.retained.push({ id: sessionId, endedAt });
     while (this.retained.length > RETAIN_MAX) {
       let active: string | undefined;

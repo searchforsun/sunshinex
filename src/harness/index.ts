@@ -149,6 +149,10 @@ export interface HarnessOptions {
    *  各会话(/new 重建)采纳同一注册表/板/inbox/名册,新会话继承在途任务不空板;手建会话缺席=
    *  既有 per-journal 隔离零变化 */
   chatScopedTeams?: boolean;
+  /** 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示,显示何时执行」）：
+   *  按工作区根回列启用中的分派（daemon 装配自 ScheduleEngine,root 过滤）——task_status 回执
+   *  附「scheduled dispatches」段;缺席=无接缝零输出 */
+  schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
   /** 会话形态（2026-11-14 sunx 设计：装配期按 kind 分叉 profile）。提示词面已消费（2026-11-15）：
    *  'sunx' = 稳定段身份槽替换 + 编排章程行（prompts/shared.ts 单点，stableSegment 观测面与单发
    *  Reactor 同源）；缺席=standard 零变化。工具面/serve 生命周期分叉在后续任务 */
@@ -222,6 +226,10 @@ export class Harness {
   private teamsBoundJournalId: string | undefined;
   /** 聊天域共享板（见 HarnessOpts.chatScopedTeams 注） */
   private readonly chatScopedTeams: boolean;
+  /** 定时分派清单接缝（见 HarnessOpts.schedulesFor 注） */
+  private readonly schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
+  /** 工作区根（schedulesFor 过滤键——job.root 同源;ctor base 定格） */
+  private readonly harnessBase: string;
   /** 未落盘前的内存板（adopt 时若盘空则回流事件） */
   private memoryBoardStore: MemoryTeamStore | undefined;
   /** 未绑 journal 时的成员名册（首绑回流）；绑后改写 TeammateRosterStore */
@@ -552,6 +560,8 @@ export class Harness {
     this.inboxCursors = new InboxCursorStore();
     this.teamsBoundJournalId = undefined;
     this.chatScopedTeams = opts.chatScopedTeams === true;
+    this.schedulesFor = opts.schedulesFor;
+    this.harnessBase = base;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
     // 名 = label ?? agent_id ?? 'worker';框定 = 角色行(目录注册制 agent.md)或内联 prompt 前 300 字符;
     // 工具面 = deriveTeammateRegistry 派生(剔 spawn/todo_write/worktree/板面五件套 + 注
@@ -815,7 +825,10 @@ export class Harness {
       ...makeDispatchTool(this.runner),
       display: { verb: 'DISPATCH' },
     });
-    this.tools.register({ ...makeTaskStatusTool(this.tasks), display: { verb: 'TASK_STATUS' } });
+    this.tools.register({
+      ...makeTaskStatusTool(this.tasks, this.schedulesFor !== undefined ? () => this.schedulesFor!(this.harnessBase) : undefined),
+      display: { verb: 'TASK_STATUS' },
+    });
     const scheduleArm: ScheduleArmSeam | undefined = this.scheduleArmOpt !== undefined ? { arm: this.scheduleArmOpt.arm } : undefined;
     this.tools.register({ ...makeScheduleWakeupTool(scheduleArm), display: { verb: 'SCHEDULE' } });
     this.tools.register({ ...makeScheduleTaskTool(scheduleArm), display: { verb: 'SCHEDULE_TASK' } });

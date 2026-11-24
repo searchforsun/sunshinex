@@ -139,6 +139,13 @@ export function bindingKey(channelId: string, chatId: string): string {
   return `${channelId}:${chatId}`;
 }
 
+/** 入站提交文本（⑫ 群聊注入单点,router 提交与 engine drain 回显匹配共用）：群聊
+ *  `[来自 x]: ` 前缀+正文,单聊原文——run 起源移动按「提交文本===回显帧文本」回配 */
+export function inboundSubmitText(msg: InboundMessage): string {
+  const body = msg.text ?? '';
+  return msg.chatKind === 'group' ? `[来自 ${msg.userDisplay ?? msg.userId}]: ${body}` : body;
+}
+
 export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnings: string[] } {
   if (!Array.isArray(raw)) return { value: [], warnings: ['channels 键须为数组'] };
   const value: ChannelConfig[] = [];

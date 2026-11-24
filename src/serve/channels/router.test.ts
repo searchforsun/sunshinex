@@ -64,6 +64,7 @@ function makeRuntime(opts: { status?: 'idle' | 'running'; journalId?: string; su
       return { ok: true };
     },
     ensureJournalMinted: () => {}, // 桩:attachedJournalId 出生即定
+    snapshotResponse: () => ({ queued: [], effort: undefined, model: undefined }), // /new 回执读档默认桩(空队列=不武装排队选择)
     attachedJournalId: opts.journalId ?? 'j1',
     dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'chan-rt-')),
   };
@@ -241,7 +242,7 @@ test('⑥ 指令:/help 不进模型;/stop 调 interrupt;/new 重绑保留元数�
   const hNew = makeHarness();
   hNew.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 'old-s', journalId: 'j-old', lockedUserId: 'u1', rootOverride: '/override/root', updatedAt: 1 });
   await hNew.router.handleInbound(mkMsg({ msgId: 'n1', text: '/new' }));
-  assert.ok(hNew.acks[0]!.text.includes('新会话'));
+  assert.ok(hNew.acks[0]!.text.includes('已切换到新会话'));
   assert.equal(hNew.createCalls.length, 1);
   assert.equal(hNew.createCalls[0]!.root, '/override/root'); // rootOverride 优先
   assert.equal(hNew.createCalls[0]!.opts?.activate, false);
@@ -259,7 +260,7 @@ test('⑥ 指令:/help 不进模型;/stop 调 interrupt;/new 重绑保留元数�
   await hNew2.router.handleInbound(mkMsg({ msgId: 'n2', text: '/new 换个话题' }));
   assert.equal(hNew2.createCalls.length, 1);
   assert.equal(hNew2.createCalls[0]!.root, channelChatWorkspaceRoot('m1', 'c1'));
-  assert.ok(hNew2.acks[0]!.text.includes('新会话'));
+  assert.ok(hNew2.acks[0]!.text.includes('已切换到新会话'));
   // ⑥b /status:一句话任务状态(2026-11-22 用户裁定「还有其他可以暴露给聊天的命令吗?可以加一下」)
   const hSt = makeHarness();
   await hSt.router.handleInbound(mkMsg({ msgId: 'st1', text: '/status' })); // 无绑定=未建立
@@ -638,14 +639,14 @@ test('⑳ Sunx 模式:新建与 /new 都透传 kind/name/charter;ack 明示品�
     charter: '品行章程原文',
     channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手' },
   });
-  assert.ok(h.acks[1]!.text.includes('品性沿用'));
+  assert.ok(h.acks[1]!.text.includes('已切换到新会话'), '/new 回执=成功切换+当前档(2026-11-25 裁定,不再提品性复用)');
   // 普通会话通道:opts 无 sunx 三键（零变化面）;ack 旧文案
   const h2 = makeHarness();
   await h2.router.handleInbound(mkMsg({ msgId: 'sx3', text: '开场' }));
   assert.equal(h2.createCalls[0]!.opts?.kind, undefined);
   assert.equal(h2.createCalls[0]!.opts?.charter, undefined);
   await h2.router.handleInbound(mkMsg({ msgId: 'sx4', text: '/new' }));
-  assert.ok(h2.acks[1]!.text.includes('已开启新会话'));
+  assert.ok(h2.acks[1]!.text.includes('已切换到新会话'));
   assert.ok(!h2.acks[1]!.text.includes('品性'));
 });
 

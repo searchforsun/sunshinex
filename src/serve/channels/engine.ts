@@ -35,6 +35,7 @@ import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
 import type { ChannelAdapter, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
 import { registeredWorkspaceRoots } from '../workspace-registry';
+import { inboundSubmitText } from './model';
 import { runCommand, contextBreakdownNotice } from '../session-commands';
 
 /** 健康快照行:enabled 取当前配置快照(移除/停用即 false);connected 取在座适配器 health(缺席/起失败即 false) */
@@ -83,6 +84,10 @@ export class ChannelsEngine {
    *  投递丢弃」直接丢失。通道启用但适配器未就绪(缺席/health 未连)的投递改**暂存**,适配器
    *  start 成功即按序冲刷;每通道上限 PENDING_OUT_MAX,溢出丢最旧 */
   private readonly pendingOut = new Map<string, Array<{ target: ReplyTarget; msg: OutboundMessage }>>();
+  /** 最近入站环（drain 回显配对原料,2026-11-25 用户裁定①「最后一个应该回复给 1」）：
+   *  key=`${channelId}:${chatId}` → 最近 8 条入站——排队消息出队注入时广播的 user 回显帧按
+   *  提交文本回配,run 起源移到被 drain 消息（输出跟随它,不再回轮起源气泡） */
+  private readonly recentInbounds = new Map<string, InboundMessage[]>();
   /** GUI 发起轮抑制集（2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到,两者是隔离的,
    *  只是同一个显示在上下文中,过滤一下」;复裁定「共享轮正常显示给飞书用户回答」）:daemon HTTP
    *  **空闲提交**面对通道绑定会话打标(markGuiRun)——GUI 发起的新轮,投影器帧过滤跳过该会话全部
@@ -112,6 +117,12 @@ export class ChannelsEngine {
           if ('sessionId' in f && this.guiRuns.has(f.sessionId)) {
             if (f.kind === 'event' && f.e.type === 'done') this.guiRuns.delete(f.sessionId);
             return;
+          }
+          // drain 回显移起源（issue① 根修,见 recentInbounds 字段注）:user 回显帧=排队消息
+          // 出队注入,run 起源移到被 drain 消息——后续输出回复它的气泡
+          if ('sessionId' in f && f.kind === 'event' && f.e.type === 'user' && typeof f.e.text === 'string') {
+            const origin = this.matchDrainedOrigin(f.sessionId, f.e.text);
+            if (origin !== undefined) this.runOrigin.set(f.sessionId, origin);
           }
           // 子智能体帧过滤(2026-11-25 用户裁定「子 agent 的内容没有必要返回给用户网关,用户只和
           // 主 agent 交互」):子 runner 事件流转发进父会话帧泵时带 payload.subagent 标——IM 投影
@@ -349,6 +360,11 @@ export class ChannelsEngine {
   /** 适配器入站 sink:记最近入站(回执式 reply 寻址原料)→ 交 router 全管线(handleInbound 契约不抛,防御吞) */
   private onInbound(msg: InboundMessage): void {
     this.lastInbound.set(`${msg.channel}:${msg.chatId}`, msg);
+    const key = `${msg.channel}:${msg.chatId}`;
+    const ring = this.recentInbounds.get(key) ?? [];
+    ring.push(msg);
+    while (ring.length > 8) ring.shift();
+    this.recentInbounds.set(key, ring);
     void this.router.handleInbound(msg).catch(() => {});
   }
 
@@ -403,6 +419,20 @@ export class ChannelsEngine {
     q.push({ target, msg });
     while (q.length > PENDING_OUT_MAX) q.shift();
     this.pendingOut.set(channelId, q);
+  }
+
+  /** drain 回显配对（issue①）：按提交文本回配最近入站（新→旧首个命中,群聊前缀同源计算） */
+  private matchDrainedOrigin(sessionId: string, text: string): InboundMessage | undefined {
+    for (const [sid, t] of this.boundTargets()) {
+      if (sid !== sessionId) continue;
+      const list = this.recentInbounds.get(`${t.channelId}:${t.chatId}`);
+      if (list === undefined) continue;
+      for (let i = list.length - 1; i >= 0; i -= 1) {
+        const m = list[i]!;
+        if (inboundSubmitText(m) === text) return m;
+      }
+    }
+    return undefined;
   }
 
   /** 暂存冲刷（adapter start 成功后调用）：按序重投;冲刷期再失败=真失败,落日志丢弃不回队 */
