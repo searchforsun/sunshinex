@@ -1407,7 +1407,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   transition: background 0.16s ease, border-color 0.16s ease;
 }.ask-dock .card-option:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }.ask-dock .card-option.checked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }.ask-dock .card-option input { position: absolute; opacity: 0; pointer-events: none; } /* 原生控件视觉退役,卡片即选中面 */.ask-dock .card-option-icon { display: inline-flex; flex: none; color: var(--fg-tertiary); }.ask-dock .card-option.checked .card-option-icon { color: var(--accent); }.ask-dock .card-option-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }.ask-dock .card-option-desc { color: var(--fg-tertiary); }
 /* 队列暂停横幅（2026-11-23 用户裁定「中断同时暂停队列」）：首条上侧一行说明+右侧「继续」钮
-   （无框无图标纯文字钮,accent 色 hover 提亮——横幅降调不抢队列正文） */.steer-paused { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }.steer-resume { border: none; background: none; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--accent); font: inherit; font-size: calc(14px * var(--fz)); cursor: pointer; flex: none; }.steer-resume:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+   （无框无图标纯文字钮;2026-11-23 用户二轮裁定:横幅底色=左菜单同款 surface-under,继续钮去蓝色
+   ——中性前景色,hover 提亮,与队列动作钮同语言） */.steer-paused { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--surface-under); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }.steer-resume { border: none; background: none; padding: 2px 6px; border-radius: var(--radius-sm); color: var(--fg-secondary); font: inherit; font-size: calc(14px * var(--fz)); cursor: pointer; flex: none; }.steer-resume:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 /* Other=自由输入卡(合二为一):✎+输入框,聚焦/有字即 custom 选中态 */.ask-dock .card-custom-card {
   flex: none;
   display: flex; align-items: center; gap: 10px;
@@ -3414,6 +3415,9 @@ input.sx-setting-input { width: 100%; }
 .sx-editor-modal-backdrop { position: fixed; inset: 0; z-index: 120; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .sx-editor-modal { width: clamp(560px, 62vw, 1080px); max-height: min(88vh, 920px); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); box-shadow: var(--elev-prominent); display: flex; flex-direction: column; } /* 2026-11-17 用户裁定「弹窗尽量大一些,信息不要挤在一起」:640→880/80vh→86vh */
 .sx-editor-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
+/* 头部动作槽靠右（2026-11-23 用户报障「skills 预览复制钮跑到中间」）：space-between 三子元素
+   （标题/动作/×）会把动作挤中央——动作槽 margin-left auto 贴齐 × 钮,标题独占左侧 */
+.sx-modal-head-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
 .sx-editor-modal-head h3 { margin: 0; font-size: calc(14px * var(--fz)); }
 .sx-editor-modal-close { border: none; background: transparent; color: var(--fg-icon); font-size: calc(16px * var(--fz)); line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: var(--radius-sm); }
 .sx-editor-modal-close:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
@@ -3540,9 +3544,11 @@ input.sx-setting-input { width: 100%; }
 .sx-editor-modal-actions {
   flex: none;
   margin: 6px -12px -12px;
-  padding: 10px 12px 12px;
+  /* 左右内衬 22px=容器圆角半径:按钮落进圆角曲线区即视觉贴边穿角（2026-11-23 用户实测「按钮都贴着边」）,
+     底部 16px 呼吸;负 margin 全出血结构不变 */
+  padding: 10px 22px 16px;
   border-top: 1px solid var(--border);
-  justify-content: flex-end; /* 右下主行动作(dirpicker-foot 2026-10-24 同例) */
+  justify-content: flex-end; /* 2026-11-23 用户裁定:双钮成组靠右,取消在确认左侧(重命名会话弹窗同语言;首版两端分布拆散视觉作废) */
 }
 /* ② 二段式删除确认钮(ConfirmDeleteButton 武装段):原钮原地变实心红——2026-11-06 用户裁定
    「一定要显示完全的红色,不是线条」,对齐侧栏 .sx-archive-confirm(实心 --err+#fff);
@@ -3671,6 +3677,10 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .sx-turn-confirm-body { display: flex; flex-direction: column; gap: 10px; padding: 12px; font-size: calc(14px * var(--fz)); color: var(--fg); min-height: 0; }
 .sx-turn-confirm-body p { margin: 0; line-height: 1.5; }
 .sx-turn-confirm-note { font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }
+/* 删除确认弹窗(2026-11-23 用户裁定「删除按钮颜色不对,位置也不对,取消在左侧」):
+   红实心确认钮(err-solid 随主题)+取消左/删除右(标记顺序在标记语言) */
+.sx-turn-confirm-actions button.sx-danger-solid { background: var(--err-solid); color: #fff; border-color: transparent; }
+.sx-turn-confirm-actions button.sx-danger-solid:hover:not(:disabled) { background: color-mix(in srgb, var(--err-solid) 88%, #fff); }
 .sx-turn-confirm-files { list-style: none; margin: 0; padding: 6px 8px; max-height: 160px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); font: calc(14px * var(--fz)) var(--font-mono); }
 .sx-turn-confirm-files li { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; overflow-wrap: anywhere; }
 .sx-turn-confirm-tag { flex: none; color: var(--fg-secondary); font-family: inherit; }

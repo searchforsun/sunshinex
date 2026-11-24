@@ -349,7 +349,7 @@ export function ModalShell(props: {
       >
         <header className="sx-editor-modal-head">
           <h3>{title}</h3>
-          {headerActions}
+          <span className="sx-modal-head-actions">{headerActions}</span>
           {closeButton && (
             <button type="button" className="sx-editor-modal-close" aria-label={t('Close', '关闭')} onClick={onClose}>
               ×
@@ -379,10 +379,11 @@ export function EditorModal({ open, title, onClose, onSubmit, children }: Editor
       >
         <div className="sx-editor-modal-fields">{children}</div>
         <div className="sx-card-actions sx-editor-modal-actions">
-          <button type="submit" className="primary">{t('Save', '保存')}</button>
+          {/* 按钮位（2026-11-23 用户裁定「取消等在左侧,确认保存等在右侧」）：取消左/保存右,容器 space-between */}
           <button type="button" onClick={onClose}>
             {t('Cancel', '取消')}
           </button>
+          <button type="submit" className="primary">{t('Save', '保存')}</button>
         </div>
       </form>
     </ModalShell>

@@ -1467,7 +1467,21 @@ ${this.sessionCharter ?? ''}` }
     },
   ): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
-    if (wake === undefined) this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（唤醒路径不重置）
+    if (wake === undefined) {
+      this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（唤醒路径不重置）
+      // 模型切换说明补显（2026-11-23 用户裁定「发出消息后才显示」）：挂起说明在本条消息发出时落双面
+      // （notice 用户面+链尾 note 模型面）——用户消息与新模型同拍,转录序=说明行在上、消息在下
+      if (this.pendingModelNotice !== null) {
+        const { from, to } = this.pendingModelNotice;
+        this.pendingModelNotice = null;
+        this.pump({
+          type: 'notice',
+          text: t(`Model switched from ${from} to ${to}`, `模型从 ${from} 切换至 ${to}`),
+          ts: Date.now(),
+        });
+        this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: `Model switched from ${from} to ${to}; subsequent tasks use the new model.` }]);
+      }
+    }
     // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进
     // 上下文/档/wire(见 images-cache.ts 头注);此入口覆盖普通提交与计划模式提交全部提交面
     // （唤醒路径零图片:不 spill 不入面）
@@ -1875,26 +1889,23 @@ ${this.sessionCharter ?? ''}` }
   }
 
   /** 运行中模型切换（G10-C1b）：switchTo 单点;unknown id 幂等 false 不动现状。切换 daemon 级生效。
-   *  系统提示双面（2026-11-23 用户裁定「切换模型时提示一个系统提示」）：实际发生变化（prev≠next）时
-   *  notice 事件（用户面，t() 双语——界面外观口径）+ 链尾 note 行（模型面，英文单语 §15——下一轮模型
-   *  知道内核已换）；同 id 重选/装配期 switchTo(choices[0])/reload 配置漂移回退不发（只发用户显式切换） */
+   *  系统提示延后显示（2026-11-23 用户二轮裁定「切换模型时不产生提示,切换模型发出消息后才显示」）：
+   *  实际变化（prev≠next）只记挂起说明（from 取首个未显示切换的起点,to 取最新目标——连续试选合并成
+   *  一条;切回起点即作废,来回试选零噪音）;下一条用户消息发出时（submit 用户路径）才落双面——
+   *  notice 事件（用户面,t() 双语）+ 链尾 note 行（模型面,英文单语 §15）。同 id 重选/装配期
+   *  switchTo(choices[0])/reload 配置漂移不记挂起（只响应用户显式切换） */
   setModel(id: string | undefined): boolean {
     const sw = this.modelSwitcher;
     if (sw === null) return false;
     const prev = sw.currentId();
     if (!sw.switchTo(id)) return false;
     const next = sw.currentId();
-    if (next !== prev) {
-      if (id !== undefined) this.persistSelection({ model: id });
-      const fromLabel = prev ?? 'default model';
-      const toLabel = next ?? 'default model';
-      this.pump({
-        type: 'notice',
-        text: t(`Model switched from ${fromLabel} to ${toLabel}`, `模型从 ${fromLabel} 切换至 ${toLabel}`),
-        ts: Date.now(),
-      });
-      this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: `Model switched from ${fromLabel} to ${toLabel}; subsequent tasks use the new model.` }]);
-    }
+    if (next === prev) return true;
+    if (id !== undefined) this.persistSelection({ model: id });
+    this.pendingModelNotice = {
+      from: this.pendingModelNotice?.from ?? (prev ?? 'default model'),
+      to: next ?? 'default model',
+    };
     return true;
   }
 
@@ -1959,6 +1970,10 @@ ${this.sessionCharter ?? ''}` }
    *  真=轮收束不自动发出（待发条目留存,面板显示暂停横幅）;输入框停止钮中断时同置;解除仅经队列恢复。
    *  内存态随运行时生命周期（队列本体同源,不落盘） */
   private queuePausedFlag = false;
+  /** 挂起的模型切换说明（2026-11-23 用户裁定「发出消息后才显示」）：setModel 实际变化时记录
+   *  {from,to}（from=首个未显示切换起点,连续试选合并为一条,切回起点作废）;下一条用户消息
+   *  submit 时落双面后清空。内存态随运行时生命周期 */
+  private pendingModelNotice: { from: string; to: string } | null = null;
 
   /** 队列暂停:置暂停态并广播快照面（GUI 队列面板横幅切换） */
   queuePause(): void {
