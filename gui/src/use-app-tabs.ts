@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from './connection';
 import type { ChatSink } from './pages/Chat';
 import { SESSION_DELETED_EVENT, SESSION_ARCHIVED_EVENT } from './session-events';
+import { lightFirstPanelRow } from './ui-util';
 import { seatOfWebContents, seatsOfBrowserKey } from './tabs/WebTabPool';
 import type { WebPoolItem } from './tabs/WebTabPool';
 import { registryProbe, tabEntry } from './tabs/registry';
@@ -59,6 +60,7 @@ export function useAppTabs(opts: {
   openWebTab: (url: string) => void;
   openBoardTab: () => void;
   openTabType: (type: TabTypeId) => void;
+  openTabLit: (type: TabTypeId) => void;
   openArtifactsTab: () => void;
   hiddenMenuIds: ReadonlySet<string> | undefined;
   closeTabInSession: (uid: string) => void;
@@ -218,6 +220,13 @@ export function useAppTabs(opts: {
     if (type === 'agents' && !agentTeamsOn) return;
     openTabInSession(type, {});
   }, [openTabInSession, agentTeamsOn]);
+  /** 顶栏计数钮开签(2026-11-24 用户裁定「点击顶部的后台任务/待办/计划书/团队任务等触发点也要
+   *  高亮」):开签后点亮面板**第一行**——顶栏钮=跳转触发点(区别于 + 菜单/命令面板手动开签);
+   *  无行面页签(diff)轮询自然过期零副作用 */
+  const openTabLit = useCallback((type: TabTypeId): void => {
+    openTabType(type);
+    lightFirstPanelRow();
+  }, [openTabType]);
   const openArtifactsTab = useCallback((): void => {
     openTabInSession('artifacts', {});
   }, [openTabInSession]);
@@ -281,7 +290,7 @@ export function useAppTabs(opts: {
     startSideChat, sideGoals, setSideGoals, upgradeSideChat, sideListing, sideReleased,
     tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, tabCloseActiveStable,
     panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab,
-    openBoardTab, openTabType, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
+    openBoardTab, openTabType, openTabLit, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
     handlePtyAllocated, ptyIdFor, webPoolItems, curSeatRef,
   };
 }

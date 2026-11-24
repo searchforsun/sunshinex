@@ -442,7 +442,7 @@ function AppShell(): JSX.Element {
     startSideChat, sideGoals, setSideGoals, upgradeSideChat, sideListing, sideReleased,
     tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, tabCloseActiveStable,
     panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab,
-    openBoardTab, openTabType, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
+    openBoardTab, openTabType, openTabLit, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
     handlePtyAllocated, ptyIdFor, webPoolItems, curSeatRef,
   } = useAppTabs({ connInstance, connRef, sessionRef, openJournalIdRef, backHomeRef, page, isWelcome, openSessionId, openRoot, tabStates, tabState, setTabStates, agentTeamsOn, sideSinksRef, sideParentRef, probe: PROBE });
 
@@ -729,6 +729,7 @@ function AppShell(): JSX.Element {
     runInTerminalStable,
     openTaskFocus,
     openTabType,
+    openTabLit,
     openArtifactsTab,
     agentTeamsOn,
     bgRunningCount,

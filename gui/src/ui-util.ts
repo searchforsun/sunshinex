@@ -447,6 +447,21 @@ export function applyFilePick(
  *  (scope=落点最近的 .insight-tab 面板根;跨面板互不影响)。纯 DOM 类+登记表,不经 React
  *  状态(与既有 imperative scrollIntoView 定位同型);重渲染换节点=自然消失 */
 const jumpLit = new WeakMap<Element | Document, { el: Element; timer: number }>();
+/** 面板首行点亮(2026-11-24 用户裁定「点击顶部的后台任务/待办/计划书/团队任务等触发点也要高亮」):
+ *  顶栏计数钮开的是「无特定落点」的页签——点亮面板**第一行**作落点确认。页签体懒加载+数据
+ *  异步到位,轮询可见 .sx-tabbody 至 2.5s 上限;无行面页签(diff/文件)轮询自然过期零副作用 */
+const PANEL_ROW_SELECTORS = '.tb-card, .tb-task-main, .todo-card, .mem-row, li[data-skill-id]';
+export function lightFirstPanelRow(deadline: number = performance.now() + 2500): void {
+  const body = document.querySelector<HTMLElement>('.sx-tabbody:not([style*="none"])');
+  const el = body?.querySelector(PANEL_ROW_SELECTORS) ?? null;
+  if (el !== null) {
+    markJumpHighlight(el);
+    return;
+  }
+  if (performance.now() > deadline) return;
+  requestAnimationFrame(() => lightFirstPanelRow(deadline));
+}
+
 export function markJumpHighlight(el: Element, ms = 3000): void {
   const scope = el.closest('.insight-tab') ?? el.ownerDocument;
   const prev = jumpLit.get(scope);
