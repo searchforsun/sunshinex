@@ -45,14 +45,17 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
   /** T6 行内归档确认 morph:行级单份,他行点击即换位 */
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId(''));
+  // 已归档行不进分组(2026-11-24 归档层共源根修:滤行从 useMenuSunx 移到本渲染面——行集同时
+  // 供「归档 Sunx」层取 archived===true,分组只留未归档;计数 chip 同口径滤后计数)
+  const visibleRows = useMemo(() => (rows === null ? null : rows.filter((r) => r.archived !== true)), [rows]);
   /** 平铺单列(2026-11-15 用户裁定:工作区分节头退役)——排序后直出,行与最近会话同款 */
   const sorted = useMemo(() => {
-    if (rows === null) return null;
-    const list = [...rows];
+    if (visibleRows === null) return null;
+    const list = [...visibleRows];
     if (sortMode === 'name') list.sort((a, b) => (a.title ?? a.id).localeCompare(b.title ?? b.id));
     else list.sort((a, b) => b.updatedAt - a.updatedAt);
     return list;
-  }, [rows, sortMode]);
+  }, [visibleRows, sortMode]);
   // SUNX 分组常驻(2026-11-15 用户裁定「SUNX分组常驻」:空组不再整块隐——组头恒显+空态行
   // 引导创建;装载中 null 同口径=区块随数据在场,不闪占位)
   return (
@@ -75,9 +78,9 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
         {/* 组头动作簇(2026-11-15 用户裁定:数量/排序/归档/看板/新建——对齐「项目」组头同款簇;
             数量值在簇内、看板钮左侧——同日二轮裁定「数量跟随在看板图标左侧」) */}
         <span className="sx-side-head-actions">
-          {/* 数量值:sunx 行数计数 chip(装载中 null 不显) */}
-          {rows !== null && (
-            <span className="sx-sunx-count" aria-label="sunx count">{rows.length}</span>
+          {/* 数量值:sunx 行数计数 chip(装载中 null 不显;滤后口径=未归档行数) */}
+          {visibleRows !== null && (
+            <span className="sx-sunx-count" aria-label="sunx count">{visibleRows.length}</span>
           )}
           {/* 看板钮(可选 guard):onOpenBoard 接线才渲染 */}
           {onOpenBoard !== undefined && (

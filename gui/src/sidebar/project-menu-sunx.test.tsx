@@ -113,6 +113,30 @@ describe('SunxSection(侧栏 SUNX 过滤组;2026-11-15 平铺改版)', () => {
   });
 });
 
+/** 2026-11-24 用户实测「归档后直接在归档sunx中找不到了」根修:归档滤行从 useMenuSunx 移到本
+ *  渲染面——行集与「归档 Sunx」层共源(ProjectMenu archiveRows sunx 分支取 archived===true),
+ *  hook 层滤行=归档层断源恒「暂无归档 Sunx」。本组钉死:分组/计数只显未归档,归档行留行集 */
+describe('归档行滤除(分组面)', () => {
+  it('archived 行不进分组、不进计数 chip;未归档行原样', () => {
+    const { container } = renderSection([
+      sunxRow('j1', 'D:/w/alpha', 'alpha'),
+      sunxRow('j2', 'D:/w/alpha', 'alpha', { archived: true }),
+    ]);
+    expect(screen.queryByText('sunx 会话 j2')).toBeNull(); // 归档行不出行
+    expect(screen.getByText('sunx 会话 j1')).toBeDefined();
+    expect(container.querySelectorAll('.recent-list .session-row').length).toBe(1);
+    const count = container.querySelector('.sx-sunx-count');
+    expect(count?.textContent).toBe('1'); // 计数 chip 滤后口径
+  });
+  it('全组已归档=空态行「暂无Sunx」(行集仍有数据,归档层取数不断供)', () => {
+    const { container } = renderSection([sunxRow('j2', 'D:/w/alpha', 'alpha', { archived: true })]);
+    expect(screen.getByText('暂无Sunx')).toBeDefined();
+    expect(container.querySelectorAll('.recent-list .session-row').length).toBe(0);
+    const count = container.querySelector('.sx-sunx-count');
+    expect(count?.textContent).toBe('0');
+  });
+});
+
 /** RecentsSection props 最小装配(NewSunxDialog.test 同款) */
 function recentsProps(
   recents: Array<SessionRow & { root: string; slug: string }>,

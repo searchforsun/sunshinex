@@ -25,11 +25,10 @@ export function useMenuSunx(conn: MenuSunxConn, rows: WorkspaceRow[] | null, rel
       .sunxSessions()
       .then((list) => {
         if (!alive) return;
-        // 已归档行不进分组(2026-11-21 用户实测「归档后不消失」):归档 Sunx 专域行携 archived 标注,
-        // 过滤之——归档后在「归档 Sunx」层可见,分组只留未归档
-        const mapped = list
-          .filter((x) => x.archived !== true)
-          .map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' }));
+        // 归档行**保留**在行集里(2026-11-24 用户实测「归档后归档 Sunx 层找不到」根修):本 hook 是
+        // 「SUNX 分组」与「归档 Sunx 层」共源(ProjectMenu archiveRows sunx 分支 filter archived===true
+        // 取自同集)——此前在此滤 archived 行=归档层断源恒空。分组侧滤行移到 SunxSection 渲染面
+        const mapped = list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' }));
         setSunxRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
       })
       .catch(() => {

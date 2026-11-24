@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 import type { Connection, ScheduleJobView, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
+import { SESSION_ARCHIVE_CHANGED_EVENT } from '../session-events';
 import { ArrowLeft, Clock, PanelLeft, Search, Settings, SquarePen } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { DirPicker } from '../pages/DirPicker';
@@ -266,7 +267,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  recentVersion+channelReload 作重拉 nonce(2026-11-22 根修:通道会话 IM 侧外来创建,rows 引用不动它——run 起跑
    *  bump/归档动作链 bump 即时重拉,内置 30s tick 兜底) */
   const [channelReload, setChannelReload] = useState(0);
-  const channelRows = useMenuChannels(conn, rows, recentVersion + channelReload);
+  const { rows: channelRows, cfgs: channelCfgs } = useMenuChannels(conn, rows, recentVersion + channelReload);
   // G14.2xx 名称截断隐现(chrome 同形,同标签条):项目名/会话名溢出打 data-cut=右缘渐隐,无省略号。
   // RO 盯滚动容器(拖栏宽度变化即重测)。2026-11-16 流畅轮:补数据依赖(原无 deps=每次渲染全量
   // DOM 扫描+重建 RO,App 壳高频态即触发);数据引用不变时零扫描,宽变仍由 RO 兜底。
@@ -424,6 +425,22 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     reloadOpenGroups();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- recentVersion 即刷新信号;rows/openSlugsRef 取现值
   }, [recentVersion]);
+
+  /** 归档联动即时缝(2026-11-24 用户实测「顶栏归档后没有和菜单中按钮一样生效」):归档发起面
+   *  不止侧栏行(会话顶栏 ⋯ 归档 Sunx/归档会话等)——archiveSession 落库成功即广播
+   *  SESSION_ARCHIVE_CHANGED_EVENT,此处对齐 archiveRow 的重拉链:域枚举 nonce(sunx/channel
+   *  行集与 rows 解耦,浅等守卫下 bumpRecent 的 loadWorkspaces 内容未变不换引用=域组/归档层
+   *  恒旧)+已开组会话行回位。与行内归档链的显式重拉双走幂等(重复拉取内容未变保旧引用) */
+  useEffect(() => {
+    const onArchiveChanged = (): void => {
+      loadArchived();
+      reloadOpenGroups();
+      setChannelReload((v) => v + 1);
+      setSunxReload((v) => v + 1);
+    };
+    window.addEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onArchiveChanged);
+    return () => window.removeEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onArchiveChanged);
+  }, [loadArchived, reloadOpenGroups]);
 
 
 
@@ -785,6 +802,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         // 行点击=attachJournal(root, journalId) 直寻址链(行 root=域目录,attach 落在正确的域)
         <ChannelsSection
           rows={channelRows}
+          channels={channelCfgs}
           activeSessionId={activeSessionId}
           runningIds={runningIds}
           journalOfSession={journalOfSession}

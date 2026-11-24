@@ -857,6 +857,22 @@ describe('用户气泡编辑卡(G11 §7)', () => {
   });
 });
 
+/** 2026-11-24 用户实测「还是可以编辑」:Sunx fork/rewind 入口已关,气泡编辑重发是同族入口——
+ *  submitText/rewindOps 对 sunx 整链置空(Chat 装配面),Edit 钮随 onSend 在场渲染即不出现 */
+describe('Sunx 气泡编辑入口关闭', () => {
+  it('kindHint=sunx:用户气泡零 Edit 钮(只剩 Copy)', async () => {
+    render(<Chat conn={connOf([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }])} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} kindHint="sunx" />);
+    await screen.findAllByText('你好');
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Copy' })).toBeDefined();
+  });
+  it('普通会话(缺省 kindHint)Edit 钮在(回归对照)', async () => {
+    mountChat([{ seq: 1, ts: DAY1, kind: 'user', md: '你好' }]);
+    await screen.findAllByText('你好');
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeDefined();
+  });
+});
+
 describe('exec 执行中/完成双态(G14.13)', () => {
   it('执行中(result 未回):流光文字「正在执行」+命令同行(2026-10-22 用户裁定)', async () => {
     mountChat([]);

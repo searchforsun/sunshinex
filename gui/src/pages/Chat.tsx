@@ -674,8 +674,10 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         teams={teams}
         collapsedRuns={collapsedRuns}
         toggleRun={toggleRun}
-        submitText={submitText}
-        rewindOps={rewindOps}
+        // Sunx 编辑重发入口关闭(2026-11-24 用户实测「还是可以编辑」):气泡 Edit 钮随 onSend 在场
+        // 渲染,submitText 对 sunx 置空即整链收口(rewindOps 同批收——编辑卡确认弹窗依赖面)
+        submitText={kindHint === 'sunx' ? undefined : submitText}
+        rewindOps={kindHint === 'sunx' ? undefined : rewindOps}
         composerEnv={composerEnv}
         runFooterByEntry={runFooterByEntry}
         onEntryOpenDiff={onEntryOpenDiff}

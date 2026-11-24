@@ -337,14 +337,19 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
         ]
       : []),
     // Sunx 归档项(2026-11-21 用户实测「会话编辑上面缺少归档项」):归档 Sunx/取消归档 Sunx 切换,
-    // 与标准会话 归档会话/取消归档会话 分域同构(Sunx 语义独立);位置=编辑 Sunx 之上
+    // 与标准会话 归档会话/取消归档会话 分域同构(Sunx 语义独立);位置=编辑 Sunx 之上;
+    // 二次确认对齐标准归档(2026-11-24 用户实测「归档怎么没有二次确认」)——归档向走 askArchive
+    // 确认弹窗,撤销归档直执行(与标准同口径)
     ...(isSunx
       ? [
           {
             id: 'sunx-archive',
             label: archived ? t('Unarchive Sunx', '取消归档 Sunx') : t('Archive Sunx', '归档 Sunx'),
             icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
-            onSelect: () => onArchive(!archived),
+            onSelect: () => {
+              if (archived) onArchive(false);
+              else setAskArchive(menu); // 二次确认弹窗(坐标沿用菜单锚点;菜单项回调里 menu 必非空)
+            },
           },
         ]
       : []),
@@ -539,7 +544,8 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
             y={askArchive.y}
             onClose={() => setAskArchive(null)}
             items={[
-              { id: 'confirm', label: t('Confirm archive', '确认归档'), onSelect: () => onArchive(true) },
+              // 确认文案随域(2026-11-24:sunx 走本弹窗=归档 Sunx 语义,与标准 归档会话 区分)
+              { id: 'confirm', label: isSunx ? t('Confirm archive Sunx', '确认归档 Sunx') : t('Confirm archive', '确认归档'), onSelect: () => onArchive(true) },
               { id: 'cancel', label: t('Cancel', '取消'), onSelect: () => undefined },
             ]}
           />

@@ -80,6 +80,7 @@ export function ProjectSearch(props: ProjectSearchProps): JSX.Element {
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 20);
   const sunx = (allSunx ?? [])
+    .filter((r) => r.archived !== true) // 归档行不进查找面(2026-11-24:行集共源后随列归档行,对齐 recents 滤除)
     .filter((r) => fuzzyHit((r.title ?? r.firstUser ?? '') + ' ' + r.id, query))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 20);

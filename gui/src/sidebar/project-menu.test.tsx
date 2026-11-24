@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { ProjectMenu } from './ProjectMenu';
 import type { ProjectMenuConn } from './ProjectMenu';
+import { SESSION_ARCHIVE_CHANGED_EVENT } from '../session-events';
 
 /**
  * G14.9 launcher IA:会话只在 RECENTS 列(顶部主列表,空态「暂无最近会话」占位);
@@ -540,5 +541,23 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;20
     const plain = of('手工会话');
     expect(sched.querySelector('.session-meta .session-sched-icon')).not.toBeNull();
     expect(plain.querySelector('.session-sched-icon')).toBeNull();
+  });
+
+  it('归档联动即时缝(2026-11-24 顶栏归档生效):SESSION_ARCHIVE_CHANGED_EVENT 重拉域枚举,归档行即出组', async () => {
+    // 顶栏 ⋯「归档 Sunx」等外部发起面不走侧栏 archiveRow 的显式重拉链;rows 浅等守卫下
+    // workspaces 内容未变不换引用=useMenuSunx 恒旧。archiveSession 成功广播事件 → 本菜单
+    // 监听 bump 域 nonce,归档行即时离开 SUNX 分组(并在归档层凭同源行集现身)
+    const conn = makeSunxConn();
+    renderMenu(conn);
+    expect(await screen.findByText('编排一')).toBeDefined();
+    expect(screen.getByText('编排三')).toBeDefined();
+    conn.sunxSessions = vi.fn(async () =>
+      [{ id: 'sx-j3', firstUser: '编排三', updatedAt: 3, kind: 'sunx', root: 'D:/w/p2' }] as never,
+    );
+    act(() => {
+      window.dispatchEvent(new CustomEvent(SESSION_ARCHIVE_CHANGED_EVENT, { detail: { id: 'sx-j1', archived: true } }));
+    });
+    await waitFor(() => expect(screen.queryByText('编排一')).toBeNull());
+    expect(screen.getByText('编排三')).toBeDefined(); // 未归档行原样
   });
 });
