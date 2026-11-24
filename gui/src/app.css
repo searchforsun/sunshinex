@@ -4847,10 +4847,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-anchor .proj-pop > .proj-pop-scroll,
 .sx-sunx-ws-anchor .proj-pop .proj-rows-scroll { max-height: 138px; overflow-y: auto; }
 
-/* 通道组行 >V(2026-11-25 用户裁定「还是没有显示 V <」——恢复常显,压过 2026-11-24「不要常
-   显示」hover 形):贴文字右侧 6px(覆写基类 margin-left:auto 分区头贴行尾形),随组开合旋转;
-   分区头(「通道」行)hover 显形口径不变 */
-.sx-group-head .sx-side-chev { margin-left: 6px; opacity: 1; }
+/* 通道组行 >V(2026-11-25 用户裁定「和项目 SUNX 同构,hover 显形;关键 hover 没显示」):贴文字
+   右侧 6px(覆写基类 margin-left:auto 贴行尾形),与分区头 .sx-side-head-btn:hover 同一显形
+   语言——行悬停/组头悬停/键盘聚焦三路显形(单一路径漏触发即「hover 没显示」实测病),随组
+   开合旋转不变 */
+.sx-group-head .sx-side-chev { margin-left: 6px; }
+.workspace-row:hover .sx-group-head .sx-side-chev,
+.workspace-toggle.sx-group-head:hover .sx-side-chev,
+.workspace-toggle.sx-group-head:focus-within .sx-side-chev { opacity: 1; }
 
 /* 通道弹窗品性域(2026-11-25 用户裁定「品性编辑框和新建 sunx 的品性编辑大小对齐」):新建
    Sunx 弹窗同语言——软底无边框 mono,六行起步可纵向拉伸;.sx-editor-modal-fields textarea
