@@ -281,4 +281,19 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     fireEvent.click(screen.getByRole('button', { name: bi('Test connection telegram-1', '测试连接 telegram-1') }));
     expect(await screen.findByText(/Connection failed|连接失败/)).toBeDefined();
   });
+
+  /** ⑮ 唯一标识去重（2026-11-23 用户裁定「根据 AppID 去重…保存时 warn toast 提示」）：
+   *  编辑他通道 App ID 改成与现存通道相同 → warn toast（sx-toast-warn）+putChannels 零发 */
+  it('blocks saving a duplicate app identity with a warn toast', async () => {
+    const cfgA: ChannelConfigMsg = { id: 'telegram-9', platform: 'telegram', name: '我的TG', enabled: true, root: 'auto', mode: 'read-only', secret: 'tok-old', allow: { kind: 'first-user' } };
+    const cfgB: ChannelConfigMsg = { id: 'telegram-8', platform: 'telegram', name: '另一个', enabled: true, root: 'auto', mode: 'read-only', secret: 'tok-old', allow: { kind: 'first-user' } };
+    const { conn, putChannels } = makeConn([healthRow({ id: 'telegram-9' }), healthRow({ id: 'telegram-8' })], { cfg: [cfgA, cfgB] });
+    const { container } = render(<ChannelsPane conn={conn} />);
+    await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: bi('Edit telegram-9', '编辑 telegram-9') }));
+    fireEvent.click(screen.getByRole('button', { name: bi('Save', '保存') })); // 原样保存:与 telegram-8 同 Bot Token → 拦下
+    expect(await screen.findByText(bi('This app is already connected.', '该通道应用已接入。'))).toBeDefined();
+    expect(container.querySelector('.sx-toast-warn')).not.toBeNull();
+    expect(putChannels).not.toHaveBeenCalled();
+  });
 });

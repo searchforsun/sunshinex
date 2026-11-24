@@ -6,7 +6,7 @@ import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
 import { EditorModal, EmptyState, ErrorBanner, ModalShell } from './components';
 import { ChannelCard } from './ChannelCard';
 import { ChannelModalForm } from './ChannelModalForm';
-import { displayNameOf, EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
+import { displayNameOf, identityOf, EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
 import type { ChannelDraft, ChannelForm, ChannelModal } from './channel-drafts';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 import type { WorkspaceRow } from '../connection';
@@ -61,7 +61,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   const [savingId, setSavingId] = useState('');
   /** 测试结果 toast(2026-11-22 用户裁定:居中 toast 3s 自隐;四档色——成功绿/异常红,四档
    *  提示色规范见 CLAUDE.md;useAutoToast 单点,D113——原手写 timer 克隆退役) */
-  const { toast: testToast, showToast } = useAutoToast<{ ok: boolean; text: string }>();
+  const { toast: testToast, showToast } = useAutoToast<{ tone: 'ok' | 'warn' | 'err'; text: string }>();
   const [modal, setModal] = useState<ChannelModal | null>(null);
   const [form, setForm] = useState<ChannelForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
@@ -177,7 +177,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
    *  失败档按结构化 code 映射(D111:免 daemon 文案子串耦合);旧 daemon/未知码回落自由文本首段 */
   const recordTest = (_id: string, r: { ok: boolean; botId?: string; error?: string; code?: string }): void => {
     if (r.ok) {
-      showToast({ ok: true, text: `${t('Test passed', '测试通过')} · ${r.botId ?? ''}` });
+      showToast({ tone: 'ok', text: `${t('Test passed', '测试通过')} · ${r.botId ?? ''}` });
     } else {
       const brief =
         r.code === 'secret-missing'
@@ -187,7 +187,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
             : r.code === 'connect-failed'
               ? t('Connection failed', '连接失败')
               : (r.error ?? '').split('——')[0]!.split('（')[0]!;
-      showToast({ ok: false, text: `${t('Test failed', '测试失败')}：${brief}` });
+      showToast({ tone: 'err', text: `${t('Test failed', '测试失败')}：${brief}` });
     }
   };
 
@@ -246,6 +246,14 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       setFormError(t('Allow-list needs at least one user id', '白名单准入至少需要一个 userId'));
       return;
     }
+    // 唯一标识去重(2026-11-23 用户裁定「根据 AppID 去重,其他应用也根据唯一标识去重,保存时
+    // warn toast 提示」)：feishu=App ID/telegram=Bot Token;同标识他通道在场(排除自身)即拦下
+    const identity = identityOf(form.platform, form.appId.trim(), form.secret);
+    const selfId = modal.mode === 'edit' ? modal.id : undefined; // 编辑=排除自身
+    if (identity !== undefined && drafts.some((d) => d.id !== selfId && identityOf(d.platform, d.appId, d.secret) === identity)) {
+      showToast({ tone: 'warn', text: t('This app is already connected.', '该通道应用已接入。') });
+      return;
+    }
     const id = modal.mode === 'edit' ? modal.id! : newChannelId(platform!.v, drafts);
     const saved: ChannelDraft = {
       id,
@@ -287,7 +295,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
                 () => {
                   load();
                 },
-                (err: unknown) => showToast({ ok: false, text: errText(err) }), // 回填写失败:toast 可见化(原静默吞)
+                (err: unknown) => showToast({ tone: 'err', text: errText(err) }), // 回填写失败:toast 可见化(原静默吞)
               );
             }
             return undefined;
@@ -395,7 +403,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         </ModalShell>
       )}
       {testToast !== null && (
-        <div className={`sx-toast ${testToast.ok ? 'sx-toast-ok' : 'sx-toast-err'}`} role="status">
+        <div className={`sx-toast ${testToast.tone === 'ok' ? 'sx-toast-ok' : testToast.tone === 'warn' ? 'sx-toast-warn' : 'sx-toast-err'}`} role="status">
           {testToast.text}
         </div>
       )}

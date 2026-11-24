@@ -206,6 +206,15 @@ export function newChannelId(platform: string, drafts: ChannelDraft[]): string {
   }
 }
 
+/** 通道唯一标识（2026-11-23 用户裁定「添加通道时,根据 AppID 去重,其他应用也根据唯一标识
+ *  去重」）：feishu=App ID、telegram=Bot Token(密钥即身份)；mock 无唯一标识=不去重(测试夹具)；
+ *  undefined=该平台无标识可比 */
+export const identityOf = (platform: string, appId: string, secret: string): string | undefined => {
+  if (platform === 'feishu') return appId !== '' ? `feishu:${appId}` : undefined;
+  if (platform === 'telegram') return secret !== '' ? `telegram:${secret}` : undefined;
+  return undefined;
+};
+
 /** 弹窗表单(新增/编辑;平台新增可选、编辑锁定) */
 export interface ChannelForm {
   platform: string;
