@@ -1,11 +1,13 @@
 import { Clock3, History, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
+import { whenOf, whenSummary } from './cycle';
 import type { ScheduleJobView } from '../connection';
 
 /**
  * 列表卡(scheduled-tasks Task 10,spec §9.4):恒三行——首行开关+名称+⋯ 菜单、
- * 内容两行截断、倒计时行(停用=已暂停/ended=已结束)。工作区/强度/上次运行徽标不落卡面。
- * 卡体点击进执行记录;开关/⋯/菜单项各自 stopPropagation,不误触卡体跳转。
+ * 内容两行截断、倒计时行(停用=已暂停/ended=已结束)。2026-11-21 用户裁定:倒计时行左侧
+ * 补调度周期说明(如「每天 00:45 ·」),右端补已运行次数;卡面字号随 --sx-font(≥14px)。
+ * 工作区/强度/上次运行徽标不落卡面。卡体点击进执行记录;开关/⋯/菜单项各自 stopPropagation。
  */
 interface ScheduleCardProps {
   readonly job: ScheduleJobView;
@@ -40,6 +42,8 @@ function countdown(ms: number): string {
 
 export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
   const { job, now, busy, menuOpen, confirmDelete, focus } = props;
+  // 周期说明（2026-11-21 用户裁定「左下角最前面补充调度的周期」）：由 recurrence 反推四档口径
+  const summary = whenSummary(whenOf({ recurrence: job.recurrence, startAt: job.startAt }));
   return (
     <div
       className={`sx-schedule-card${job.enabled ? '' : ' is-off'}${focus ? ' is-focus' : ''}`}
@@ -103,7 +107,9 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
       <p className="sx-schedule-prompt">{job.prompt}</p>
       <div className="sx-schedule-next">
         <Clock3 size={14} strokeWidth={1.75} />
-        <span>{t('Next', '下次')}</span>
+        <span className="sx-schedule-next-cadence">{t(summary.en, summary.zh)}</span>
+        {job.enabled && job.ended !== true && <span className="sx-schedule-next-dot">·</span>}
+        <span className="sx-schedule-next-label">{t('Next', '下次')}</span>
         <span className={`count${job.enabled ? '' : ' off'}`}>
           {job.ended === true
             ? t('Ended', '已结束')
@@ -111,6 +117,11 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
               ? t('Paused', '已暂停')
               : countdown((job.nextRunAt ?? now) - now)}
         </span>
+        {job.runCount > 0 && (
+          <span className="sx-schedule-runcount" data-tip={t('Total runs', '累计运行次数')}>
+            {t(`${job.runCount} runs`, `已运行 ${job.runCount} 次`)}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -264,6 +264,23 @@ describe('SchedulePage 列表', () => {
     expect(screen.getByText(bi('1d 0h', '1 天 0 小时后'))).toBeDefined();
   });
 
+  it('倒计时行左起周期说明、右端运行次数(2026-11-21 用户裁定)；runCount=0 不显示', async () => {
+    const { conn } = makeConn([
+      job({ id: 'j1', name: '每日检查', recurrence: { unit: 'day', every: 1, at: '00:45' }, runCount: 3 }),
+      job({ id: 'j2', name: '没跑过', runCount: 0 }),
+    ]);
+    const { container } = render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    expect(await screen.findByText('每日检查')).toBeDefined();
+    // 周期说明在最前(每天 00:45)，随后「下次」倒计时，右端「已运行 3 次」
+    expect(screen.getByText(bi('Daily at 00:45', '每天 00:45'))).toBeDefined();
+    expect(screen.getByText(bi('3 runs', '已运行 3 次'))).toBeDefined();
+    const row = container.querySelector('.sx-schedule-next')!;
+    expect(row.querySelector('.sx-schedule-next-cadence')?.textContent).toMatch(/Daily at 00:45|每天 00:45/);
+    expect(row.querySelector('.sx-schedule-runcount')?.textContent).toMatch(/3 runs|已运行 3 次/);
+    const plain = Array.from(container.querySelectorAll('.sx-schedule-card')).find((c) => c.textContent?.includes('没跑过'))!;
+    expect(plain.querySelector('.sx-schedule-runcount')).toBeNull();
+  });
+
   it('筛选页签：按最近一次执行状态过滤（进行中/完成/失败）；无 run 只落「全部」', async () => {
     const { conn } = makeConn([
       job({ id: 'j1', name: '运行中任务', lastRun: lastRun('running') }),

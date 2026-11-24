@@ -4669,20 +4669,21 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 记录列表面=产物卡同色（亮色 fg 4% / 暗色 bubble-user），不另加边框 */
 .sx-schedule-records { background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-lg); padding: 2px 18px 6px; overflow-x: auto; }
 [data-theme='dark'] .sx-schedule-records { background: var(--bubble-user); }
-.sx-schedule-table { width: 100%; border-collapse: collapse; font-size: calc(12.5px * var(--fz)); }
-.sx-schedule-table th { padding: 11px 10px 9px; text-align: left; font-weight: 500; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); border-bottom: 1px solid var(--border); white-space: nowrap; }
+/* 记录表字号随系统(2026-11-21 用户裁定):不低于 14px,同页根 --sx-font */
+.sx-schedule-table { width: 100%; border-collapse: collapse; font-size: var(--sx-font); }
+.sx-schedule-table th { padding: 11px 10px 9px; text-align: left; font-weight: 500; color: var(--fg-tertiary); font-size: var(--sx-font); border-bottom: 1px solid var(--border); white-space: nowrap; }
 .sx-schedule-table td { padding: 10px; border-bottom: 1px solid var(--border-subtle); vertical-align: top; color: var(--fg-secondary); }
 .sx-schedule-table tr:last-child td { border-bottom: none; }
 .sx-schedule-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sx-schedule-status { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); white-space: nowrap; }
-.sx-schedule-err { margin-top: 3px; color: var(--err); font-size: calc(11.5px * var(--fz)); }
-.sx-schedule-note { margin-top: 3px; color: var(--fg-tertiary); font-size: calc(11.5px * var(--fz)); }
-.sx-schedule-open { display: inline-flex; align-items: center; gap: 4px; padding: 0; color: var(--accent); font-size: calc(12px * var(--fz)); white-space: nowrap; }
+.sx-schedule-err { margin-top: 3px; color: var(--err); font-size: var(--sx-font); }
+.sx-schedule-note { margin-top: 3px; color: var(--fg-tertiary); font-size: var(--sx-font); }
+.sx-schedule-open { display: inline-flex; align-items: center; gap: 4px; padding: 0; color: var(--accent); font-size: var(--sx-font); white-space: nowrap; }
 .sx-schedule-open:hover { text-decoration: underline; }
 /* 空/加载态与取数失败:容器面内补内边距防贴边(错误色复用 Task 8 的 .sx-schedule-error)。
    2026-11-20 Task 10:限定在 .sx-schedule-records 内——页面级 .sx-schedule-empty(加载/无任务)
    的 48px 大留白不得覆盖记录卡的紧凑空态 */
-.sx-schedule-records .sx-schedule-empty { margin: 0; padding: 18px 10px; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-records .sx-schedule-empty { margin: 0; padding: 18px 10px; color: var(--fg-tertiary); font-size: var(--sx-font); }
 .sx-schedule-records > .sx-schedule-error { padding: 14px 10px; }
 /* ===== 定时任务页(scheduled-tasks Task 10,spec §9.4;2026-11-20 设置页式布局):页顶空白拖拽条 + 内容区标题/筛选/操作 ===== */
 .sx-schedules-layer { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; flex-direction: column; }
@@ -4699,14 +4700,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 页头：设置页 h2 档标题 + 一行筛选(左)/刷新+创建(右) */
 .sx-schedule-head { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
 .sx-schedule-subhead { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.sx-schedule-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-subtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-tertiary); font-size: var(--sx-font); }
 .sx-schedule-heading { display: flex; align-items: center; gap: 6px; min-height: 30px; }
 .sx-schedule-title { margin: 0; color: var(--fg); font-size: calc(20px * var(--fz)); font-weight: 600; letter-spacing: 0.2px; }
 .sx-schedule-back { display: inline-flex; align-items: center; gap: 4px; height: 26px; margin-left: -8px; padding: 0 8px; border: none; border-radius: var(--radius-sm); background: transparent; color: var(--fg-secondary); font-size: var(--sx-font); }
 .sx-schedule-back:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 .sx-schedule-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .sx-schedule-filters { display: inline-flex; align-items: center; gap: 2px; }
-.sx-schedule-filter { height: 28px; padding: 0 10px; border: none; border-radius: var(--radius-row); background: transparent; color: var(--fg-secondary); font: calc(13px * var(--fz)) var(--font-ui); }
+.sx-schedule-filter { height: 28px; padding: 0 10px; border: none; border-radius: var(--radius-row); background: transparent; color: var(--fg-secondary); font: var(--sx-font) var(--font-ui); }
 .sx-schedule-filter:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg); }
 .sx-schedule-filter.is-active { background: color-mix(in srgb, var(--fg) 6%, transparent); color: var(--fg); font-weight: 500; }
 .sx-schedule-tools { display: inline-flex; align-items: center; gap: 6px; }
@@ -4716,14 +4717,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-tools .sx-iconbtn:disabled:hover { background: transparent; color: var(--fg-icon); }
 /* 创建主钮 + 下拉箭头同壳（设置页添加钮同色语言；箭头只开「在会话中创建」） */
 .sx-schedule-create { position: relative; display: inline-flex; align-items: stretch; height: 30px; border: none; border-radius: var(--radius-md); background: color-mix(in srgb, var(--fg) 4%, transparent); }
-.sx-schedule-create-main { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: none; border-radius: var(--radius-md) 0 0 var(--radius-md); background: transparent; color: var(--fg); font: calc(13px * var(--fz)) var(--font-ui); }
+.sx-schedule-create-main { display: inline-flex; align-items: center; gap: 6px; padding: 0 12px; border: none; border-radius: var(--radius-md) 0 0 var(--radius-md); background: transparent; color: var(--fg); font: var(--sx-font) var(--font-ui); }
 .sx-schedule-create-main:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .sx-schedule-create-caret { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; border: none; border-left: 1px solid var(--border-subtle); border-radius: 0 var(--radius-md) var(--radius-md) 0; background: transparent; color: var(--fg-secondary); }
 .sx-schedule-create-caret:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
 .sx-schedule-create-menu { top: calc(100% + 6px); right: 0; left: auto; }
 [data-theme='light'] .sx-schedule-error, [data-theme='light'] .sx-schedule-err { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 [data-theme='light'] .sx-schedules-content > .sx-schedule-error { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
-.sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: calc(12.5px * var(--fz)); }
+.sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: var(--sx-font); }
 .sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: var(--sx-font); }
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
@@ -4737,20 +4738,27 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 [data-theme='dark'] .sx-schedule-card.is-focus { background: color-mix(in srgb, var(--fg) 8%, var(--bubble-user)); }
 .sx-schedule-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sx-schedule-card-top .sx-switch { margin-left: 0; }
-.sx-schedule-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(14px * var(--fz)); font-weight: 600; }
-.sx-schedule-prompt { margin: 0; min-height: 39px; color: var(--fg-secondary); font-size: calc(12.5px * var(--fz)); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.sx-schedule-next { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); }
+/* 卡面字号随系统(2026-11-21 用户裁定「整个定时配置也字体大小类型受系统控制,不得小于当前默认
+   14px」):全部走页根 --sx-font(=max(--f-base-size,14px)),不再写死 calc(Npx * --fz) 小字 */
+.sx-schedule-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--sx-font); font-weight: 600; }
+.sx-schedule-prompt { margin: 0; min-height: 44px; color: var(--fg-secondary); font-size: var(--sx-font); line-height: var(--f-base-lh, 1.6); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* 倒计时行:周期说明(左起)+下次倒计时+右端运行次数(2026-11-21 用户裁定) */
+.sx-schedule-next { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--fg-tertiary); font-size: var(--sx-font); }
 .sx-schedule-next .count { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
 .sx-schedule-next .count.off { color: var(--fg-secondary); }
+.sx-schedule-next-cadence { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-schedule-next-dot { flex: none; color: var(--fg-tertiary); }
+.sx-schedule-next-label { flex: none; }
+.sx-schedule-runcount { flex: none; margin-left: auto; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .sx-schedule-card.is-off .sx-schedule-name { color: var(--fg-secondary); }
 .sx-schedule-card.is-off .sx-schedule-prompt { color: var(--fg-secondary); }
 .sx-schedule-card .sx-menu-pop { top: 34px; right: 8px; }
 .sx-schedule-danger, .sx-menu-pop .sx-menuitem.sx-schedule-danger { color: var(--err); }
 /* 页面级空/加载态(无任务/加载中):大留白居中;记录页的紧凑空态由 .sx-schedule-records 覆写 */
-.sx-schedule-empty { padding: 48px 0; text-align: center; color: var(--fg-tertiary); font-size: calc(13px * var(--fz)); }
+.sx-schedule-empty { padding: 48px 0; text-align: center; color: var(--fg-tertiary); font-size: var(--sx-font); }
 /* 页面级错误/notice 只作用于页根直子(配置/记录内部自带的 .sx-schedule-error 不被撑边距) */
-.sx-schedule-page > .sx-schedule-error { margin: 8px 24px 0; color: var(--err); font-size: calc(12.5px * var(--fz)); }
-.sx-schedule-page > .sx-schedule-notice { margin: 8px 24px 0; color: var(--fg-tertiary); font-size: calc(12.5px * var(--fz)); }
+.sx-schedule-page > .sx-schedule-error { margin: 8px 24px 0; color: var(--err); font-size: var(--sx-font); }
+.sx-schedule-page > .sx-schedule-notice { margin: 8px 24px 0; color: var(--fg-tertiary); font-size: var(--sx-font); }
 
 /* ===== 2026-11-21 搜索面统一(用户裁定「所有搜索框下边可以置顶分类,搜索出来内容可以进行
    合理跳转」+ 后续三点:不显示数量/宽度参考整体应用宽度/搜索框聚焦不换蓝边):分类条=搜索框下
