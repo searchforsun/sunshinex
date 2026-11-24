@@ -215,6 +215,10 @@ export interface SessionRuntimeOpts {
   /** 定时任务创建接缝（2026-11-20）：daemon 注入 ScheduleEngine 出口，assemble() 透传
    *  createKernelRuntime——create_scheduled_task 工具由它落档/布防；缺席=工具不注册（TUI/CLI） */
   scheduleCreate?: ScheduleCreateSeam;
+  /** send_channel_message 接缝（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
+   *  daemon lifecycleIo channelSendFor 按 sessionId 注入，assemble() 透传 harness——
+   *  send_channel_message 工具由它投递到绑定聊天；缺席=工具不注册（TUI/CLI） */
+  channelSend?: { send(text: string): Promise<boolean> };
 }
 
 /** 挂起表条目（P6 §4 下沉,原 daemon-wire 资产）：kind 判别联合；resolve 即回执值（interrupt/reset
@@ -866,6 +870,9 @@ ${this.sessionCharter ?? ''}` }
       // create_scheduled_task（标准/sunx 会话同源；CLI/TUI 不注入=工具缺席）
       ...(this.opts.scheduleCreate !== undefined ? { scheduleCreate: this.opts.scheduleCreate } : {}),
       ...(this.opts.scheduleCreate !== undefined ? { scheduleCreateDefaults: () => this.scheduleCreateDefaults() } : {}),
+      // send_channel_message 工具接缝（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
+      // daemon lifecycleIo channelSendFor 按 sessionId 注入——接缝在场即注册（CLI/TUI 不注入=缺席）
+      ...(this.opts.channelSend !== undefined ? { channelSend: this.opts.channelSend } : {}),
       // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;
@@ -999,7 +1006,9 @@ ${this.sessionCharter ?? ''}` }
     this.pending.delete(pid);
     this.logPendingRow({ t: 'pending-resolve', pid, outcome: decision }); // 挂起持久化（Task 4）：裁决字面即结果摘要
     entry.resolve(decision);
-    this.pump({ type: 'notice', text: `approval ${pid} resolved: ${decision}`, ts: Date.now() });
+    // payload.pid 随帧(2026-11-23 用户裁定「回答ask后没有关闭ask弹窗」):GUI 挂起卡据此清卡——
+    // IM 侧回执(approval/ask 经通道文本消费)不经过 GUI settle,无 pid 卡永不关
+    this.pump({ type: 'notice', text: `approval ${pid} resolved: ${decision}`, ts: Date.now(), payload: { pid } });
     return true;
   }
 
@@ -1012,7 +1021,7 @@ ${this.sessionCharter ?? ''}` }
     const outcome = answer.type === 'selected' ? `selected: ${answer.labels.join(', ')}` : answer.type === 'custom' ? `custom: ${answer.text}` : 'dismissed';
     this.logPendingRow({ t: 'pending-resolve', pid, outcome });
     entry.resolve(answer);
-    this.pump({ type: 'notice', text: `ask ${pid} answered`, ts: Date.now() });
+    this.pump({ type: 'notice', text: `ask ${pid} answered`, ts: Date.now(), payload: { pid } });
     return true;
   }
 
@@ -1719,6 +1728,16 @@ ${this.sessionCharter ?? ''}` }
     });
     this.current = { abort, done: p };
     return { ok: true };
+  }
+
+  /** 外部（IM 通道）提交：语义同 submit + **user 回显帧广播**（2026-11-23 用户裁定「还是没有
+   *  显示用户的气泡」根修——IM 提交无 GUI 乐观回显，submit 只落档不产帧，GUI 观看该会话时
+   *  用户气泡要等重播才现身；本方法提交成功即广播 user 纯帧，GUI live 即显。GUI 自身提交走
+   *  submit+本地乐观回显，不得走此方法防双气泡，G14.89 口径）。router IM 入站专用 */
+  submitExternal(goal: string, images?: string[]): SessionSubmitResult {
+    const r = this.submit(goal, images);
+    if (r.ok) this.broadcastUserEcho(goal, images);
+    return r;
   }
 
   /** 中止当前 run：步边界/在途模型调用经 signal 即刻中止（reactor 既有语义），runTask 以

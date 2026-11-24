@@ -34,6 +34,7 @@ interface RtStub {
   onRunEnd: (cb: (info: { stopReason?: string }) => void) => () => void;
   runEndCbs: Array<(info: { stopReason?: string }) => void>;
   submits: Array<{ text: string; images?: string[] }>;
+  submitExternal: (text: string, images?: string[]) => { ok: true } | { ok: false; status: 409; error: string };
 }
 
 function makeRuntime(): RtStub {
@@ -43,6 +44,10 @@ function makeRuntime(): RtStub {
     submits: [],
     runEndCbs: [],
     submit: (text, images) => {
+      rt.submits.push({ text, images });
+      return { ok: true };
+    },
+    submitExternal: (text, images) => {
       rt.submits.push({ text, images });
       return { ok: true };
     },

@@ -320,6 +320,11 @@ export class GuiDaemon {
       watchProject: (root) => this.watchProjectRoot(root),
       unwatchProject: (root) => this.unwatchProjectRoot(root),
       scheduleCreate: this.scheduleCreateSeam,
+      // send_channel_message 接缝(spec §6;2026-11-23 用户裁定「补上 send_channel_message」):
+      // 按 sessionId 产出通道推送出口——引擎绑定反查投递(未绑定=false,工具报 not_bound)
+      channelSendFor: (sessionId) => ({
+        send: async (text: string) => this.channelsEngine.sendToSessionChat(sessionId, text),
+      }),
     };
   }
 

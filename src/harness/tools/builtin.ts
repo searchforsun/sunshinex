@@ -130,10 +130,14 @@ export function builtinTools(
     /** agent 工具接缝（spec §3.3）：agents 清单窄视图 get（缺 id 回 undefined）——装配层以
      *  AgentRegistry.resolve 包 try/catch 适配（throw 语义 → 三态 undefined），目录条目不暴露装配面其余字段 */
     agents?: { get(id: string): { id: string; name: string; description: string; framing: string } | undefined };
+    /** send_channel_message 接缝（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
+     *  通道绑定会话的主动推送出口（daemon lifecycleIo channelSendFor 注入）——接缝在场才注册
+     *  工具（ask/memoryWrite 先例：TUI/CLI/子智能体零工具面变化）；send=false=会话未绑定 */
+    channelSend?: { send(text: string): Promise<boolean> };
   } = {},
 ): RegisteredTool[] {
   // 接缝解构为同名 const：函数体沿用原参数名零改动（H6 机械迁移）；缺省 {} 使两参调用形态不变
-  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, artifacts, activeRoot, todos, tasks, readGuard, plan, teams, agents } = opts;
+  const { kb, webSearch, archive, skills, memory, memoryWrite, ask, writeSnapshot, artifacts, activeRoot, todos, tasks, readGuard, plan, teams, agents, channelSend } = opts;
   // 出口预算统一管线：注册了 archive 的工具出口过 fit；未注册保持现行行为（逐字节不变）
   const fitOut = (tool: string, out: string): string => (archive ? archive.fit(tool, out) : out);
   /** 出口预算说明后缀(2026-11-13 用户裁定「工具截断字符数要在描述里说明,避免 agent 多次试错」):
@@ -891,6 +895,35 @@ export function builtinTools(
       return execOut(`registered ${n} artifact(s):\n${lines.join('\n')}`);
     },
   });
+
+
+  // send_channel_message 主动推送工具（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
+  // 通道绑定会话的 IM 出口——任务中主动触达用户(进度/完成/非阻塞提问);回复当前对话不需要调用
+  // (回复自动送达)。接缝缺席不注册(TUI/CLI/子智能体零工具面变化);未绑定执行报 not_bound
+  if (channelSend !== undefined) {
+    tools.push({
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['text'],
+        properties: {
+          text: { type: 'string', description: 'Message body to push to the bound IM chat (plain text; newlines allowed)' },
+        },
+      },
+      name: 'send_channel_message',
+      description:
+        'Push a proactive message to the IM chat this session is bound to (Feishu/Telegram etc). Use it to reach the user without being prompted: progress notes, finished-work notices, or non-blocking questions. Replying to the current conversation happens automatically - do not call this for that. Fails with not_bound when the session has no bound chat.',
+      category: 'network',
+      display: { verb: 'SEND', targetFields: ['text'] },
+      executor: async (input: ToolInput) => {
+        const text = String(input.text ?? '').trim();
+        if (text === '') throw new CodedToolError('INVALID_ARG', 'text is required');
+        const ok = await channelSend.send(text);
+        if (!ok) throw new CodedToolError('not_bound', 'This session is not bound to an IM chat - send_channel_message is unavailable');
+        return execOut('Message pushed to the chat.');
+      },
+    });
+  }
 
   return tools;
 }

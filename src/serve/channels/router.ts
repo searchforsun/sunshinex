@@ -260,7 +260,10 @@ export class ChannelRouter {
     // ——IM 用户凭回执即分辨消息是立即处理还是排队
     let queued = false;
     if (rt.status() === 'idle') {
-      const r = rt.submit(submitText, msg.images);
+      // submitExternal=submit+user 回显帧(2026-11-23 用户裁定「还是没有显示用户的气泡」根修:
+      // IM 提交无 GUI 乐观回显,纯 submit 不产帧——GUI 观看该会话时用户气泡要等重播;外部提交
+      // 走回显帧广播,GUI live 即显;GUI 自身提交走 submit+本地乐观回显不双气泡)
+      const r = rt.submitExternal(submitText, msg.images);
       if (!r.ok && r.status === 409) {
         rt.steer(submitText, msg.images); // 受理间隙竞态：回退穿插
         queued = true;

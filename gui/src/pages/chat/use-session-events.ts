@@ -334,6 +334,12 @@ export function useSessionEvents(deps: {
     }
     const sink: ChatSink = {
       on: (e, seq) => {
+        // 挂起卡外部回执收口(2026-11-23 用户裁定「回答ask后没有关闭ask弹窗」):notice 携 pid=
+        // daemon 侧该挂起已被**别处**(IM 通道回执/命令面)消费——本地卡随帧移除,双侧应答都收口
+        if (e.type === 'notice' && typeof e.payload?.pid === 'string' && e.payload.pid !== '') {
+          removeCard(e.payload.pid);
+          window.dispatchEvent(new Event('sx-pending-settled'));
+        }
         // G14.137 todo_write → 任务标签「会话待办」区上抛(清单全量替换语义)——G6 input 暂存
         // 两分支已随 P11 T7 字段单源退役(条目 name/input/result 由内核 reducer 直挂),本臂只余 todo 上抛
         if (e.type === 'tool-call') {

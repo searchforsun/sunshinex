@@ -29,6 +29,7 @@ interface RtStub {
   attachedJournalId: string;
   dataDir: string;
   submits: Array<{ text: string; images?: string[] }>;
+  submitExternal: (text: string, images?: string[]) => { ok: boolean; status?: number };
   steers: Array<{ text: string; images?: string[] }>;
   interrupts: number;
 }
@@ -41,6 +42,10 @@ function makeRuntime(opts: { status?: 'idle' | 'running'; journalId?: string; su
     steers: [],
     interrupts: 0,
     submit: (text, images) => {
+      rt.submits.push({ text, images });
+      return opts.submit409 ? { ok: false, status: 409, error: 'run in progress' } : { ok: true };
+    },
+    submitExternal: (text, images) => {
       rt.submits.push({ text, images });
       return opts.submit409 ? { ok: false, status: 409, error: 'run in progress' } : { ok: true };
     },

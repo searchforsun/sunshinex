@@ -112,6 +112,12 @@ export interface HarnessOptions {
   schedule?: {
     arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string };
   };
+  /** send_channel_message 接缝（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
+   *  通道绑定会话的主动推送出口（daemon lifecycleIo channelSendFor 按 sessionId 注入）——
+   *  接缝在场才注册工具（ask/memoryWrite 先例）；send=false=会话未绑定任何聊天 */
+  channelSend?: {
+    send(text: string): Promise<boolean>;
+  };
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
   root?: string;
   model?: ModelAdapter;
@@ -369,6 +375,7 @@ export class Harness {
       readGuard: this.readGuard, // edit 先读守卫(2026-10-31 用户裁定):随运行时铸造,换铸后须重读再改
       plan: opts.plan, // exit_plan 挂起接缝(2026-11-03 无感化):宿主 awaitDecision 弹卡等裁决
       teams: this.teams, // team 工具接缝(spec 2026-11-04 §3.3):live 只读门面,接缝在场即注册
+      channelSend: opts.channelSend, // send_channel_message 接缝(spec §6;2026-11-23 用户裁定):在场才注册工具
       // agent 工具接缝(spec §3.3):Registry.resolve 是 throw 语义,包 try/catch 适配成三态 undefined——
       // 内建/目录条目统一出卡面,装配面其余字段(memory/isolation/executor)不透模型
       agents: { get: (id: string) => { try { return agents.resolve(id); } catch { return undefined; } } },

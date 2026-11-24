@@ -265,6 +265,21 @@ export class ChannelsEngine {
     }
   }
 
+  /** send_channel_message 工具出口（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
+   *  主动推送正文到该会话绑定的聊天——经 deliver 出站包装（纯文本推送无定向 @；未绑定/投递
+   *  失败=false，工具报 not_bound/投递失败） */
+  async sendToSessionChat(sessionId: string, text: string): Promise<boolean> {
+    const t = this.boundTargets().get(sessionId);
+    if (t === undefined) return false;
+    try {
+      await this.deliver(t, { text });
+      return true;
+    } catch (e) {
+      this.log(`sendToSessionChat(${sessionId}) 失败: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
+  }
+
   /** GUI 发起轮打标（daemon HTTP 提交/穿插面消费，裁定见 guiRuns 字段注）：仅通道绑定会话入集
    *  （非绑定会话的 GUI 提交与通道无关,不标——投影器过滤零开销面） */
   markGuiRun(sessionId: string): void {
