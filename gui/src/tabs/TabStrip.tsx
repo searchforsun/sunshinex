@@ -46,9 +46,6 @@ interface TabStripProps {
   readonly onReopenClosed?: (index: number) => void;
   /** 额外隐藏于「+」菜单的类型(如 agentTeams 关闭时藏 agents) */
   readonly hiddenMenuIds?: ReadonlySet<string>;
-  /** 跳转定位页签蓝标(2026-11-24 用户推翻「跳转定位不加闪光」裁定):任务/团队/后台任务/待办/
-   *  记忆/学习技能/子智能体跨页签跳转打开的页签 pill 高亮 6s(宿主计时清),确认「点击生效+跳到哪」 */
-  readonly jumpType?: import('./tab-state').TabTypeId | null;
 }
 
 /** 「+」菜单原序(2026-11-17 用户裁定「顺序不要动」):content → session → tools 拍平渲染,
@@ -86,7 +83,6 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     recentClosed,
     onReopenClosed,
     hiddenMenuIds,
-    jumpType = null,
   } = props;
   const [menuOpen, setMenuOpen] = useState(false);
   const dev = useDeveloperMode();
@@ -215,7 +211,7 @@ export function TabStrip(props: TabStripProps): JSX.Element {
           <button
             key={t.uid}
             type="button"
-            className={`sx-tab${t.uid === activeUid ? ' active' : ''}${jumpType !== null && t.type === jumpType ? ' sx-tab-jump' : ''}`}
+            className={`sx-tab${t.uid === activeUid ? ' active' : ''}`}
             data-title={title}
             data-tip={title}
             data-type={t.type}

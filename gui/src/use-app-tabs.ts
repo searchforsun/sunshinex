@@ -67,9 +67,6 @@ export function useAppTabs(opts: {
   ptyIdFor: ReturnType<typeof usePtyRegistry>['ptyIdFor'];
   webPoolItems: WebPoolItem[];
   curSeatRef: MutableRefObject<string>;
-  /** 跳转定位页签蓝标(2026-11-24 用户推翻「跳转定位不加闪光」裁定):TabStrip pill 高亮源 */
-  tabJump: { type: TabTypeId; nonce: number } | null;
-  pulseTabJump: (type: TabTypeId) => void;
 } {
   const { connInstance, connRef, sessionRef, openJournalIdRef, backHomeRef, page, isWelcome, openSessionId, openRoot, tabStates, tabState, setTabStates, agentTeamsOn, sideSinksRef, sideParentRef, probe } = opts;
 
@@ -124,17 +121,6 @@ export function useAppTabs(opts: {
    *  (正文抖动源之一);sessionRef 恒同步 openSessionId,无过期闭包面 */
   /** 可刷新侧栏打开信号:正文/顶栏每次 open 递增,页签据此主动拉一次 */
   const [panelRefreshNonce, setPanelRefreshNonce] = useState<number | undefined>(undefined);
-  /** 跳转定位页签蓝色高亮(2026-11-24 用户推翻 2026-11-08「跳转定位不加闪光」裁定):跨页签
-   *  跳转(任务/团队/后台任务/待办/记忆/学习技能/子智能体)打开页签时,页签 pill 打蓝标——
-   *  用户「无法确认是否点击了、对应哪一个」。6s 自动解除(手动换签不追:蓝标只回答「刚才跳到
-   *  哪里」);新跳转即换位。仅跳转路径打点,+ 菜单/搜索等手动开签不亮 */
-  const [tabJump, setTabJump] = useState<{ type: TabTypeId; nonce: number } | null>(null);
-  const tabJumpTimerRef = useRef<number | null>(null);
-  const pulseTabJump = useCallback((type: TabTypeId): void => {
-    setTabJump({ type, nonce: Date.now() });
-    if (tabJumpTimerRef.current !== null) window.clearTimeout(tabJumpTimerRef.current);
-    tabJumpTimerRef.current = window.setTimeout(() => setTabJump(null), 6000);
-  }, []);
   const openTabInSession = useCallback((type: TabTypeId, params: TabParams = {}): void => {
     // 2026-10-27 欢迎页全局草稿:无会话(欢迎页)写 '@welcome' 草稿座——临时会话思想:发出去
     // (欢迎页建席,openSession 第 4 参)才整座继承到新会话;开既有会话零交集(继承门见 openSession)
@@ -168,7 +154,7 @@ export function useAppTabs(opts: {
     }
     openTabInSession('turndiff', { run, path: norm });
   }, [openTabInSession, openSessionId]);
-  const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { pulseTabJump('agent'); openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession, pulseTabJump]);
+  const openAgentTab = useCallback((label: string, agentTitle?: string, task?: string, focusTaskId?: string): void => { openTabInSession('agent', { label, agentTitle, task, focusTaskId }); }, [openTabInSession]);
   /** 成员转录 leader 链接点击(2026-11-08 用户裁定「定位到主对话对应发送位置,不打开页签」):
    *  记 {member,text,dir,nonce} 下发 Chat——主对话滚到对应消息气泡/发送工具行并闪光 */
   const [leaderFocus, setLeaderFocus] = useState<{ member: string; text: string; dir: 'toLeader' | 'fromLeader'; nonce: number } | null>(null);
@@ -294,7 +280,7 @@ export function useAppTabs(opts: {
   return {
     startSideChat, sideGoals, setSideGoals, upgradeSideChat, sideListing, sideReleased,
     tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, tabCloseActiveStable,
-    panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab, tabJump, pulseTabJump,
+    panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab,
     openBoardTab, openTabType, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
     handlePtyAllocated, ptyIdFor, webPoolItems, curSeatRef,
   };

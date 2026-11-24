@@ -441,20 +441,28 @@ export function applyFilePick(
   return base;
 }
 
-/** 跳转定位蓝色高亮(2026-11-24 用户推翻 2026-11-08「跳转定位不加闪光」裁定):跨页签/行级
- *  跳转落点打 `.jump-hl` 蓝标——确认点击已生效+对应关系。恒常驻 8s 自动解除(纯 DOM 类+
- *  WeakMap 计时,不经 React 状态:与既有 imperative scrollIntoView 定位同型,重渲染换节点
- *  即自然消失)。同元素重跳重置计时 */
-const jumpTimers = new WeakMap<Element, number>();
-export function markJumpHighlight(el: Element, ms = 8000): void {
+/** 跳转定位行级蓝亮(2026-11-24 用户裁定推翻 11-08「跳转定位不加闪光」,同日二修口径):
+ *  跨页签跳转落点打 `.jump-hl` **整体蓝底**(非描边)3 秒——确认点击已生效+对应关系;
+ *  ①点击被亮的行立即熄灭 ②重复点击触发点重新计时 ③**同一面板内同时只亮一行**
+ *  (scope=落点最近的 .insight-tab 面板根;跨面板互不影响)。纯 DOM 类+登记表,不经 React
+ *  状态(与既有 imperative scrollIntoView 定位同型);重渲染换节点=自然消失 */
+const jumpLit = new WeakMap<Element | Document, { el: Element; timer: number }>();
+export function markJumpHighlight(el: Element, ms = 3000): void {
+  const scope = el.closest('.insight-tab') ?? el.ownerDocument;
+  const prev = jumpLit.get(scope);
+  if (prev !== undefined) {
+    window.clearTimeout(prev.timer);
+    prev.el.classList.remove('jump-hl');
+    jumpLit.delete(scope);
+  }
   el.classList.add('jump-hl');
-  const prev = jumpTimers.get(el);
-  if (prev !== undefined) window.clearTimeout(prev);
-  jumpTimers.set(
-    el,
-    window.setTimeout(() => {
-      el.classList.remove('jump-hl');
-      jumpTimers.delete(el);
-    }, ms),
-  );
+  const clear = (): void => {
+    window.clearTimeout(timer);
+    el.classList.remove('jump-hl');
+    el.removeEventListener('click', clear, true);
+    if (jumpLit.get(scope)?.el === el) jumpLit.delete(scope);
+  };
+  const timer = window.setTimeout(clear, ms);
+  el.addEventListener('click', clear, true); // 点被亮的行立即熄灭(捕获=先于行内 toggle)
+  jumpLit.set(scope, { el, timer });
 }

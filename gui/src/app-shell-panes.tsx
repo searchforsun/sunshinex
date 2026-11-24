@@ -178,8 +178,6 @@ export interface AppShellPanesProps {
   memoryFocus: AppLinksReturn['memoryFocus'];
   learnedFocus: AppLinksReturn['learnedFocus'];
   bgFocus: AppLinksReturn['bgFocus'];
-  /** 跳转定位页签蓝标(2026-11-24 用户推翻「跳转定位不加闪光」裁定):jump 打开的页签 pill 高亮 */
-  tabJump: { type: import('./tabs/tab-state').TabTypeId; nonce: number } | null;
   panelRefreshNonce: number | undefined;
   catalogTick: { memory: number; learned: number };
   dev: boolean;
@@ -197,7 +195,7 @@ export interface AppShellPanesProps {
  *  宿主保留:全部状态/回调装配与非 JSX effects。 */
 export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
   const {
-    openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, openSunxBoardFromMenu, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabType, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, todoFocus, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, memoryFocus, learnedFocus, bgFocus, tabJump, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
+    openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, openSunxBoardFromMenu, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabType, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, todoFocus, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, memoryFocus, learnedFocus, bgFocus, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
   } = props;
   const activeTab = tabState.tabs.find((t2) => t2.uid === tabState.activeUid) ?? null;
   return (
@@ -434,7 +432,6 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
           <aside className={`sx-sidebar${sidebarAnim.closing ? ' sx-closing' : ''}`} ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
             <TabStripMemo
               tabs={tabState.tabs}
-              jumpType={tabJump?.type ?? null}
               activeUid={tabState.activeUid}
               disabled={page !== 'chat' && page !== 'welcome'}
               welcomeOnly={isWelcome}
