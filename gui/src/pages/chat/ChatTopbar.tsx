@@ -336,6 +336,18 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           { id: 'divider-1', divider: true, label: '', onSelect: () => undefined },
         ]
       : []),
+    // Sunx 归档项(2026-11-21 用户实测「会话编辑上面缺少归档项」):归档 Sunx/取消归档 Sunx 切换,
+    // 与标准会话 归档会话/取消归档会话 分域同构(Sunx 语义独立);位置=编辑 Sunx 之上
+    ...(isSunx
+      ? [
+          {
+            id: 'sunx-archive',
+            label: archived ? t('Unarchive Sunx', '取消归档 Sunx') : t('Archive Sunx', '归档 Sunx'),
+            icon: archived ? <ArchiveRestore size={14} strokeWidth={1.75} aria-hidden="true" /> : <Archive size={14} strokeWidth={1.75} aria-hidden="true" />,
+            onSelect: () => onArchive(!archived),
+          },
+        ]
+      : []),
     {
       id: 'rename',
       // 手建 Sunx=编辑 Sunx(品性/定义;名称即身份走创建名);通道 Sunx=重命名会话(品性在通道

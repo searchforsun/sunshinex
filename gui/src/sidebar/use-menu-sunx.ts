@@ -25,7 +25,11 @@ export function useMenuSunx(conn: MenuSunxConn, rows: WorkspaceRow[] | null, rel
       .sunxSessions()
       .then((list) => {
         if (!alive) return;
-        const mapped = list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' }));
+        // 已归档行不进分组(2026-11-21 用户实测「归档后不消失」):归档 Sunx 专域行携 archived 标注,
+        // 过滤之——归档后在「归档 Sunx」层可见,分组只留未归档
+        const mapped = list
+          .filter((x) => x.archived !== true)
+          .map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' }));
         setSunxRows((prev) => (listShallowEqual(prev, mapped) ? prev : mapped));
       })
       .catch(() => {
