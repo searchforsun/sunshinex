@@ -48,6 +48,9 @@ export interface SessionLifecycleIo {
   /** 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示」）：按工作区根回列
    *  启用中的分派（daemon 注入 ScheduleEngine root 过滤）——task_status 工具回执附段 */
   readonly schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
+  /** 活会话裁决（2026-11-25 结构性修「只有一个活的」）：sessionId 是否当前绑定活会话——通道
+   *  会话 wakeGate 注入原料（daemon 按绑定档判定）;缺席=不注入(非通道恒真路径) */
+  readonly isCurrentChatSession?: (sessionId: string) => boolean;
 }
 
 /** root 缺省锚字面量单点（GUI 欢迎页非项目会话的缺省锚，serve 侧解析面同源引用） */
@@ -211,6 +214,11 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     ...(domainDir !== undefined ? { dataDir: domainDir } : {}),
     ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
     ...(io.schedulesFor !== undefined ? { schedulesFor: io.schedulesFor } : {}),
+    // 活会话唤醒门(2026-11-25 结构性修「只有一个活的」):通道聊天会话注入绑定档裁决——
+    // 非绑定活会话任务/定时/恢复三类唤醒静默弃(活会话凭 ledger/board 状态重驱动)
+    ...(opts?.channelMeta !== undefined && io.isCurrentChatSession !== undefined
+      ? { wakeGate: () => io.isCurrentChatSession!(id) }
+      : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);

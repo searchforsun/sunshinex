@@ -39,6 +39,10 @@ export interface ChannelsSessionIo {
   /** ask 挂起回执单点（终审修复波 F1 第 8 面，router 自身不消费——engine 装配 projector 消费）：
    *  daemon POST /ask/:pid/reply 内部方法 resolveAsk(pid, AskUserAnswer) 同参透传 */
   resolveAsk(pid: string, answer: AskUserAnswer): boolean;
+  /** 旧座让位（2026-11-25 结构性修「只有一个活的」）：绑定切到 keepSessionId 时,同聊天其他
+   *  在座通道会话释放让位（在飞任务中断,ledger 孤儿经新座 redriveInterruptedTasks 重派;
+   *  journal 留档可回看）;缺席=不讓位(窄桩) */
+  retireOtherChatSessions?(chatId: string, keepSessionId: string): void;
 }
 
 export interface ChannelRouterDeps {
@@ -680,6 +684,10 @@ export class ChannelRouter {
     // 旧运行时**不释放**（2026-11-23 用户裁定「就放着就可以」）：旧座留注册表——GUI 开着旧
     // 会话的 snapshot/pty 等端点不 404
     this.upsertBinding(key, sessionId, seat, cfg, binding, msg);
+    // 旧座让位(2026-11-25 结构性修「只有一个活的」):绑定切到新座,同聊天旧座释放让位,
+    // 中断任务经新座 redriveInterruptedTasks 重派(fire-and-forget)
+    this.deps.io.retireOtherChatSessions?.(msg.chatId, sessionId);
+    void seat.rt?.redriveInterruptedTasks();
     // /new 回执（2026-11-25 用户裁定「显示成功切换+当前模型和思考强度,调整用 /model /effort
     // 等,/help 查看」——不再提品性复用/留档可回看）:快照读当轮生效档
     const snap = seat.rt.snapshotResponse();
@@ -719,6 +727,9 @@ export class ChannelRouter {
       sessionId = created.value.sessionId;
       rt = seat.rt;
       this.upsertBinding(key, sessionId, seat, cfg, existing, msg);
+      // 旧座让位+中断转投(2026-11-25 结构性修「只有一个活的」,cmdNew 同款):新建腿=绑定切到新座
+      this.deps.io.retireOtherChatSessions?.(msg.chatId, sessionId);
+      void rt.redriveInterruptedTasks();
     }
     this.deps.noteSender?.(sessionId, { display: msg.userDisplay ?? msg.userId, userId: msg.userId, chatKind: msg.chatKind }); // ⑫ 绑定解析成功即回写
     const submitText = inboundSubmitText(msg); // ⑫ 群聊前缀/单聊原文（单点,drain 回显匹配同源）

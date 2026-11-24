@@ -289,6 +289,15 @@ export class GuiDaemon {
       onFrame: (cb) => this.onFrame(cb),
       resolveApproval: (pid, d) => this.resolveApproval(pid, d.approved ? 'allow' : 'deny'),
       resolveAsk: (pid, answer) => this.resolveAsk(pid, answer),
+      // 旧座让位（2026-11-25 结构性修「只有一个活的」）：绑定切换时同聊天其他在座通道会话释放
+      // （在飞 run/后台任务中断,ledger 孤儿落共享聊天域账本——新座 redriveInterruptedTasks 重派;
+      // journal 留档可回看）
+      retireOtherChatSessions: (chatId, keepSessionId) => {
+        for (const [, sess] of this.sessions.entries()) {
+          if (sess.id === keepSessionId || sess.channelMeta?.chatId !== chatId) continue;
+          this.releaseSession(sess.id);
+        }
+      },
     }, this.channelsBindings, {
       // 配置档：测试注入（opts.channelsConfigs）优先——engine.start() 调和时取值；缺省读全局档
       // channels 键（loadChannels 单点，config/channels.ts 全局豁免裁定）
@@ -342,6 +351,9 @@ export class GuiDaemon {
           .list()
           .filter((j) => j.enabled && j.ended !== true && j.root === root && j.nextRunAt !== null)
           .map((j) => ({ name: j.name, nextRunAt: j.nextRunAt })),
+      // 活会话裁决(2026-11-25 结构性修「只有一个活的」):绑定档引用即活——旧座让位后其三类
+      // 唤醒静默弃(任务中断转投走 retireOtherChatSessions+redriveInterruptedTasks 链)
+      isCurrentChatSession: (sessionId) => this.channelsBindings.all().some((b) => b.sessionId === sessionId),
     };
   }
 

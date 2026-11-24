@@ -853,6 +853,17 @@ export class Harness {
     this.agentTeams.adopt(regStore);
 
     const boardStore = new TeamStore(path.join(root, 'main'));
+    // 板迁移（2026-11-25 用户裁定「切换会话还是没有继承任务版」根修②）：chat 域启用前的历史
+    // 板数据落各 journal 私有根（teams/<jid>/main,chatScopedTeams 面世前的旧布局）——chat 根
+    // 首次采纳且为空时,**吸收最新非空 journal 板**（events.jsonl+board.json 按 mtime 择新拷贝）,
+    // 旧布局会话的任务由此进聊天域;旧根数据原样保留（留档,不删）
+    const preSnap = boardStore.load();
+    if (this.chatScopedTeams === true && Object.keys(preSnap.tasks).length === 0 && preSnap.seq === 0) {
+      if (migrateLatestJournalBoard(this.dataDir, path.join(root, 'main'))) {
+        // 迁移落痕:无 Harness 级日志面,console.error 单行(仅迁移发生时一次)
+        console.error('[harness] chat 域板迁移:吸收最新 journal 板');
+      }
+    }
     const diskSnap = boardStore.load();
     const diskEmpty = Object.keys(diskSnap.tasks).length === 0 && diskSnap.seq === 0;
     if (wasUnbound && diskEmpty && this.memoryBoardStore !== undefined) {
@@ -924,5 +935,43 @@ export class Harness {
   /** 活动根只读视图（worktree 会话；null=主工作区缺省态） */
   get activeRoot(): string | null {
     return this.safety.activeRoot;
+  }
+}
+
+
+/** chat 域板迁移助手（2026-11-25 用户裁定「切换会话还是没有继承任务版」根修②）：chat 根
+ *  （teams/chat/main）为空时,吸收**最新非空 journal 板**（teams/<jid>/main 的 events.jsonl+
+ *  board.json,mtime 择新拷贝）——chatScopedTeams 面世前的旧布局板数据由此进聊天域;旧根原样
+ *  保留不删。无候选=false（chat 根保持空,合法空态）。export 供测试钉。 */
+export function migrateLatestJournalBoard(dataDir: string, chatMainDir: string): boolean {
+  const teamsRoot = path.join(dataDir, 'teams');
+  let best: { dir: string; mtime: number } | undefined;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(teamsRoot, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const ent of entries) {
+    if (!ent.isDirectory() || ent.name === 'chat') continue;
+    const mainDir = path.join(teamsRoot, ent.name, 'main');
+    const eventsFile = path.join(mainDir, 'events.jsonl');
+    try {
+      const st = fs.statSync(eventsFile);
+      if (st.size === 0) continue;
+      if (best === undefined || st.mtimeMs > best.mtime) best = { dir: mainDir, mtime: st.mtimeMs };
+    } catch {
+      /* 无 events 档的 journal:跳过 */
+    }
+  }
+  if (best === undefined) return false;
+  try {
+    fs.mkdirSync(chatMainDir, { recursive: true });
+    fs.copyFileSync(path.join(best.dir, 'events.jsonl'), path.join(chatMainDir, 'events.jsonl'));
+    const snap = path.join(best.dir, 'board.json');
+    if (fs.existsSync(snap)) fs.copyFileSync(snap, path.join(chatMainDir, 'board.json'));
+    return true;
+  } catch {
+    return false;
   }
 }
