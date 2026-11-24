@@ -225,7 +225,7 @@ export function useAppTabs(opts: {
    *  无行面页签(diff)轮询自然过期零副作用 */
   const openTabLit = useCallback((type: TabTypeId): void => {
     openTabType(type);
-    lightFirstPanelRow();
+    lightFirstPanelRow(type);
   }, [openTabType]);
   const openArtifactsTab = useCallback((): void => {
     openTabInSession('artifacts', {});

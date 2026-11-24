@@ -451,7 +451,14 @@ const jumpLit = new WeakMap<Element | Document, { el: Element; timer: number }>(
  *  顶栏计数钮开的是「无特定落点」的页签——点亮面板**第一行**作落点确认。页签体懒加载+数据
  *  异步到位,轮询可见 .sx-tabbody 至 2.5s 上限;无行面页签(diff/文件)轮询自然过期零副作用 */
 const PANEL_ROW_SELECTORS = '.tb-card, .tb-task-main, .todo-card, .mem-row, li[data-skill-id]';
-export function lightFirstPanelRow(deadline: number = performance.now() + 2500): void {
+export function lightFirstPanelRow(type: string, deadline: number = performance.now() + 2500): void {
+  // 先等目标页签成为活动页签(开签 state 提交是异步的,立即查会点亮旧活动面板首行——实测记忆/待办错位根因)
+  const activeSel = String.raw`.sx-tab.active[data-type="${type}"]`;
+  if (document.querySelector(activeSel) === null) {
+    if (performance.now() > deadline) return;
+    requestAnimationFrame(() => lightFirstPanelRow(type, deadline));
+    return;
+  }
   const body = document.querySelector<HTMLElement>('.sx-tabbody:not([style*="none"])');
   const el = body?.querySelector(PANEL_ROW_SELECTORS) ?? null;
   if (el !== null) {
@@ -459,7 +466,7 @@ export function lightFirstPanelRow(deadline: number = performance.now() + 2500):
     return;
   }
   if (performance.now() > deadline) return;
-  requestAnimationFrame(() => lightFirstPanelRow(deadline));
+  requestAnimationFrame(() => lightFirstPanelRow(type, deadline));
 }
 
 export function markJumpHighlight(el: Element, ms = 3000): void {
