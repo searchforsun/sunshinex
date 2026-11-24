@@ -20,6 +20,8 @@ import { parseLanguage, setLanguage, t } from '../i18n';
 import { EFFORT_ORDER } from '../model/adapter';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { flagList } from '../entry-shared';
+import type { CliArgs } from '../entry-shared';
 
 /** CLI 版本号：以 package.json 为单一来源（dist 相对定位清单文件，与 npm 安装副本天然同源） */
 function cliVersion(): string {
@@ -32,13 +34,10 @@ function cliVersion(): string {
   }
 }
 
-/** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional。
- *  可重复 flag（REPEATABLE_FLAGS，spec 5.3 --add-dir）：多次出现收集为 string[]，其余同前 */
-export interface CliArgs {
-  command: string;
-  positional: string[];
-  flags: Record<string, string | boolean | string[]>;
-}
+// CliArgs 形与 flagList 归一迁中性叶 entry-shared（D80④）：tui 入口引两件不得触 cli/，
+// 此处再导出保既有 commands/测试消费面零改动
+export type { CliArgs } from '../entry-shared';
+export { flagList } from '../entry-shared';
 
 /** 可重复 flag 清单：出现多次不覆盖、依次收集为数组（--add-dir；mcp 族的 --arg/--env 同为多值旗） */
 const REPEATABLE_FLAGS = new Set(['add-dir', 'arg', 'env']);
@@ -76,14 +75,6 @@ export function parseArgs(argv: string[]): CliArgs {
   }
   // 裸命令兜底：`sunshinex`（无任何参数）落到空命令，由 resolveInvocation 归一为 tui（当前工作区启动）
   return { command: positional.shift() ?? '', positional, flags };
-}
-
-/** 可重复 flag 取值归一（spec 5.3 --add-dir）：单值/数组/缺省统一 string[] */
-export function flagList(flags: CliArgs['flags'], name: string): string[] {
-  const v = flags[name];
-  if (typeof v === 'string') return v === '' ? [] : [v];
-  if (Array.isArray(v)) return v;
-  return [];
 }
 
 /** 已知子命令清单：首个 positional 命中其一按子命令分发（tui 为内部派发键、非用户子命令） */

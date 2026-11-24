@@ -15,10 +15,9 @@ import { pushPendingMcpHint } from './commands-mcp';
 import { buildModel, parseTier } from '../runtime';
 import { loadProviders } from '../config/providers';
 import { ModelSwitcher } from '../model/catalog';
-import { resolveWorktreeLaunchRoot } from '../cli/worktree-launch';
+import { flagList, resolveWorktreeLaunchRoot } from '../entry-shared';
 import { parseEffort } from '../model/adapter';
-import type { CliArgs } from '../cli';
-import { flagList } from '../cli';
+import type { CliArgs } from '../entry-shared';
 import { t } from '../i18n';
 
 /** 读根 package.json 版本（失败回退 undefined，由 buildBannerInfo 兜底） */

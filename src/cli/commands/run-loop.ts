@@ -1,7 +1,7 @@
 import * as path from 'path';
 import { DEFAULT_GOAL_TEMPLATE, resolveTemplate } from '../../loop/templates';
 import { buildDeps } from '../../runtime';
-import { resolveWorktreeLaunchRoot } from '../worktree-launch';
+import { resolveWorktreeLaunchRoot } from '../../entry-shared';
 import { resolveCommandDir, flagList } from '../index';
 import { teardownCliRun } from './run-pipeline';
 import type { CliArgs } from '../index';

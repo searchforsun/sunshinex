@@ -55,7 +55,8 @@ NODE_OPTIONS=--use-system-ca pnpm shell:dist   # 壳全链：版本同步→主�
 ```text
 src/
   index.ts            # package.json main 库导出面（loadSettingsChain/buildModel/buildHarness 再导出，零副作用；可执行入口唯一落 cli/index.ts）
-  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings；worktree-launch --worktree 装配前解析）
+  cli/                # CLI 执行面（commands/：selfcheck / run / pipeline / serve / skills install / kb-index / plugins / agents / providers / mcp / settings）
+  entry-shared.ts     # 入口共享中性叶（CliArgs 形/flagList 归一/--worktree 装配前解析；cli/tui 两入口共引，入口层互指边收口为零）
   types.ts            # 全局共享类型（新增共享类型一律在此登记）
   result.ts           # Result 统一结果类型
   runtime.ts          # 运行时装配根（buildHarness 单点 + buildDeps CLI 整形：CLI/TUI/GUI 三面共用）

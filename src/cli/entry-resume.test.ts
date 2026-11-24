@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseArgs, usageText } from './index';
-import { resolveWorktreeLaunchRoot } from './worktree-launch';
+import { resolveWorktreeLaunchRoot } from '../entry-shared';
 import { resolveResumeFlag } from '../tui/entry';
 
 test('--resume 与 --continue 同传：fail-fast', () => {

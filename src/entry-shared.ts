@@ -1,6 +1,26 @@
-import type { CliArgs } from './index';
-import { createWorktree, randomWorktreeName } from '../harness/worktree';
-import { resolveDataDir } from '../config/data-dir';
+/**
+ * 中性入口共享叶（D80④）：cli/tui 两入口共用的最小面，住在两域之下——tui 引此不触 cli/，
+ * cli 引此不触 tui/，入口层互指边在此收口为零。现载三件：CliArgs 形、可重复 flag 归一
+ * （flagList）、--worktree 启动旗标装配前解析（resolveWorktreeLaunchRoot）。
+ */
+import { createWorktree, randomWorktreeName } from './harness/worktree';
+import { resolveDataDir } from './config/data-dir';
+
+/** CLI 参数解析：仅内置约定，零依赖。--flag=v 或 --flag v → 字符串；--flag（末尾无值）→ true；其余为 positional。
+ *  可重复 flag（REPEATABLE_FLAGS，spec 5.3 --add-dir）：多次出现收集为 string[]，其余同前 */
+export interface CliArgs {
+  command: string;
+  positional: string[];
+  flags: Record<string, string | boolean | string[]>;
+}
+
+/** 可重复 flag 取值归一（spec 5.3 --add-dir）：单值/数组/缺省统一 string[] */
+export function flagList(flags: CliArgs['flags'], name: string): string[] {
+  const v = flags[name];
+  if (typeof v === 'string') return v === '' ? [] : [v];
+  if (Array.isArray(v)) return v;
+  return [];
+}
 
 /**
  * 入口一接缝（计划 T3，规格 §7/D5）：--worktree 启动旗标的装配前解析单点。
