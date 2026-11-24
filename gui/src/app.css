@@ -4730,7 +4730,7 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */
 /* 卡面颜色=侧栏产物卡同源（.sx-artifacts-card: fg 4% 叠层；dark=bubble-user）；不用边框线 */
-.sx-schedule-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border: none; border-radius: var(--radius-md); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), box-shadow var(--dur-basic) var(--ease-enter); }
+.sx-schedule-card { position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 10px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border: none; border-radius: var(--radius-md); cursor: pointer; transition: background var(--dur-basic) var(--ease-enter), box-shadow var(--dur-basic) var(--ease-enter); container-type: inline-size; } /* container:供底行窄宽隐周期说明(下方 @container) */
 [data-theme='dark'] .sx-schedule-card { background: var(--bubble-user); }
 .sx-schedule-card:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 [data-theme='dark'] .sx-schedule-card:hover { background: color-mix(in srgb, var(--fg) 5%, var(--bubble-user)); }
@@ -4742,11 +4742,13 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    14px」):全部走页根 --sx-font(=max(--f-base-size,14px)),不再写死 calc(Npx * --fz) 小字 */
 .sx-schedule-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--sx-font); font-weight: 600; }
 .sx-schedule-prompt { margin: 0; min-height: 44px; color: var(--fg-secondary); font-size: var(--sx-font); line-height: var(--f-base-lh, 1.6); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-/* 倒计时行:周期说明(左起)+下次倒计时+右端运行次数(2026-11-21 用户裁定) */
-.sx-schedule-next { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--fg-tertiary); font-size: var(--sx-font); }
+/* 倒计时行:周期说明(左起)+下次倒计时+右端运行次数(2026-11-21 用户裁定);
+   周期说明空间不足时不省略挤行,直接整段隐藏(2026-11-21 用户裁定「过窄直接隐藏说明」) */
+.sx-schedule-next { display: flex; align-items: center; gap: 5px; min-width: 0; color: var(--fg-tertiary); font-size: var(--sx-font); flex-wrap: nowrap; }
 .sx-schedule-next .count { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
 .sx-schedule-next .count.off { color: var(--fg-secondary); }
-.sx-schedule-next-cadence { color: var(--fg-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-schedule-next-cadence { color: var(--fg-tertiary); white-space: nowrap; flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; }
+@container (max-width: 359px) { .sx-schedule-next-cadence, .sx-schedule-next-dot { display: none; } }
 .sx-schedule-next-dot { flex: none; color: var(--fg-tertiary); }
 .sx-schedule-next-label { flex: none; }
 .sx-schedule-runcount { flex: none; margin-left: auto; color: var(--fg-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
