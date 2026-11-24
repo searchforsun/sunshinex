@@ -35,7 +35,7 @@ import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
 import type { ChannelAdapter, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
 import { registeredWorkspaceRoots } from '../workspace-registry';
-import { runCommand } from '../session-commands';
+import { runCommand, channelContextNotice } from '../session-commands';
 
 /** 健康快照行:enabled 取当前配置快照(移除/停用即 false);connected 取在座适配器 health(缺席/起失败即 false) */
 export interface ChannelHealthRow {
@@ -105,6 +105,10 @@ export class ChannelsEngine {
             if (f.kind === 'event' && f.e.type === 'done') this.guiRuns.delete(f.sessionId);
             return;
           }
+          // 子智能体帧过滤(2026-11-25 用户裁定「子 agent 的内容没有必要返回给用户网关,用户只和
+          // 主 agent 交互」):子 runner 事件流转发进父会话帧泵时带 payload.subagent 标——IM 投影
+          // 只认主链,子 token/notice 全部静默(GUI 面照常收,域枚举/看板不受影响)
+          if ('sessionId' in f && f.kind === 'event' && f.e.payload?.['subagent'] !== undefined) return;
           cb(f);
         }),
       resolveApproval: (pid, decision) => this.io.resolveApproval(pid, decision),
@@ -151,6 +155,9 @@ export class ChannelsEngine {
       // 只读命令文本捕获(2026-11-25 用户裁定「tui 的 /context 等等业务的命令也加上」):runCommand
       // capture 旁路——命令气泡/三态行照落转录,回执文本旁路给 IM 回执面
       commandText: async (rt, line) => {
+        // /context=通道面中文摘要(2026-11-25 用户裁定「context 根据当前语言 i18n 化」;命令气泡
+        // /三态行仍走 runCommand 落转录——runCommand 不重复执行,此处只取格式化面)
+        if (line === '/context') return channelContextNotice(rt);
         let text: string | undefined;
         const r = await runCommand(rt, line, (t) => {
           text = t;

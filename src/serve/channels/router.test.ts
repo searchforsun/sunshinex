@@ -590,9 +590,11 @@ test('⑲ 排队两选项:回执附选项;1=置首模拟插入(idle=直接发出
   assert.equal(rt.submits[rt.submits.length - 1]!.text, '再排一条'); // 原文本重提交
   assert.ok(h.acks[4]!.text.includes('已暂停当前任务'));
   const sid = h.bindings.get(bindingKey('m1', 'c1'))!.sessionId;
-  // run 起源两次落账:p1 idle submit 起源=p1;p5 暂停重发起源=p4（原消息气泡,bug2 语义）
+  // run 起源三次落账:p1 idle submit 起源=p1;p3「1 插入」起源移被插入消息=p2(后续输出回它);
+  // p5「2 暂停重发」起源=p4(原消息气泡)——三处同 noteRunSubmit 单点
   assert.deepEqual(noteRunSubmits, [
     { sessionId: sid, msgId: 'p1' },
+    { sessionId: sid, msgId: 'p2' },
     { sessionId: sid, msgId: 'p4' },
   ]);
 
@@ -783,4 +785,16 @@ test('㉓ /context 捕获回执;agents/teams 清单回行+使用提示;无绑定
   const h0 = makeHarness();
   await h0.router.handleInbound(mkMsg({ msgId: 'c7', text: '/skills-list' }));
   assert.ok(h0.acks[0]!.text.includes('发送任意消息开始对话'));
+});
+
+// ⑳b ask/审批回答移 run 起源（2026-11-25 用户裁定「应该回复 4,对于测试的回答回复给了第一个
+// 消息」根修）:pendingReply 消费即 noteRunSubmit——回答气泡成为后续输出的 reply 起源
+test('⑳b 回答移 run 起源:pendingReply 消费即 noteRunSubmit(回答气泡)', async () => {
+  const noteRunSubmits: Array<{ sessionId: string; msgId: string }> = [];
+  const h = makeHarness({ pendingReply: () => true, noteRunSubmits });
+  h.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 's9', journalId: 'j9', updatedAt: 1 });
+  h.runtimes.set('s9', makeRuntime({ journalId: 'j9' }));
+  await h.router.handleInbound(mkMsg({ msgId: 'a9', text: '1' }));
+  assert.deepEqual(noteRunSubmits, [{ sessionId: 's9', msgId: 'a9' }]);
+  assert.equal(h.acks.length, 0); // 已消费:无回执
 });

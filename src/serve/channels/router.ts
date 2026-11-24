@@ -93,6 +93,14 @@ const WORKSPACE_LIST_MAX = 8;
 /** 清单类命令展示上限（skills/agents/teams 消息可读性优先,超出给总数行） */
 const LIST_MAX = 20;
 const SKILL_LIST_MAX = 20;
+/** 清单描述截断长（2026-11-25 用户裁定「描述有最大长度,超过省略」）:按码点计（CJK 一字一码点） */
+const LIST_DESC_MAX = 60;
+
+/** 描述截断单点：超长裁 LIST_DESC_MAX 码点+省略号 */
+function clipDesc(desc: string): string {
+  const pts = Array.from(desc);
+  return pts.length > LIST_DESC_MAX ? pts.slice(0, LIST_DESC_MAX).join('') + '…' : desc;
+}
 
 /** 思考强度显示名（GUI effort-slider EFFORT_ZH 镜像 + none 档补位;协议值恒英文 EFFORT_ORDER 序） */
 const EFFORT_LABELS: Partial<Record<string, string>> = { none: '关（最快）', minimal: '极简', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' };
@@ -151,8 +159,13 @@ export class ChannelRouter {
     if (!(await this.admit(msg, cfg))) return; // ③ 准入（first-user 拒绝在此 ack）
     const key = bindingKey(cfg.id, msg.chatId);
     const binding = this.deps.bindings.get(key);
-    // ⑪ 审批回复截胡：有绑定且 pendingReply 判 true → 消息已被消费，不发 ack
-    if (binding !== undefined && msg.text !== undefined && this.deps.pendingReply?.(binding.sessionId, msg.text) === true) return;
+    // ⑪ 审批回复截胡：有绑定且 pendingReply 判 true → 消息已被消费，不发 ack。
+    // 回答同时移 run 起源（2026-11-25 用户裁定「应该回复 4,对于测试的回答回复给了第一个消息」）:
+    // ask/审批回答驱动本轮后续输出——回答气泡即新起源,不回旧起源气泡
+    if (binding !== undefined && msg.text !== undefined && this.deps.pendingReply?.(binding.sessionId, msg.text) === true) {
+      this.deps.noteRunSubmit?.(binding.sessionId, msg);
+      return;
+    }
     const text = (msg.text ?? '').trim();
     // 聊天名称回填（issue②：飞书群名/联系人名晚到/绑定早于能力——绑定档缺 chatTitle 而本条消息
     // 携带时即补写,GUI 悬浮卡 hover 随之显示名称不再回落 chatId;尽力而为不阻断）
@@ -477,7 +490,7 @@ export class ChannelRouter {
       return;
     }
     const lines = [`可用技能（${skills.length} 个）——聊天里直接描述任务，匹配的技能会自动使用：`];
-    for (const s of skills.slice(0, SKILL_LIST_MAX)) lines.push(`- ${s.id}（${s.name}）：${s.description}`);
+    for (const s of skills.slice(0, SKILL_LIST_MAX)) lines.push(`- ${s.id} : ${clipDesc(s.description)}`);
     if (skills.length > SKILL_LIST_MAX) lines.push(`…等共 ${skills.length} 个`);
     await this.deps.ack(msg, lines.join('\n'));
   }
@@ -506,7 +519,7 @@ export class ChannelRouter {
       return;
     }
     const lines = [`可用子智能体（${agents.length} 个）——描述任务时点名即可委派（如「用 xx 来做…」）：`];
-    for (const a of agents.slice(0, LIST_MAX)) lines.push(`- ${a.id}（${a.name}）：${a.description}${a.enabled ? '' : '［未启用］'}`);
+    for (const a of agents.slice(0, LIST_MAX)) lines.push(`- ${a.id} : ${clipDesc(a.description)}${a.enabled ? '' : '［未启用］'}`);
     if (agents.length > LIST_MAX) lines.push(`…等共 ${agents.length} 个`);
     await this.deps.ack(msg, lines.join('\n'));
   }
@@ -532,7 +545,7 @@ export class ChannelRouter {
       return;
     }
     const lines = [`可用团队（${teams.length} 个）——描述任务时点名团队即可按团队协作：`];
-    for (const tm of teams.slice(0, LIST_MAX)) lines.push(`- ${tm.id}（${tm.name}）：${tm.description}`);
+    for (const tm of teams.slice(0, LIST_MAX)) lines.push(`- ${tm.id} : ${clipDesc(tm.description)}`);
     if (teams.length > LIST_MAX) lines.push(`…等共 ${teams.length} 个`);
     await this.deps.ack(msg, lines.join('\n'));
   }
@@ -790,6 +803,7 @@ export class ChannelRouter {
       }
       if (rt.status() === 'running') {
         rt.steerFront(ch.seq); // 模拟插入:置首,下一 step 边界即注入当前轮
+        this.deps.noteRunSubmit?.(ch.sessionId, ch.inbound); // 起源移被插入消息:插入后输出响应它
         await this.deps.ack(msg, '已插入当前对话，助手接下来会看到这条消息。');
         return;
       }

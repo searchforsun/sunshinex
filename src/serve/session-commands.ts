@@ -83,6 +83,35 @@ export async function runCommand(s: SessionRuntime, line: string, capture?: (tex
   }
 }
 
+/** 通道面 /context 摘要（2026-11-25 用户裁定「context 根据当前语言 i18n 化」;IM 回执与通道
+ *  其他回执同语言=中文;TUI /context 英文分支不受影响）:与 runCommandBody /context 同一计算
+ *  （contextBreakdown 单点),仅标签中文化——GUI 观看该命令的转录帧仍走 runCommand 三态行 */
+export function channelContextNotice(s: SessionRuntime): string {
+  const ctx = s.runtime.harness.context;
+  const parts = ctx.snapshotPartsView();
+  const b = contextBreakdown({
+    stableSegment: s.runtime.harness.stableSegment(),
+    instructions: parts.instructions,
+    skills: parts.skills,
+    agents: parts.agents,
+    teams: parts.teams,
+    memory: parts.memory,
+    compacted: ctx.compactedView(),
+    chain: ctx.chainView(),
+    window: resolveRunWindow(s.runtime.harness.model),
+    chainFrom: ctx.chainFromView(),
+  });
+  const LABELS: Record<string, string> = {
+    stableSegment: '稳定段', instructions: '指令', skills: '技能', agents: '子智能体',
+    teams: '团队', memory: '记忆', compacted: '压缩块', chain: '主链',
+  };
+  return (
+    '上下文构成：\n' +
+    b.parts.map((p) => `${LABELS[p.id] ?? p.id}: ${p.tokens} (${Math.round((p.tokens / Math.max(1, b.total)) * 100)}%)`).join('\n') +
+    `\n合计 ${b.total} / ${b.window}`
+  );
+}
+
 /** 命令中断文案(命令名专属;规范英文产出,GUI 模式表承载中文渲染) */
 function interruptedLabel(cmd: string): string {
   if (cmd === '/compact') return 'Context compaction interrupted';
