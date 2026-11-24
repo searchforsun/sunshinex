@@ -47,7 +47,7 @@
   --radius-composer: 22px;
   --radius-row: 9999px;
   /* 海拔 */
-  --elev-card: 0 4px 16px rgba(0, 0, 0, 0.2);
+  --elev-card: 0 4px 16px rgba(0, 0, 0, 0.2); /* 2026-11-23 起停用于 pending-card（见该块注记），保留给未来非超椭角消费面 */
   /* 2026-11-03 用户裁定:高亮描边环(0 0 0 0.5px border-strong)在超椭角下不随形=浮层角部毛边根因,撤环只留近距投影 */
   --elev-prominent: 0 3px 7.5px rgba(0, 0, 0, 0.18);
   /* 2026-11-03 毛刺根除(用户实测:输入框/编辑卡角部光斑缺角,气泡无阴影即无):80px 大晕层与
@@ -826,15 +826,16 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 2026-10-26 用户报障「编辑/写入没有代码高亮」:上行 0,4,0 的继承规则压过 0,1,0 的 .hljs-*——
    diff/思考内语法 span 全被 inherit 成正文白。:not 排除 hljs 令牌后语法色恢复 */.entry-tool .tool-result { margin: 2px 0 0; padding: 8px 10px; background: var(--surface-code); border: none; border-radius: var(--radius-md); font: var(--f-code, 12px)/var(--f-code-lh, 1.6) var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; } /* 字体预设管线:输出=展示文本随界面字族(2026-10-26 用户裁定);块内 code/pre 仍等宽 */.tool-path { color: var(--accent); border-radius: var(--radius-xs); font: calc(14px * var(--fz)) var(--font-mono); }.tool-path:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); text-decoration: underline; }
 /* 正文 markdown:段距 12(2026-10-24 用户裁定:区域行距加大防挤;区域内行距不变)/20px semibold 标题/ tertiary 引用/行内码前景 8% 井 */.entry h1, .entry h2, .entry h3, .entry h4 { font-size: calc(14px * var(--fz)); line-height: calc(20px * var(--fz)); font-weight: 600; margin: 12px 0 8px; }.entry blockquote { margin: 4px 0; padding: 0 0 0 9px; border-left: 2px solid var(--border); color: var(--fg-secondary); }.entry pre { margin: 10px 0; padding: 8px 12px; background: var(--surface-code); border: none; border-radius: var(--radius-md); /* G14.103 */ font: calc(12px * var(--fz))/1.6 var(--font-mono); }.entry th, .entry td { border-color: var(--border-subtle); }
-/* 审批/ask 卡:浮面制(elevated 面+card 海报+xl 圆,零实线边;主钮实心 ok,副钮 ghost) */.pending-card {
+/* 审批/ask 卡(2026-11-23 二轮根修回退浮面制):描边扁平卡——elevated 面+实线边+md 圆,零阴影。
+   根因(浏览器对照实验落案,两轮阴影方案全废):G14.206c 全局 corner-shape:superellipse 下本内核
+   「声明 corner-shape 即阴影方角」——box-shadow 与 filter:drop-shadow 都按未圆角边框盒渲染阴影
+   (任意声明值包括 initial/round/superellipse 均触发;无声明元素阴影正常),四角外露方形残块,
+   阴影路线(换 drop-shadow/拔出级联)全部无效。唯一正解=带阴影浮层在超椭角全局态不挂阴影:
+   卡面边界改由实线边承载(与 .entry 描边语言同构);主钮实心 ok,副钮 ghost 不变 */
+.pending-card {
   background: var(--surface-elevated);
-  border: none;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--elev-card);
-  /* 2026-11-23 用户报障「ask 弹窗四角直角阴影」:全局 corner-shape:superellipse(G14.206c) 下
-     box-shadow 不随角形渲染——阴影按标准椭角画,超椭角四角外露方形影残块;本卡拔出级联回标准
-     椭角让阴影随形(tb-status-dot 豁免组同款先例,「仅本选择器特殊处理,不动全局弧度」) */
-  corner-shape: initial;
   padding: 10px 12px;
 }.approval-card, .ask-card { border: none; }.pending-card .card-actions { display: flex; gap: 8px; }.pending-card .approve {
   padding: 3px 12px; border: none; border-radius: var(--radius-sm);
