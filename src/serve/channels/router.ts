@@ -311,11 +311,12 @@ export class ChannelRouter {
   /** createSession opts：mode 透传配置、activate:false（通道会话不抢 GUI 焦点）、model 可选透传；
    *  channelMeta（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）——出生定版冻结层,
    *  同一聊天逐字节一致（前缀缓存零损失;动态发言用户走 ⑫ 消息级 [来自 x]: 前缀不入此层） */
-  private createOpts(cfg: ChannelConfig, chatId: string): { mode: ChannelConfig['mode']; activate: false; model?: string; channelMeta: { platform: string; chatId: string; appName?: string } } {
+  private createOpts(cfg: ChannelConfig, chatId: string): { mode: ChannelConfig['mode']; activate: false; model?: string; effort?: string; channelMeta: { platform: string; chatId: string; appName?: string } } {
     return {
       mode: cfg.mode,
       activate: false,
       ...(cfg.model !== undefined ? { model: cfg.model } : {}),
+      ...(cfg.effort !== undefined ? { effort: cfg.effort } : {}), // 通道缺省档(2026-11-23 用户裁定「可以选择默认的模型和强度」)
       channelMeta: { platform: cfg.platform, chatId, ...(cfg.name !== undefined ? { appName: cfg.name } : {}) },
     };
   }

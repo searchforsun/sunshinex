@@ -112,6 +112,9 @@ export interface CreateSessionOpts {
   /** 固定模型 id（2026-11-20 定时任务）：装配 per-session 适配器（不切 daemon 全局选择）——
    *  仅内部调用（定时执行器）；HTTP /session/new 不透传。未知 id 回落全局默认。 */
   model?: string;
+  /** 思考强度（2026-11-23 用户裁定「可以选择默认的模型和强度」）：通道域缺省档——
+   *  出生即 setEffort 落 meta（attach 回放归位）；非法值 setEffort 内部解析失败静默忽略 */
+  effort?: string;
 }
 
 /**
@@ -206,6 +209,8 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
   // 激活位（2026-11-20 定时任务 Task 4）：activate:false=后台建会话不抢 daemon active（定时任务用）；
   // 缺省/true 沿既有置激活行为逐字节不变
   if (opts?.activate !== false) io.setActive(id);
+  // 通道缺省档(2026-11-23 用户裁定「可以选择默认的模型和强度」):出生 setEffort 落 meta(attach 回放归位)
+  if (opts?.effort !== undefined) session.setEffort(opts.effort);
   // T2 出生 journal:挂载即接 onContextChange 续写链。standard=惰性建档（首实质事件才落盘——幽灵
   // 会话语义原样）;sunx=出生即铸档（startWithId 以预铸 id 落 header+ensureSunxBirth 补出生行——
   // 持久化实体语义:出生即存在）

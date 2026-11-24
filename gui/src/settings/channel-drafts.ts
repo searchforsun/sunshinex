@@ -71,6 +71,8 @@ export interface ChannelDraft {
   mode: ModeValue;
   /** '' = 跟随全局默认(raw 配置既有值原样携带) */
   model: string;
+  /** '' = 跟随全局默认(2026-11-23 用户裁定「可以选择默认的模型和强度」) */
+  effort: string;
   /** 飞书 App ID(ident.appId);'' = 未配置 */
   appId: string;
   /** 平台其余非密钥标识(raw 配置既有值原样携带,编辑不丢) */
@@ -93,6 +95,7 @@ const seedDraft = (row: ChannelHealthRowMsg): ChannelDraft => ({
   rootText: '',
   mode: 'read-only',
   model: '',
+  effort: '',
   appId: '',
   ident: undefined,
   commands: [...COMMAND_KEYS],
@@ -112,6 +115,7 @@ const seedFromConfig = (cfg: ChannelConfigMsg): ChannelDraft => ({
   rootText: cfg.root === 'auto' ? '' : cfg.root,
   mode: cfg.mode,
   model: cfg.model ?? '',
+  effort: cfg.effort ?? '',
   appId: cfg.ident?.appId ?? '',
   ident: cfg.ident,
   commands: cfg.commands ?? [...COMMAND_KEYS],
@@ -183,6 +187,7 @@ export const toMsg = (d: ChannelDraft): ChannelConfigMsg => {
     root: d.rootText === '' ? 'auto' : d.rootText,
     mode: d.mode,
     ...(d.model !== '' ? { model: d.model } : {}),
+    ...(d.effort !== '' ? { effort: d.effort } : {}),
     ...(Object.keys(ident).length > 0 ? { ident } : {}),
     ...(allSelected ? {} : { commands }),
     allow: d.allowKind === 'list' ? { kind: 'list', userIds: splitUserIds(d.userIdsText) } : { kind: d.allowKind },
@@ -209,12 +214,14 @@ export interface ChannelForm {
   appId: string;
   rootText: string;
   mode: ModeValue;
+  model: string;
+  effort: string;
   commands: string[];
   allowKind: AllowKind;
   userIdsText: string;
 }
 
-export const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', commands: [...COMMAND_KEYS], allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定);命令缺省全开放
+export const EMPTY_FORM: ChannelForm = { platform: 'feishu', name: '', secret: '', appId: '', rootText: '', mode: 'read-only', model: '', effort: '', commands: [...COMMAND_KEYS], allowKind: 'first-user', userIdsText: '' }; // 平台缺省飞书(2026-11-22 裁定);命令缺省全开放
 
 /** 弹窗开合态:add=新增(平台待选);edit=编辑(锁定 original id) */
 export interface ChannelModal {

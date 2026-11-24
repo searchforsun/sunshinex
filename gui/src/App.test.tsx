@@ -252,7 +252,7 @@ const h = vi.hoisted(() => {
     }
     /** 队列暂停接缝(38de76d6 中断同时暂停队列):useQueue.pauseAndSend 消费——旧桩缺法即
      *  Stop/submit 类用例 TypeError(conn.queuePause is not a function) */
-    queuePause(id: string): Promise<void> {
+    queuePause(_id: string): Promise<void> {
       return Promise.resolve();
     }
     sessionSnapshot(id: string): Promise<FakeSnapshot> {

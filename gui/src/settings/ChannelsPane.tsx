@@ -37,6 +37,8 @@ export interface ChannelsPaneConn {
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
   /** DELETE /channels/:id(2026-11-23 用户裁定「真正的删除各种配置和目录」):条目移除+解绑+聊天域目录真删 */
   deleteChannel(id: string): Promise<{ ok: true }>;
+  /** GET /models:全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」)——弹窗缺省档数据源 */
+  models(): Promise<{ choices: Array<{ id: string; model: string }> }>;
   workspaces(): Promise<WorkspaceRow[]>;
 }
 
@@ -70,6 +72,9 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   const cfgRef = useRef<ChannelConfigMsg[]>([]);
   /** 配置读面 warnings(读面宽容语义:warning 跳过不致命——行内提示,不阻断编辑) */
   const [cfgWarnings, setCfgWarnings] = useState<string[]>([]);
+  /** 全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」):弹窗模型下拉数据源;
+   *  拉取失败静默=空列(强度档静态不受影响) */
+  const [modelChoices, setModelChoices] = useState<Array<{ id: string; model: string }>>([]);
   const applySources = useCallback((): void => {
     setHealth(healthRef.current);
     setDrafts((prev) => mergeDrafts(prev ?? [], healthRef.current, cfgRef.current, removedRef.current));
@@ -100,7 +105,12 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
 
   useEffect(() => {
     load();
-  }, [load]);
+    conn.models().then(
+      (v) => setModelChoices(v.choices),
+      () => setModelChoices([]),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conn]);
 
   /** 5s 健康轮询:只刷状态点,不扰弹窗草稿;卸载 clearInterval */
   useEffect(() => {
@@ -207,7 +217,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       setModal({ mode: 'add' });
       return;
     }
-    setForm({ platform: d.platform, name: d.name, secret: d.secret, appId: d.appId, rootText: d.rootText, mode: d.mode, commands: d.commands, allowKind: d.allowKind, userIdsText: d.userIdsText });
+    setForm({ platform: d.platform, name: d.name, secret: d.secret, appId: d.appId, rootText: d.rootText, mode: d.mode, model: d.model, effort: d.effort, commands: d.commands, allowKind: d.allowKind, userIdsText: d.userIdsText });
     setModal({ mode: 'edit', id: d.id });
   };
 
@@ -245,7 +255,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
       secret: form.secret,
       rootText: form.rootText,
       mode: form.mode,
-      model: base?.model ?? '',
+      model: form.model,
+      effort: form.effort,
       appId: form.appId.trim(),
       ident: base?.ident,
       commands: form.commands,
@@ -350,34 +361,34 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
           onClose={() => setModal(null)}
           onSubmit={submitChannel}
         >
-          <ChannelModalForm modal={modal} form={form} setForm={setForm} formError={formError} onPickFolder={pickWorkspaceFolder} />
+          <ChannelModalForm modal={modal} form={form} setForm={setForm} formError={formError} onPickFolder={pickWorkspaceFolder} modelChoices={modelChoices} />
         </EditorModal>
       )}
       {/* 删除确认弹窗(2026-11-23 用户裁定「弹窗确认,不是原地二次确认」):文案明示真删除
           范围(应用+相关会话记录+数据目录)不可恢复;确认=DELETE /channels/:id 真删除 */}
       {delAsk !== null && (
-        <ModalShell title={t('Delete channel', '删除通道')} onClose={() => setDelAsk(null)}>
+        <ModalShell title={t('Delete channel', '删除通道')} onClose={() => setDelAsk(null)} modifier="sx-turn-confirm">
           <form
-            className="sx-editor-modal-body"
+            className="sx-turn-confirm-body"
             onSubmit={(e) => {
               e.preventDefault();
               confirmDelete();
             }}
           >
-            <div className="sx-editor-modal-fields">
-              <p className="sx-provider-warn" role="alert">
-                {t(
-                  `This will permanently delete "${delAsk.name}" and ALL its chat session records and data directories. This cannot be undone.`,
-                  `即将删除「${delAsk.name}」以及它的全部会话记录和数据目录，此操作不可恢复。`,
-                )}
-              </p>
-            </div>
-            <div className="sx-card-actions sx-editor-modal-actions">
-              <button type="submit" className="sx-del-confirm">
-                {savingId === delAsk.id ? t('Deleting…', '删除中…') : t('Delete', '删除')}
-              </button>
-              <button type="button" onClick={() => setDelAsk(null)}>
+            <p className="sx-provider-warn" role="alert">
+              {t(
+                `This will permanently delete "${delAsk.name}" and ALL its chat session records and data directories. This cannot be undone.`,
+                `即将删除「${delAsk.name}」以及它的全部会话记录和数据目录，此操作不可恢复。`,
+              )}
+            </p>
+            {/* 按钮位(2026-11-23 用户裁定「取消应该在左侧」):取消左/红实心删除右;固定紧凑宽
+                (sx-turn-confirm 460px 覆写,不随内容变长) */}
+            <div className="sx-turn-confirm-actions">
+              <button type="button" disabled={savingId === delAsk.id} onClick={() => setDelAsk(null)}>
                 {t('Cancel', '取消')}
+              </button>
+              <button type="submit" className="sx-danger-solid" disabled={savingId === delAsk.id}>
+                {savingId === delAsk.id ? t('Deleting…', '删除中…') : t('Delete', '删除')}
               </button>
             </div>
           </form>

@@ -64,6 +64,9 @@ export interface ChannelConfigMsg {
   /** 开放的聊天命令（2026-11-22 用户裁定「聊天命令配置化,下拉多选」）：子集出自
    *  CHANNEL_COMMANDS 目录；缺席=全部开放（镜像 serve/channels/model.ts ChannelConfig.commands） */
   commands?: string[];
+  /** 思考强度（2026-11-23 用户裁定「可以选择默认的模型和强度」）：EFFORT_ORDER 子集；
+   *  缺席=跟随全局默认（镜像 serve/channels/model.ts ChannelConfig.effort） */
+  effort?: string;
   allow: { kind: 'first-user' | 'list' | 'all'; userIds?: string[]; chatIds?: string[] };
 }
 export interface ChannelHealthRowMsg { id: string; platform: string; enabled: boolean; connected: boolean; detail?: string }
@@ -120,6 +123,9 @@ export interface Connection {
   channelBindings(): Promise<{ bindings: ChannelBindingMsg[] }>;
   /** DELETE /channels/bindings/:key：解除绑定（journal 留盘；缺失 404 非幂等，写面从严）——
    *  key=`channelId:chatId` 绑定键，恒 encodeURIComponent（chatId 可含 ':' 等保留字） */
+  /** GET /models：全局模型清单（daemon ModelSwitcher choices；单模型装配=空列）——
+   *  通道弹窗「默认模型」下拉数据源（2026-11-23 用户裁定） */
+  models(): Promise<{ choices: Array<{ id: string; model: string }> }>;
   deleteChannelBinding(key: string): Promise<{ ok: true }>;
   /** DELETE /channels/:id（2026-11-23 用户裁定「删除弹窗确认,真正的删除各种配置和目录」）：
    *  通道真删除——settings 条目移除+绑定解绑+在座释放+聊天域目录(im-<slug>-*)真删 */

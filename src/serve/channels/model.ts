@@ -4,6 +4,7 @@
  *  不可回显导致 GUI 配置不闭环——密钥随配置项存放、GET 可回显；settings.json 对 agent 的写保护
  *  硬底线不受影响，暴露面与原 env 块同文件等价）。`name` = 应用名称（用户自定义展示名，1..80 trim，
  *  缺省由 UI 回退平台名）——非串/超长 warning 跳过该字段不致命（ident 同款宽容口径）。 */
+import { parseEffort } from '../../model/effort';
 
 export type ChannelPlatform = 'feishu' | 'dingtalk' | 'wecom' | 'telegram' | 'mock';
 export type ChannelAccessMode = 'read-only' | 'acceptEdits' | 'full-access';
@@ -26,6 +27,9 @@ export interface ChannelConfig {
   root: string;
   mode: ChannelAccessMode;
   model?: string;
+  /** 思考强度（2026-11-23 用户裁定「可以选择默认的模型和强度」）：子集出自 EFFORT_ORDER
+   *  （parseEffort 校验）；缺席=跟随全局默认；router createOpts 透传 createSession */
+  effort?: string;
   /** 平台非密钥标识（feishu 自建应用 URL 等扩展位） */
   ident?: Record<string, string>;
   /** 开放的聊天命令（命令配置化裁定**权威注**——用户可配开放子集,一个下拉多选）：
@@ -193,6 +197,19 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
         }
       }
     }
+    // effort 思考强度解析（2026-11-23 用户裁定「可以选择默认的模型和强度」）：parseEffort 校验
+    // （EFFORT_ORDER 子集），非法/非串 warning 跳该字段不致命；缺席=跟随全局默认
+    let effort: string | undefined;
+    const effortRaw = item['effort'];
+    if (effortRaw !== undefined && effortRaw !== null) {
+      if (typeof effortRaw !== 'string') {
+        warnings.push(`channels[${i}](${id}) effort 非串，跳过该字段`);
+      } else {
+        const v = parseEffort(effortRaw.trim());
+        if (v === undefined) warnings.push(`channels[${i}](${id}) effort 非法（${effortRaw.trim()}），跳过该字段`);
+        else effort = v;
+      }
+    }
     value.push({
       id,
       platform: platform as ChannelPlatform,
@@ -204,6 +221,7 @@ export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnin
       ...(model !== undefined ? { model } : {}),
       ...(ident !== undefined && Object.keys(ident).length > 0 ? { ident } : {}),
       ...(commands !== undefined ? { commands } : {}),
+      ...(effort !== undefined ? { effort } : {}),
       allow: {
         kind: allowCfg['kind'] as AllowKind,
         ...(strArr(allowCfg['userIds']) !== undefined ? { userIds: strArr(allowCfg['userIds']) } : {}),

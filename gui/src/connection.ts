@@ -533,6 +533,10 @@ export function createConnection(opts: ConnectionOpts): Connection {
       await putJson<{ ok: true }>(`/channels/bindings/${encodeURIComponent(key)}`, patch);
       return { ok: true };
     },
+    async models(): Promise<{ choices: Array<{ id: string; model: string }> }> {
+      // GET /models(daemon ModelSwitcher choices;单模型装配=空列):通道弹窗缺省档数据源
+      return getJson<{ choices: Array<{ id: string; model: string }> }>('/models');
+    },
     async deleteChannelBinding(key: string): Promise<{ ok: true }> {
       // key=`channelId:chatId` 绑定键（chatId 可含 ':'）——deleteSchedule 同款 del+组装 ok
       // （200 {ok:true} 只作成功信号；404 unknown binding 经 opError 透出）

@@ -773,6 +773,9 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'GET', path: '/session/:id/gui-state', auth: true, run: async (_req, res, p) => sessionHandlers.handleGuiStateGet(this.sessionIo, res, p.id) },
     { method: 'PUT', path: '/session/:id/gui-state', auth: true, run: async (req, res, p) => sessionHandlers.handleGuiStatePut(this.sessionIo, req, res, p.id) },
     // G14.2xx 应用级指针档(恢复现场入口:刷新后据此重放 lastRoot/lastJournalId 打开链)
+    // 全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」):通道弹窗缺省档数据源——
+    // daemon 装配 ModelSwitcher 时出 choices(单模型装配=空列,GUI 回落「跟随全局默认」单选)
+    { method: 'GET', path: '/models', auth: true, run: async (_req, res) => this.handleModels(res) },
     { method: 'GET', path: '/app/gui-state', auth: true, run: async (_req, res) => sessionHandlers.handleAppGuiStateGet(this.sessionIo, res) },
     { method: 'PUT', path: '/app/gui-state', auth: true, run: async (req, res) => sessionHandlers.handleAppGuiStatePut(this.sessionIo, req, res) },
     // 置顶档(2026-10-21 GUI 专属):userConfigDir/gui/pins.json,机器级跨工作区视图偏好
@@ -1977,6 +1980,12 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
 
   private async handleSessionTierEffort(req: http.IncomingMessage, res: http.ServerResponse, id: string, kind: 'tier' | 'effort'): Promise<void> {
     await sessionHandlers.handleSessionTierEffort(this.sessionIo, req, res, id, kind);
+  }
+
+  /** GET /models:全局模型清单(ModelSwitcher choices;单模型装配=空列) */
+  private handleModels(res: http.ServerResponse): void {
+    const sw = this.model instanceof ModelSwitcher ? this.model : undefined;
+    this.send(res, 200, { choices: (sw?.choices() ?? []).map((c) => ({ id: c.id, model: c.model })) });
   }
 
   private handleSessionModelGet(res: http.ServerResponse, id: string): void {

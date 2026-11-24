@@ -4,7 +4,12 @@ import { t } from '../i18n';
 import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
 import { ErrorBanner, ModalField } from './components';
 import { MultiSelect, SecretInput, Select } from './controls';
+
+/** 思考强度档(2026-11-23 用户裁定「可以选择默认的模型和强度」):EFFORT_ORDER 子集(滑杆同款
+ *  六档,标签复用 effortLabel);'' =跟随全局默认(选项前置) */
+const EFFORT_OPTIONS: ReadonlyArray<{ v: string }> = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((v) => ({ v }));
 import { COMMAND_OPTIONS, NAME_MAX, NAME_PLACEHOLDERS, platformLabel } from './channel-drafts';
+import { effortLabel } from '../effort-slider';
 import type { AllowKind, ChannelForm, ChannelModal, ModeValue } from './channel-drafts';
 
 /**
@@ -14,13 +19,15 @@ import type { AllowKind, ChannelForm, ChannelModal, ModeValue } from './channel-
  * 准入(list 展开 userIds textarea,all 红字警示)/聊天命令(MultiSelect)。表单真值经 setForm
  * 上抛（Pane 自持），校验错误行内（formError）。
  */
-export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder }: {
+export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder, modelChoices }: {
   readonly modal: ChannelModal;
   readonly form: ChannelForm;
   readonly setForm: Dispatch<SetStateAction<ChannelForm>>;
   readonly formError: string;
   /** 工作区文件夹选择(路径与执行环境页同款):window.sunshinex.pickFolder */
   readonly onPickFolder: () => void;
+  /** 全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」):GET /models choices */
+  readonly modelChoices: ReadonlyArray<{ id: string; model: string }>;
 }): JSX.Element {
   return (
     <>
@@ -122,6 +129,28 @@ export function ChannelModalForm({ modal, form, setForm, formError, onPickFolder
             )}
           </p>
         )}
+      </ModalField>
+      <ModalField label={t('Default model', '默认模型')} hint={t('Model used for chats on this channel.', '此通道的聊天使用的模型。')}>
+        <Select
+          ariaLabel={t('Default model', '默认模型')}
+          value={form.model}
+          options={[
+            { v: '', l: t('Follow global default', '跟随全局默认') },
+            ...modelChoices.map((m) => ({ v: m.id, l: m.model })),
+          ]}
+          onChange={(v) => setForm({ ...form, model: v })}
+        />
+      </ModalField>
+      <ModalField label={t('Reasoning effort', '思考强度')} hint={t('Higher = deeper thinking, slower and more tokens.', '越高思考越深，越慢且消耗越多。')}>
+        <Select
+          ariaLabel={t('Reasoning effort', '思考强度')}
+          value={form.effort}
+          options={[
+            { v: '', l: t('Follow global default', '跟随全局默认') },
+            ...EFFORT_OPTIONS.map((o) => ({ v: o.v, l: effortLabel(o.v) })),
+          ]}
+          onChange={(v) => setForm({ ...form, effort: v })}
+        />
       </ModalField>
       <ModalField label={t('Admission', '准入')}>
         <Select

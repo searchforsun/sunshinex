@@ -44,9 +44,10 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
   });
   const testChannel = vi.fn(async (): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }> => ({ ok: true, botId: 'bot-1' }));
   const deleteChannel = vi.fn(async (): Promise<{ ok: true }> => ({ ok: true }));
+  const models = vi.fn(async (): Promise<{ choices: Array<{ id: string; model: string }> }> => ({ choices: [{ id: 'bigmodel/glm-5.3', model: 'glm-5.3' }] }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
-  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, workspaces } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, workspaces };
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces };
 }
 
 describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联回显）', () => {
