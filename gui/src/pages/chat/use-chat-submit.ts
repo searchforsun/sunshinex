@@ -26,6 +26,9 @@ export function useChatSubmit(deps: {
   /** $/# 引用目录(2026-11-20 名称插入口径):草稿插的是名称,发送期按目录还原成 id */
   readonly refEntries?: RefEntries;
   readonly cmdData: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null;
+  /** /commands 在途/已决 Promise 取用(2026-11-24 接力窗根修):清单未达时门控 await 它再判,
+   *  不再把 null 当「非命令」静默降级纯文本;缺省(测试桩/旧调用面)=不等待,行为同旧 */
+  readonly getCmdDataReady?: () => Promise<{ commands: string[]; descriptions: Record<string, string>; supported: string[] } | null>;
   readonly setChat: Dispatch<SetStateAction<import('../../chat-reducer').ChatState>>;
   readonly onSideChat?: () => void;
   readonly refreshQueued: () => void;
@@ -49,7 +52,7 @@ export function useChatSubmit(deps: {
   send: () => void;
   interrupt: () => void;
 } {
-  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged, onInterrupted } = deps;
+  const { conn, sessionId, running, sessMode, root, resolveFileRef, refContents, refEntries, cmdData, getCmdDataReady, setChat, onSideChat, refreshQueued, input, setInput, images, setImages, onAccepted, sendBlocked, onPlanModeChanged, onInterrupted } = deps;
 /** §7 提交路径单点(idle→submit/running→steer):composer 与编辑卡共用。
  *  本地回显新条,失败倒 error 条(既有逻辑)再 rethrow——编辑卡借 Promise 结果保卡保草稿
  *  (spec §9:提交失败草稿不丢);成功 resolve;空文本且无图 resolve 忽略 */
@@ -84,59 +87,69 @@ const submitText = useCallback(
     const ARGLESS = new Set(['status', 'context', 'memory-on', 'memory-off', 'archive', 'unarchive', 'delete']);
     const FREE_TEXT = new Set(['plan', 'compact', 'skills-rm']);
     const strictIllegal = (ARGLESS.has(cmdName) && argsAfter !== '') || (!ARGLESS.has(cmdName) && !FREE_TEXT.has(cmdName) && hasSecondCmdToken);
-    const isCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed) && !strictIllegal
-      ? isBuiltinPlan || (cmdData?.supported.some((c) => c.toLowerCase() === `/${cmdName}`) ?? false)
-      : false;
-    const dispatch = (): Promise<void> => {
-      if (running) return conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
-      // 携图/命令/idle 三路:成功侧刷 chips(409 回退穿插时排队文本即时现身输入框上侧,2026-11-23
-      // 显示时机裁定);**失败侧原样上抛**(错误条语义不变——吞掉即「提交失败不可见」回归)
-      if (hasImages) return conn.sessionSubmit(sessionId, trimmed, imgs).then(() => refreshQueued());
-      if (isCommand) {
-        // G14.213 skills 回归纯文本:仅「daemon supported 清单内」的 / 词走命令通道,skills/
-        // 未知名一律当普通文本提交(系统提示词 skills 清单含「/skill-id 引用优先加载」提示,
-        // 模型自主判断)。此前一律先试命令通道、报文含 unsupported 才回落——daemon 现回 400
-        // 报文不带该字样,回落失效直接倒错误条(「还是识别成命令了」)
-        return conn
-          .runCommand(sessionId, trimmed)
-          .catch(async (err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            if (!/unsupported|400|bad request/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
-            await conn.sessionSubmit(sessionId, trimmed); // 清单过期兜底:命令通道拒即回退纯文本
-          })
-          .then(() => refreshQueued());
+    const looksLikeCommand = !running && !hasImages && /^\/[a-z][\w-]*(\s|$)/i.test(trimmed) && !strictIllegal;
+    // 门控数据解析单点(2026-11-24 用户实测「发 / 系统命令不立即生效/显示」根修):/commands
+    // 清单在途时**等它落定再判**,不再拿 null 当「非命令」静默降级纯文本——新会话接力窗
+    // (建座即提交)必中:Chat 挂载与 /commands fetch 同拍,播种完成早于应答。/plan 当年为此
+    // 修过硬编码旁路,其余命令仍中招。仅在「需要清单而清单未达」时走异步等待;其余路径保持
+    // 原同步形态(编辑卡/待态时序锚不动的纪律)
+    const needsGate = looksLikeCommand && !isBuiltinPlan && cmdData === null && getCmdDataReady !== undefined;
+    const runWith = (cd: { commands: string[]; descriptions: Record<string, string>; supported: string[] } | null): Promise<void> => {
+      const isCommand = looksLikeCommand ? isBuiltinPlan || (cd?.supported.some((c) => c.toLowerCase() === `/${cmdName}`) ?? false) : false;
+      const dispatch = (): Promise<void> => {
+        if (running) return conn.sessionSteer(sessionId, trimmed, imgs).then(() => refreshQueued(), () => {});
+        // 携图/命令/idle 三路:成功侧刷 chips(409 回退穿插时排队文本即时现身输入框上侧,2026-11-23
+        // 显示时机裁定);**失败侧原样上抛**(错误条语义不变——吞掉即「提交失败不可见」回归)
+        if (hasImages) return conn.sessionSubmit(sessionId, trimmed, imgs).then(() => refreshQueued());
+        if (isCommand) {
+          // G14.213 skills 回归纯文本:仅「daemon supported 清单内」的 / 词走命令通道,skills/
+          // 未知名一律当普通文本提交(系统提示词 skills 清单含「/skill-id 引用优先加载」提示,
+          // 模型自主判断)。此前一律先试命令通道、报文含 unsupported 才回落——daemon 现回 400
+          // 报文不带该字样,回落失效直接倒错误条(「还是识别成命令了」)
+          return conn
+            .runCommand(sessionId, trimmed)
+            .catch(async (err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (!/unsupported|400|bad request/i.test(msg)) throw err; // busy 等真实失败照常倒 error 条
+              await conn.sessionSubmit(sessionId, trimmed); // 清单过期兜底:命令通道拒即回退纯文本
+            })
+            .then(() => refreshQueued());
+        }
+        return conn.sessionSubmit(sessionId, trimmed).then(() => refreshQueued());
+      };
+      // 计划模式 arm 竞窗收口(2026-11-03):pill 乐观置选与 daemon setMode 异步在途的窗口内提交,
+      // 先补 arm(快路径幂等恒 ok)再提交/入队,armed 拦截在 daemon submit 单点兜住;命令词不补。
+      // 仅 plan 模式走「先 arm 后发」(微任务有序);非 plan 路径保持原同步形态(编辑卡/待态时序锚不动的纪律)
+      const ensureArm: Promise<void> = sessMode === 'plan' && !isCommand
+        ? conn.setSessionMode(sessionId, 'plan').catch(() => undefined)
+        : Promise.resolve();
+      // G14.89 运行中入队不本地回显:气泡等轮收束自动发送时由 submit 回显(队列语义=还没发生);
+      // idle 提交即发生,照旧回显;命令通道由 daemon 回显
+      if (!running && !isCommand) setChat((c) => appendUserMessage(c, trimmed, undefined, imgs));
+      let req: Promise<void>;
+      if (sessMode === 'plan' && !isCommand) req = ensureArm.then(dispatch);
+      else req = dispatch();
+      // /plan 系命令成功后同步 sessMode pill 显示(渲染层跟随,不改底层命令语义)
+      if (/^\/plan\b/.test(trimmed) && !hasImages) {
+        const isOff = trimmed.trim() === '/plan off';
+        void req.then(() => {
+          onPlanModeChanged?.(isOff ? 'acceptEdits' : 'plan');
+        });
       }
-      return conn.sessionSubmit(sessionId, trimmed).then(() => refreshQueued());
+      return req.then(
+        () => {
+          if (!running && !isCommand) onAccepted?.();
+        },
+        (err: unknown) => {
+          setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
+          throw err;
+        },
+      );
     };
-    // 计划模式 arm 竞窗收口(2026-11-03):pill 乐观置选与 daemon setMode 异步在途的窗口内提交,
-    // 先补 arm(快路径幂等恒 ok)再提交/入队,armed 拦截在 daemon submit 单点兜住;命令词不补。
-    // 仅 plan 模式走「先 arm 后发」(微任务有序);非 plan 路径保持原同步形态(编辑卡/待态时序锚不动的纪律)
-    const ensureArm: Promise<void> = sessMode === 'plan' && !isCommand
-      ? conn.setSessionMode(sessionId, 'plan').catch(() => undefined)
-      : Promise.resolve();
-    // G14.89 运行中入队不本地回显:气泡等轮收束自动发送时由 submit 回显(队列语义=还没发生);
-    // idle 提交即发生,照旧回显;命令通道由 daemon 回显
-    if (!running && !isCommand) setChat((c) => appendUserMessage(c, trimmed, undefined, imgs));
-    let req: Promise<void>;
-    if (sessMode === 'plan' && !isCommand) req = ensureArm.then(dispatch);
-    else req = dispatch();
-    // /plan 系命令成功后同步 sessMode pill 显示(渲染层跟随,不改底层命令语义)
-    if (/^\/plan\b/.test(trimmed) && !hasImages) {
-      const isOff = trimmed.trim() === '/plan off';
-      void req.then(() => {
-        onPlanModeChanged?.(isOff ? 'acceptEdits' : 'plan');
-      });
-    }
-    return req
-      .then(() => {
-        if (!running && !isCommand) onAccepted?.();
-      })
-      .catch((err: unknown) => {
-        setChat((c) => applyChatEvent(c, { type: 'error', text: err instanceof Error ? err.message : String(err), ts: Date.now() }));
-        throw err;
-      });
+    if (!needsGate) return runWith(cmdData);
+    return (getCmdDataReady?.() ?? Promise.resolve(null)).then(runWith, () => runWith(null));
   },
-  [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, onAccepted, onPlanModeChanged],
+  [conn, sessionId, running, sessMode, root, resolveFileRef, cmdData, getCmdDataReady, onAccepted, onPlanModeChanged],
 );
 const send = (): void => {
     if (sendBlocked === true) return;

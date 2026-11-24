@@ -218,7 +218,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     (text, r, resolve) => expandRefContents(expandFileRefs(text, r, resolve), refContentsRef.current),
     setChat,
   );
-  const { cmdData: rawCmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn, root);
+  const { cmdData: rawCmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills, getCmdDataReady } = useCommandPalette(conn, root);
   // /fork 不入 Sunx 命令清单(2026-11-21 用户裁定「顺带关闭 fork 入口」:分叉出平行实例与
   // 「Sunx 单活跃实例」冲突;worker 层并行靠 dispatch_task,不靠会话分叉)
   const cmdData = rawCmdData === null ? null : (() => {
@@ -404,6 +404,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     refContents: refContentsRef.current,
     refEntries: liveRefEntries, // 2026-11-20 名称→id 发送期展开(目录+本会话实时同源)
     cmdData,
+    getCmdDataReady,
     setChat,
     onSideChat,
     refreshQueued,

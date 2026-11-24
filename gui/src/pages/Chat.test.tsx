@@ -2102,6 +2102,47 @@ describe('命令面板(/ 面板,2026-11-05 技能引用行回归——用户裁�
     expect(sessionSubmit.mock.calls[0]?.[1]).toBe('/status 1234'); // 普通文本发布
   });
 
+  it('接力窗 /commands 未达:门控等清单落定再判,/status 仍走命令通道(2026-11-24 用户实测「发 / 系统命令不立即生效」根修)', async () => {
+    setLanguage('zh');
+    const runCommand = vi.fn(() => Promise.resolve());
+    const sessionSubmit = vi.fn(() => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).runCommand = runCommand;
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    let resolveCmds!: (v: { commands: string[]; descriptions: Record<string, string>; supported: string[] }) => void;
+    (conn as unknown as Record<string, unknown>).commands = vi.fn(() => new Promise((res) => { resolveCmds = res; }));
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '/status' } });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    await flushed();
+    expect(runCommand).not.toHaveBeenCalled(); // 清单在途:挂起等待,不静默降级纯文本
+    expect(sessionSubmit).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveCmds({ commands: ['/status'], descriptions: {}, supported: ['/status'] });
+    });
+    await flushed();
+    expect(runCommand).toHaveBeenCalledWith('s1', '/status'); // 清单落定后照走命令通道
+    expect(sessionSubmit).not.toHaveBeenCalled();
+  });
+
+  it('接力窗 /commands 未达:普通文本不等待照发(本地回显时序不变)', async () => {
+    setLanguage('zh');
+    const runCommand = vi.fn(() => Promise.resolve());
+    const sessionSubmit = vi.fn((_id: string, _text: string) => Promise.resolve());
+    const conn = connOf([]);
+    (conn as unknown as Record<string, unknown>).runCommand = runCommand;
+    (conn as unknown as Record<string, unknown>).sessionSubmit = sessionSubmit;
+    (conn as unknown as Record<string, unknown>).commands = vi.fn(() => new Promise(() => undefined)); // 永不落定
+    render(<Chat conn={conn} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} />);
+    const ta = (await screen.findByLabelText('message input')) as HTMLTextAreaElement;
+    fireEvent.change(ta, { target: { value: '帮我做X' } });
+    fireEvent.keyDown(ta, { key: 'Enter' });
+    await flushed();
+    expect(sessionSubmit.mock.calls[0]?.[1]).toBe('帮我做X'); // 纯文本零等待
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it('无参命令裸用=命令通道(/status 零参数,口径不变)', async () => {
     setLanguage('zh');
     const runCommand = vi.fn(() => Promise.resolve());
