@@ -218,7 +218,15 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
     (text, r, resolve) => expandRefContents(expandFileRefs(text, r, resolve), refContentsRef.current),
     setChat,
   );
-  const { cmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn, root);
+  const { cmdData: rawCmdData, setCmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn, root);
+  // /fork 不入 Sunx 命令清单(2026-11-21 用户裁定「顺带关闭 fork 入口」:分叉出平行实例与
+  // 「Sunx 单活跃实例」冲突;worker 层并行靠 dispatch_task,不靠会话分叉)
+  const cmdData = rawCmdData === null ? null : (() => {
+    const { commands, descriptions, supported } = rawCmdData;
+    return kindHint === 'sunx'
+      ? { commands: commands.filter((c) => c !== '/fork'), descriptions, supported: supported.filter((c) => c !== '/fork') }
+      : rawCmdData;
+  })();
   // 2026-11-07 用户实测「+ 能实时加出来,/ 不实时」:/ 面板在场即现拉技能清单(运行中新装技能实时可弹)
   useEffect(() => {
     if (slashTokenAt(input, inputRef.current?.selectionStart ?? input.length) !== null) reloadSkills();
