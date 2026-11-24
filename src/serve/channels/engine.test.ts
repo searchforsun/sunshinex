@@ -35,7 +35,6 @@ interface RtStub {
   runEndCbs: Array<(info: { stopReason?: string }) => void>;
   submits: Array<{ text: string; images?: string[] }>;
   submitExternal: (text: string, images?: string[]) => { ok: true } | { ok: false; status: 409; error: string };
-  redriveInterruptedTasks?: () => boolean;
 }
 
 function makeRuntime(): RtStub {
@@ -64,7 +63,6 @@ function makeRuntime(): RtStub {
         if (i >= 0) rt.runEndCbs.splice(i, 1);
       };
     },
-    redriveInterruptedTasks: () => false, // 桩:转投面存在即可(dispatch 让位链调用)
   };
   return rt;
 }

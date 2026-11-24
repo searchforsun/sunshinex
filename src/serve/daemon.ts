@@ -296,9 +296,18 @@ export class GuiDaemon {
         const keep = this.sessions.get(keepSessionId);
         for (const [, sess] of this.sessions.entries()) {
           if (sess.id === keepSessionId || sess.channelMeta?.chatId !== chatId) continue;
-          this.releaseSession(sess.id); // 中断:旧座账本落 stopped 行(级联)
-          // 账本移交(2026-11-25 用户裁定「账本复制不共享」让位面):旧座账本行并入新座账本文件,
-          // 新座 redrive 前重放吸收——孤儿 stopped 行即重派原料(同聊天域,dataDir 同目录)
+          // 在飞任务标记「用户主动取消」（2026-11-25 用户裁定：隔离后旧会话唤醒照常自愈，中断
+          // 原因改用户主动取消——finish manual 行落旧座账本，级联跳过已收口条目）
+          try {
+            for (const t of sess.runtime.harness.tasks.list()) {
+              if (t.status === 'running') sess.runtime.harness.tasks.finish(t.id, 'stopped', { marker: '[cancelled: user]', reason: 'manual' });
+            }
+          } catch {
+            /* 标记尽力而为：级联收口兜底 */
+          }
+          this.releaseSession(sess.id); // 旧座让位释放（挂起拒答/任务已收口）
+          // 账本并入活会话账本文件（用户主动取消的终态可见——活会话任务状态无幽灵 running；
+          // 重放吸收终态行，restartOrphans 不再含让位任务=不重派）
           try {
             const oldLedger = path.join(sess.dataDir, 'tasks', `ledger-${sess.attachedJournalId ?? ''}.jsonl`);
             if (fs.existsSync(oldLedger) && keep !== undefined) {
@@ -306,9 +315,10 @@ export class GuiDaemon {
               const newLedger = path.join(keep.dataDir, 'tasks', `ledger-${keep.attachedJournalId ?? ''}.jsonl`);
               fs.mkdirSync(path.dirname(newLedger), { recursive: true });
               fs.appendFileSync(newLedger, rows.endsWith('\n') || rows === '' ? rows : rows + '\n', 'utf8');
+              keep.runtime.harness.tasks.adoptLedger(newLedger);
             }
           } catch {
-            /* 移交尽力而为:失败=孤儿留在旧座账本(留档不丢) */
+            /* 并入尽力而为：失败=终态留在旧座账本（留档不丢） */
           }
         }
       },
@@ -365,9 +375,7 @@ export class GuiDaemon {
           .list()
           .filter((j) => j.enabled && j.ended !== true && j.root === root && j.nextRunAt !== null)
           .map((j) => ({ name: j.name, nextRunAt: j.nextRunAt })),
-      // 活会话裁决(2026-11-25 结构性修「只有一个活的」):绑定档引用即活——旧座让位后其三类
-      // 唤醒静默弃(任务中断转投走 retireOtherChatSessions+redriveInterruptedTasks 链)
-      isCurrentChatSession: (sessionId) => this.channelsBindings.all().some((b) => b.sessionId === sessionId),
+
     };
   }
 

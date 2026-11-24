@@ -210,10 +210,6 @@ export interface SessionRuntimeOpts {
   channelMeta?: { platform: string; chatId: string; appName?: string };
   /** 定时分派清单接缝（2026-11-25 用户裁定④,session-lifecycle io 透传）：task_status 工具回执附段 */
   schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
-  /** 活会话唤醒门（2026-11-25 用户裁定「只有一个活的接受后台任务」结构性裁决）：通道聊天会话
-   *  注入（daemon 按绑定档判定）——false=本会话已非绑定活会话,任务/定时/恢复三类唤醒一律
-   *  静默不本地起轮（活会话凭自身 ledger/board 状态重驱动）;非通道会话不注入=恒真 */
-  wakeGate?: () => boolean;
   /** 持久化域目录（2026-11-15 sunx P3 Task 2 域绑定）：sunx 出生即铸档时由 createSessionIn 注入
    *  `~/.sunshinex/sunx/<journalId>/data`——assemble() 透传 buildHarness（持久化数据面全落域），
    *  `dataDir` 外窥供 handler 寻址；缺席（standard/TUI/CLI）=resolveDataDir(root) 既有推导逐字节不变 */
@@ -366,7 +362,6 @@ export class SessionRuntime {
    *  （submitWake 同管线：notice 携 schedule 标记+run 固定序）。受理才落终态行——回队/停机跨越
    *  （R7）保持未触发态，重启重布防补发至多一次 */
   private fireScheduled(rec: WakeScheduleRecord, lateMs: number): boolean {
-    if (!this.mayWake()) return false; // 活会话裁决:非绑定会话定时静默弃(活会话凭 executor 复用承接)
     if (this.planArmed()) return false;
     if (!this.wake.consumeChain()) {
       this.logScheduleRow({ ...rec, firedAt: Date.now() });
@@ -454,15 +449,10 @@ export class SessionRuntime {
 
   /** 唤醒轮入口（fire 接缝）：plan 武装态不受理（批次回队）；真 submit 双态收口，快照/统计/续发全共用 */
   private submitWake(tasks: WakeTaskInput[]): boolean {
-    if (!this.mayWake()) return false;
     if (this.planArmed()) return false;
     return this.submit(WAKE_GOAL, undefined, { tasks }).ok;
   }
 
-  /** 活会话裁决单点（结构性修,见 wakeGate 注）：非通道会话恒真;通道会话由 daemon 按绑定档判 */
-  private mayWake(): boolean {
-    return this.opts.wakeGate !== undefined ? this.opts.wakeGate() : true;
-  }
 
   /**
    * 恢复唤醒轮入口（R9,2026-11-15 sunx P2 Task 5）：session-lifecycle.attachSessionIn 全序收尾后
@@ -477,7 +467,6 @@ export class SessionRuntime {
    *   「recovery round skipped: session busy」——素材已入链可被下一轮自然消费,不做复杂排队。
    */
   submitRestoredRound(interrupted: ReadonlyArray<RestoredInterrupted>, materials: ReadonlyArray<PendingMaterial>): boolean {
-    if (!this.mayWake()) return false; // 活会话裁决:恢复唤醒轮只在绑定活会话起跑
     if (this.sessionKind !== 'sunx') return false;
     if (this.planArmed()) return false;
     if (!this.wake.consumeChain()) return false;
@@ -1351,28 +1340,6 @@ ${this.sessionCharter ?? ''}` }
     this.persistSnapshotRow();
     this.persistBirthMeta();
     this.emitJournalMinted();
-  }
-
-  /** 中断后台任务转投（2026-11-25 结构性修「旧会话让位,活会话承接」）：绑定切换时旧座让位
-   *  释放（在飞任务中断,ledger 孤儿落共享聊天域账本）,新绑定会话凭本口重派——读面推导与
-   *  attach 恢复唤醒轮同源（ledger 孤儿+板自愈+挂起素材）,零新增生产状态;无素材返回假 */
-  redriveInterruptedTasks(): boolean {
-    // 账本合并重放先行（retire 移交面:daemon 已把旧座账本行并入本座账本文件——重放吸收
-    // 中断孤儿行,再走推导;幂等:同 id 重放按 Map set 收敛,不重复不回归）
-    const journalId = this.journal?.currentId;
-    if (journalId !== undefined) {
-      this.runtimeImpl.harness.tasks.adoptLedger(path.join(this.dataDir, 'tasks', `ledger-${journalId}.jsonl`));
-    }
-    const h = this.runtimeImpl.harness;
-    const materials = this.pendingMaterial();
-    const ledgerOrphans = h.tasks.restartOrphans();
-    const boardRecovered = h.taskboard.restartRecovered();
-    if (materials.length === 0 && boardRecovered.length === 0 && ledgerOrphans.length === 0) return false;
-    const interrupted: RestoredInterrupted[] = [
-      ...boardRecovered.map((t2) => ({ name: t2.title, id: t2.id, status: 'cancelled' as const })),
-      ...ledgerOrphans.map((t2) => ({ name: t2.title ?? t2.label, id: t2.id, status: 'stopped' as const })),
-    ];
-    return this.submitRestoredRound(interrupted, materials);
   }
 
   /** 品性读面（2026-11-15 sunx P2 Task 7 GET /session/:id/charter 消费）：当前品性原文，

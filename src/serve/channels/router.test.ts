@@ -31,7 +31,6 @@ interface RtStub {
   dataDir: string;
   submits: Array<{ text: string; images?: string[] }>;
   submitExternal: (text: string, images?: string[]) => { ok: boolean; status?: number };
-  redriveInterruptedTasks?: () => boolean;
   steers: Array<{ text: string; images?: string[] }>;
   interrupts: number;
   cancelSteer?: (seq: number) => boolean;
@@ -66,7 +65,6 @@ function makeRuntime(opts: { status?: 'idle' | 'running'; journalId?: string; su
     },
     ensureJournalMinted: () => {}, // 桩:attachedJournalId 出生即定
     snapshotResponse: () => ({ queued: [], effort: undefined, model: undefined }), // /new 回执读档默认桩(空队列=不武装排队选择)
-    redriveInterruptedTasks: () => false, // 桩:让位转投面存在即可(cmdNew/dispatch 新建腿调用)
     attachedJournalId: opts.journalId ?? 'j1',
     dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'chan-rt-')),
   };

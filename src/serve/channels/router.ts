@@ -684,10 +684,9 @@ export class ChannelRouter {
     // 旧运行时**不释放**（2026-11-23 用户裁定「就放着就可以」）：旧座留注册表——GUI 开着旧
     // 会话的 snapshot/pty 等端点不 404
     this.upsertBinding(key, sessionId, seat, cfg, binding, msg);
-    // 旧座让位(2026-11-25 结构性修「只有一个活的」):绑定切到新座,同聊天旧座释放让位,
-    // 中断任务经新座 redriveInterruptedTasks 重派(fire-and-forget)
+    // 旧座让位(2026-11-25 结构性修「只有一个活的」):绑定切到新座,同聊天旧座释放让位——
+    // 在飞任务标「用户主动取消」(不重派);旧会话唤醒照常自愈,输出隔离不进飞书
     this.deps.io.retireOtherChatSessions?.(msg.chatId, sessionId);
-    void seat.rt?.redriveInterruptedTasks();
     // /new 回执（2026-11-25 用户裁定「显示成功切换+当前模型和思考强度,调整用 /model /effort
     // 等,/help 查看」——不再提品性复用/留档可回看）:快照读当轮生效档
     const snap = seat.rt.snapshotResponse();
@@ -727,9 +726,8 @@ export class ChannelRouter {
       sessionId = created.value.sessionId;
       rt = seat.rt;
       this.upsertBinding(key, sessionId, seat, cfg, existing, msg);
-      // 旧座让位+中断转投(2026-11-25 结构性修「只有一个活的」,cmdNew 同款):新建腿=绑定切到新座
+      // 旧座让位(裁定同上):在飞任务标「用户主动取消」,不重派
       this.deps.io.retireOtherChatSessions?.(msg.chatId, sessionId);
-      void rt.redriveInterruptedTasks();
     }
     this.deps.noteSender?.(sessionId, { display: msg.userDisplay ?? msg.userId, userId: msg.userId, chatKind: msg.chatKind }); // ⑫ 绑定解析成功即回写
     const submitText = inboundSubmitText(msg); // ⑫ 群聊前缀/单聊原文（单点,drain 回显匹配同源）
