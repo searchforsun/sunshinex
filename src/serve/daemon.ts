@@ -293,9 +293,23 @@ export class GuiDaemon {
       // （在飞 run/后台任务中断,ledger 孤儿落共享聊天域账本——新座 redriveInterruptedTasks 重派;
       // journal 留档可回看）
       retireOtherChatSessions: (chatId, keepSessionId) => {
+        const keep = this.sessions.get(keepSessionId);
         for (const [, sess] of this.sessions.entries()) {
           if (sess.id === keepSessionId || sess.channelMeta?.chatId !== chatId) continue;
-          this.releaseSession(sess.id);
+          this.releaseSession(sess.id); // 中断:旧座账本落 stopped 行(级联)
+          // 账本移交(2026-11-25 用户裁定「账本复制不共享」让位面):旧座账本行并入新座账本文件,
+          // 新座 redrive 前重放吸收——孤儿 stopped 行即重派原料(同聊天域,dataDir 同目录)
+          try {
+            const oldLedger = path.join(sess.dataDir, 'tasks', `ledger-${sess.attachedJournalId ?? ''}.jsonl`);
+            if (fs.existsSync(oldLedger) && keep !== undefined) {
+              const rows = fs.readFileSync(oldLedger, 'utf8');
+              const newLedger = path.join(keep.dataDir, 'tasks', `ledger-${keep.attachedJournalId ?? ''}.jsonl`);
+              fs.mkdirSync(path.dirname(newLedger), { recursive: true });
+              fs.appendFileSync(newLedger, rows.endsWith('\n') || rows === '' ? rows : rows + '\n', 'utf8');
+            }
+          } catch {
+            /* 移交尽力而为:失败=孤儿留在旧座账本(留档不丢) */
+          }
         }
       },
     }, this.channelsBindings, {

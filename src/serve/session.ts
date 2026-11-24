@@ -1241,7 +1241,36 @@ ${this.sessionCharter ?? ''}` }
     const journalId = this.journal?.currentId;
     if (journalId === undefined) return;
     const dataDir = this.dataDir;
-    this.runtimeImpl.harness.tasks.adoptLedger(path.join(dataDir, 'tasks', `ledger-${journalId}.jsonl`));
+    const ledgerFile = path.join(dataDir, 'tasks', `ledger-${journalId}.jsonl`);
+    // 账本 copy-on-create（2026-11-25 用户裁定「账本应该是复制,不是共享——只有 /new 复制一次」）:
+    // 通道聊天会话首铸账本缺档时,**吸收聊天域最新他席账本**（同目录 ledger-*.jsonl 按 mtime
+    // 择新排除自身）——重放原生把他 PID 的 running 行降为 stopped 孤儿（PID 隔离既有语义）,
+    // 恢复唤醒轮 restartOrphans 即重派;手建会话(独立域,目录内只有自己)零种子=隔离不变
+    if (this.opts.channelMeta !== undefined && !fs.existsSync(ledgerFile)) {
+      let seed: string | undefined;
+      let seedMtime = 0;
+      try {
+        for (const f of fs.readdirSync(path.join(dataDir, 'tasks'))) {
+          if (!f.startsWith('ledger-') || !f.endsWith('.jsonl') || f === `ledger-${journalId}.jsonl`) continue;
+          const st = fs.statSync(path.join(dataDir, 'tasks', f));
+          if (st.mtimeMs > seedMtime) {
+            seedMtime = st.mtimeMs;
+            seed = path.join(dataDir, 'tasks', f);
+          }
+        }
+      } catch {
+        /* 无 tasks 目录=无种子 */
+      }
+      if (seed !== undefined) {
+        try {
+          fs.mkdirSync(path.dirname(ledgerFile), { recursive: true });
+          fs.copyFileSync(seed, ledgerFile);
+        } catch {
+          /* 复制失败=空账本起步 */
+        }
+      }
+    }
+    this.runtimeImpl.harness.tasks.adoptLedger(ledgerFile);
     this.runtimeImpl.harness.adoptSessionTeams(journalId);
   }
 
@@ -1328,6 +1357,12 @@ ${this.sessionCharter ?? ''}` }
    *  释放（在飞任务中断,ledger 孤儿落共享聊天域账本）,新绑定会话凭本口重派——读面推导与
    *  attach 恢复唤醒轮同源（ledger 孤儿+板自愈+挂起素材）,零新增生产状态;无素材返回假 */
   redriveInterruptedTasks(): boolean {
+    // 账本合并重放先行（retire 移交面:daemon 已把旧座账本行并入本座账本文件——重放吸收
+    // 中断孤儿行,再走推导;幂等:同 id 重放按 Map set 收敛,不重复不回归）
+    const journalId = this.journal?.currentId;
+    if (journalId !== undefined) {
+      this.runtimeImpl.harness.tasks.adoptLedger(path.join(this.dataDir, 'tasks', `ledger-${journalId}.jsonl`));
+    }
     const h = this.runtimeImpl.harness;
     const materials = this.pendingMaterial();
     const ledgerOrphans = h.tasks.restartOrphans();

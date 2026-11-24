@@ -846,7 +846,7 @@ export class Harness {
     if (this.teamsBoundJournalId === journalId) return;
     const wasUnbound = this.teamsBoundJournalId === undefined;
     if (!wasUnbound) this.team.clear();
-    const root = this.chatScopedTeams === true ? path.join(this.dataDir, 'teams', 'chat') : sessionTeamsRoot(this.dataDir, journalId);
+    const root = sessionTeamsRoot(this.dataDir, journalId);
     const regStore = new AgentTeamRegistryStore(root);
     const priorTeams = this.agentTeams.list();
     if (wasUnbound && priorTeams.length > 0 && regStore.load().length === 0) regStore.save(priorTeams);
