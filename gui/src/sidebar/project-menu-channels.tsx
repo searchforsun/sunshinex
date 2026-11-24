@@ -134,16 +134,10 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                       <PlatformIcon size={16} strokeWidth={1.75} />
                     </span>
                     <span className="ws-slug sx-ws-name">{g.name}</span>
-                    {/* 展开/收起指示(2026-11-24 用户裁定「应用右侧加上 >V」:常显+紧跟应用名)——
-                        sx-side-chev 基类默认 opacity:0+margin-left:auto(分区头 hover 形),组行内联
-                        覆写为常显紧跟(与项目分区头同款旋转:收起=向右,展开=向下) */}
-                    <ChevronRight
-                      size={14}
-                      strokeWidth={2}
-                      aria-hidden="true"
-                      style={{ marginLeft: 6, opacity: 1, flex: 'none' }}
-                      className={`sx-side-chev${gOpen ? ' open' : ''}`}
-                    />
+                    {/* 展开/收起指示(2026-11-24 用户裁定「不要常显示,和'项目'一致贴在文字右侧」):
+                        默认隐,行悬停显形+紧跟应用名(CSS .sx-group-head .sx-side-chev 规则;随组开合
+                        旋转,收起=向右,展开=向下,与分区头同款) */}
+                    <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${gOpen ? ' open' : ''}`} />
                   </button>
                   {/* 行尾簇(2026-11-22 用户裁定:计数在图标钮左,最右=通道配置跳转钮) */}
                   <span className="ws-row-actions">

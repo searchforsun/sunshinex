@@ -4846,3 +4846,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-anchor .proj-pop { max-height: none; overflow: visible; }
 .sx-sunx-ws-anchor .proj-pop > .proj-pop-scroll,
 .sx-sunx-ws-anchor .proj-pop .proj-rows-scroll { max-height: 138px; overflow-y: auto; }
+
+/* 通道组行 >V(2026-11-24 用户裁定「不要常显示,和'项目'一致贴在文字右侧」):默认隐(基类
+   opacity:0),行悬停显形+紧跟应用名——margin-left:6px 覆写基类 margin-left:auto(那是分区头
+   「贴行尾」形;.sx-side-head-btn .sx-side-chev 同款 6px 口径),随组开合旋转不变 */
+.sx-group-head .sx-side-chev { margin-left: 6px; }
+.workspace-row:hover .sx-group-head .sx-side-chev { opacity: 1; }
