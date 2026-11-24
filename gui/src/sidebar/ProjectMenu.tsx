@@ -441,7 +441,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     };
     window.addEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onArchiveChanged);
     return () => window.removeEventListener(SESSION_ARCHIVE_CHANGED_EVENT, onArchiveChanged);
-  }, []);
+  }, [loadArchived, reloadOpenGroups]);
   useEffect(() => {
     // 通道变更信号(2026-11-25 用户裁定「删除后要立即隐藏对应的通道显示」):设置页删除/保存
     // 成功即广播,此处 bump 通道域枚举 nonce——通道组立即重拉(容器域已删/配置已改双源即时)
@@ -449,7 +449,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     window.addEventListener(CHANNELS_CHANGED_EVENT, onChannelsChanged);
     return () => window.removeEventListener(CHANNELS_CHANGED_EVENT, onChannelsChanged);
   }, []);
-  }, [loadArchived, reloadOpenGroups]);
 
 
 
