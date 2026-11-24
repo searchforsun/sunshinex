@@ -148,6 +148,15 @@ export class ChannelsEngine {
       // /compact 压缩执行单点(2026-11-24 用户裁定「sunx 模式也支持 workspace、compact 等命令」):
       // serve runCommand 直通——GUI/TUI 聊天命令同链路(命令气泡/工具三态行/压缩回执全落转录)
       compact: (rt) => runCommand(rt, '/compact'),
+      // 只读命令文本捕获(2026-11-25 用户裁定「tui 的 /context 等等业务的命令也加上」):runCommand
+      // capture 旁路——命令气泡/三态行照落转录,回执文本旁路给 IM 回执面
+      commandText: async (rt, line) => {
+        let text: string | undefined;
+        const r = await runCommand(rt, line, (t) => {
+          text = t;
+        });
+        return r === 'ok' ? text : undefined;
+      },
     });
   }
 

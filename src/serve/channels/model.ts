@@ -54,10 +54,14 @@ export const CHANNEL_COMMANDS: ReadonlyArray<{ cmd: string; desc: string; match?
   { cmd: '/stop', desc: '停止当前任务' },
   { cmd: '/new', desc: '开始新对话（聊天设置保留）', match: 'prefix' },
   { cmd: '/status', desc: '查看任务状态' },
-  { cmd: '/workspace', desc: '查看/切换工作区（下次新会话生效）', match: 'prefix' },
-  { cmd: '/model', desc: '查看/切换模型（下一条消息生效）', match: 'prefix' },
-  { cmd: '/effort', desc: '查看/切换思考强度（下一条消息生效）', match: 'prefix' },
+  { cmd: '/workspace', desc: '查看/切换工作区（回复序号或直接发完整路径，下次新会话生效）', match: 'prefix' },
+  { cmd: '/model', desc: '查看/切换模型（回复序号选择，下一条消息生效）', match: 'prefix' },
+  { cmd: '/effort', desc: '查看/切换思考强度（回复序号选择，下一条消息生效）', match: 'prefix' },
   { cmd: '/compact', desc: '压缩上下文（释放窗口空间）' },
+  { cmd: '/context', desc: '查看上下文构成与窗口占用' },
+  { cmd: '/skills-list', desc: '列出可用技能——聊天里直接描述任务即可触发匹配的技能' },
+  { cmd: '/agents-list', desc: '列出可用子智能体——描述任务时点名（如「用 xx 来做…」）即可委派' },
+  { cmd: '/teams-list', desc: '列出可用智能体团队——描述任务时点名团队即可按团队协作' },
 ];
 
 const COMMAND_WORDS: ReadonlySet<string> = new Set(CHANNEL_COMMANDS.map((c) => c.cmd));

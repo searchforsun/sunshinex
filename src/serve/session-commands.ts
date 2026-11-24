@@ -25,7 +25,7 @@ function isCommandSupported(line: string): boolean {
   return (COMMAND_SUPPORT as readonly string[]).includes(line.split(/\s/)[0] ?? '');
 }
 
-export async function runCommand(s: SessionRuntime, line: string): Promise<CommandRunResult> {
+export async function runCommand(s: SessionRuntime, line: string, capture?: (text: string) => void): Promise<CommandRunResult> {
   const cmd = line.split(/\s/)[0] ?? '';
   if (!isCommandSupported(line)) return 'unsupported';
   if (IDLE_ONLY.has(cmd) && s.status() !== 'idle') return 'busy';
@@ -41,6 +41,7 @@ export async function runCommand(s: SessionRuntime, line: string): Promise<Comma
   let resultText = '';
   const notice = (text: string): void => {
     resultText = text; // 捕获为工具结果载荷(不再单独落 notice——三态行即回执面)
+    capture?.(text); // IM 通道回执面(channels /context 等):同文本旁路捕获,帧面零变化
   };
   // 命令中断(2026-10-31 用户裁定「命令运行态可中断,后台统一返回对应命令的中断信息」):中止信号
   // 挂 Session.commandAbort,interrupt 端点无 run 在途即中止命令;中断即刻落终态回执(命令名专属文案,

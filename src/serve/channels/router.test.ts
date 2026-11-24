@@ -88,6 +88,8 @@ interface HarnessOpts {
   workspaceRoots?: () => string[];
   /** /compact 执行桩(㉑;缺省不注=deps.compact 缺席,cmdCompact 走 unsupported 分支) */
   compact?: (rt: SessionRuntime) => Promise<'ok' | 'unsupported' | 'busy'>;
+  /** 只读命令文本桩(㉓ /context;缺省不注=deps.commandText 缺席,cmdContext 回不可用提示) */
+  commandText?: (rt: SessionRuntime, line: string) => Promise<string | undefined>;
   /** noteRunSubmit 捕获(bug2 run 起源):[sessionId, msgId] 序对 */
   noteRunSubmits?: Array<{ sessionId: string; msgId: string }>;
 }
@@ -146,6 +148,7 @@ function makeHarness(opts: HarnessOpts = {}) {
       : {}),
     ...(opts.workspaceRoots !== undefined ? { workspaceRoots: opts.workspaceRoots } : {}),
     ...(opts.compact !== undefined ? { compact: opts.compact } : {}),
+    ...(opts.commandText !== undefined ? { commandText: opts.commandText } : {}),
   };
   return { router: new ChannelRouter(deps), io, bindings, acks, createCalls, released, attached, noteSenders, runtimes };
 }
@@ -683,4 +686,101 @@ test('㉑ /compact:无绑定引导;运行中拒绝;idle 执行 ok/busy/异常三
   await hBad.router.handleInbound(mkMsg({ msgId: 'k7', text: '/compact' }));
   assert.ok(hBad.acks[2]!.text.includes('压缩失败'));
   assert.ok(!hBad.acks.some((a) => a.text.includes('处理失败')), 'cmdCompact 自捕异常,不走外层处理失败兜底');
+});
+
+// ㉒ 列表序号选择（2026-11-25 用户裁定「回复序号被当作普通文本」根修）：/workspace 列表武装
+// → 裸序号回复=选择写 rootOverride;越界=明确提示不落模型;/model /effort 同机制
+test('㉒ 列表序号选择:workspace 裸序号落 rootOverride;越界提示;model/effort 序号切换', async () => {
+  const h = makeHarness({ workspaceRoots: () => ['/proj/a', '/proj/b', '/proj/c'] });
+  await h.router.handleInbound(mkMsg({ msgId: 's1', text: '先聊一句' }));
+  const rt = rtOf(h, bindingKey('m1', 'c1'));
+  await h.router.handleInbound(mkMsg({ msgId: 's2', text: '/workspace' })); // 列表+武装
+  await h.router.handleInbound(mkMsg({ msgId: 's3', text: '2' })); // 裸序号=选择
+  assert.equal(h.bindings.get(bindingKey('m1', 'c1'))!.rootOverride, '/proj/b');
+  assert.ok(h.acks[2]!.text.includes('已切换工作区到 /proj/b'));
+  assert.equal(rt.submits.length, 1); // 序号未落模型
+  // 越界序号:消费+明确提示,不落模型
+  await h.router.handleInbound(mkMsg({ msgId: 's4', text: '/workspace' }));
+  await h.router.handleInbound(mkMsg({ msgId: 's5', text: '9' }));
+  assert.ok(h.acks[4]!.text.includes('这个序号不在列表里'));
+  assert.equal(rt.submits.length, 1);
+  // 带参直填完整路径(任意存在的目录——借桩自带的临时 dataDir 证存在性)
+  await h.router.handleInbound(mkMsg({ msgId: 's6', text: `/workspace ${rt.dataDir}` }));
+  assert.ok(h.acks[5]!.text.includes('已切换工作区到'));
+  assert.notEqual(h.bindings.get(bindingKey('m1', 'c1'))!.rootOverride, undefined);
+
+  // /model 序号选择
+  const hM = makeHarness({
+    runtimeFactory: () => {
+      const r = makeRuntime();
+      r.modelSwitcher = { currentId: () => 'glm', choices: () => [{ id: 'glm', model: 'glm-4.6' }, { id: 'ds', model: 'deepseek-v3' }] };
+      r.setModel = () => true;
+      return r;
+    },
+  });
+  await hM.router.handleInbound(mkMsg({ msgId: 's7', text: '先聊一句' }));
+  const rtM = rtOf(hM, bindingKey('m1', 'c1'));
+  const setIds: Array<string | undefined> = [];
+  rtM.setModel = (id) => {
+    setIds.push(id);
+    return true;
+  };
+  await hM.router.handleInbound(mkMsg({ msgId: 's8', text: '/model' }));
+  await hM.router.handleInbound(mkMsg({ msgId: 's9', text: '2' }));
+  assert.deepEqual(setIds, ['ds']);
+  assert.ok(hM.acks[2]!.text.includes('已切换模型到 ds'));
+
+  // /effort 序号选择
+  const hE = makeHarness();
+  await hE.router.handleInbound(mkMsg({ msgId: 's10', text: '先聊一句' }));
+  const rtE = rtOf(hE, bindingKey('m1', 'c1'));
+  rtE.snapshotResponse = () => ({ queued: [], effort: 'medium' }); // /effort 无参读当前档
+  const efforts: string[] = [];
+  rtE.setEffort = (v) => {
+    efforts.push(v);
+    return true;
+  };
+  await hE.router.handleInbound(mkMsg({ msgId: 's11', text: '/effort' }));
+  await hE.router.handleInbound(mkMsg({ msgId: 's12', text: '2' }));
+  assert.deepEqual(efforts, ['minimal']);
+  assert.ok(hE.acks[2]!.text.includes('已切换思考强度到'));
+});
+
+// ㉓ 只读命令与清单（2026-11-25 用户裁定「/skills-list /agents-list /teams-list…tui 的 /context
+// 等等业务的命令也加上」）：/context 走 commandText 捕获;三清单各回目录行+使用提示;无绑定引导
+test('㉓ /context 捕获回执;agents/teams 清单回行+使用提示;无绑定引导', async () => {
+  // /context
+  const h = makeHarness({ commandText: async () => 'Context breakdown:\ninstructions: 1.2k (10%)' });
+  await h.router.handleInbound(mkMsg({ msgId: 'c1', text: '先聊一句' }));
+  await h.router.handleInbound(mkMsg({ msgId: 'c2', text: '/context' }));
+  assert.ok(h.acks[1]!.text.includes('Context breakdown'));
+
+  // agents/teams 清单:listAgents/listTeams(root) 目录扫描——临时 root 下落 .sunshinex 两族条目
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'chan-list-'));
+  const agentsDir = path.join(root, '.sunshinex', 'agents', 'reviewer');
+  fs.mkdirSync(agentsDir, { recursive: true });
+  fs.writeFileSync(path.join(agentsDir, 'agent.md'), '---\nname: 评审员\ndescription: 严谨评审\n---\n正文', 'utf8');
+  const teamsDir = path.join(root, '.sunshinex', 'teams', 'crew');
+  fs.mkdirSync(teamsDir, { recursive: true });
+  fs.writeFileSync(path.join(teamsDir, 'team.md'), '---\nname: 突击队\ndescription: 快速分工\nmembers:\n  - reviewer\n---\n正文', 'utf8');
+  const hL = makeHarness({
+    runtimeFactory: () => {
+      const r = makeRuntime();
+      (r as unknown as { root: string }).root = root;
+      return r;
+    },
+  });
+  await hL.router.handleInbound(mkMsg({ msgId: 'c3', text: '先聊一句' }));
+  await hL.router.handleInbound(mkMsg({ msgId: 'c4', text: '/agents-list' }));
+  assert.ok(hL.acks[1]!.text.includes('reviewer'), 'agents 清单含目录条目');
+  assert.ok(hL.acks[1]!.text.includes('点名'), '使用提示随行');
+  await hL.router.handleInbound(mkMsg({ msgId: 'c5', text: '/teams-list' }));
+  assert.ok(hL.acks[2]!.text.includes('crew'), 'teams 清单含目录条目');
+  // skills 清单:桩无 runtime 面——运行读 throw → 「暂不可用」如实降级钉
+  await hL.router.handleInbound(mkMsg({ msgId: 'c6', text: '/skills-list' }));
+  assert.ok(hL.acks[3]!.text.includes('暂不可用') || hL.acks[3]!.text.includes('可用技能'));
+  // 无绑定引导
+  const h0 = makeHarness();
+  await h0.router.handleInbound(mkMsg({ msgId: 'c7', text: '/skills-list' }));
+  assert.ok(h0.acks[0]!.text.includes('发送任意消息开始对话'));
 });

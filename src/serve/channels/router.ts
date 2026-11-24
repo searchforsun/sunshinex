@@ -9,9 +9,13 @@
  *  spec §9.3）；cfg.root==='auto'（缺省形态）→ channelChatWorkspaceRoot 聊天专属域 workspace 铸造。
  *  契约（Task 5 预检裁定）：handleInbound **绝不抛**——整体 try/catch，失败尽力 ack「处理失败」；
  *  io.onFrame/resolveApproval router 自身不消费（engine Task 7 装配 projector/审批回执用），接口面收全。 */
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { writeSessionMeta } from '../../session/journal';
 import { channelChatWorkspaceRoot } from '../../config/channels';
 import { EFFORT_ORDER, parseEffort } from '../../model/effort';
+import { listAgents } from '../../catalog/agents';
+import { listTeams } from '../../catalog/teams';
 import { bindingKey, CHANNEL_COMMANDS } from './model';
 import type { Binding, ChannelConfig, InboundMessage } from './model';
 import type { ChannelsBindingsStore } from './store';
@@ -63,6 +67,9 @@ export interface ChannelRouterDeps {
   /** /compact 压缩执行单点（engine 缺省装配 serve runCommand——GUI/TUI 同链路;测试注入桩）：
    *  返回三态同 session-commands CommandRunResult */
   compact?: (rt: SessionRuntime) => Promise<'ok' | 'unsupported' | 'busy'>;
+  /** 只读命令文本捕获（/context,engine 缺省装配 runCommand capture 旁路——命令气泡/三态行照落
+   *  转录,回执文本旁路给 IM;测试注入桩）;undefined=命令不可用 */
+  commandText?: (rt: SessionRuntime, line: string) => Promise<string | undefined>;
   now?: () => number;
 }
 
@@ -83,6 +90,10 @@ const QUEUE_CHOICE_TTL_MS = 10 * 60_000;
 /** /workspace 候选列表展示上限 */
 const WORKSPACE_LIST_MAX = 8;
 
+/** 清单类命令展示上限（skills/agents/teams 消息可读性优先,超出给总数行） */
+const LIST_MAX = 20;
+const SKILL_LIST_MAX = 20;
+
 /** 思考强度显示名（GUI effort-slider EFFORT_ZH 镜像 + none 档补位;协议值恒英文 EFFORT_ORDER 序） */
 const EFFORT_LABELS: Partial<Record<string, string>> = { none: '关（最快）', minimal: '极简', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最大' };
 
@@ -98,12 +109,24 @@ interface QueueChoice {
   at: number;
 }
 
+/** 列表序号选择待答条目（issue① 根修）：kind=消费面（workspace 写 rootOverride/model 切模型/
+ *  effort 切强度）;items=列表快照（武装时刻所见,序号语义钉快照）;at=武装时刻（TTL 同排队选择） */
+interface ChatSelect {
+  kind: 'workspace' | 'model' | 'effort';
+  items: string[];
+  at: number;
+}
+
 export class ChannelRouter {
   /** 去重表：Map 插入序即 LRU 序（触达重插刷新、超限逐出最旧） */
   private readonly seen = new Map<string, true>();
   /** 排队选择待答表：绑定键 → 待答条目——排队回执武装,下一条恰为「1/2」的回复消费;
    *  每键单条（新排队覆盖旧待答,同审批/提问挂起「最新覆盖」口径） */
   private readonly queueChoices = new Map<string, QueueChoice>();
+  /** 列表序号选择待答（2026-11-25 用户裁定「回复序号被当作普通文本」根修）：/workspace /model
+   *  /effort 无参列表武装——下一条恰为序号的回复消费为选择;items=列表快照（回复期注册表漂移
+   *  不影响已列出的序号语义）;与排队选择互斥（新武装摘旧,最新意图优先） */
+  private readonly chatSelects = new Map<string, ChatSelect>();
 
   constructor(private readonly deps: ChannelRouterDeps) {}
 
@@ -131,6 +154,23 @@ export class ChannelRouter {
     // ⑪ 审批回复截胡：有绑定且 pendingReply 判 true → 消息已被消费，不发 ack
     if (binding !== undefined && msg.text !== undefined && this.deps.pendingReply?.(binding.sessionId, msg.text) === true) return;
     const text = (msg.text ?? '').trim();
+    // 聊天名称回填（issue②：飞书群名/联系人名晚到/绑定早于能力——绑定档缺 chatTitle 而本条消息
+    // 携带时即补写,GUI 悬浮卡 hover 随之显示名称不再回落 chatId;尽力而为不阻断）
+    if (binding !== undefined) {
+      const title = this.titleFromMsg(msg);
+      if (title !== undefined && binding.chatTitle !== title) {
+        this.deps.bindings.upsert({ ...binding, chatTitle: title, updatedAt: this.nowMs() });
+      }
+    }
+    // 列表序号选择截胡（issue① 根修）：/workspace /model /effort 列表武装的序号回复消费为选择;
+    // 位于审批/提问截胡之后（会话内 ask 序号语义优先）、排队选择之前（新武装互斥,最新意图优先）
+    if (binding !== undefined && text !== '') {
+      const sel = this.takeChatSelect(key, text);
+      if (sel !== undefined) {
+        await this.applyChatSelect(msg, binding, sel.kind, sel.items, sel.n);
+        return;
+      }
+    }
     // 排队处理方式选择截胡（bug1）：排队回执给出两序号选项,恰为「1/2」的下一条回复消费为选择;
     // 位于审批/提问截胡之后（会话内 ask 序号语义优先）,命令门之前（序号非命令）
     if (binding !== undefined && text !== '') {
@@ -179,7 +219,31 @@ export class ChannelRouter {
       await this.cmdCompact(msg, binding);
       return;
     }
+    if (cmd?.cmd === '/context') {
+      await this.cmdContext(msg, binding);
+      return;
+    }
+    if (cmd?.cmd === '/skills-list') {
+      await this.cmdSkillsList(msg, binding);
+      return;
+    }
+    if (cmd?.cmd === '/agents-list') {
+      await this.cmdAgentsList(msg, binding);
+      return;
+    }
+    if (cmd?.cmd === '/teams-list') {
+      await this.cmdTeamsList(msg, binding);
+      return;
+    }
     await this.dispatch(msg, cfg, key, binding); // ⑦⑧⑨⑫ 绑定解析三态 + 提交分派 + ack
+  }
+
+  /** 消息携带的聊天名称（issue② 回填原料）：平台聊天信息 API 名（群名/单聊会话名）优先,
+   *  单聊回落发送者姓名（chatTitleOf 首绑铸形同源） */
+  private titleFromMsg(msg: InboundMessage): string | undefined {
+    if (msg.chatTitle !== undefined && msg.chatTitle !== '') return msg.chatTitle;
+    if (msg.chatKind === 'direct' && msg.userDisplay !== undefined && msg.userDisplay !== '') return msg.userDisplay;
+    return undefined;
   }
 
   /** 命令开放判定（单一目录点 CHANNEL_COMMANDS）：配置缺席=全开放，在场=子集 */
@@ -212,32 +276,61 @@ export class ChannelRouter {
     await this.deps.ack(msg, text);
   }
 
-  /** /workspace（2026-11-24 用户裁定「加切换工作区」）：无参=当前+注册工作区候选列表（序号）;
-   *  带参=序号或注册根全等（大小写不敏感）→ 写 binding.rootOverride——**下次新会话生效**（spec
-   *  §9.3 同款语义:会话 root 出生定版不可变,当前会话不动），ack 明示发 /new 立即切换。无绑定
-   *  先引导开对话。候选上限 WORKSPACE_LIST_MAX（注册表大时列表可读性优先） */
+  /** /workspace（2026-11-24 用户裁定「加切换工作区」）：无参=当前+注册工作区候选列表（序号,
+   *  武装序号选择待答——issue① 根修:下一条裸序号即选择）;带参=序号/注册根全等/**任意存在的
+   *  目录路径直填**（2026-11-25 用户裁定「不支持自己输出工作区路径吗」）→ 写 binding.rootOverride
+   *  ——**下次新会话生效**（spec §9.3 同款语义:会话 root 出生定版不可变,当前会话不动），ack
+   *  明示发 /new 立即切换。无绑定先引导开对话。候选上限 WORKSPACE_LIST_MAX（注册表大时列表
+   *  可读性优先） */
   private async cmdWorkspace(msg: InboundMessage, cfg: ChannelConfig, binding: Binding | undefined, arg: string): Promise<void> {
     if (binding === undefined) {
       await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /workspace 查看与切换工作区。');
       return;
     }
-    const roots = this.deps.workspaceRoots?.() ?? [];
+    const key = bindingKey(msg.channel, msg.chatId);
+    const roots = (this.deps.workspaceRoots?.() ?? []).slice(0, WORKSPACE_LIST_MAX);
     if (arg === '') {
       const lines = [`当前工作区：${this.resolveRoot(cfg, msg.chatId, binding)}`];
-      if (roots.length === 0) lines.push('暂无其他已注册工作区。');
+      if (roots.length === 0) lines.push('暂无其他已注册工作区——也可以发送 /workspace <完整路径> 直填。');
       else {
-        lines.push('', '回复序号切换工作区（下次新会话生效）：');
-        for (let i = 0; i < Math.min(roots.length, WORKSPACE_LIST_MAX); i++) lines.push(`${i + 1}. ${roots[i]}`);
+        lines.push('', '回复序号切换工作区（下次新会话生效），也可直接发送完整路径：');
+        for (let i = 0; i < roots.length; i++) lines.push(`${i + 1}. ${roots[i]}`);
         lines.push('切换后发送 /new 立即在新工作区开始新会话。');
       }
+      if (roots.length > 0) this.armChatSelect(key, 'workspace', roots); // issue①:列表武装,裸序号即选择
       await this.deps.ack(msg, lines.join('\n'));
       return;
     }
-    const picked = /^\d+$/.test(arg) ? roots[Number.parseInt(arg, 10) - 1] : roots.find((r) => r.toLowerCase() === arg.toLowerCase());
+    const picked = this.pickWorkspaceRoot(key, roots, arg);
     if (picked === undefined) {
-      await this.deps.ack(msg, '未找到该工作区，回复 /workspace 查看可选列表。');
+      await this.deps.ack(msg, '未找到该工作区（路径须为已存在的目录），回复 /workspace 查看可选列表。');
       return;
     }
+    await this.applyWorkspacePick(msg, cfg, binding, picked);
+  }
+
+  /** 工作区参数解析（issue① 扩展）：序号=已武装列表/注册表兜底 → 注册根大小写不敏感全等 →
+   *  **任意存在的目录路径**（fs 校验,resolve 绝对化）——三段兜底,miss=undefined */
+  private pickWorkspaceRoot(key: string, roots: string[], arg: string): string | undefined {
+    const armed = this.chatSelects.get(key);
+    const byIdx = /^\d+$/.test(arg)
+      ? (armed?.kind === 'workspace' ? armed.items : roots)[Number.parseInt(arg, 10) - 1]
+      : undefined;
+    if (byIdx !== undefined) return byIdx;
+    const hit = roots.find((r) => r.toLowerCase() === arg.toLowerCase());
+    if (hit !== undefined) return hit;
+    try {
+      const abs = path.resolve(arg);
+      if (fs.statSync(abs).isDirectory()) return abs;
+    } catch {
+      /* 路径不存在:落 undefined */
+    }
+    return undefined;
+  }
+
+  /** 工作区切换落地（列表序号/带参两入口共用）：同根幂等提示,异根写 rootOverride+ack 明示
+   *  /new 生效（spec §9.3 语义） */
+  private async applyWorkspacePick(msg: InboundMessage, cfg: ChannelConfig, binding: Binding, picked: string): Promise<void> {
     if (picked === this.resolveRoot(cfg, msg.chatId, binding)) {
       await this.deps.ack(msg, '已经是当前工作区，新会话将继续在此进行。');
       return;
@@ -246,9 +339,9 @@ export class ChannelRouter {
     await this.deps.ack(msg, `已切换工作区到 ${picked}。当前会话不变——发送 /new 立即在新工作区开始新会话。`);
   }
 
-  /** /model：无参=当前+可选列表（序号,id 括注）;带参=序号或 id → rt.setModel（daemon 级切换,
-   *  下一条消息生效;运行中可切,提示呈现由会话 pendingModelNotice 面自会承担）。单模型装配
-   *  （无切换器）如实说明 */
+  /** /model：无参=当前+可选列表（序号,id 括注,武装序号待答——issue① 根修）;带参=序号或 id →
+   *  rt.setModel（daemon 级切换,下一条消息生效;运行中可切,提示呈现由会话 pendingModelNotice
+   *  面自会承担）。单模型装配（无切换器）如实说明 */
   private async cmdModel(msg: InboundMessage, binding: Binding | undefined, arg: string): Promise<void> {
     const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
     if (rt === undefined) {
@@ -267,6 +360,7 @@ export class ChannelRouter {
       else {
         lines.push('', '回复序号切换模型（下一条消息生效）：');
         for (let i = 0; i < choices.length; i++) lines.push(`${i + 1}. ${choices[i]!.model}（${choices[i]!.id}）`);
+        this.armChatSelect(bindingKey(msg.channel, msg.chatId), 'model', choices.map((c) => c.id)); // issue①
       }
       await this.deps.ack(msg, lines.join('\n'));
       return;
@@ -283,9 +377,9 @@ export class ChannelRouter {
     await this.deps.ack(msg, `已切换模型到 ${picked}，下一条消息生效。`);
   }
 
-  /** /effort：无参=当前+档位列表（EFFORT_ORDER 权威序,显示名镜像 GUI effort-slider）;
-   *  带参=序号或档位名（parseEffort 校验）→ rt.setEffort（per-run 注入,下一条消息生效,
-   *  即改即落 meta 重启不回落） */
+  /** /effort：无参=当前+档位列表（EFFORT_ORDER 权威序,显示名镜像 GUI effort-slider,武装序号
+   *  待答——issue① 根修）;带参=序号或档位名（parseEffort 校验）→ rt.setEffort（per-run 注入,
+   *  下一条消息生效,即改即落 meta 重启不回落） */
   private async cmdEffort(msg: InboundMessage, binding: Binding | undefined, arg: string): Promise<void> {
     const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
     if (rt === undefined) {
@@ -296,6 +390,7 @@ export class ChannelRouter {
       const cur = rt.snapshotResponse().effort;
       const lines = [`当前思考强度：${cur !== undefined ? (EFFORT_LABELS[cur] ?? cur) : '跟随全局默认'}`, '', '回复序号切换思考强度（下一条消息生效）：'];
       for (let i = 0; i < EFFORT_ORDER.length; i++) lines.push(`${i + 1}. ${EFFORT_LABELS[EFFORT_ORDER[i]!] ?? EFFORT_ORDER[i]}`);
+      this.armChatSelect(bindingKey(msg.channel, msg.chatId), 'effort', [...EFFORT_ORDER]); // issue①
       await this.deps.ack(msg, lines.join('\n'));
       return;
     }
@@ -335,6 +430,168 @@ export class ChannelRouter {
       // 压缩异常:终态回执可见化即可（router 无日志面,handleInbound 外层契约继续兜底）
       await this.deps.ack(msg, '压缩失败，请稍后重试。');
     }
+  }
+
+  /** /context（2026-11-25 用户裁定「tui 的 /context 等等其他业务的命令也加上」）：deps.commandText
+   *  单点执行（engine 缺省=runCommand capture 旁路——命令气泡/三态行照落转录,回执文本给 IM）,
+   *  输出即 TUI 同款构成清单;缺席/异常各自如实提示 */
+  private async cmdContext(msg: InboundMessage, binding: Binding | undefined): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /context 查看上下文构成。');
+      return;
+    }
+    if (rt.status() !== 'idle') {
+      await this.deps.ack(msg, '任务进行中，等当前任务完成后再查看。');
+      return;
+    }
+    if (this.deps.commandText === undefined) {
+      await this.deps.ack(msg, '该命令当前不可用。');
+      return;
+    }
+    try {
+      const text = await this.deps.commandText(rt, '/context');
+      await this.deps.ack(msg, text !== undefined && text !== '' ? text : '上下文构成暂不可用，请稍后重试。');
+    } catch {
+      await this.deps.ack(msg, '查看失败，请稍后重试。');
+    }
+  }
+
+  /** /skills-list（issue③）：harness 技能清单（id + 名称/说明一行一条,上限 20 防消息爆炸）+
+   *  使用提示（聊天直接描述任务即触发）。技能面缺席（harness 未装配）如实说明 */
+  private async cmdSkillsList(msg: InboundMessage, binding: Binding | undefined): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /skills-list 查看可用技能。');
+      return;
+    }
+    let skills: Array<{ id: string; name: string; description: string }>;
+    try {
+      skills = rt.runtime.harness.skills.list().map((m) => ({ id: m.id, name: m.name, description: m.description }));
+    } catch {
+      await this.deps.ack(msg, '技能清单暂不可用，请稍后重试。');
+      return;
+    }
+    if (skills.length === 0) {
+      await this.deps.ack(msg, '当前没有可用技能。技能由项目/全局目录装载，可在会话中沉淀学习。');
+      return;
+    }
+    const lines = [`可用技能（${skills.length} 个）——聊天里直接描述任务，匹配的技能会自动使用：`];
+    for (const s of skills.slice(0, SKILL_LIST_MAX)) lines.push(`- ${s.id}（${s.name}）：${s.description}`);
+    if (skills.length > SKILL_LIST_MAX) lines.push(`…等共 ${skills.length} 个`);
+    await this.deps.ack(msg, lines.join('\n'));
+  }
+
+  /** /agents-list（issue③）：项目/全局两级子智能体清单（catalog 单点,root=会话工作区）+
+   *  使用提示（描述任务时点名即委派）。启停状态随行（enabled=false 标注未启用） */
+  private async cmdAgentsList(msg: InboundMessage, binding: Binding | undefined): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /agents-list 查看可用子智能体。');
+      return;
+    }
+    let agents: Array<{ id: string; name: string; description: string; enabled: boolean; shadowed: boolean }>;
+    try {
+      const listing = listAgents(rt.root);
+      agents = listing.entries.map((e) => {
+        const enabled = e.meta.enabled && !e.shadowed;
+        return { id: e.id, name: e.meta.name, description: e.meta.description, enabled, shadowed: e.shadowed };
+      });
+    } catch {
+      await this.deps.ack(msg, '子智能体清单暂不可用，请稍后重试。');
+      return;
+    }
+    if (agents.length === 0) {
+      await this.deps.ack(msg, '当前没有可用子智能体。可在项目 .sunshinex/agents/ 或全局目录定义，或让助手在会话中创建。');
+      return;
+    }
+    const lines = [`可用子智能体（${agents.length} 个）——描述任务时点名即可委派（如「用 xx 来做…」）：`];
+    for (const a of agents.slice(0, LIST_MAX)) lines.push(`- ${a.id}（${a.name}）：${a.description}${a.enabled ? '' : '［未启用］'}`);
+    if (agents.length > LIST_MAX) lines.push(`…等共 ${agents.length} 个`);
+    await this.deps.ack(msg, lines.join('\n'));
+  }
+
+  /** /teams-list（issue③）：项目/全局两级智能体团队清单（catalog 单点）+ 使用提示（描述任务时
+   *  点名团队即按团队协作） */
+  private async cmdTeamsList(msg: InboundMessage, binding: Binding | undefined): Promise<void> {
+    const rt = binding !== undefined ? this.deps.io.getSession(binding.sessionId) : undefined;
+    if (rt === undefined) {
+      await this.deps.ack(msg, '发送任意消息开始对话后，即可用 /teams-list 查看可用团队。');
+      return;
+    }
+    let teams: Array<{ id: string; name: string; description: string }>;
+    try {
+      const listing = listTeams(rt.root);
+      teams = listing.entries.map((e) => ({ id: e.id, name: e.name, description: e.description }));
+    } catch {
+      await this.deps.ack(msg, '团队清单暂不可用，请稍后重试。');
+      return;
+    }
+    if (teams.length === 0) {
+      await this.deps.ack(msg, '当前没有可用团队。可在设置页或项目 .sunshinex/teams/ 定义智能体团队。');
+      return;
+    }
+    const lines = [`可用团队（${teams.length} 个）——描述任务时点名团队即可按团队协作：`];
+    for (const tm of teams.slice(0, LIST_MAX)) lines.push(`- ${tm.id}（${tm.name}）：${tm.description}`);
+    if (teams.length > LIST_MAX) lines.push(`…等共 ${teams.length} 个`);
+    await this.deps.ack(msg, lines.join('\n'));
+  }
+
+  /** 列表序号选择待答武装（issue①）：覆盖旧待答并摘排队选择（互斥,最新意图优先） */
+  private armChatSelect(key: string, kind: ChatSelect['kind'], items: string[]): void {
+    this.queueChoices.delete(key);
+    this.chatSelects.set(key, { kind, items, at: this.nowMs() });
+  }
+
+  /** 列表序号选择截胡判定（issue①）：恰为 1-3 位序号（容尾标点 . 。 、）→ 消费并摘座;
+   *  非序号仅 TTL 兜底清座（超时后裸序号是真实消息不再截胡） */
+  private takeChatSelect(key: string, text: string): { kind: ChatSelect['kind']; items: string[]; n: number } | undefined {
+    const sel = this.chatSelects.get(key);
+    if (sel === undefined) return undefined;
+    const m = /^(\d{1,3})[.。、]?$/.exec(text.trim());
+    if (m === null) {
+      if (this.nowMs() - sel.at > QUEUE_CHOICE_TTL_MS) this.chatSelects.delete(key);
+      return undefined;
+    }
+    this.chatSelects.delete(key);
+    const n = Number.parseInt(m[1]!, 10);
+    return { kind: sel.kind, items: sel.items, n: n >= 1 && n <= sel.items.length ? n : 0 }; // n=0=越界(消费+明确提示,不落模型)
+  }
+
+  /** 列表序号选择消费（issue①）：workspace=applyWorkspacePick 落 rootOverride;model=rt.setModel;
+   *  effort=rt.setEffort——各保原有终态文案;越界（takeChatSelect 已滤）不可达 */
+  private async applyChatSelect(msg: InboundMessage, binding: Binding, kind: ChatSelect['kind'], items: string[], n: number): Promise<void> {
+    if (n === 0) {
+      const again = kind === 'workspace' ? '/workspace' : kind === 'model' ? '/model' : '/effort';
+      await this.deps.ack(msg, `这个序号不在列表里，回复 ${again} 查看最新列表。`);
+      return;
+    }
+    const picked = items[n - 1]!;
+    if (kind === 'workspace') {
+      const cfg = this.deps.configs().find((c) => c.id === msg.channel);
+      if (cfg === undefined) return;
+      await this.applyWorkspacePick(msg, cfg, binding, picked);
+      return;
+    }
+    const rt = this.deps.io.getSession(binding.sessionId);
+    if (rt === undefined) {
+      await this.deps.ack(msg, '会话已结束，请直接发送新消息。');
+      return;
+    }
+    if (kind === 'model') {
+      const sw = rt.modelSwitcher;
+      if (sw === null || !rt.setModel(picked)) {
+        await this.deps.ack(msg, '模型切换未生效，回复 /model 重新查看。');
+        return;
+      }
+      await this.deps.ack(msg, `已切换模型到 ${picked}，下一条消息生效。`);
+      return;
+    }
+    if (!rt.setEffort(picked)) {
+      await this.deps.ack(msg, '思考强度切换未生效，回复 /effort 重新查看。');
+      return;
+    }
+    await this.deps.ack(msg, `已切换思考强度到 ${EFFORT_LABELS[picked] ?? picked}，下一条消息生效。`);
   }
 
   /** 去重（①）：(channel,msgId) LRU 4096——触达重插刷新序，超限逐出最旧 */
@@ -393,6 +650,7 @@ export class ChannelRouter {
    *  pty 等会话维端点照常寻址（404 根修），旧转录/终端原样可回看，注册表容量交 daemon 既有面 */
   private async cmdNew(msg: InboundMessage, cfg: ChannelConfig, key: string, binding: Binding | undefined): Promise<void> {
     this.queueChoices.delete(key); // 旧会话排队条目的选择待答随之作废（绑定将换新座,选择语义失效;
+    this.chatSelects.delete(key); // 列表序号选择待答同作废
     // daemon 队列本体不动——旧座生命照旧「就放着就可以」,队列条目随旧座既有语义自然接续）
     const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg, msg.chatId));
     if (!created.ok) {
@@ -479,6 +737,7 @@ export class ChannelRouter {
   /** 排队选择待答武装：steer 入 daemon 队列后取快照队尾 seq（同循环内同步入列,队尾即本条）——
    *  「1 插入」凭 seq 置首、「2 暂停」凭 seq 撤队列;快照失败=无待答,回执照发不阻断 */
   private armQueueChoice(sessionId: string, rt: SessionRuntime, msg: InboundMessage, submitText: string): void {
+    this.chatSelects.delete(bindingKey(msg.channel, msg.chatId)); // 互斥:排队回执武装摘列表选择待答(最新意图优先)
     try {
       const items = rt.snapshotResponse().queued;
       const last = items[items.length - 1];

@@ -29,10 +29,14 @@ export const COMMAND_OPTIONS: ReadonlyArray<{ v: string; en: string; zh: string 
   { v: '/stop', en: '/stop — Stop the current task', zh: '/stop — 停止当前任务' },
   { v: '/new', en: '/new — Start a new conversation', zh: '/new — 开始新对话' },
   { v: '/status', en: '/status — Check task status', zh: '/status — 查看任务状态' },
-  { v: '/workspace', en: '/workspace — View or switch workspace (next new session)', zh: '/workspace — 查看/切换工作区（下次新会话生效）' },
-  { v: '/model', en: '/model — View or switch model', zh: '/model — 查看/切换模型' },
-  { v: '/effort', en: '/effort — View or switch reasoning effort', zh: '/effort — 查看/切换思考强度' },
+  { v: '/workspace', en: '/workspace — View or switch workspace (reply with a number or full path)', zh: '/workspace — 查看/切换工作区（回复序号或直接发完整路径）' },
+  { v: '/model', en: '/model — View or switch model (reply with a number)', zh: '/model — 查看/切换模型（回复序号选择）' },
+  { v: '/effort', en: '/effort — View or switch reasoning effort (reply with a number)', zh: '/effort — 查看/切换思考强度（回复序号选择）' },
   { v: '/compact', en: '/compact — Compact context', zh: '/compact — 压缩上下文' },
+  { v: '/context', en: '/context — Inspect context usage', zh: '/context — 查看上下文构成与窗口占用' },
+  { v: '/skills-list', en: '/skills-list — List available skills', zh: '/skills-list — 列出可用技能' },
+  { v: '/agents-list', en: '/agents-list — List available subagents', zh: '/agents-list — 列出可用子智能体' },
+  { v: '/teams-list', en: '/teams-list — List available agent teams', zh: '/teams-list — 列出可用智能体团队' },
 ];
 export const COMMAND_KEYS: readonly string[] = COMMAND_OPTIONS.map((o) => o.v);
 
