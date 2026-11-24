@@ -1469,17 +1469,19 @@ ${this.sessionCharter ?? ''}` }
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     if (wake === undefined) {
       this.wake.markUserActivity(); // 用户路径：连续唤醒计数归零（唤醒路径不重置）
-      // 模型切换说明补显（2026-11-23 用户裁定「发出消息后才显示」）：挂起说明在本条消息发出时落双面
-      // （notice 用户面+链尾 note 模型面）——用户消息与新模型同拍,转录序=说明行在上、消息在下
+      // 模型切换说明补显（2026-11-23 用户裁定「发出消息后才显示」+2026-11-24 二轮「提示应该在
+      // 上面/模型不感知」）：挂起说明在本条消息发出时只落转录面（payload modelSwitch 标记——GUI
+      // 回显 user 条先入核、说明帧后到，内核按标记插到回显之前=提示在消息上方）；不落链面——
+      // 链尾 note 已撤，模型对切换零感知（用户裁定「agent 为什么知道模型被切换了」）
       if (this.pendingModelNotice !== null) {
         const { from, to } = this.pendingModelNotice;
         this.pendingModelNotice = null;
         this.pump({
           type: 'notice',
           text: t(`Model switched from ${from} to ${to}`, `模型从 ${from} 切换至 ${to}`),
+          payload: { modelSwitch: true },
           ts: Date.now(),
         });
-        this.runtimeImpl.harness.context.appendChain([{ action: 'note', observation: `Model switched from ${from} to ${to}; subsequent tasks use the new model.` }]);
       }
     }
     // 图片落盘点(2026-10-31 用户裁定):dataURL → images-cache 文件路径引用——base64 不再进

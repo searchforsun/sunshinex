@@ -59,7 +59,7 @@ test('model 切换:switchTo 透传 + snapshot 回显;unknown id false 不动现�
   assert.equal(s.snapshotResponse().model, undefined);
 });
 
-test('模型切换系统提示延后显示(2026-11-23 用户二轮裁定「发出消息后才显示」):setModel 只记挂起,下一条用户消息发出才落双面;试选切回作废', async () => {
+test('模型切换系统提示延后显示(2026-11-23 用户二轮裁定「发出消息后才显示」):setModel 只记挂起,下一条用户消息发出才落转录面;试选切回作废;模型零感知(2026-11-24 三轮裁定)', async () => {
   const frames: DaemonFrame[] = [];
   const s = makeSession(frames);
   const notices = () => frames.filter((f) => f.kind === 'event' && f.e.type === 'notice');
@@ -77,7 +77,7 @@ test('模型切换系统提示延后显示(2026-11-23 用户二轮裁定「发�
     assert.equal(s.setModel('a/m2'), true);
     assert.equal(s.setModel('a/m1'), true);
     assert.equal(s.snapshotResponse().queuePaused === true, false, '占位断言防优化器剔除');
-    // 发出消息（submit 用户路径）：挂起说明落双面
+    // 发出消息（submit 用户路径）：挂起说明落转录面（链面不落——模型零感知）
     assert.deepEqual(s.submit('main task'), { ok: true });
     await waitFor(() => s.status() === 'idle');
     assert.equal(notices().length, 1, '发出消息才恰发一条 notice 事件');
@@ -88,25 +88,26 @@ test('模型切换系统提示延后显示(2026-11-23 用户二轮裁定「发�
       'Model switched from default model to a/m1',
       '用户面 notice 事件（t() 双语单点;from=试选起点合并为一条）',
     );
-    assert.ok(chainText().includes('Model switched from default model to a/m1; subsequent tasks use the new model.'), '链尾 note 行（模型面）');
+    assert.equal(first.kind === 'event' ? first.e.payload?.modelSwitch : undefined, true, 'modelSwitch 标记（内核插到回显 user 条之前=提示在上）');
+    assert.equal(chainText().includes('Model switched'), false, '链上零说明行——模型对切换零感知（2026-11-24 用户裁定）');
   } finally {
     void s.teardown().catch(() => undefined);
   }
 });
 
-test('模型切换系统提示时序:说明行落在本轮任务行之前（转录序=说明行在消息上方）', async () => {
+test('模型切换系统提示时序:notice 帧先于本轮 run 帧（转录序=说明行在消息上方）', async () => {
   const frames: DaemonFrame[] = [];
   const s = makeSession(frames);
   try {
     assert.equal(s.setModel('a/m1'), true);
     assert.deepEqual(s.submit('main task'), { ok: true });
     await waitFor(() => s.status() === 'idle');
-    // 链序：说明行（模型面 note）先于本轮任务行——用户面 notice 帧同拍先于消息回显
-    const view = s.runtime.harness.context.chainView();
-    const idxNote = view.findIndex((r) => r.observation.includes('Model switched from default model to a/m1'));
-    const idxTask = view.findIndex((r) => r.observation.includes('main task'));
-    assert.ok(idxNote >= 0, '说明行应在链上');
-    assert.ok(idxTask > idxNote, `说明行(${idxNote}) 应先于本轮任务行(${idxTask})`);
+    // 帧序：说明 notice 先于本轮 run-open 帧（用户面转录序=说明行在消息上方;GUI 回显竞态由
+    // 内核 modelSwitch 插入规则兜住——见 chat-reducer 同名测试）
+    const idxNotice = frames.findIndex((f) => f.kind === 'event' && f.e.type === 'notice');
+    const idxRun = frames.findIndex((f) => f.kind === 'event' && f.e.type === 'model-start');
+    assert.ok(idxNotice >= 0, '说明 notice 帧应在场');
+    assert.ok(idxRun > idxNotice, `说明 notice(${idxNotice}) 应先于本轮 run 帧(${idxRun})`);
   } finally {
     void s.teardown().catch(() => undefined);
   }

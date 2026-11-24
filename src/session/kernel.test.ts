@@ -638,3 +638,23 @@ test('唤醒通知属安静 notice（<task-notification> 开头），journal 审
   assert.equal(isQuietNotice('<task-notification>\nAutomated notice'), true);
   assert.equal(isQuietNotice('ask p1 answered'), true); // 既有规则不回归
 });
+
+// ---- 模型切换说明插入序（2026-11-24 用户裁定「提示应该在上面」:GUI 回显 user 条先入核,说明帧后到） ----
+
+test('modelSwitch notice 插到尾随回显 user 条之前;无标记/尾非 user 照旧尾插', () => {
+  // 回显竞态复现:user 条(本地回显合成)先入核,modelSwitch 说明帧后到 → 插到回显之前
+  let s = reduce(initialKernelState(), ev('notice', 'earlier'), ev('user', 'hi'));
+  s = reduce(s, ev('notice', 'Model switched from a to b', { modelSwitch: true }));
+  assert.equal(s.entries.length, 3);
+  assert.equal(s.entries[1]!.kind, 'notice', '说明行在回显 user 条之前');
+  assert.equal(s.entries[1]!.md, 'Model switched from a to b');
+  assert.equal(s.entries[2]!.kind, 'user', '回显条仍在末位');
+  assert.ok(s.entries[1]!.seq < s.entries[2]!.seq, 'seq 重排后保持单调');
+  // 无标记:照旧尾插(普通 notice 不越位)
+  const s2 = reduce(initialKernelState(), ev('user', 'hi'), ev('notice', 'ambient'));
+  assert.equal(s2.entries[1]!.kind, 'notice');
+  // 标记在场但尾非 user(run 已开):照旧尾插,不插队
+  const s3 = reduce(initialKernelState(), ev('user', 'hi'), ev('model-start', undefined, undefined, 1000));
+  const s4 = reduce(s3, ev('notice', 'Model switched from a to b', { modelSwitch: true }));
+  assert.equal(s4.entries[2]!.kind, 'notice', '尾非 user 不插队');
+});

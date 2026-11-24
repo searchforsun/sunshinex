@@ -487,7 +487,18 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
       const wake = parseWakeRefs(e.payload?.wake);
       const scheduled = e.payload?.schedule === true;
       const restored = e.payload?.restored === true;
-      return appendEntry(sealed, { ts: e.ts, kind: 'notice', md: e.text ?? '', ...(wake !== undefined ? { wake } : {}), ...(scheduled ? { schedule: true as const } : {}), ...(restored ? { restored: true as const } : {}) });
+      const row: Omit<KernelEntry, 'seq'> = { ts: e.ts, kind: 'notice', md: e.text ?? '', ...(wake !== undefined ? { wake } : {}), ...(scheduled ? { schedule: true as const } : {}), ...(restored ? { restored: true as const } : {}) };
+      // 模型切换说明先于提交回显（2026-11-24 用户裁定「提示应该在上面」）：GUI 本地回显 user 条
+      // 先行入核（HTTP 提交路径 daemon 不产 user 帧），说明帧后到——切换语义上先于发送，插到
+      // 尾随 user 条之前（seq 顺延重排保持单调；重播种后即盘面本序）
+      if (e.payload?.modelSwitch === true) {
+        const last = sealed.entries[sealed.entries.length - 1];
+        if (last !== undefined && last.kind === 'user') {
+          const placed = appendEntry({ ...sealed, entries: sealed.entries.slice(0, -1) }, row);
+          return { ...placed, entries: [...placed.entries, { ...last, seq: placed.nextSeq }], nextSeq: placed.nextSeq + 1 };
+        }
+      }
+      return appendEntry(sealed, row);
     }
     case 'error':
       // 不封段(G14.51):done 必发,收口让位——运行中旁路错误只入条,开启段留给 done 合并
