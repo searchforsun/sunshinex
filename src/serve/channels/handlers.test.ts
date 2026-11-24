@@ -9,6 +9,7 @@ import {
   handleChannelsBindingPut,
   handleChannelsBindingsGet,
   handleChannelsList,
+  handleChannelsDelete,
   handleChannelsSessions,
   handleChannelsTest,
   type ChannelsHandlerIo,
@@ -211,6 +212,58 @@ describe('通道 handlers(Task 9)', () => {
       if (prev === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
       else process.env.SUNSHINEX_CHANNELS_DIR = prev;
       fs.rmSync(path.dirname(container), { recursive: true, force: true });
+    }
+  });
+});
+
+describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,真正的删除各种配置和目录」)', () => {
+  test('条目移除+绑定解绑+在座释放+聊天域目录真删;缺条目 404', () => {
+    const dir = tmpdir('sunshinex-ch-del-');
+    const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
+    const container = path.join(dir, 'channels');
+    process.env.SUNSHINEX_CHANNELS_DIR = container;
+    try {
+      // 全局 settings(HOME 已被 test-env 钉到私有 home):channels 带 del1/keep 两条
+      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ version: 1, channels: [
+          { id: 'del1', platform: 'feishu', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'all' } },
+          { id: 'keep', platform: 'mock', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'all' } },
+        ] }),
+        'utf8',
+      );
+      // 聊天域:del1 一域+keep 一域(del1 前缀匹配删除,keep 不动)
+      for (const name of ['im-del1-oc-a', 'im-keep-x']) {
+        fs.mkdirSync(path.join(container, name, 'data', 'sessions'), { recursive: true });
+        fs.writeFileSync(path.join(container, name, 'data', 'sessions', 'j.jsonl'), '{"t":"header"}\n', 'utf8');
+      }
+      const store = makeStore(dir);
+      store.upsert({ key: 'del1:c1', sessionId: 'sun-x-1', updatedAt: 1 });
+      store.upsert({ key: 'keep:c2', sessionId: 'sun-x-2', updatedAt: 1 });
+      const sessions = new Map<string, SessionRuntime>();
+      sessions.set('sun-x-1', { status: () => 'idle' } as unknown as SessionRuntime);
+      const { io, replies, released } = stubIo({ bindings: store, sessions });
+      handleChannelsDelete(io, {} as http.ServerResponse, 'del1');
+      assert.equal(replies[0]!.status, 200);
+      assert.deepEqual(replies[0]!.body, { ok: true, removedDomains: 1 });
+      // 条目移除(keep 原样)
+      const onDisk = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { channels: Array<{ id: string }> };
+      assert.deepEqual(onDisk.channels.map((c) => c.id), ['keep']);
+      // 绑定解绑+在座释放
+      assert.equal(store.get('del1:c1'), undefined);
+      assert.ok(store.get('keep:c2') !== undefined);
+      assert.deepEqual(released, ['sun-x-1']);
+      // 域目录:del1 真删,keep 原样
+      assert.ok(!fs.existsSync(path.join(container, 'im-del1-oc-a')));
+      assert.ok(fs.existsSync(path.join(container, 'im-keep-x')));
+      // 缺条目 404
+      handleChannelsDelete(io, {} as http.ServerResponse, 'del1');
+      assert.equal(replies[1]!.status, 404);
+    } finally {
+      if (prevCh === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
+      else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;
     }
   });
 });

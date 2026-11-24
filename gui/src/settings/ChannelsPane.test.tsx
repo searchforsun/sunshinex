@@ -43,9 +43,10 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
     return { ok: true as const, warnings: [] };
   });
   const testChannel = vi.fn(async (): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }> => ({ ok: true, botId: 'bot-1' }));
+  const deleteChannel = vi.fn(async (): Promise<{ ok: true }> => ({ ok: true }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
-  const conn = { channelsView, settingsChannels, putChannels, testChannel, workspaces } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, settingsChannels, putChannels, testChannel, workspaces };
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, workspaces } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, workspaces };
 }
 
 describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联回显）', () => {
@@ -140,18 +141,19 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     expect(row.id).toBe('telegram-1');
   });
 
-  /** ⑤ 删除：两段确认 → putChannels 全表少一条（余 mock-2），卡片摘除不复活 */
-  it('deletes a channel after confirm and writes the table without it', async () => {
-    const { conn, putChannels } = makeConn([healthRow(), healthRow({ id: 'mock-2', platform: 'mock' })]);
+  /** ⑤ 删除（2026-11-23 用户裁定改弹窗确认,非原地两段）：删除钮 → 确认弹窗（警示文案明示
+   *  真删除范围）→ 红钮确认 → DELETE /channels/:id 真删除（conn.deleteChannel 单发）→ 摘卡 */
+  it('deletes a channel via the confirm dialog calling deleteChannel', async () => {
+    const { conn, deleteChannel } = makeConn([healthRow(), healthRow({ id: 'mock-2', platform: 'mock' })]);
     const { container } = render(<ChannelsPane conn={conn} />);
     await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(2));
-    const del = screen.getByRole('button', { name: bi('Delete telegram-1', '删除 telegram-1') });
-    fireEvent.click(del); // 武装
-    fireEvent.click(del); // 确认
-    await waitFor(() => expect(putChannels).toHaveBeenCalledTimes(1));
-    expect(putChannels.mock.calls[0]![0]).toEqual([
-      { id: 'mock-2', platform: 'mock', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'first-user' } },
-    ]);
+    fireEvent.click(screen.getByRole('button', { name: bi('Delete telegram-1', '删除 telegram-1') }));
+    // 确认弹窗:标题+警示文案(应用+会话记录+数据目录,不可恢复)
+    expect(await screen.findByText(bi('Delete channel', '删除通道'))).toBeDefined();
+    expect(screen.getByText(/This will permanently delete .telegram-1.|即将删除「telegram-1」/)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: bi('Delete', '删除') })); // 弹窗红钮
+    await waitFor(() => expect(deleteChannel).toHaveBeenCalledWith('telegram-1'));
+    // 摘卡:余 mock-2 一张
     await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
   });
 

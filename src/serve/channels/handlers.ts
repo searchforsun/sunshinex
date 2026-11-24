@@ -13,15 +13,20 @@
  *    kind 钉 'channel'（容器=纯通道域，不读 meta，杂散目录不误标——sunx 面 kind:'sunx' 同判）。
  */
 import type * as http from 'node:http';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import type { SessionRuntime } from '../session';
 import { channelsContainerDir } from '../../config/data-dir';
+import { loadChannels } from '../../config/channels';
 import { loadGlobalSettings } from '../../config/settings';
 import { writeJsonAtomic } from '../../catalog/io';
+import { slugify } from '../../slug';
 import { enumerateContainerSessions } from '../sessions-list-handlers';
 import { readStrictSettingsRootForWrite } from '../config-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
 import { parseChannelsKey } from './model';
+import type { ChannelConfig } from './model';
 
 /** HTTP 面触点（daemon 单点注入；engine/bindings 单例；sessions 表供枚举活跃标注与解除回收判据） */
 export interface ChannelsHandlerIo {
@@ -88,6 +93,53 @@ export async function handleChannelsSecretPut(io: ChannelsHandlerIo, req: http.I
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n'); // 原子写单点（catalog/io，D60）
   afterWrite?.(); // daemon 注入：settings 链重载 + config-changed 广播（handleChannelsPut 收尾同语义）
   io.send(res, 200, { ok: true }); // 回执恰 {ok:true}——secret 值不出现在响应/日志任何位置
+}
+
+/** DELETE /channels/:id（2026-11-23 用户裁定「删除增加弹窗确认……真正的删除各种配置和目录」）：
+ *  通道**真删除**——① settings.json channels 条目移除（readStrictSettingsRootForWrite 守卫族同
+ *  secret 写面；afterWrite=daemon 注入 applyConfigs 热生效+config-changed 广播）；② 绑定解绑+
+ *  在座运行时释放（active 会话不释放——用户正看的不动）；③ 该通道全部聊天域目录真删
+ *  （`im-<slugify(id)>-*` 前缀匹配递归删——配置+会话记录+工作区产物一体清除，弹窗确认后执行）。
+ *  条目缺失 404（secret 写面同文案） */
+export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResponse, id: string, afterWrite?: (channels: ChannelConfig[]) => void): void {
+  if (loadChannels().value.find((c) => c.id === id) === undefined) {
+    io.send(res, 404, { error: `channel not found: ${id}` });
+    return;
+  }
+  // ① settings 条目移除（其余条目原样保留——raw 数组过滤,不重归一防手编档字段固化/丢失）
+  const target = loadGlobalSettings();
+  const guarded = readStrictSettingsRootForWrite(target);
+  if (!guarded.ok) {
+    io.send(res, guarded.status, guarded.hint !== undefined ? { error: guarded.error, hint: guarded.hint } : { error: guarded.error });
+    return;
+  }
+  const obj = guarded.root;
+  const listRaw = obj['channels'];
+  if (!Array.isArray(listRaw)) return io.send(res, 404, { error: `channel not found: ${id}` });
+  obj['channels'] = listRaw.filter((item) => (item as { id?: unknown } | null)?.['id'] !== id);
+  writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n');
+  afterWrite?.(loadChannels().value); // daemon 注入:applyConfigs(teardown 该通道适配器)+config-changed
+  // ② 绑定解绑+在座释放（active=用户正在看,不释放;非 active 尽力释放,snapshot/pty 不再被旧座引用）
+  const prefix = `${id}:`;
+  for (const b of io.bindings.all()) {
+    if (!b.key.startsWith(prefix)) continue;
+    if (io.activeSessionId() !== b.sessionId) io.releaseSession(b.sessionId);
+    io.bindings.remove(b.key);
+  }
+  // ③ 聊天域目录真删（`im-<slugify(id)>-*` 前缀=该通道全部聊天;recursive+force 尽力而为）
+  const domainPrefix = `im-${slugify(id, { max: 60, fallback: 'chat' })}-`;
+  const container = channelsContainerDir();
+  let removedDomains = 0;
+  try {
+    for (const ent of fs.readdirSync(container, { withFileTypes: true })) {
+      if (!ent.isDirectory() || !ent.name.startsWith(domainPrefix)) continue;
+      fs.rmSync(path.join(container, ent.name), { recursive: true, force: true });
+      removedDomains += 1;
+    }
+  } catch {
+    /* 容器缺席/不可读=无域可删（合法空态） */
+  }
+  io.send(res, 200, { ok: true, removedDomains });
 }
 
 /** GET /channels/bindings → 绑定档全列（store.all；行含 rootOverride 供聊天信息条回显） */

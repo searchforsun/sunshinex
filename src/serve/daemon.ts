@@ -1139,6 +1139,14 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'PUT', path: '/channels/bindings/:key', auth: true, run: async (req, res, p) => channelsHandlers.handleChannelsBindingPut(this.channelsHandlerIo, req, res, p.key) },
     { method: 'DELETE', path: '/channels/bindings/:key', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsBindingDelete(this.channelsHandlerIo, res, p.key) },
     { method: 'GET', path: '/channels/sessions', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsSessions(this.channelsHandlerIo, res) },
+    // 通道真删除(2026-11-23 用户裁定「弹窗确认,真正的删除各种配置和目录」):条目移除+解绑+
+    // 聊天域目录真删;afterWrite=applyConfigs 热生效+config-changed(handleChannelsPut 同款);
+    // 注册在 bindings DELETE 之后防 /channels/bindings/:key 被 /channels/:id 前缀误配
+    { method: 'DELETE', path: '/channels/:id', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsDelete(this.channelsHandlerIo, res, p.id, (channels: ChannelConfig[]) => {
+      this.channelsEngine.applyConfigs(channels);
+      this.watcher.suppress('settings', 'global', null);
+      this.broadcastFrame({ kind: 'config-changed', resource: 'settings', scope: 'global', root: null });
+    }) },
     // 裸端点 = 激活会话别名（G3 兼容裁定：G2 gui 面不破，v1.x 移除）；无 active 409
     { method: 'POST', path: '/submit', auth: true, run: (req, res) => this.handleSubmit(req, res, undefined) },
     { method: 'POST', path: '/steer', auth: true, run: (req, res) => this.handleSteer(req, res, undefined) },

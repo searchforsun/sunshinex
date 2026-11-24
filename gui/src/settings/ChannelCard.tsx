@@ -1,14 +1,16 @@
-import { Pencil, PlugZap } from 'lucide-react';
+import { Pencil, PlugZap, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
-import { ConfirmDeleteButton, Switch } from './components';
+import { Switch } from './components';
 import { allowLabel, displayNameOf, modeLabel, platformLabel } from './channel-drafts';
 import type { ChannelDraft } from './channel-drafts';
 import type { ChannelHealthRowMsg } from '../connection-api';
 
 /**
- * 通道卡片件（D112 拆分件三，自 ChannelsPane 平迁零行为变化）：ProvidersPane sx-rc 克隆形——
- * 状态点(健康轮询 connected)+应用名称(显示名单点)+平台副标+操作簇(删除两段确认/试连/编辑/
+ * 通道卡片件（D112 拆分件三，自 ChannelsPane 平迁）：ProvidersPane sx-rc 克隆形——
+ * 状态点(健康轮询 connected)+应用名称(显示名单点)+平台副标+操作簇(删除/试连/编辑/
  * 启用 Switch)+信息体(App ID/工作区/权限模式/准入)。
+ * 删除=单击开**确认弹窗**（2026-11-23 用户裁定「删除增加弹窗确认,不是原地二次确认」——
+ * 真删除该应用+相关会话记录+数据目录,弹窗文案明示不可恢复）。
  */
 export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onToggle }: {
   readonly d: ChannelDraft;
@@ -16,6 +18,7 @@ export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onTo
   readonly healthRow: ChannelHealthRowMsg | undefined;
   /** 写面在途门(单通道在途:保存/删除/试连/Switch 共用——禁再发) */
   readonly busy: boolean;
+  /** 删除钮(单击=宿主开确认弹窗,非原地确认) */
   readonly onDelete: () => void;
   readonly onTest: () => void;
   readonly onEdit: () => void;
@@ -28,8 +31,17 @@ export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onTo
         <span className="sx-rc-title">{displayNameOf(d)}</span>
         <span className="sx-rc-subtitle">{platformLabel(d.platform)}</span>
         <span className="sx-rc-head-acts">
-          {/* 裸图标按钮必带 hover 提示(2026-11-22 全局规范,见 CLAUDE.md):删除两段同名 tip */}
-          <ConfirmDeleteButton icon ariaLabel={`${t('Delete', '删除')} ${d.id}`} dataTip={t('Delete', '删除')} disabled={busy} onConfirm={onDelete} />
+          {/* 裸图标按钮必带 hover 提示(2026-11-22 全局规范,见 CLAUDE.md);单击开删除确认弹窗 */}
+          <button
+            type="button"
+            className="sx-iconbtn sx-del-iconbtn"
+            aria-label={`${t('Delete', '删除')} ${d.id}`}
+            data-tip={t('Delete', '删除')}
+            disabled={busy}
+            onClick={onDelete}
+          >
+            <Trash2 size={14} strokeWidth={1.75} />
+          </button>
           <button
             type="button"
             className="sx-iconbtn"

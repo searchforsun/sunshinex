@@ -3,10 +3,10 @@ import { t } from '../i18n';
 import { errText } from '../ui-util';
 import { useAutoToast } from '../use-auto-toast';
 import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
-import { EditorModal, EmptyState, ErrorBanner } from './components';
+import { EditorModal, EmptyState, ErrorBanner, ModalShell } from './components';
 import { ChannelCard } from './ChannelCard';
 import { ChannelModalForm } from './ChannelModalForm';
-import { EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
+import { displayNameOf, EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
 import type { ChannelDraft, ChannelForm, ChannelModal } from './channel-drafts';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 import type { WorkspaceRow } from '../connection';
@@ -35,6 +35,8 @@ export interface ChannelsPaneConn {
   settingsChannels(): Promise<{ channels: ChannelConfigMsg[]; warnings: string[] }>;
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
+  /** DELETE /channels/:id(2026-11-23 用户裁定「真正的删除各种配置和目录」):条目移除+解绑+聊天域目录真删 */
+  deleteChannel(id: string): Promise<{ ok: true }>;
   workspaces(): Promise<WorkspaceRow[]>;
 }
 
@@ -137,13 +139,28 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     writeAll(next, d.id);
   };
 
-  /** 删卡(两段确认后):本地摘卡 + id 落墓碑(防轮询复活)→ putChannels 全表少一条 → 重拉 */
-  const removeCard = (id: string): void => {
-    if (savingId !== '' || drafts === null) return;
-    const next = drafts.filter((d) => d.id !== id);
-    removedRef.current.add(id);
-    setDrafts(next);
-    writeAll(next, id);
+  /** 删除确认弹窗态(2026-11-23 用户裁定「删除增加弹窗确认,不是原地二次确认」):id+展示名 */
+  const [delAsk, setDelAsk] = useState<{ id: string; name: string } | null>(null);
+  /** 删除钮:开确认弹窗(真删除不可恢复,文案明示) */
+  const askDelete = (d: ChannelDraft): void => setDelAsk({ id: d.id, name: displayNameOf(d) });
+  /** 弹窗确认 → DELETE /channels/:id 真删除(条目+绑定+聊天域目录)→ 本地摘卡+墓碑+重拉 */
+  const confirmDelete = (): void => {
+    if (delAsk === null || savingId !== '') return;
+    const id = delAsk.id;
+    setSavingId(id);
+    conn
+      .deleteChannel(id)
+      .then(() => {
+        setSavingId('');
+        setDelAsk(null);
+        removedRef.current.add(id);
+        setDrafts((prev) => (prev ?? []).filter((d) => d.id !== id));
+        load();
+      }, (err: unknown) => {
+        setSavingId('');
+        setDelAsk(null);
+        setActionError(errText(err));
+      });
   };
 
   /** 试连结果落槽单点(手动测试与保存后自动试连同路径;成功回显 botId,失败简洁化——去内部细节)。
@@ -317,7 +334,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
             d={d}
             healthRow={health.find((r) => r.id === d.id)}
             busy={busy}
-            onDelete={() => removeCard(d.id)}
+            onDelete={() => askDelete(d)}
             onTest={() => testOnly(d.id)}
             onEdit={() => openModal(d)}
             onToggle={() => toggleCard(d)}
@@ -335,6 +352,36 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         >
           <ChannelModalForm modal={modal} form={form} setForm={setForm} formError={formError} onPickFolder={pickWorkspaceFolder} />
         </EditorModal>
+      )}
+      {/* 删除确认弹窗(2026-11-23 用户裁定「弹窗确认,不是原地二次确认」):文案明示真删除
+          范围(应用+相关会话记录+数据目录)不可恢复;确认=DELETE /channels/:id 真删除 */}
+      {delAsk !== null && (
+        <ModalShell title={t('Delete channel', '删除通道')} onClose={() => setDelAsk(null)}>
+          <form
+            className="sx-editor-modal-body"
+            onSubmit={(e) => {
+              e.preventDefault();
+              confirmDelete();
+            }}
+          >
+            <div className="sx-editor-modal-fields">
+              <p className="sx-provider-warn" role="alert">
+                {t(
+                  `This will permanently delete "${delAsk.name}" and ALL its chat session records and data directories. This cannot be undone.`,
+                  `即将删除「${delAsk.name}」以及它的全部会话记录和数据目录，此操作不可恢复。`,
+                )}
+              </p>
+            </div>
+            <div className="sx-card-actions sx-editor-modal-actions">
+              <button type="submit" className="sx-del-confirm">
+                {savingId === delAsk.id ? t('Deleting…', '删除中…') : t('Delete', '删除')}
+              </button>
+              <button type="button" onClick={() => setDelAsk(null)}>
+                {t('Cancel', '取消')}
+              </button>
+            </div>
+          </form>
+        </ModalShell>
       )}
       {testToast !== null && (
         <div className={`sx-toast ${testToast.ok ? 'sx-toast-ok' : 'sx-toast-err'}`} role="status">
