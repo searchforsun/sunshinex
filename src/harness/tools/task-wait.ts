@@ -314,7 +314,7 @@ export function makeTaskStatusTool(
     },
     name: 'task_status',
     description:
-      'Non-blocking status peek at background ledger tasks (exec and spawn): returns id, kind, status, exit code, and the exec log tail or the subagent conclusion — it never waits. Terminal rows in the receipt are consumed: you will not be woken again for them; running rows remain eligible for the background wake-up. Use it for a quick check between your own work; use task_wait when you want to block until terminal state.',
+      'Non-blocking status peek at background ledger tasks (exec and spawn): returns id, kind, status, exit code, and the exec log tail or the subagent conclusion — it never waits. Terminal rows in the receipt are consumed: you will not be woken again for them; running rows remain eligible for the background wake-up. The null peek also lists recent terminal task records (including history adopted from a previous session via /new). Use it for a quick check between your own work; use task_wait when you want to block until terminal state.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -332,13 +332,27 @@ export function makeTaskStatusTool(
           .join('\n');
         return `scheduled dispatches (auto-wake this session on completion):\n${rows}`;
       };
+      // 终态记录段（2026-11-25 用户裁定「sunx /new 复制任务记录要读取得到」根修）：null 窥视此前
+      // 只列 running——让位并入的收养行全是终态,新会话查任务状态恒空。补终态记录段（近 8 条,
+      // 含收养历史, submit 序倒尾截取）,纯展示不消费——唤醒靠 finish 旁路登记（adopt 重放零回调,
+      // 收养行不产生幽灵唤醒）,receipted 语义不动
+      const recordsSection = (): string => {
+        const recs = tasks.list().filter((t) => t.status !== 'running').slice(-8);
+        if (recs.length === 0) return '';
+        const rows = recs.map((t) => {
+          const mark = t.stopReason !== undefined ? `, ${t.stopReason}` : '';
+          return `- ${t.id} (${t.kind}, ${t.status}${mark}) ${t.label}`;
+        });
+        return `task records (terminal, most recent ${recs.length}):\n${rows.join('\n')}`;
+      };
       if (raw.taskIds === null || raw.taskIds === undefined) {
         ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
         if (ids.length === 0) {
           const sched = scheduledSection();
-          return { exitCode: 0, stdout: sched !== '' ? `no background tasks running
-
-${sched}` : 'no background tasks running', stderr: '', timedOut: false };
+          const records = recordsSection();
+          let out = sched !== '' ? `no background tasks running\n\n${sched}` : 'no background tasks running';
+          if (records !== '') out += `\n\n${records}`;
+          return { exitCode: 0, stdout: out, stderr: '', timedOut: false };
         }
       } else {
         if (!Array.isArray(raw.taskIds) || raw.taskIds.length === 0) {
@@ -361,7 +375,10 @@ ${sched}` : 'no background tasks running', stderr: '', timedOut: false };
       // bg-wake 终态回执消费标记（spec §3.1，与 task_wait 窥视同口径）：回执面出现的终态行即视为已消费
       const doneIds = result.tasks.filter((x) => x.status !== 'running').map((x) => x.id);
       if (doneIds.length > 0) tasks.markReceipted(doneIds);
-      return formatReceipt(result, undefined, [], 0, undefined, 'task_status');
+      const receipt = formatReceipt(result, undefined, [], 0, undefined, 'task_status');
+      const records = recordsSection(); // 在跑行回执在上,终态记录段殿后(查历史同面可见)
+      if (records !== '') receipt.stdout = `${receipt.stdout}\n\n${records}`;
+      return receipt;
     },
   };
 }

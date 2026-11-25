@@ -248,6 +248,9 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
       handleChannelsDelete(io, {} as http.ServerResponse, 'del1');
       assert.equal(replies[0]!.status, 200);
       assert.equal((replies[0]!.body as { removedDomains: number }).removedDomains, 1, '域计数');
+      const removed = (replies[0]!.body as { removedSessionIds: string[] }).removedSessionIds;
+      assert.ok(removed.includes('sun-x-1'), '绑定座直收（GUI 回欢迎页事件源）');
+      assert.ok(!removed.includes('sun-x-2'), '保留通道的绑定座零波及');
       // 条目移除(keep 原样)
       const onDisk = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { channels: Array<{ id: string }> };
       assert.deepEqual(onDisk.channels.map((c) => c.id), ['keep']);
@@ -261,6 +264,36 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
       // 缺条目 404
       handleChannelsDelete(io, {} as http.ServerResponse, 'del1');
       assert.equal(replies[1]!.status, 404);
+    } finally {
+      if (prevCh === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
+      else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;
+    }
+  });
+
+  test('rootOverride 工作区会话(dataDir 在容器外)+journalId 双列也进 removedSessionIds（2026-11-25「删除后没回欢迎页」根修）', () => {
+    const dir = tmpdir('sunshinex-ch-del-');
+    const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
+    const container = path.join(dir, 'channels');
+    process.env.SUNSHINEX_CHANNELS_DIR = container;
+    try {
+      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ version: 1, channels: [
+          { id: 'ws1', platform: 'feishu', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'all' } },
+        ] }),
+        'utf8',
+      );
+      // 绑定座落在工作区(container 外)——旧扫描只认容器前缀,收不进=GUI 不回欢迎页
+      const store = makeStore(dir);
+      store.upsert({ key: 'ws1:c9', sessionId: 'sun-ws-1', journalId: 'j-ws-1', updatedAt: 1 });
+      const { io, replies } = stubIo({ bindings: store });
+      handleChannelsDelete(io, {} as http.ServerResponse, 'ws1');
+      assert.equal(replies[0]!.status, 200);
+      const removed = (replies[0]!.body as { removedSessionIds: string[] }).removedSessionIds;
+      assert.ok(removed.includes('sun-ws-1'), '运行时 id 收集');
+      assert.ok(removed.includes('j-ws-1'), 'journalId 收集（GUI 双寻址 ref 任一命中即回欢迎页）');
     } finally {
       if (prevCh === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
       else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;

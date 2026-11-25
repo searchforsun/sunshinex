@@ -263,18 +263,22 @@ export class ReplyProjector {
    *  续跑轮(链式排队,内部 submit 不经 onSubmitted)首帧重补武装 */
   private onDone(sessionId: string): void {
     const st = this.runs.get(sessionId);
-    if (st !== undefined) {
-      this.runs.delete(sessionId);
+    this.runs.delete(sessionId);
+    // 活会话门禁（2026-11-25 用户裁定「非sunx模式下的也要有活会话隔离,不要切了新会话还是会收到
+    // 老会话的回答」根修）：收尾冲刷此前用 runs 缓存 target——/new 重绑后旧座 done 把重绑前积压
+    // 的整段缓冲正文发给旧聊天（飞书分段档零流式,正文恰在 done 一次性冲出）。改按**当下**
+    // boundSessions 反解：已让位（无绑定）=旧座输出一律静默,与 onToken 同一门
+    const target = this.deps.boundSessions().get(sessionId);
+    if (st !== undefined && target !== undefined) {
       if (st.flushed) {
         // 流式档:正文已全量在流,done 只发终稿增量收尾信号(buf 恒非空,空守卫防未来路径)
-        if (st.buf !== '') void this.safeStream(st.target, { fullText: st.buf, done: true });
+        if (st.buf !== '') void this.safeStream(target, { fullText: st.buf, done: true });
       } else if (st.buf !== '') {
         // 分段档:非空才冲刷
-        const caps = this.deps.capsOf(st.target.channelId) ?? FALLBACK_CAPS;
-        void this.safeDeliver(st.target, this.bodyMsg(st.buf, caps));
+        const caps = this.deps.capsOf(target.channelId) ?? FALLBACK_CAPS;
+        void this.safeDeliver(target, this.bodyMsg(st.buf, caps));
       }
     }
-    const target = this.deps.boundSessions().get(sessionId);
     if (target !== undefined) this.maybeArm(sessionId, target);
     this.armedSeen.delete(sessionId);
   }

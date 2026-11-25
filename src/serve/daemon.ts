@@ -296,6 +296,14 @@ export class GuiDaemon {
         const keep = this.sessions.get(keepSessionId);
         for (const [, sess] of this.sessions.entries()) {
           if (sess.id === keepSessionId || sess.channelMeta?.chatId !== chatId) continue;
+          // 主链正常暂停（2026-11-25 用户裁定「老的会话正常暂停」+「非sunx模式也要活会话隔离」）：
+          // 在飞 run 与 /stop 同链中断（abort 主链）——此后 token/done/终态注记由投影器活会话
+          // 门禁静默（无绑定即丢弃），GUI 面照常收尾可回看
+          try {
+            sess.interrupt();
+          } catch {
+            /* 尽力而为：空跑会话报 no run in progress */
+          }
           // 在飞任务真正取消（2026-11-25 用户裁定「老的会话正常暂停」根修——此前只标账本不
           // 真终止,子智能体仍在跑）：stop 闭包=真终止（subagent 中断线 abort/exec 进程 kill）
           // + 终态行 reason manual=「用户主动取消」落旧座账本

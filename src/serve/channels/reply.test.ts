@@ -28,6 +28,8 @@ interface Harness {
   resolved: Array<{ pid: string; decision: { approved: boolean; feedback?: string } }>;
   askResolved: Array<{ pid: string; answer: AskUserAnswer }>;
   armed: Array<{ sessionId: string; target: ReplyTarget }>;
+  /** 绑定表原件（活会话门禁用例：重绑/解绑后驱动旧座帧） */
+  bound: Map<string, ReplyTarget>;
   logs: string[];
   /** 回执桩返回值/抛错开关(F3 陈座用例:false=pid 已在他路回执;throw=回执异常吞错路) */
   state: { resolveOk: boolean; askOk: boolean; throwAsk: boolean };
@@ -83,7 +85,7 @@ function makeHarness(over: Partial<DeliveryCaps> = {}): Harness {
   };
   const p = new ReplyProjector(deps);
   p.start();
-  return { p, push: (f) => sink?.(f), delivered, streamed, resolved, askResolved, armed, logs, state };
+  return { p, push: (f) => sink?.(f), delivered, streamed, resolved, askResolved, armed, bound, logs, state };
 }
 
 let seq = 0;
@@ -139,6 +141,24 @@ test('③ 未绑定 sessionId 帧忽略', async () => {
   assert.equal(h.delivered.length, 0);
   assert.equal(h.p.pendingReply('sX', 'y'), false);
   assert.equal(h.resolved.length, 0);
+});
+
+test('③b 活会话门禁:绑定切走后旧座 done 不冲刷缓冲（2026-11-25「切了新会话还收到老会话回答」根修）', async () => {
+  const h = makeHarness(); // 分段档(飞书 caps):正文在 done 一次性冲出
+  h.push(token('s1', '旧座'));
+  h.push(token('s1', '回复'));
+  await drain();
+  assert.equal(h.delivered.length, 0, '未满额不流出');
+  h.bound.delete('s1'); // /new 重绑:绑定翻到新座,旧座无绑定
+  h.push(done('s1'));
+  await drain();
+  assert.equal(h.delivered.length, 0, '旧座收尾冲刷按当下绑定反解:无绑定=静默丢弃');
+  // 对照:仍绑定的会话 done 照常冲刷
+  h.bound.set('s1', TARGET);
+  h.push(token('s1', '新座'));
+  h.push(done('s1'));
+  await drain();
+  assert.deepEqual(h.delivered.map((x) => x.msg.text), ['新座']);
 });
 
 test('④ onRunEnd:interrupted → 终态注记;done → 零注记零补发;其它原因 → 任务失败注记', async () => {

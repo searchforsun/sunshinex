@@ -475,6 +475,9 @@ export class ChannelsEngine {
     this.runEndArmed.set(sessionId, true);
     rt.onRunEnd((info) => {
       this.runEndArmed.delete(sessionId);
+      // 活会话门禁(2026-11-25 用户裁定「活会话隔离」):让位会话(绑定已切走=无绑定)的终态注记
+      // 不进飞书——让位中断旧 run 时 onRunEnd 必触发,「任务已停止」回旧聊天正是要拦的面
+      if (!this.boundTargets().has(sessionId)) return;
       void this.projector.onRunEnd(target, info);
     });
   }

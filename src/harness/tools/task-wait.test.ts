@@ -573,13 +573,52 @@ test('task_status taskIds=null：全部 running 台账（exec+subagent 双 kind�
     if (r.ok) {
       assert.match(r.value.stdout, new RegExp(`${a.id} \\(exec\\) running`), 'null=全部 running，双 kind 全列');
       assert.match(r.value.stdout, new RegExp(`${b.id} \\(subagent\\) running`));
-      assert.doesNotMatch(r.value.stdout, new RegExp(done.id), '终态任务不入 null 窥视清单（非 running）');
+      // 终态不入 running 清单,但按「任务记录」段可见（2026-11-25 /new 复制记录可读根修）
+      assert.match(r.value.stdout, /task records \(terminal/);
+      assert.match(r.value.stdout, new RegExp(`${done.id} \\(exec, done\\)`));
     }
     const bad = await registry.execute('task_status', { taskIds: ['ghost-id'] }, stubSafety);
     assert.equal(bad.ok, false);
     if (!bad.ok) {
       assert.equal(bad.error.code, 'INVALID_ARG');
       assert.match(bad.error.message, /Unknown task id: ghost-id/);
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('task_status null 窥视列出收养的历史记录（/new 复制任务记录后新会话读得到;2026-11-25 根修）', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstatus-'));
+  try {
+    // 旧座账本:一条 stopped(reason manual=用户主动取消)+一条 done——让位并入全为终态
+    const src = path.join(root, 'old', 'tasks', 'ledger-j1.jsonl');
+    fs.mkdirSync(path.dirname(src), { recursive: true });
+    const t1 = { id: 'bg-old-1', kind: 'exec', label: 'long-5min', status: 'running', startedAt: 1 };
+    const t2 = { id: 'bg-old-2', kind: 'subagent', label: 'research', status: 'running', startedAt: 2 };
+    fs.writeFileSync(
+      src,
+      [
+        JSON.stringify({ op: 'submit', pid: process.pid, task: t1 }),
+        JSON.stringify({ op: 'submit', pid: process.pid, task: t2 }),
+        JSON.stringify({ op: 'finish', id: 'bg-old-1', status: 'stopped', endedAt: 3, reason: 'manual' }),
+        JSON.stringify({ op: 'finish', id: 'bg-old-2', status: 'done', endedAt: 4 }),
+      ].join('\n') + '\n',
+      'utf8',
+    );
+    // 新座:并入同文件（daemon retireOtherChatSessions 的合并口径）
+    const dst = path.join(root, 'new', 'tasks', 'ledger-j2.jsonl');
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.appendFileSync(dst, fs.readFileSync(src, 'utf8'), 'utf8');
+    const tasks = new TaskRegistry(path.join(root, 'new', 'data'));
+    tasks.adoptLedger(dst); // 收养重放零 onChange(不产生幽灵唤醒)
+    const r = await makeStatusRegistry(tasks).execute('task_status', { taskIds: null }, stubSafety);
+    assert.ok(r.ok);
+    if (r.ok) {
+      assert.match(r.value.stdout, /no background tasks running/, '无 running——收养行不复活');
+      assert.match(r.value.stdout, /task records \(terminal/);
+      assert.match(r.value.stdout, /bg-old-1 \(exec, stopped, manual\) long-5min/, '用户主动取消原因可见');
+      assert.match(r.value.stdout, /bg-old-2 \(subagent, done\) research/);
     }
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

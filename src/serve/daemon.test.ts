@@ -2655,7 +2655,7 @@ describe('全局规范 GET/PUT /settings/sunshine(2026-11-05 设置页「全局�
 
 /** 通道 e2e 样板(照 withDaemon 隔离形态):数据目录钉 tmp + GuiDaemon 注入临时 bindings 档与 mock
  *  通道配置(enabled,root=tmp,allow all)——引擎随 daemon.start 调和起座;close 后临时档随 tmp 回收 */
-async function withChannelsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; tmp: string; bindingsFile: string }) => Promise<void>): Promise<void> {
+async function withChannelsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; tmp: string; bindingsFile: string }) => Promise<void>, configsOf?: (tmp: string) => unknown[]): Promise<void> {
   const tmp = tmpdir('sunshinex-serve-ch-');
   const prevData = process.env.SUNSHINEX_DATA_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
@@ -2664,7 +2664,9 @@ async function withChannelsDaemon(fn: (ctx: { daemon: GuiDaemon; base: string; t
     const daemon = new GuiDaemon({
       model: new ScriptedAdapter(['{"done":true,"reply":"ok"}']),
       channelsBindingsFile: bindingsFile,
-      channelsConfigs: [{ id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'read-only', allow: { kind: 'all' } }],
+      channelsConfigs: (configsOf !== undefined
+        ? configsOf(tmp)
+        : [{ id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'read-only', allow: { kind: 'all' } }]) as never,
     });
     const s = await daemon.start({ port: 0, token: 'test-token' });
     const base = `http://127.0.0.1:${s.port}`;
@@ -2711,6 +2713,51 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
       const rows = (await (await fetch(`${base}/sessions?root=${encodeURIComponent(tmp)}`, { headers: AUTH })).json()) as Array<{ id: string }>;
       assert.ok(rows.some((r) => r.id === binding.journalId), 'GET /sessions 出现通道新会话');
     });
+  });
+
+  test('④ sunx 通道 /new：旧座主链暂停+在飞任务真取消+任务记录并入新座（2026-11-25 三项根修）', async () => {
+    await withChannelsDaemon(
+      async ({ daemon, bindingsFile }) => {
+        const mock = daemon.channelsEngine.mockAdapter('m1')!;
+        mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '跑个五分钟后台任务' });
+        await waitFor(() => {
+          try { return readBindings(bindingsFile).some((b) => b.key === 'm1:c1'); } catch { return false; }
+        }, 5000);
+        const b1 = readBindings(bindingsFile).find((b) => b.key === 'm1:c1')!;
+        const oldRt = daemon.get(b1.sessionId)!;
+        assert.ok(oldRt !== undefined, '首条消息建出通道会话');
+        // 旧座挂一个在飞后台任务（模拟用户场景里的 5 分钟长任务）
+        const task = oldRt.runtime.harness.tasks.submit({ kind: 'exec', label: 'bg-five-min' });
+        assert.equal(oldRt.runtime.harness.tasks.get(task.id)?.status, 'running');
+        // 主链暂停观察点（retire 与 /stop 同链中断旧座 run）
+        let interrupts = 0;
+        const origInterrupt = oldRt.interrupt.bind(oldRt);
+        oldRt.interrupt = () => {
+          interrupts += 1;
+          return origInterrupt();
+        };
+        mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n2', text: '/new' });
+        // /new 回执在 retire 之后发出——等回执即等让位完成
+        await waitFor(() => mock.sent.some((m) => m.text.includes('已切换到新会话')), 8000);
+        assert.equal(interrupts, 1, '旧座主链被 /new 暂停（非 sunx 同款隔离门）');
+        assert.ok(daemon.get(b1.sessionId) !== undefined, '旧座不释放（GUI 开着的旧会话不 404，留档可回看）');
+        // 在飞任务真取消：stop 闭环 + 终态 reason manual（用户主动取消）
+        const stopped = oldRt.runtime.harness.tasks.get(task.id)!;
+        assert.equal(stopped.status, 'stopped', '旧座在飞后台任务被真终止');
+        assert.equal(stopped.stopReason, 'manual', '取消原因=用户主动取消');
+        // 新座读得到任务记录（/new 复制记录：任务状态面可见，非空）
+        const b2 = readBindings(bindingsFile).find((b) => b.key === 'm1:c1')!;
+        assert.notEqual(b2.sessionId, b1.sessionId, '绑定已切到新座');
+        const newRt = daemon.get(b2.sessionId)!;
+        const r = await newRt.runtime.harness.tools.execute('task_status', { taskIds: null }, newRt.runtime.harness.safety);
+        assert.ok(r.ok, `task_status 执行成功：${r.ok ? '' : r.error.message}`);
+        if (r.ok) {
+          assert.match(r.value.stdout, /task records \(terminal/);
+          assert.match(r.value.stdout, new RegExp(`${task.id} \\(exec, stopped, manual\\) bg-five-min`), '复制记录带取消原因');
+        }
+      },
+      (tmp) => [{ id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'full-access', allow: { kind: 'all' }, sessionKind: 'sunx' }],
+    );
   });
 
   test('② 运行中第二条消息走 steer 路径:排队 ack「已加入排队」+ 队列帧可观测', async () => {

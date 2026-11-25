@@ -124,17 +124,26 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n');
   afterWrite?.(loadChannels().value); // daemon 注入:applyConfigs(teardown 该通道适配器)+config-changed
   // ② 绑定解绑+在座释放（active=用户正在看,不释放;非 active 尽力释放,snapshot/pty 不再被旧座引用）
+  // 被清会话 id 收集（GUI 据此 SESSION_DELETED_EVENT 回欢迎页+卸页签池）——**绑定座直收是根修**
+  // （2026-11-25 用户报障「删除通道后没有回到普通对话的欢迎页」）：rootOverride 指到工作区的
+  // 活会话 dataDir 在通道容器外,③ 的 dataDir 前缀扫描收不进,GUI 收不到事件不回欢迎页;
+  // 运行时 id+journalId 双列（GUI 两 ref 双寻址）
+  const removedSessionIds: string[] = [];
+  const pushRemoved = (sid: string): void => {
+    if (!removedSessionIds.includes(sid)) removedSessionIds.push(sid);
+  };
   const prefix = `${id}:`;
   for (const b of io.bindings.all()) {
     if (!b.key.startsWith(prefix)) continue;
     if (io.activeSessionId() !== b.sessionId) io.releaseSession(b.sessionId);
+    pushRemoved(b.sessionId);
+    if (b.journalId !== undefined) pushRemoved(b.journalId);
     io.bindings.remove(b.key);
   }
   // ③ 聊天域目录真删（`im-<slugify(id)>-*` 前缀=该通道全部聊天;recursive+force 尽力而为）
   const domainPrefix = `im-${slugify(id, { max: 60, fallback: 'chat' })}-`;
   const container = channelsContainerDir();
   let removedDomains = 0;
-  const removedSessionIds: string[] = [];
   try {
     for (const ent of fs.readdirSync(container, { withFileTypes: true })) {
       if (!ent.isDirectory() || !ent.name.startsWith(domainPrefix)) continue;
