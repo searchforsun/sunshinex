@@ -642,6 +642,31 @@ test('⑲ 排队两选项:回执附选项;1=置首模拟插入(idle=直接发出
   assert.ok(h.acks[7]!.text.includes('当前空闲，本条已直接开始处理'));
 });
 
+// ㉒ 聊天名称回填（2026-11-25 用户报障「hover 还是显示聊天 id,不是聊天名称」）：既有绑定
+// chatTitle 缺省/变化时,后续消息带得到名称即补写绑定档（群聊=群名;单聊回落发送者姓名）
+test('㉒ 聊天名称回填:绑定缺名时按消息补写;单聊回落姓名;无名称零动作;改名同步新名', async () => {
+  const h = makeHarness();
+  h.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 's1', journalId: 'j1', updatedAt: 1 });
+  h.runtimes.set('s1', makeRuntime({ journalId: 'j1' }));
+  await h.router.handleInbound(mkMsg({ msgId: 'bt1', chatKind: 'group', atBot: true, userId: 'u1', chatTitle: '算法组' }));
+  assert.equal(h.bindings.get(bindingKey('m1', 'c1'))!.chatTitle, '算法组', '既有绑定补写群名');
+  // 群改名:名称变化同步（hover/侧栏随消息跟到新名,不永久钉旧名）
+  await h.router.handleInbound(mkMsg({ msgId: 'bt2', chatKind: 'group', atBot: true, userId: 'u1', chatTitle: '算法组改名' }));
+  assert.equal(h.bindings.get(bindingKey('m1', 'c1'))!.chatTitle, '算法组改名');
+  // 单聊有发送者姓名 → 回落人名补写（单聊名称=聊天人名称）
+  const h2 = makeHarness();
+  h2.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 's1', journalId: 'j1', updatedAt: 1 });
+  h2.runtimes.set('s1', makeRuntime({ journalId: 'j1' }));
+  await h2.router.handleInbound(mkMsg({ msgId: 'bt3', chatKind: 'direct', userId: 'u1', userDisplay: '景楷' }));
+  assert.equal(h2.bindings.get(bindingKey('m1', 'c1'))!.chatTitle, '景楷');
+  // 单聊无 userDisplay → 无名称可补,零动作（卡面回落 chatId）
+  const h3 = makeHarness();
+  h3.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 's1', journalId: 'j1', updatedAt: 1 });
+  h3.runtimes.set('s1', makeRuntime({ journalId: 'j1' }));
+  await h3.router.handleInbound(mkMsg({ msgId: 'bt4', chatKind: 'direct', userId: 'u1' }));
+  assert.equal(h3.bindings.get(bindingKey('m1', 'c1'))!.chatTitle, undefined);
+});
+
 // ⑳ Sunx 模式（2026-11-24 用户裁定「通道支持 Sunx,品性会话级,/new 仅品性复用」）：新建腿
 // createOpts 透传 kind/name/charter;/new 同样透传（品性沿用,对话全新）;ack 文案明示品性沿用
 test('⑳ Sunx 模式:新建与 /new 都透传 kind/name/charter;ack 明示品性沿用', async () => {

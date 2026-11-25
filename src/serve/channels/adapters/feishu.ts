@@ -357,7 +357,11 @@ export class FeishuAdapter implements ChannelAdapter {
         const resp = (await this.client.request({ method: 'GET', url: `/open-apis/im/v1/chats/${chatId}` })) as LarkChatResponse;
         const name = resp?.data?.name;
         return typeof name === 'string' && name !== '' ? name : undefined;
-      } catch {
+      } catch (e) {
+        // 群名读取失败可诊断（2026-11-25 用户报障「hover 还是显示聊天 id」）:群聊名称需应用
+        // 开通「获取群组信息」(im:chat:readonly)——失败静默降级仍按 chatId 展示,但留一行日志
+        // 供排查（每 chat 一次,缓存 Promise 保证不刷屏）
+        (this.deps.log ?? (() => {}))(`feishu chat info 读取失败(${chatId}): ${e instanceof Error ? e.message : String(e)}；群聊名称需应用开通 im:chat:readonly`);
         return undefined;
       }
     })();
