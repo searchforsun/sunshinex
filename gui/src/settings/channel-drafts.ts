@@ -59,9 +59,15 @@ export const allowLabel = (d: ChannelDraft): string => {
   return `${t('Allow-list', '白名单')}(${n})`;
 };
 
-/** 卡片展示名（2026-11-22 用户裁定「应用名称是飞书1,编辑 feishu-1 是什么」:显示名=应用名称,
- *  缺省回退通道 id(内部标识如实示人)——不再回退平台名(与副标重复成「飞书 飞书」) */
-export const displayNameOf = (d: ChannelDraft): string => (d.name !== '' ? d.name : d.id);
+/** 卡片展示名（2026-11-22 用户裁定「应用名称是飞书1,编辑 feishu-1 是什么」:显示名=应用名称;
+ *  缺省回退**平台默认名占位**——2026-11-25 用户裁定「加载飞书名称时,使用 我的飞书机器人 占位,
+ *  和默认名称一致」:自动取名在保存后异步回填,回填前卡面显平台默认名(与新增弹窗输入框占位同源),
+ *  不再示人内部通道 id;无占位平台(mock 等)仍回退 id） */
+export const displayNameOf = (d: ChannelDraft): string => {
+  if (d.name !== '') return d.name;
+  const ph = NAME_PLACEHOLDERS[d.platform];
+  return ph !== undefined ? t(ph.en, ph.zh) : d.id;
+};
 
 export const platformLabel = (v: string): string => {
   const p = CHANNEL_PLATFORMS.find((x) => x.v === v);

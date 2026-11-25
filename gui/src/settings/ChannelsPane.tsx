@@ -160,7 +160,8 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
   /** 删除确认弹窗态(2026-11-23 用户裁定「删除增加弹窗确认,不是原地二次确认」):id+展示名 */
   const [delAsk, setDelAsk] = useState<{ id: string; name: string } | null>(null);
   /** 删除钮:开确认弹窗(真删除不可恢复,文案明示) */
-  const askDelete = (d: ChannelDraft): void => setDelAsk({ id: d.id, name: displayNameOf(d) });
+  // 确认文案用**真名或内部 id**(未命名不套平台占位):删除不可逆,须精确指认是哪一条
+  const askDelete = (d: ChannelDraft): void => setDelAsk({ id: d.id, name: d.name !== '' ? d.name : d.id });
   /** 弹窗确认 → DELETE /channels/:id 真删除(条目+绑定+聊天域目录)→ 本地摘卡+墓碑+重拉 */
   const confirmDelete = (): void => {
     if (delAsk === null || savingId !== '') return;
@@ -383,11 +384,14 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         ))}
       </ul>
       {/* 新增/编辑弹窗:标题=应用名称(2026-11-22 用户裁定「应用名称是飞书1,编辑 feishu-1 是什么」
-          ——显示名回退通道 id);字段面 ChannelModalForm 单点 */}
+          ;未命名回退平台默认名占位——与卡面同源 displayNameOf,2026-11-25 用户裁定);字段面
+          ChannelModalForm 单点 */}
       {modal !== null && (
         <EditorModal
           open
-          title={modal.mode === 'add' ? t('New channel', '新增通道') : t(`Edit ${editingDraft?.name || (modal.id ?? '')}`, `编辑 ${editingDraft?.name || (modal.id ?? '')}`)}
+          title={modal.mode === 'add'
+            ? t('New channel', '新增通道')
+            : t(`Edit ${editingDraft !== undefined ? displayNameOf(editingDraft) : (modal.id ?? '')}`, `编辑 ${editingDraft !== undefined ? displayNameOf(editingDraft) : (modal.id ?? '')}`)}
           onClose={() => setModal(null)}
           onSubmit={submitChannel}
         >
