@@ -693,7 +693,7 @@ export class ChannelRouter {
     const effort = snap.effort !== undefined ? (EFFORT_LABELS[snap.effort] ?? snap.effort) : '跟随全局默认';
     await this.deps.ack(
       msg,
-      `已切换到新会话。当前模型：${snap.model ?? '默认主模型'}，思考强度：${effort}。\n调整请使用 /model、/effort 等命令，其他命令可使用 /help 查看。`,
+      `已切换到新会话。\n当前模型：${snap.model ?? '默认主模型'}\n思考强度：${effort}\n调整请使用 /model、/effort 等命令\n其他命令可使用 /help 查看。`,
     );
   }
 
