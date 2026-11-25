@@ -4861,10 +4861,16 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-sunx-ws-anchor .proj-pop > .proj-pop-scroll,
 .sx-sunx-ws-anchor .proj-pop .proj-rows-scroll { max-height: 138px; overflow-y: auto; }
 
-/* 通道组行 >V(2026-11-25 终裁「常显」——hover 形三轮用户侧均未现形,可见性优先):贴文字
-   右侧 6px(覆写基类 margin-left:auto 贴行尾形),恒显 opacity:1,随组开合旋转(收起>展开∨);
-   分区头(「通道」行)维持 hover 显形口径不变 */
-.sx-group-head .sx-side-chev { margin-left: 6px; opacity: 1; }
+/* 通道组行 >V(2026-11-25 用户裁定终版「hover 显形正确,位置错」根修):名称 span .sx-ws-name
+   flex:1 撑满整行把箭头顶到最右缘(被行尾 ⚙ 簇覆盖=「hover 没显示」真根因)——通道组头收窄
+   名称不增长(flex:0 1 auto),箭头紧跟应用名文字右侧 6px;hover/聚焦显形,随组开合旋转。
+   作用域 .sx-channel-group-head 限定通道组行(项目组头同类别名不受影响,项目行名占满全行的
+   悬浮覆盖语义保留)。分区头(「通道」行)hover 显形口径不变 */
+.sx-channel-group-head .sx-ws-name { flex: 0 1 auto; }
+.sx-channel-group-head .sx-side-chev { margin-left: 6px; }
+.workspace-row:hover .sx-channel-group-head .sx-side-chev,
+.sx-channel-group-head:hover .sx-side-chev,
+.sx-channel-group-head:focus-within .sx-side-chev { opacity: 1; }
 
 /* 通道弹窗品性域(2026-11-25 用户裁定「品性编辑框和新建 sunx 的品性编辑大小对齐」):新建
    Sunx 弹窗同语言——软底无边框 mono,六行起步可纵向拉伸;.sx-editor-modal-fields textarea

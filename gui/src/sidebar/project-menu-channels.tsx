@@ -134,7 +134,7 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                 <div className="workspace-row" style={{ display: 'flex', alignItems: 'center' }}>
                   <button
                     type="button"
-                    className="workspace-toggle sx-group-head"
+                    className="workspace-toggle sx-group-head sx-channel-group-head"
                     aria-expanded={gOpen}
                     onClick={() => toggleGroup(g.key)}
                   >
