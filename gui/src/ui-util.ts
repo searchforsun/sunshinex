@@ -449,7 +449,9 @@ export function applyFilePick(
 const jumpLit = new WeakMap<Element | Document, { el: Element; timer: number }>();
 /** 面板首行点亮(2026-11-24 用户裁定「点击顶部的后台任务/待办/计划书/团队任务等触发点也要高亮」):
  *  顶栏计数钮开的是「无特定落点」的页签——点亮面板**第一行**作落点确认。页签体懒加载+数据
- *  异步到位,轮询可见 .sx-tabbody 至 2.5s 上限;无行面页签(diff/文件)轮询自然过期零副作用 */
+ *  异步到位,轮询可见 .sx-tabbody 至 2.5s 上限;无行面页签(diff/文件)轮询自然过期零副作用。
+ *  后台任务特例(2026-11-25 用户报障「后台任务绑定错误,显示到了第一个」):顶栏计数语义=
+ *  **运行中**任务数,落点应绑运行中的那一行(多运行中取列表靠前=最近启动),无运行中才回落首行 */
 const PANEL_ROW_SELECTORS = '.tb-card, .tb-task-main, .todo-card, .mem-row, li[data-skill-id]';
 export function lightFirstPanelRow(type: string, deadline: number = performance.now() + 2500): void {
   // 先等目标页签成为活动页签(开签 state 提交是异步的,立即查会点亮旧活动面板首行——实测记忆/待办错位根因)
@@ -460,7 +462,10 @@ export function lightFirstPanelRow(type: string, deadline: number = performance.
     return;
   }
   const body = document.querySelector<HTMLElement>('.sx-tabbody:not([style*="none"])');
-  const el = body?.querySelector(PANEL_ROW_SELECTORS) ?? null;
+  const rows = [...(body?.querySelectorAll<HTMLElement>(PANEL_ROW_SELECTORS) ?? [])];
+  const el = (type === 'bgtasks' ? rows.find((r) => r.querySelector('.bg-running') !== null) : undefined)
+    ?? rows[0]
+    ?? null;
   if (el !== null) {
     markJumpHighlight(el);
     return;

@@ -162,14 +162,8 @@ function AppShell(): JSX.Element {
   const [catalogTick, setCatalogTick] = useState({ memory: 0, learned: 0 });
   /** G14.176 create_agent_team_task 行点开的定位信号(任务板滚动高亮对应卡) */
   const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
-  /** 待办卡主名字定位信号(2026-11-03):nonce 变更即滚到关联轮次正文气泡(Chat 消费) */
-  const [todoFocus, setTodoFocus] = useState<{ key: string; nonce: number } | null>(null);
   /** 2026-11-04 待办行点击定位信号(Chat 待办字样→开待办页签+定位对应卡) */
-  const [todoLocateSig, setTodoLocateSig] = useState<{ sig: string; nonce: number } | null>(null);
-  const onLocateTodo = useCallback((batch: import('./pages/Chat').TodoBatch): void => {
-    if (batch.userKey === undefined) return;
-    setTodoFocus({ key: batch.userKey, nonce: Date.now() });
-  }, []);
+  const [todoLocateSig, setTodoLocateSig] = useState<{ sig: string; nonce: number; title?: string } | null>(null);
   const connRef = useRef<Connection | null>(null);
   /** 事件分发判据:连接回调闭包在装配时固定,会话切换经 ref 免闭包陈旧 */
   const sessionRef = useRef<string>('');
@@ -635,7 +629,7 @@ function AppShell(): JSX.Element {
     composeInFromMenu, collapseMenuStable, openProjectDirectoryStable, openFileFromTreeStable,
   } = useAppMenu({ page, isWelcome, openSessionId, tabState, sidebarFloating, menuClosed, setMenuClosed, closeMenuDrawer, navControls, recordNav, openSession, openTabInSession, presetCompose, setSchedulesMain, setScheduleFocus, settingsOpen, openSettings, setSettingsPane, setTabStates, liveSeatRef, setMenuDir, openProjectDirectory, openFileFromTree, setPage });
   /** 标签体服务面+页签元数据回写+板刷新+side 快照并入+派生值面收口 use-app-services(D62 批H) */
-  const { onActivateTab, onTabMeta, services, bgRunningCount, projectNameOfOpenRoot } = useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, onLocateTodo, openLeaderBubble, refreshFromSnapshot });
+  const { onActivateTab, onTabMeta, services, bgRunningCount, projectNameOfOpenRoot } = useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, openLeaderBubble, refreshFromSnapshot });
   const activeTab = tabState.tabs.find((t) => t.uid === tabState.activeUid) ?? null;
 
   /** 右栏开合(从 WindowControls 内联抽单点):搜索「操作」分类与窗控钮共用同一语义 */
@@ -783,7 +777,6 @@ function AppShell(): JSX.Element {
     bgRunningCount,
     projection,
     setTodoBatches,
-    todoFocus,
     leaderFocus,
     startSideChat,
     todoLocateStable,

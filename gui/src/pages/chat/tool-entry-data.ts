@@ -43,13 +43,31 @@ export function withoutPurpose(name: string, input: Record<string, unknown>): Re
   return rest;
 }
 
+/** 待办批次（2026-11-25 用户裁定「一个待办可以跨多个轮次:给待办一个标题参数,代替用户输入信息」:
+ *  title=模型自拟清单名；同标题跨轮更新=同一待办(key/ts=首写落定、updatedTs=最近更新)；
+ *  goal/userKey(用户气泡回链)退役。历史批次留在转录工具行） */
 export interface TodoBatch {
   key: string;
   ts: number;
-  goal: string;
-  /** 关联轮次用户条键(k<seq>,2026-11-03 待办卡定位面):待办页签点主名字滚到该正文气泡;旧投影无 */
-  userKey?: string;
+  /** 最近一次更新时刻（跨轮归并后就地推进；缺省=ts） */
+  updatedTs?: number;
+  /** 模型给清单起的标题（todo_write.title；缺省=按条目签名归并,旧载荷兼容） */
+  title?: string;
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
+}
+
+/** 待办归并单点（2026-11-25「一个待办跨多轮」）：按标题把多批 todo_write 收敛成同一待办——
+ *  首写 key/ts 落定（唯一 id/创建时间不漂），条目与 updatedTs 取最新；无标题批次退回条目签名
+ *  归并（旧行为）。输出按 updatedTs 升序，末位=最近更新的待办（顶条/顶栏计数取它）。 */
+export function mergeTodoBatches(batches: ReadonlyArray<TodoBatch>): TodoBatch[] {
+  const groupOf = (b: TodoBatch): string => (b.title !== undefined ? `t:${b.title}` : `s:${b.items.map((i) => i.text).join('|')}`);
+  const byGroup = new Map<string, TodoBatch>();
+  for (const b of [...batches].sort((x, y) => (x.updatedTs ?? x.ts) - (y.updatedTs ?? y.ts))) {
+    const g = groupOf(b);
+    const prev = byGroup.get(g);
+    byGroup.set(g, prev !== undefined ? { ...prev, updatedTs: b.updatedTs ?? b.ts, items: b.items } : { ...b });
+  }
+  return [...byGroup.values()].sort((x, y) => (x.updatedTs ?? x.ts) - (y.updatedTs ?? y.ts));
 }
 
 /** 工具折叠行动词双语展示单点(2026-11-05 用户裁定:EN 不再露原始工具名——两语都见名知意,

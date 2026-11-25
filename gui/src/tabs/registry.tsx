@@ -63,9 +63,7 @@ export interface TabServices {
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
   readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   /** 2026-11-04 待办行点击定位信号:待办页签滚到同签名卡并闪光 */
-  readonly todoLocateSig: { sig: string; nonce: number } | null;
-  /** 待办卡主名字定位(2026-11-03):滚到该批关联轮次的正文输入气泡 */
-  readonly onLocateTodo?: (batch: import('../pages/Chat').TodoBatch) => void;
+  readonly todoLocateSig: { sig: string; nonce: number; title?: string } | null;
   /** G14.2xx b create_agent_team_task 行任务名点击 → 开智能体团队页签并定位高亮(App 注入 openBoardTab+setTaskFocus;
    *  子智能体转录页与主对话 Chat 同构消费) */
   readonly onOpenTask: (ref: string) => void;
@@ -237,7 +235,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
   {
     id: 'tasks',
     group: 'session',
-    // G14.174 重定位:任务页签 → 待办(每批 todo_write 一卡的卡片流;原看板迁任务板页签)
+    // G14.174 重定位:任务页签 → 待办(会话级当前待办单卡,2026-11-25「一个就是一个」;原看板迁任务板页签)
     title: () => t('Todos', '待办'),
     resolveKey: () => '',
     singleton: true,
@@ -247,7 +245,6 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         conn={p.conn}
         sessionId={p.sessionId}
         refreshNonce={p.panelRefreshNonce}
-        onLocate={p.services.onLocateTodo}
         locateSig={p.services.todoLocateSig}
       />
     ),

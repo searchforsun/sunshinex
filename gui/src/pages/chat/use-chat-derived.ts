@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { BoardTeamRef, TaskBoardState } from '../../projection';
 import type { ChatEntry, ChatState } from '../../chat-reducer';
 import type { TodoBatch } from './ToolEntry';
+import { mergeTodoBatches } from './tool-entry-data';
 
 /** 派生投影面(D32 第六批批F-4 自 Chat.tsx 平移):任务名映射(G14.172)/待办批次
  *  (G14.174 重建+同清单合并)/关联轮次输入/顶栏动态计数/上抛去重 effects。全部纯投影,
@@ -163,9 +164,6 @@ interface ChatDerivedDeps {
   readonly onTodoBatches?: (batches: TodoBatch[]) => void;
 }
 
-/** 用户气泡 md → 单行纯文本:剥引用前缀与链接标记(待办批次 goal) */
-const stripGoal = (md: string): string => md.replace(/^>\s?/, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
-
 /** 电脑控制指示判定面单点在 computer-use-contract(2026-10-27 技术债轮收敛:server 名/动作集与
  *  ToolEntry 图标前缀三方共用,原字面量复制改导入单点);原路径再导出保徽标测试与既有引用零迁移 */
 import { isComputerUseControlTool } from './computer-use-contract';
@@ -176,6 +174,8 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskAgentOf: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
   teamNameOf: (ref: string) => string;
   todoBatches: TodoBatch[];
+  /** 会话顶待办条显示闸:最近两个 run 内有 todo_write 才 true（用户裁定「最近两轮有触发改待办就显示」） */
+  todoRecent: boolean;
   todoActive: number;
   /** 待办总数(2026-11-11 用户裁定「顶栏数量=完整数量」:末批 items 总数,不随完成收缩) */
   todoTotal: number;
@@ -195,19 +195,13 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   const taskNameOf = useMemo(() => taskNameResolverOf(chat.entries, board), [chat.structureVersion, chat.seedGen, board]);
   const teamNameOf = useMemo(() => teamNameResolverOf(chat.entries, teams), [chat.structureVersion, chat.seedGen, teams]);
   const taskAgentOf = useMemo(() => taskAgentResolverOf(chat.entries), [chat.structureVersion, chat.seedGen]);
-  /** G14.174 待办批次(每批 todo_write 一卡):时间 + 关联轮次用户输入 + 条目快照——
-   *  从转录行重建(种子回放/live 两路同源),经 onTodoBatches 上抛供「待办」页签。
-   *  P11 T7 字段单源:清单直读 entry.input.todos(内核条目 name/input 全量随档,旁路/md
-   *  两路解析退役——live 流式面待办批次与种子回放同源不再有缺平面) */
+  /** G14.174 待办(2026-11-25 用户裁定「一个待办可以跨多个轮次:给待办一个标题参数,代替用户输入
+   *  信息」):转录各批 todo_write 经 mergeTodoBatches 按**标题**归并——同标题跨轮更新=同一待办
+   *  (进度推进/措辞改写收敛),不同标题=不同待办;goal/userKey(用户气泡回链)退役。
+   *  P11 T7 字段单源:清单直读 entry.input.todos(内核条目 name/input 全量随档) */
   const todoBatches = useMemo<TodoBatch[]>(() => {
-    const out: TodoBatch[] = [];
-    let lastGoal = '';
-    let lastUserKey: string | undefined = undefined;
+    const raw: TodoBatch[] = [];
     for (const e of chat.entries) {
-      if (e.kind === 'user') {
-        lastGoal = stripGoal(e.md);
-        lastUserKey = e.key;
-      }
       if (e.kind !== 'tool' || e.name !== 'todo_write') continue;
       const input = e.input ?? {};
       const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
@@ -218,17 +212,28 @@ export function useChatDerived(deps: ChatDerivedDeps): {
         }))
         .filter((x) => x.text !== '');
       if (items.length === 0) continue;
-      out.push({ key: e.key, ts: e.ts ?? 0, goal: lastGoal, userKey: lastUserKey, items });
+      const title = typeof input.title === 'string' ? input.title.trim() : '';
+      raw.push({ key: e.key, ts: e.ts ?? 0, updatedTs: e.ts ?? 0, ...(title !== '' ? { title } : {}), items });
     }
-    // G14.179 同清单合并:条目文本签名相同=同一份待办的进度推进(0/3→2/3→3/3 三卡即重复——
-    // 用户裁决「同属一个不拆」),按签名只保留最新一批,按其时间正序输出
-    const bySig = new Map<string, TodoBatch>();
-    for (const b of out) {
-      const sig = b.items.map((x) => x.text).join('\n');
-      const prev = bySig.get(sig);
-      if (prev === undefined || b.ts >= prev.ts) bySig.set(sig, b);
+    return mergeTodoBatches(raw);
+  }, [chat.structureVersion, chat.seedGen]);
+
+  /** 会话顶待办条显示闸（用户裁定「顶部还是最近两轮有触发改待办就显示,显示时机不变」）:
+   *  最近一批待办更新落在**最近两个 run** 内才显示——老待办不再常驻顶部;轮次口径=转录 run 条
+   *  的序位（视图条目无 seq,取最后两个 run 的数组起点作闸）。 */
+  const todoRecent = useMemo<boolean>(() => {
+    const entries = chat.entries;
+    let lastRunIdx = -1;
+    let secondLastRunIdx = -1;
+    for (let i = 0; i < entries.length; i += 1) {
+      if (entries[i]!.kind === 'run') {
+        secondLastRunIdx = lastRunIdx;
+        lastRunIdx = i;
+      }
     }
-    return [...bySig.values()].sort((a, b) => a.ts - b.ts);
+    if (lastRunIdx < 0) return false;
+    const gate = secondLastRunIdx >= 0 ? secondLastRunIdx : lastRunIdx;
+    return entries.slice(gate).some((e) => e.kind === 'tool' && e.name === 'todo_write');
   }, [chat.structureVersion, chat.seedGen]);
 
   /** 顶栏动态计数:待办=末批未完成条目;任务板=pending+running */
@@ -260,7 +265,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     onTodoBatches?.(todoBatches);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSig]);
-  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoActive, todoTotal, taskActive, taskTotal, taskDone, taskRunning, computerUseActive };
+  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoRecent, todoActive, todoTotal, taskActive, taskTotal, taskDone, taskRunning, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { chaseScrollBottom, cleanPathInput, isAbsPath, joinWsPath, messageTimeMs, normRel, rAFConverge, workspaceOfAbs } from './ui-util';
+import { chaseScrollBottom, cleanPathInput, isAbsPath, joinWsPath, lightFirstPanelRow, messageTimeMs, normRel, rAFConverge, workspaceOfAbs } from './ui-util';
 import { setLanguage } from './i18n';
 
 /** rAFConverge/chaseScrollBottom 特征化钉(2026-10-27 技术债轮 D54② 抽取前先锚):
@@ -187,5 +187,40 @@ describe('messageTimeMs(气泡/正文尾部消息时间)', () => {
     setLanguage('en');
     expect(messageTimeMs(new Date(2026, 10, 6, 14, 0).getTime(), now)).toBe('Yesterday 14:00');
     expect(messageTimeMs(new Date(2026, 10, 5, 14, 0).getTime(), now)).toBe('11/5 14:00');
+  });
+});
+
+
+describe('lightFirstPanelRow 顶栏触发点绑定(2026-11-25 报障「后台任务绑定错误,显示到了第一个」)', () => {
+  const panel = (rows: string): HTMLElement => {
+    const root = document.createElement('div');
+    root.innerHTML = `<div class="sx-tab active" data-type="bgtasks"></div>
+      <div class="sx-tabbody">${rows}</div>`;
+    document.body.appendChild(root);
+    return root;
+  };
+  it('bgtasks: 点亮运行中行(顶栏计数=运行中语义),不点亮列表首行', () => {
+    const root = panel(`
+      <section class="tb-card" id="r1"><span class="tb-status-dot bg-done"></span></section>
+      <section class="tb-card" id="r2"><span class="tb-status-dot bg-running"></span></section>`);
+    try {
+      lightFirstPanelRow('bgtasks', performance.now() + 100);
+      expect(root.querySelector('#r2')!.classList.contains('jump-hl')).toBe(true);
+      expect(root.querySelector('#r1')!.classList.contains('jump-hl')).toBe(false);
+    } finally {
+      root.remove();
+    }
+  });
+  it('bgtasks: 无运行中行 → 回落首行', () => {
+    const root = panel(`
+      <section class="tb-card" id="r1"><span class="tb-status-dot bg-done"></span></section>
+      <section class="tb-card" id="r2"><span class="tb-status-dot bg-failed"></span></section>`);
+    try {
+      lightFirstPanelRow('bgtasks', performance.now() + 100);
+      expect(root.querySelector('#r1')!.classList.contains('jump-hl')).toBe(true);
+      expect(root.querySelector('#r2')!.classList.contains('jump-hl')).toBe(false);
+    } finally {
+      root.remove();
+    }
   });
 });

@@ -76,13 +76,16 @@ export interface SessionSnapshotPage {
   limit?: number;
 }
 
-/** 会话 todo 批次行(快照载荷面):daemon 权威投影,GUI「待办」页签直显(不再仅靠转录派生) */
+/** 会话 todo 批次行(快照载荷面):daemon 权威投影,GUI「待办」页签直显(不再仅靠转录派生)。
+ *  2026-11-25「给待办一个标题参数」:title=模型自拟清单名,同标题跨轮更新归并为**同一待办**
+ *  (key/ts=首写落定,updatedTs=最近更新);goal/userKey(用户气泡回链)退役 */
 interface SessionTodoBatch {
   key: string;
   ts: number;
-  goal: string;
-  /** 关联轮次用户条(2026-11-03 待办卡定位面):正文 chat 条目键 k<seq>——GUI 凭此滚到对应输入气泡 */
-  userKey?: string;
+  /** 最近一次更新时刻(跨轮归并后就地推进;旧行缺省=ts) */
+  updatedTs?: number;
+  /** 模型给清单起的标题(todo_write.title;缺省=按条目签名归并,旧载荷兼容) */
+  title?: string;
   items: Array<{ text: string; status: 'completed' | 'in_progress' | 'pending' }>;
 }
 
@@ -500,9 +503,6 @@ export class SessionRuntime {
   private todoBatches: SessionTodoBatch[] = [];
   /** fork 血缘读数缓存( lineage 随档不变,按 journalId 键控失效——换挂/轮转后重读) */
   private forkedFromCache: { jid: string; info: SessionSnapshot['forkedFrom'] } | null = null;
-  /** todo 批次归属 goal(最近一条 user 行 md;live 与播种同口径) */
-  private todoLastGoal = '';
-  private todoLastUserSeq = 0;
   /** attach/出生挂载的会话日志（T2）：在场即链行续落（context.onContextChange 订阅）与 teardown seal；
    *  daemon 侧新会话出生即挂（惰性建档——首 run 首条 append 才落盘，空会话零文件）；resume 转录由
    *  事件转录面承担，msg 行非 TUI ChatItem（daemon 档只落 chain） */
@@ -654,18 +654,15 @@ export class SessionRuntime {
     this.trackTodoEvent(ev);
   }
 
-  /** todo 批次 live 增量(权威投影维护面):user 段=归属 goal 归位;todo_write 工具段=批次
-   *  追加/按 seq 幂等覆盖(段回填重发不重账)。与 seedTodoBatches 同一签名去重口径(下游) */
+  /** todo 批次 live 增量(权威投影维护面):todo_write 工具段=按**标题**归并(2026-11-25:
+   *  同标题跨轮更新=同一待办,首写 key/ts 不漂,updatedTs 推进;无标题退签名归并,旧行为) */
   private trackTodoEvent(ev: KernelEvent): void {
     if (ev.t !== 'seg-open') return;
     const en = ev.entry;
-    if (en.kind === 'user') {
-      this.todoLastGoal = en.md;
-      this.todoLastUserSeq = en.seq;
-      return;
-    }
     if (en.kind !== 'tool' || en.name !== 'todo_write') return;
-    const arr = en.input !== undefined && Array.isArray((en.input as { todos?: unknown }).todos) ? ((en.input as { todos: unknown[] }).todos) : [];
+    const rawInput = en.input as { todos?: unknown; title?: unknown } | undefined;
+    const arr = rawInput !== undefined && Array.isArray(rawInput.todos) ? rawInput.todos : [];
+    const title = typeof rawInput?.title === 'string' ? rawInput.title.trim() : '';
     const items = arr
       .map((o) => {
         const x = (o ?? {}) as { text?: unknown; status?: unknown };
@@ -675,32 +672,28 @@ export class SessionRuntime {
       })
       .filter((x) => x.text !== '');
     if (items.length === 0) return;
-    // 2026-11-03 用户裁定「待办要加唯一 id,不要每次覆盖更新都生成新的面板」:签名=条目文本集——
-    // 同签=同一份待办进度推进,就地更状态(唯一 id=key/ts 首写落定不漂),不另立新卡
-    const sig = items.map((i) => i.text).join('|');
-    const idx = this.todoBatches.findIndex((b) => b.items.map((i) => i.text).join('|') === sig);
-    if (idx >= 0) this.todoBatches[idx] = { ...this.todoBatches[idx], items };
-    else this.todoBatches.push({ key: `t${en.seq}`, ts: en.ts, goal: this.todoLastGoal, userKey: `k${this.todoLastUserSeq}`, items });
+    // 归并键:标题优先(模型改写条目措辞也收敛同一待办);无标题退条目签名(旧行为)
+    const groupOf = (b: SessionTodoBatch): string => (b.title !== undefined ? `t:${b.title}` : `s:${b.items.map((i) => i.text).join('|')}`);
+    const mine = title !== '' ? `t:${title}` : `s:${items.map((i) => i.text).join('|')}`;
+    const idx = this.todoBatches.findIndex((b) => groupOf(b) === mine);
+    if (idx >= 0) this.todoBatches[idx] = { ...this.todoBatches[idx], updatedTs: en.ts, items };
+    else this.todoBatches.push({ key: `t${en.seq}`, ts: en.ts, updatedTs: en.ts, ...(title !== '' ? { title } : {}), items });
   }
 
   /** journal 全量行 → todo 批次(attach 播种单点,2026-10-31 用户裁定「任务历史持久化可见」):
-   *  user 行刷新归属 goal,todo_write tool 行入批(带 result 的行即终态);同签名保留最新
-   *  (GUI G14.179 同口径——同一份待办的进度推进不拆卡),ts 正序。坏行字段缺省回落逐行跳过 */
+   *  todo_write tool 行按**标题**归并(2026-11-25:同标题跨轮=同一待办,首写 key/ts/updatedTs 落定;
+   *  无标题退条目签名,旧行为),ts 正序。坏行字段缺省回落逐行跳过 */
   seedTodoBatches(rows: ReadonlyArray<SegRowLike>): void {
     for (const row of rows) {
       if (row.t !== 'seg') continue;
       const kind = typeof row.kind === 'string' ? row.kind : undefined;
-      if (kind === 'user') {
-        if (typeof row.md === 'string') this.todoLastGoal = row.md;
-        if (typeof row.seq === 'number') this.todoLastUserSeq = row.seq;
-        continue;
-      }
       if (kind !== 'tool') continue;
       const name = typeof row.name === 'string' ? row.name : undefined;
       const seq = typeof row.seq === 'number' ? row.seq : undefined;
       if (name !== 'todo_write' || seq === undefined) continue;
-      const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as { todos?: unknown }) : undefined;
+      const input = row.input !== undefined && typeof row.input === 'object' && row.input !== null ? (row.input as { todos?: unknown; title?: unknown }) : undefined;
       const arr = input !== undefined && Array.isArray(input.todos) ? input.todos : [];
+      const title = typeof input?.title === 'string' ? input.title.trim() : '';
       const items = arr
         .map((o) => {
           const x = (o ?? {}) as { text?: unknown; status?: unknown };
@@ -710,20 +703,21 @@ export class SessionRuntime {
         })
         .filter((x) => x.text !== '');
       if (items.length === 0) continue;
-      const batch: SessionTodoBatch = { key: `t${seq}`, ts: typeof row.ts === 'number' ? row.ts : 0, goal: this.todoLastGoal, userKey: `k${this.todoLastUserSeq}`, items };
+      const batch: SessionTodoBatch = { key: `t${seq}`, ts: typeof row.ts === 'number' ? row.ts : 0, updatedTs: typeof row.ts === 'number' ? row.ts : 0, ...(title !== '' ? { title } : {}), items };
       const idx = this.todoBatches.findIndex((b) => b.key === batch.key);
       if (idx >= 0) this.todoBatches[idx] = batch;
       else this.todoBatches.push(batch);
     }
-    // 2026-11-03 用户裁定:同签(同一份待办)合并保留**首写** key/ts(唯一 id 稳定,创建时间=首写
-    // 时刻),条目状态取最新——与 live 路径唯一 id 语义对齐
-    const sigOf = (b: SessionTodoBatch): string => b.items.map((i) => i.text).join('|');
-    const bySig = new Map<string, SessionTodoBatch>();
-    for (const b of [...this.todoBatches].sort((a, b) => a.ts - b.ts)) {
-      const prev = bySig.get(sigOf(b));
-      bySig.set(sigOf(b), prev !== undefined ? { ...prev, items: b.items } : b);
+    // 2026-11-25:同标题(同一份待办)合并保留**首写** key/ts(唯一 id 稳定,创建时间=首写
+    // 时刻),条目与 updatedTs 取最新——与 live 路径同口径;无标题退签名归并(旧行为)
+    const groupOf = (b: SessionTodoBatch): string => (b.title !== undefined ? `t:${b.title}` : `s:${b.items.map((i) => i.text).join('|')}`);
+    const byGroup = new Map<string, SessionTodoBatch>();
+    for (const b of [...this.todoBatches].sort((a, b) => (a.updatedTs ?? a.ts) - (b.updatedTs ?? b.ts))) {
+      const g = groupOf(b);
+      const prev = byGroup.get(g);
+      byGroup.set(g, prev !== undefined ? { ...prev, updatedTs: b.updatedTs ?? b.ts, items: b.items } : b);
     }
-    this.todoBatches = [...bySig.values()].sort((a, b) => a.ts - b.ts);
+    this.todoBatches = [...byGroup.values()].sort((a, b) => a.ts - b.ts);
   }
 
   /** attach 回种(G14.2xx 内核层落库):journal 影子行折叠回影子投影——board/delegation 行经翻译
@@ -1869,7 +1863,6 @@ ${this.sessionCharter ?? ''}` }
     this.delegations = [];
     this.todos = []; // 真 /new 等价：待办清单随换新清空（TUI 软重置同语义）
     this.todoBatches = []; // 真 /new 等价：todo 批次权威投影随换新清空（2026-10-31 同上口径）
-    this.todoLastGoal = '';
     // 转录清空(v3):truncate 行落档(upToSeq=0 全清——重放视界与 live 清空对齐)+ 内核换新
     // (同一 onKernelEvent 挂点,后续段落新行;truncate 前落行——换新后旧条目不再可达)
     this.kernel.truncate(0);

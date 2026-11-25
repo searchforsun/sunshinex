@@ -8,6 +8,7 @@ import type { TabStates } from './tabs/tab-state';
 import type { BgTaskRow } from './projection';
 import type { AgentActivity } from './tabs/agent-activity';
 import type { TabServices } from './tabs/registry';
+import { mergeTodoBatches } from './pages/chat/tool-entry-data';
 import { pathBasename } from './ui-util';
 import type { TodoBatch, ChatSink } from './pages/Chat';
 
@@ -20,7 +21,7 @@ import type { TodoBatch, ChatSink } from './pages/Chat';
  * 快照并入主投影(2026-11-07「辅助投影挂主对话下」持久化面,开会话/辅助对账落定逐 side 并集
  * 合并)+ memo 派生值面(bgRunningCount/projectNameOfOpenRoot——ChatMemo/TabStripMemo 下发)。
  */
-export function useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, onLocateTodo, openLeaderBubble, refreshFromSnapshot }: {
+export function useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef, sideListing, projection, setProjection, setTabStates, agentActivitiesBySession, openSessionId, openRoot, setBgTasks, bgTasks, todoBatches, seededTodoBatches, setTodoBatches, taskFocus, openTaskFocus, todoLocateSig, openLeaderBubble, refreshFromSnapshot }: {
   connRef: RefObject<Connection | null>;
   sessionRef: MutableRefObject<string>;
   chatSinkRef: MutableRefObject<ChatSink | null>;
@@ -40,7 +41,6 @@ export function useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef
   taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
   openTaskFocus: (ref: string) => void;
   todoLocateSig: { sig: string; nonce: number } | null;
-  onLocateTodo: (batch: TodoBatch) => void;
   openLeaderBubble: (m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }) => void;
   refreshFromSnapshot: (snap: SnapshotResponse) => void;
 }): {
@@ -137,14 +137,10 @@ export function useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef
         }
         return merged;
       })(), todos: [...projection.sessionTodos], onTodoBatches: setTodoBatches,
-      // todo 批次合并(权威播种+转录派生):同签名派生优先(条目随回填/live 更新 ts 更新),ts 正序
-      todoBatches: (() => {
-        const bySig = new Map<string, TodoBatch>();
-        for (const b of seededTodoBatches) bySig.set(b.items.map((i) => i.text).join('|'), b);
-        for (const b of todoBatches) bySig.set(b.items.map((i) => i.text).join('|'), b);
-        return [...bySig.values()].sort((a, b) => a.ts - b.ts);
-      })(),
-      taskFocus, onOpenTask: openTaskFocus, todoLocateSig, onLocateTodo,
+      // 待办=权威播种+转录派生合并后**按标题跨轮归并**（2026-11-25「一个待办跨多轮」:
+      // 同标题更新收敛同一待办，首写 key/ts 落定；末位=最近更新的待办）
+      todoBatches: mergeTodoBatches([...seededTodoBatches, ...todoBatches]),
+      taskFocus, onOpenTask: openTaskFocus, todoLocateSig,
       onOpenLeader: openLeaderBubble,
       refreshBoard,
       bgTasks,
@@ -153,7 +149,7 @@ export function useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef
           ? Promise.resolve()
           : connRef.current.sessionTasks(openSessionId).then((rows) => setBgTasks(rows)),
     }),
-    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, onLocateTodo, todoLocateSig, refreshBoard, bgTasks, sideParentRef.current.size, openLeaderBubble],
+    [projection, stopTask, onTabMeta, agentActivitiesBySession, openSessionId, todoBatches, seededTodoBatches, taskFocus, openTaskFocus, todoLocateSig, refreshBoard, bgTasks, sideParentRef.current.size, openLeaderBubble],
   );
   return { onActivateTab, onTabMeta, services, bgRunningCount, projectNameOfOpenRoot };
 }

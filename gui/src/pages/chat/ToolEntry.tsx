@@ -60,7 +60,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   /** 成员转录面:发给 leader 的消息行点击 leader → 主对话定位该消息气泡(2026-11-08;缺省=开队卡) */
   onOpenLeader?: (m: { text: string }) => void;
   /** 2026-11-04 用户裁定:点「待办」字样打开侧栏待办页签并定位对应卡 */
-  onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
+  onOpenTodos?: (todos: Array<{ text: string; status: string }>, title?: string) => void;
   onOpenArtifacts?: () => void;
   /** G14.172 task_wait 行任务名解析(App 注入:board+转录映射单点;缺省显示原 id) */
   taskNameOf?: (id: string) => string;
@@ -351,9 +351,28 @@ export const ToolEntryView = memo(function ToolEntryView({
         /* G14.82:折叠行直接示问题文本(问询即内容,非动词+目标) */
         <span className="tool-file-base tool-cmd">{' '}{typeof input.question === 'string' ? input.question : ''}</span>
       ) : !hideTargetWhileRunning && toolName === 'todo_write' ? (
-        /* G14.138 折叠行本地化;G14.199 格式「待办 {完成}/{总数}」(对号去除,用户裁定) */
+        /* 2026-11-25 用户裁定「工具显示 更新待办 {待办名称}」「能够支持蓝色跳转」:折叠行目标位
+           显模型自拟清单标题(todo_write.title)为蓝链——点击开待办页签并按标题定位该待办;
+           无标题(旧批次/模型未给)回落 G14.199「完成/总数」灰字,展开体不变(本地化三态清单) */
         (() => {
+          const title = typeof input.title === 'string' ? input.title.trim() : '';
           const arr = Array.isArray(input.todos) ? (input.todos as Array<Record<string, unknown>>) : [];
+          if (title !== '') {
+            return (
+              <span
+                role={onOpenTodos !== undefined ? 'button' : undefined}
+                tabIndex={onOpenTodos !== undefined ? -1 : undefined}
+                className="tool-file-base tool-agent-link todo-title-link"
+                onClick={(e) => {
+                  if (onOpenTodos === undefined) return;
+                  e.stopPropagation(); // 定位点击不折叠行
+                  onOpenTodos(arr.map((o) => ({ text: String((o ?? {}).text ?? ''), status: String((o ?? {}).status ?? 'pending') })), title);
+                }}
+              >
+                {' '}{title}
+              </span>
+            );
+          }
           const done = arr.filter((o) => (o ?? {}).status === 'completed').length;
           return <span className="tool-file-base tool-cmd">{' '}{done}/{arr.length}</span>;
         })()

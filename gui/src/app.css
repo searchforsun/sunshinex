@@ -2089,11 +2089,23 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
 /* 2026-11-04 待办行点击定位闪光:accent 描边 1.8s 自灭(Chat 端 ToolEntry「待办」字样触发) */
-/* 2026-11-03 待办卡主名字=定位钮:点击滚到对应正文输入气泡(有 userKey 的批次才可点);
-   点击面=文字内联 span(外层 goal 仍 flex:1 撑位,非文字区点击落头部折叠);2026-11-03 用户裁定:无 hover 高亮 */
+/* 会话顶部待办条(2026-11-25 用户裁定「会话上部显示待办」):顶栏下、转录取上的常驻单行——
+   图标+进度 chip+细进度轨+当前进行项(单行省略);整条可点开待办页签。待办属会话不属气泡,
+   常驻显隐只随清单有无(组件无清单自返 null) */
+.session-todo-bar { flex: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 14px; border: none; border-bottom: 1px solid var(--border); background: transparent; color: var(--fg-secondary); cursor: pointer; text-align: left; font-size: calc(14px * var(--fz)); }
+.session-todo-bar:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg); }
+.session-todo-icon { flex: none; display: inline-flex; color: var(--fg-icon); }
+.session-todo-title { flex: none; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--fg); }
+.session-todo-count { flex: none; font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--fg); }
+.session-todo-track { flex: none; width: 56px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 10%, transparent); overflow: hidden; }
+.session-todo-track i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width var(--dur-basic) var(--ease-enter); }
+.session-todo-current { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-secondary); }
 .todo-card-goal-link { cursor: pointer; }
 
 .todo-card-goal { flex: 1; min-width: 0; font-size: calc(14px * var(--fz)); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 2026-11-25「去掉和用户消息的绑定」:卡头 goal 位改为静态「当前待办」标签(原为用户气泡回链,
+   userKey 定位面随裁撤退役),不用 accent 强调,与时间戳同层级 */
+.todo-card-goal { color: var(--fg-secondary); font-weight: 400; }
 /* 时间戳统一等宽(2026-11-11 用户裁定:主题即等宽,记忆日期也改 mono;dateStampMs 日期格式保留) */
 .todo-card-time { flex: none; display: inline-flex; align-items: center; gap: 3px; font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--fg-tertiary); }
 .todo-card-time svg { flex: none; }
@@ -4076,9 +4088,14 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .tool-exec:hover > .bg-exec-copy, .tool-exec:focus-within > .bg-exec-copy { opacity: 1; }
 .tool-exec { position: relative; }
 
-/* 正文「更新待办」行点击开右栏待办页签:与普通工具行同色同形,不显链接下划线/强调色 */
+/* 正文「更新待办」行点击开右栏待办页签:动词区与普通工具行同色同形,不显链接下划线/强调色
+   （2026-11-25 用户裁定「能够支持蓝色跳转」:待办标题=蓝链,下方 .todo-title-link 规则同档
+   后出胜出恢复强调色;动词「更新待办」仍压制） */
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span),
 .entry-tool[data-tool='todo_write'] .tool-summary :is(.tool-verb, .tool-agent-link, a, span):hover { text-decoration: none; color: inherit; }
+.entry-tool[data-tool='todo_write'] .tool-summary .todo-title-link,
+.entry-tool[data-tool='todo_write'] .tool-summary .todo-title-link:hover { color: var(--accent); text-decoration: none; }
+.entry-tool[data-tool='todo_write'] .tool-summary .todo-title-link:hover { text-decoration: underline; }
 
 /* 审查页左右边距对齐其他页签(2026-11-10 用户裁定):行盒边距页签边 12px、行内文字 22px——与团队/任务卡
    2026-11-10 二轮:页签标准收窄到 4px 后审查同口径(行盒 4px、行内 8px) */

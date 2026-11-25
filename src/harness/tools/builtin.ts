@@ -615,8 +615,17 @@ export function builtinTools(
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['todos'],
+      // title 可空(null=未命名,旧行为)但必须显式声明进 required——strict 兼容纪律
+      // (optionals 以 null 联合表达,builtin.schema.test 游走校验)
+      required: ['title', 'todos'],
       properties: {
+        // 待办标题(2026-11-25 用户裁定「给待办一个标题参数,代替用户输入信息」):GUI 按标题归并
+        // 跨轮更新为同一待办(同标题=同一份清单,进度推进就地更新不裂卡),卡头/会话顶条/工具行显示
+        title: {
+          type: ['string', 'null'],
+          description:
+            'Short title naming this todo list (e.g. "Offline Flink instances", "Ship release 2.3"). Reuse the exact same title on every update of the same list so all turns merge into one todo; use a new title only when starting an unrelated list.',
+        },
         todos: {
           type: 'array',
           description: 'Full replacement todo list (empty array clears the list; max 50 items)',
@@ -634,7 +643,7 @@ export function builtinTools(
     },
     name: 'todo_write',
     description:
-      'Write the session todo list (full replacement). Use it for tasks with 3 or more distinct steps: create the list up front, skip it for simpler tasks (1-2 steps). Keep the list live: call this tool at every status transition — set an item in_progress the moment you start working on it, mark it completed the moment it is done (never batch updates to the end), and keep exactly one item in_progress at a time. The panel shows this list to the user in real time, so a stale list reads as stalled work. Task boundaries do not reset the list — append new tasks instead of starting from scratch.',
+      'Write the current todo list (full replacement) together with its title. Use it for tasks with 3 or more distinct steps: create the list up front, skip it for simpler tasks (1-2 steps). Always pass the title — keep it identical across turns for the same list (it is how updates stay one todo instead of splitting), and change it only for a genuinely different list. Keep the list live: call this tool at every status transition — set an item in_progress the moment you start working on it, mark it completed the moment it is done (never batch updates to the end), and keep exactly one item in_progress at a time. The panel shows this list to the user in real time, so a stale list reads as stalled work. Task boundaries do not reset the list — append new tasks instead of starting from scratch.',
     category: 'todo',
     display: { verb: 'TODO' },
     executor: async (input: ToolInput) => {

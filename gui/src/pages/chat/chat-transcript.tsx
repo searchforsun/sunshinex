@@ -100,9 +100,9 @@ export const ChatTranscript = memo(function ChatTranscript(props: Omit<MessageLi
         {...list}
         entries={entries}
         callIdOf={callIdOf}
-        onOpenTodos={(todos) => {
+        onOpenTodos={(todos, title) => {
           onOpenTab?.('tasks');
-          onTodoLocate?.(todos);
+          onTodoLocate?.(todos, title);
         }}
       />
       </div>

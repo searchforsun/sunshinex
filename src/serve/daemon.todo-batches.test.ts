@@ -54,7 +54,7 @@ async function withIsoEnv(fn: (tmp: string) => Promise<void>): Promise<void> {
   }
 }
 
-test('todo 批次权威投影:journal 全量派生→attach→快照直显;同签名保留最新', async () => {
+test('todo 批次权威投影:journal 全量派生→attach→快照直显;同标题跨轮归并为同一待办(条目改写也收敛)', async () => {
   await withIsoEnv(async (tmp) => {
     const root = path.join(tmp, 'proj');
     fs.mkdirSync(root, { recursive: true });
@@ -63,13 +63,14 @@ test('todo 批次权威投影:journal 全量派生→attach→快照直显;同�
     if (!birth.ok) throw new Error(birth.error.message);
     const journal = new SessionJournal(resolveDataDirTmp(root));
     journal.start(3);
-    // journal 全量行:user goal → todo_write 两批(同签名两份=进度推进,保留最新)+另一签名一批
+    // journal 全量行:同一标题两批(第二波条目措辞改写——2026-11-25 用户场景「多个输入框气泡
+    // 触发同一待办」)+另一标题一批(真正的新待办)
     const rows = [
       { t: 'seg', kind: 'user', md: 'goal one', ts: 1, seq: 1 },
-      { t: 'seg', kind: 'tool', md: '', name: 'todo_write', ts: 2, seq: 2, input: { todos: [{ text: 'A', status: 'pending' }, { text: 'B', status: 'pending' }] } },
-      { t: 'seg', kind: 'tool', md: '', name: 'todo_write', ts: 3, seq: 3, input: { todos: [{ text: 'A', status: 'completed' }, { text: 'B', status: 'in_progress' }] } },
+      { t: 'seg', kind: 'tool', md: '', name: 'todo_write', ts: 2, seq: 2, input: { title: 'Offline flink', todos: [{ text: 'A', status: 'pending' }, { text: 'B', status: 'pending' }] } },
+      { t: 'seg', kind: 'tool', md: '', name: 'todo_write', ts: 3, seq: 3, input: { title: 'Offline flink', todos: [{ text: 'A', status: 'completed' }, { text: 'B (reworded)', status: 'in_progress' }] } },
       { t: 'seg', kind: 'user', md: 'goal two', ts: 4, seq: 4 },
-      { t: 'seg', kind: 'tool', md: '', name: 'todo_write', ts: 5, seq: 5, input: { todos: [{ text: 'C', status: 'pending' }] } },
+      { t: 'seg', kind: 'tool', md: '', name: 'todo_write', ts: 5, seq: 5, input: { title: 'Ship release', todos: [{ text: 'C', status: 'pending' }] } },
     ];
     for (const row of rows) journal.log(row as never);
     const jid = journal.currentId!;
@@ -80,14 +81,18 @@ test('todo 批次权威投影:journal 全量派生→attach→快照直显;同�
     const rt = io.sessions.get(newS.value.sessionId)!;
     await waitFor(() => rt.attachedJournalId === jid, 5000);
     const snap = rt.snapshotResponse();
-    // 同签名(A/B)两批保留最新(ts=3,状态推进),另一签名(C)独立;goal 归属最近 user 行
+    // 同标题两批=同一待办:首写 key/ts 落定(id/创建时间不漂),条目与 updatedTs 取最新;
+    // 另一标题独立成待办
     assert.equal(snap.todoBatches.length, 2);
-    const ab = snap.todoBatches.find((b) => b.items.length === 2)!;
-    assert.deepEqual(ab.items, [{ text: 'A', status: 'completed' }, { text: 'B', status: 'in_progress' }]);
-    assert.equal(ab.goal, 'goal one');
-    const c = snap.todoBatches.find((b) => b.items.length === 1)!;
-    assert.deepEqual(c.items, [{ text: 'C', status: 'pending' }]);
-    assert.equal(c.goal, 'goal two');
+    const flink = snap.todoBatches.find((b) => b.title === 'Offline flink')!;
+    assert.equal(flink.key, 't2');
+    assert.equal(flink.ts, 2);
+    assert.equal(flink.updatedTs, 3);
+    assert.deepEqual(flink.items, [{ text: 'A', status: 'completed' }, { text: 'B (reworded)', status: 'in_progress' }]);
+    const ship = snap.todoBatches.find((b) => b.title === 'Ship release')!;
+    assert.deepEqual(ship.items, [{ text: 'C', status: 'pending' }]);
+    // 用户气泡回链字段退役(2026-11-25「去掉和用户消息的绑定」)
+    assert.equal('goal' in flink || 'userKey' in flink, false);
   });
 });
 

@@ -62,7 +62,7 @@ export interface MessageListProps {
   /** 图片落盘引用解析根(2026-10-31 images-cache 裁定;缺省=引用原样不解析) */
   readonly root?: string;
   /** 2026-11-04 待办行点击定位:打开待办页签+定位对应卡 */
-  readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>) => void;
+  readonly onOpenTodos?: (todos: Array<{ text: string; status: string }>, title?: string) => void;
   readonly onOpenFile?: (p: string) => void;
   readonly onOpenDiff?: (callId: string, p: string) => void;
   readonly onOpenAgent?: (label: string, agentTitle: string, task?: string) => void;
