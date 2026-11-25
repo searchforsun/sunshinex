@@ -142,7 +142,11 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
           sidePassthrough = true;
         }
         if (e.type === 'bg-task') {
-          setBgTasks((rows) => applyBgTaskEvent(rows, e));
+          // 面板按打开会话隔离（2026-11-25 用户报障「后台任务还是可以看到,会话没有隔离吗」）:
+          // bg-task 直播只收当前打开会话——旧实现不分会话 upsert,他会话的启动帧混进本会话面板,
+          // 且该帧的终态只会落在它自己的会话面板（切回来 GET 播种也挡不住后续帧回灌）,一条
+          // running 行常驻并持续走秒;真值面=切会话/开签 GET /session/:id/tasks 播种
+          if (sessionId === sessionRef.current) setBgTasks((rows) => applyBgTaskEvent(rows, e));
           return;
         }
         if (e.type === 'catalog-changed') {
