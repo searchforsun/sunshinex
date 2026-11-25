@@ -344,25 +344,26 @@ test('⑧ 有绑定运行时在座:idle→submit;running→steer;submit 409→�
   assert.equal(rt3.steers[0]!.text, '撞锁发言');
 });
 
-test('⑨ 有绑定但运行时不在注册表:attach 重开后走提交;attach 失败释放走新建', async () => {
-  // attach 成功:同 sessionId 重开,提交照走
+test('⑨ 有绑定但运行时不在注册表:铸壳+attach journal 收编重开(2026-11-25 重启恢复终版);attach 失败释放走新建', async () => {
+  // attach 成功:铸壳后以壳 id 收编 journal,提交照走,绑定翻新到壳 id
   const h = makeHarness();
   h.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 'ghost-s', journalId: 'j-ghost', updatedAt: 1 });
   await h.router.handleInbound(mkMsg({ msgId: 'r1', text: '重新接上' }));
-  assert.deepEqual(h.attached, [{ id: 'ghost-s', journalId: 'j-ghost' }]);
-  assert.equal(h.runtimes.get('ghost-s')!.submits.length, 1);
+  assert.deepEqual(h.attached, [{ id: 's1', journalId: 'j-ghost' }]);
+  assert.equal(h.runtimes.get('s1')!.submits.length, 1);
+  assert.equal(h.bindings.get(bindingKey('m1', 'c1'))!.sessionId, 's1', '绑定翻新到壳 id');
   assert.ok(h.acks[0]!.text.includes('已受理'));
 
   // attach 失败:残座释放 + 新建 + 重绑新 sessionId
   const h2 = makeHarness({ attachFail: true });
   h2.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 'ghost2', journalId: 'j-g2', updatedAt: 1 });
   await h2.router.handleInbound(mkMsg({ msgId: 'r2', text: '接不上就重建' }));
-  assert.deepEqual(h2.released, ['ghost2']);
-  assert.equal(h2.createCalls.length, 1);
+  assert.deepEqual(h2.released, ['s1', 'ghost2'], '壳清扫+⑨b 旧 id 释放(旧 id 不在座=无害 no-op)');
+  assert.equal(h2.createCalls.length, 2);
   const nb = h2.bindings.get(bindingKey('m1', 'c1'))!;
-  assert.equal(nb.sessionId, 's1');
+  assert.equal(nb.sessionId, 's2', '新建腿重绑新座');
   assert.notEqual(nb.sessionId, 'ghost2');
-  assert.equal(h2.runtimes.get('s1')!.submits.length, 1);
+  assert.equal(h2.runtimes.get('s2')!.submits.length, 1);
   assert.ok(h2.acks[0]!.text.includes('已受理'));
 });
 
@@ -798,4 +799,24 @@ test('⑳b 回答移 run 起源:pendingReply 消费即 noteRunSubmit(回答气�
   await h.router.handleInbound(mkMsg({ msgId: 'a9', text: '1' }));
   assert.deepEqual(noteRunSubmits, [{ sessionId: 's9', msgId: 'a9' }]);
   assert.equal(h.acks.length, 0); // 已消费:无回执
+});
+
+// ⑳b 重启恢复（2026-11-25 用户裁定「应用重启后还是接之前的会话」根修）：daemon 重启注册表
+// 即空,旧 runtime id 不在座——铸壳+attach journal 收编(two-step),绑定翻新到壳 id;转录/记录
+// 全保,不再「重启换新会话」
+test('⑳b 重启恢复:旧 id 不在座→铸壳+attach 收编,绑定翻新壳 id;转录延续', async () => {
+  const h = makeHarness();
+  // 预置绑定:旧 runtime id 'dead-id'(重启后不在座),journalId 'j-keep'
+  h.bindings.upsert({ key: bindingKey('m1', 'c1'), sessionId: 'dead-id', journalId: 'j-keep', updatedAt: 1 });
+  await h.router.handleInbound(mkMsg({ msgId: 'r1', text: '重启后的第一条消息' }));
+  // 铸壳+收编:createSession 先行,attach 以壳 id+旧 journal 调用
+  assert.deepEqual(h.attached, [{ id: 's1', journalId: 'j-keep' }]);
+  const nb = h.bindings.get(bindingKey('m1', 'c1'))!;
+  assert.equal(nb.sessionId, 's1', '绑定翻新到壳 id');
+  assert.equal(nb.journalId, 'j-keep', 'journal 不变(转录/记录全保)');
+  // 提交进收编后的会话
+  assert.equal(h.runtimes.get('s1')!.submits.length, 1);
+  assert.ok(h.acks[0]!.text.includes('已受理'));
+  // 不 release(壳=活会话)
+  assert.deepEqual(h.released, []);
 });

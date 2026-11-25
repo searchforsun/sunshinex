@@ -708,10 +708,26 @@ export class ChannelRouter {
     if (existing !== undefined) {
       rt = this.deps.io.getSession(existing.sessionId); // ⑧ 在座直用
       if (rt === undefined && existing.journalId !== undefined) {
-        const r = this.deps.io.attach(existing.sessionId, existing.journalId); // ⑨ attach 重开
-        if (r.ok) rt = this.deps.io.getSession(existing.sessionId);
+        // ⑨ 重启恢复（2026-11-25 用户裁定「应用重启后还是接之前的会话」根修）：daemon 注册表
+        // 重启即空，旧 runtime id 不在座，直接 attach 旧 id 必失败走⑦新建=「重启换新会话」。
+        // 先按派生根铸壳再 attach journal 收编（two-step，侧栏 attachJournal 同款链）——转录/
+        // 记录/板全保，绑定翻新到壳 id
+        const shell = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, existing), this.createOpts(cfg, msg.chatId));
+        if (shell.ok) {
+          const attached = this.deps.io.attach(shell.value.sessionId, existing.journalId);
+          if (attached.ok) {
+            sessionId = attached.value.sessionId; // 收编/重开以应答 id 为准
+            rt = this.deps.io.getSession(sessionId);
+          } else {
+            this.deps.io.releaseSession(shell.value.sessionId); // attach 失败：壳清扫，走⑦新建
+          }
+        }
       }
-      if (rt !== undefined) sessionId = existing.sessionId;
+      if (rt !== undefined && sessionId === undefined) sessionId = existing.sessionId;
+      // ⑨ 壳收编换号:绑定翻新到壳 id(否则下条消息再走⑨重复铸壳)
+      if (rt !== undefined && sessionId !== undefined && sessionId !== existing.sessionId) {
+        this.upsertBinding(key, sessionId, { journalId: existing.journalId }, cfg, existing, msg);
+      }
     }
     if (rt === undefined || sessionId === undefined) {
       if (existing !== undefined) this.deps.io.releaseSession(existing.sessionId); // ⑨b attach 失败/无 journalId → 残座释放走新建
