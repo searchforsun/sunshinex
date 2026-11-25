@@ -181,9 +181,10 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                       const active =
                         activeSessionId !== '' &&
                         (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
-                      const running = active
-                        ? runningIds.has(activeSessionId)
-                        : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
+                      // 非当前打开的通道行按 daemon 权威 status 显运行态（2026-11-25 用户裁定
+                      // 「后台任务执行中,不是主 agent 执行,不应该显示运行中图标」）——旧实现「live
+                      // 即转圈」(liveSessionId 在场且非当前座就恒显),活着的空闲会话全部假运行
+                      const running = active ? runningIds.has(activeSessionId) : sr.status === 'running';
                       const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
                       return (
                         <SessionRowView

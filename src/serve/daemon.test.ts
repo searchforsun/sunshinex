@@ -2729,6 +2729,10 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
         // 旧座挂一个在飞后台任务（模拟用户场景里的 5 分钟长任务）
         const task = oldRt.runtime.harness.tasks.submit({ kind: 'exec', label: 'bg-five-min' });
         assert.equal(oldRt.runtime.harness.tasks.get(task.id)?.status, 'running');
+        // 任务板派发登记（boardDispatch）=任务板记录,不随记录复制（2026-11-25 用户裁定「只复制
+        // 任务记录,不复制任务板和智能体团队」）
+        const boardTask = oldRt.runtime.harness.tasks.submit({ kind: 'subagent', label: 'task-board-only', boardDispatch: true });
+        oldRt.runtime.harness.tasks.finish(boardTask.id, 'done');
         // 主链暂停观察点（retire 与 /stop 同链中断旧座 run）
         let interrupts = 0;
         const origInterrupt = oldRt.interrupt.bind(oldRt);
@@ -2754,6 +2758,7 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
         if (r.ok) {
           assert.match(r.value.stdout, /task records \(terminal/);
           assert.match(r.value.stdout, new RegExp(`${task.id} \\(exec, stopped, manual\\) bg-five-min`), '复制记录带取消原因');
+          assert.ok(!r.value.stdout.includes('task-board-only'), '任务板派发登记（boardDispatch）不随记录复制');
         }
       },
       (tmp) => [{ id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'full-access', allow: { kind: 'all' }, sessionKind: 'sunx' }],

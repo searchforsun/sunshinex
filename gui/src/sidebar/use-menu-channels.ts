@@ -29,6 +29,10 @@ export interface ChannelSessionRow extends SessionRow {
   /** 聊天名称(2026-11-24 用户裁定「hover 显示聊天名称,单聊=聊天人名称,群聊=群聊名称」):
    *  daemon 行透出(meta 出生档/绑定反查双兜底);悬浮卡聊天行显示面,缺席回落 chatId 旧行 */
   chatTitle?: string;
+  /** daemon 权威运行态(2026-11-25 用户裁定「后台任务执行中,不是主 agent 执行,不应该显示运行中
+   *  图标」):/channels/sessions 行透出——非当前打开的通道行按此显运行态,liveSessionId 在场
+   *  不再等价运行中(活着的空闲会话曾被恒显转圈) */
+  status?: 'idle' | 'running';
 }
 
 /** 通道变更事件（2026-11-25 用户裁定「删除后要立即隐藏对应的通道显示」):设置页删除/保存

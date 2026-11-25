@@ -953,7 +953,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .ref-chip-preview-head { display: flex; align-items: center; gap: 5px; flex: none; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 /* 片段复制钮(2026-11-25 用户裁定「最右侧增加一个复制按钮」):标题行右缘,复用 .sx-tip 图标钮 */
 .ref-chip-preview-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ref-chip-preview-head .ref-chip-copy { margin-left: auto; }
+.ref-chip-preview-head .ref-chip-copy { margin-left: auto; padding: 0; }
+/* UA 按钮内距(左右 ~6px)把 22px 钮内容区压到 ~10px——图标被 flex 收缩回 10(同 .run-footer 根修先例);
+   复位内距并钉 14px 底线(CLAUDE.md §13.1 规则 7) */
+.ref-chip-preview-head .ref-chip-copy svg { width: var(--icon-min); height: var(--icon-min); flex: none; }
 .ref-chip-preview-head svg { width: 14px; height: 14px; }
 .ref-chip-preview pre { margin: 0; flex: 1; min-height: 0; overflow: auto; font: calc(14px * var(--fz))/1.6 var(--font-ui); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
@@ -2339,7 +2342,7 @@ button.agent-msg-from:hover { text-decoration: underline; }
 /* G14.154 文件选区悬浮工具条(双动作):跟随选区上方,ReactDOM 面非 monaco overlay */
 .files-selbar {
   position: absolute; z-index: 5;
-  display: inline-flex; gap: 2px; padding: 3px;
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px;
   background: var(--surface-elevated); border: 1px solid var(--border);
   border-radius: var(--radius-sm); box-shadow: var(--elev-prominent);
   white-space: nowrap;
@@ -2353,9 +2356,11 @@ button.agent-msg-from:hover { text-decoration: underline; }
   font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .files-selbar button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
-/* 选区条复制钮(2026-11-25 用户裁定「添加到会话最右侧也增加一个复制按钮」):文字钮之后的图标钮,
-   与其余钮同 hover 面;宽度按图标钮收窄 */
-.files-selbar button.sx-tip { width: 26px; padding: 0 0 0 6px; margin-left: 2px; justify-content: center; }
+/* 选区条复制钮(2026-11-25「最右侧增加复制按钮」+用户二轮「和左边上下对齐,离得太远」):
+   保持 .sx-tip 22×22 原尺寸(不另设宽/内距),由条上 align-items:center 与文字钮垂直居中;
+   水平只吃条 gap 2px,不额外 margin;内距归零防 UA 按钮内距压图标(同 .run-footer 先例) */
+.files-selbar button.sx-tip { padding: 0; }
+.files-selbar button.sx-tip svg { width: var(--icon-min); height: var(--icon-min); flex: none; }
 /* 2026-11-13 用户实测「亮色暗码,选中弹出的字体颜色不对,应该是黑色」根修:悬浮条浮在暗色
    代码井上,继承容器内被覆写的 --fg:#dfdfdf=浅字浮在浅弹层上;弹层自身带亮面底,前景钉回
    亮色主题黑值,不随暗面容器令牌走 */
@@ -3676,8 +3681,9 @@ input.sx-setting-input { width: 100%; }
 .sx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; font-size: calc(14px * var(--fz)); font-family: inherit; line-height: calc(20px * var(--fz)); color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--radius-sm); }
 /* ===== 快捷键注册表轮(2026-11-25 调研 Codex/Claude Code/ChatGPT 桌面版):侧栏动作键位角标 + 设置页录制改键 ===== */
 /* 侧栏菜单动作右侧键位提示:注册表生效档,纯灰字无框无底(2026-11-25 用户裁定「不要边框」,对标 ZCode 菜单键位灰字);
-   右缩进 4px(2026-11-25 用户实测「太靠右贴边」:叠加钮自身 padding 10+margin 8 共 ~22px 出边);窄菜单先裁动作文字(span 省略)不裁键位 */
-.sx-new-chat .sx-menu-kbd { margin-left: auto; margin-right: 4px; flex: none; font-size: calc(12px * var(--fz)); line-height: calc(16px * var(--fz)); font-family: inherit; color: var(--fg-tertiary); white-space: nowrap; letter-spacing: 0.2px; }
+   右缩进 16px(2026-11-25 用户两轮实测:先「贴边」再「与下面时间右对齐」——浏览器量得会话行时间右缘=列表 4+行 16=20px 距菜单右缘,
+   本钮固有 4px 底,故 margin-right 16 与时间同线);窄菜单先裁动作文字(span 省略)不裁键位 */
+.sx-new-chat .sx-menu-kbd { margin-left: auto; margin-right: 16px; flex: none; font-size: calc(12px * var(--fz)); line-height: calc(16px * var(--fz)); font-family: inherit; color: var(--fg-tertiary); white-space: nowrap; letter-spacing: 0.2px; }
 .sx-new-chat > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 设置·快捷键页:键位格=录制触发钮(虚线 hover 预示可点),录制态 accent 描边,冲突态转 err */
 .sx-shortcuts-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }

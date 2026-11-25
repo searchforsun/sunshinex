@@ -122,8 +122,13 @@ export function useConnectionWiring(deps: ConnectionWiringDeps): Connection | nu
         let sidePassthrough = false;
         if (e.type === 'model-start' || e.type === 'done') setRecentVersion((v) => v + 1); // G14.52:run 起跑/收束都刷侧栏(运行圆点亮起与熄灭跟手)
         // G14.2xx 运行态按会话记:任一会话起跑点亮其行;收束只熄自己(跨会话切换/恢复不误熄不卡转圈)
-        if (e.type === 'model-start') setRunningIds((s) => (s.has(sessionId) ? s : new Set([...s, sessionId])));
-        else if (e.type === 'done' || e.type === 'error') setRunningIds((s) => (s.has(sessionId) ? new Set([...s].filter((x) => x !== sessionId)) : s));
+        // 后台任务(子智能体)帧不计会话运行态（2026-11-25 用户裁定「后台任务执行中,不是主 agent
+        // 执行,不应该显示运行中图标」）:子 Reactor 的 model-start/done 经 subagent.onEvent 原样
+        // 并入本会话流（payload.subagent 标记）——旧实现照单点亮/熄灭侧栏转圈,后台任务跑起来
+        // 主会话就假运行。运行态只认主链帧(payload.subagent 缺席)
+        const subFrame = typeof e.payload?.subagent === 'string';
+        if (e.type === 'model-start' && !subFrame) setRunningIds((s) => (s.has(sessionId) ? s : new Set([...s, sessionId])));
+        else if ((e.type === 'done' || e.type === 'error') && !subFrame) setRunningIds((s) => (s.has(sessionId) ? new Set([...s].filter((x) => x !== sessionId)) : s));
         if (sessionId !== sessionRef.current) {
           // G14.29 辅助会话帧:只投旁路聊天流。
           // 2026-11-07 用户裁定「辅助投影挂主对话下」:本主会话名下 side 会话的板/委派/子智能体

@@ -1232,34 +1232,10 @@ ${this.sessionCharter ?? ''}` }
     if (journalId === undefined) return;
     const dataDir = this.dataDir;
     const ledgerFile = path.join(dataDir, 'tasks', `ledger-${journalId}.jsonl`);
-    // 账本 copy-on-create（2026-11-25 用户裁定「账本应该是复制,不是共享——只有 /new 复制一次」）:
-    // 通道聊天会话首铸账本缺档时,**吸收聊天域最新他席账本**（同目录 ledger-*.jsonl 按 mtime
-    // 择新排除自身）——重放原生把他 PID 的 running 行降为 stopped 孤儿（PID 隔离既有语义）,
-    // 恢复唤醒轮 restartOrphans 即重派;手建会话(独立域,目录内只有自己)零种子=隔离不变
-    if (this.opts.channelMeta !== undefined && !fs.existsSync(ledgerFile)) {
-      let seed: string | undefined;
-      let seedMtime = 0;
-      try {
-        for (const f of fs.readdirSync(path.join(dataDir, 'tasks'))) {
-          if (!f.startsWith('ledger-') || !f.endsWith('.jsonl') || f === `ledger-${journalId}.jsonl`) continue;
-          const st = fs.statSync(path.join(dataDir, 'tasks', f));
-          if (st.mtimeMs > seedMtime) {
-            seedMtime = st.mtimeMs;
-            seed = path.join(dataDir, 'tasks', f);
-          }
-        }
-      } catch {
-        /* 无 tasks 目录=无种子 */
-      }
-      if (seed !== undefined) {
-        try {
-          fs.mkdirSync(path.dirname(ledgerFile), { recursive: true });
-          fs.copyFileSync(seed, ledgerFile);
-        } catch {
-          /* 复制失败=空账本起步 */
-        }
-      }
-    }
+    // 账本只认自己的 journal（2026-11-25 用户裁定「只复制任务记录,不复制任务板和智能体团队」）:
+    // 每个会话读写 ledger-<journalId>;**唯一跨会话记录来源=daemon /new 的显式并入单点**
+    // （终态记录,boardDispatch 行过滤）。旧实现此处「通道会话首铸缺档吸收聊天域最新他席账本」
+    // 的隐式路径已删——任意新会话都会整本继承旧任务,绕过「只有 /new 复制一次」裁定
     this.runtimeImpl.harness.tasks.adoptLedger(ledgerFile);
     this.runtimeImpl.harness.adoptSessionTeams(journalId);
   }
