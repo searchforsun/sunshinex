@@ -144,11 +144,6 @@ export interface HarnessOptions {
   /** 会话团队根键（journalId）。缺省未绑定时团队/板/inbox 驻内存；daemon/TUI 在 journal 铸造后
    *  经 adoptSessionTeams 收养。测试可直接传入以落盘。 */
   teamsSessionId?: string;
-  /** 聊天域共享板（2026-11-25 用户裁定「一个聊天下的任务板也要互通」）：通道聊天会话
-   *  （channelMeta 在场）teams 根落 `<dataDir>/teams/chat`（chat 常量段代 journalId）——同聊天
-   *  各会话(/new 重建)采纳同一注册表/板/inbox/名册,新会话继承在途任务不空板;手建会话缺席=
-   *  既有 per-journal 隔离零变化 */
-  chatScopedTeams?: boolean;
   /** 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示,显示何时执行」）：
    *  按工作区根回列启用中的分派（daemon 装配自 ScheduleEngine,root 过滤）——task_status 回执
    *  附「scheduled dispatches」段;缺席=无接缝零输出 */
@@ -224,8 +219,6 @@ export class Harness {
   readonly segmentDataDir: string | undefined;
   /** 已绑定的会话团队键；同键重复收养幂等 */
   private teamsBoundJournalId: string | undefined;
-  /** 聊天域共享板（见 HarnessOpts.chatScopedTeams 注） */
-  private readonly chatScopedTeams: boolean;
   /** 定时分派清单接缝（见 HarnessOpts.schedulesFor 注） */
   private readonly schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
   /** 工作区根（schedulesFor 过滤键——job.root 同源;ctor base 定格） */
@@ -559,7 +552,6 @@ export class Harness {
     this.inbox = new FileInbox();
     this.inboxCursors = new InboxCursorStore();
     this.teamsBoundJournalId = undefined;
-    this.chatScopedTeams = opts.chatScopedTeams === true;
     this.schedulesFor = opts.schedulesFor;
     this.harnessBase = base;
     // teammate 创建接缝(P2 T3):spawn 分流命中(makeSpawnTool executor)在此构造长驻 Teammate——
@@ -853,17 +845,6 @@ export class Harness {
     this.agentTeams.adopt(regStore);
 
     const boardStore = new TeamStore(path.join(root, 'main'));
-    // 板迁移（2026-11-25 用户裁定「切换会话还是没有继承任务版」根修②）：chat 域启用前的历史
-    // 板数据落各 journal 私有根（teams/<jid>/main,chatScopedTeams 面世前的旧布局）——chat 根
-    // 首次采纳且为空时,**吸收最新非空 journal 板**（events.jsonl+board.json 按 mtime 择新拷贝）,
-    // 旧布局会话的任务由此进聊天域;旧根数据原样保留（留档,不删）
-    const preSnap = boardStore.load();
-    if (this.chatScopedTeams === true && Object.keys(preSnap.tasks).length === 0 && preSnap.seq === 0) {
-      if (migrateLatestJournalBoard(this.dataDir, path.join(root, 'main'))) {
-        // 迁移落痕:无 Harness 级日志面,console.error 单行(仅迁移发生时一次)
-        console.error('[harness] chat 域板迁移:吸收最新 journal 板');
-      }
-    }
     const diskSnap = boardStore.load();
     const diskEmpty = Object.keys(diskSnap.tasks).length === 0 && diskSnap.seq === 0;
     if (wasUnbound && diskEmpty && this.memoryBoardStore !== undefined) {
@@ -938,40 +919,3 @@ export class Harness {
   }
 }
 
-
-/** chat 域板迁移助手（2026-11-25 用户裁定「切换会话还是没有继承任务版」根修②）：chat 根
- *  （teams/chat/main）为空时,吸收**最新非空 journal 板**（teams/<jid>/main 的 events.jsonl+
- *  board.json,mtime 择新拷贝）——chatScopedTeams 面世前的旧布局板数据由此进聊天域;旧根原样
- *  保留不删。无候选=false（chat 根保持空,合法空态）。export 供测试钉。 */
-export function migrateLatestJournalBoard(dataDir: string, chatMainDir: string): boolean {
-  const teamsRoot = path.join(dataDir, 'teams');
-  let best: { dir: string; mtime: number } | undefined;
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(teamsRoot, { withFileTypes: true });
-  } catch {
-    return false;
-  }
-  for (const ent of entries) {
-    if (!ent.isDirectory() || ent.name === 'chat') continue;
-    const mainDir = path.join(teamsRoot, ent.name, 'main');
-    const eventsFile = path.join(mainDir, 'events.jsonl');
-    try {
-      const st = fs.statSync(eventsFile);
-      if (st.size === 0) continue;
-      if (best === undefined || st.mtimeMs > best.mtime) best = { dir: mainDir, mtime: st.mtimeMs };
-    } catch {
-      /* 无 events 档的 journal:跳过 */
-    }
-  }
-  if (best === undefined) return false;
-  try {
-    fs.mkdirSync(chatMainDir, { recursive: true });
-    fs.copyFileSync(path.join(best.dir, 'events.jsonl'), path.join(chatMainDir, 'events.jsonl'));
-    const snap = path.join(best.dir, 'board.json');
-    if (fs.existsSync(snap)) fs.copyFileSync(snap, path.join(chatMainDir, 'board.json'));
-    return true;
-  } catch {
-    return false;
-  }
-}

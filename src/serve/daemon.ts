@@ -296,18 +296,25 @@ export class GuiDaemon {
         const keep = this.sessions.get(keepSessionId);
         for (const [, sess] of this.sessions.entries()) {
           if (sess.id === keepSessionId || sess.channelMeta?.chatId !== chatId) continue;
-          // 在飞任务标记「用户主动取消」（2026-11-25 用户裁定：隔离后旧会话唤醒照常自愈，中断
-          // 原因改用户主动取消——finish manual 行落旧座账本，级联跳过已收口条目）
+          // 在飞任务真正取消（2026-11-25 用户裁定「老的会话正常暂停」根修——此前只标账本不
+          // 真终止,子智能体仍在跑）：stop 闭包=真终止（subagent 中断线 abort/exec 进程 kill）
+          // + 终态行 reason manual=「用户主动取消」落旧座账本
           try {
             for (const t of sess.runtime.harness.tasks.list()) {
-              if (t.status === 'running') sess.runtime.harness.tasks.finish(t.id, 'stopped', { marker: '[cancelled: user]', reason: 'manual' });
+              if (t.status === 'running') {
+                t.stop?.();
+                sess.runtime.harness.tasks.finish(t.id, 'stopped', { marker: '[cancelled: user]', reason: 'manual' });
+              }
             }
           } catch {
-            /* 标记尽力而为：级联收口兜底 */
+            /* 取消尽力而为：级联收口兜底 */
           }
-          this.releaseSession(sess.id); // 旧座让位释放（挂起拒答/任务已收口）
-          // 账本并入活会话账本文件（用户主动取消的终态可见——活会话任务状态无幽灵 running；
-          // 重放吸收终态行，restartOrphans 不再含让位任务=不重派）
+          // **不 release**（2026-11-25 用户裁定①「原来的会话报错直接 404」根修）：旧座留在
+          // 注册表——GUI 开着旧会话的 snapshot/pty/后台任务页照常寻址不 404,转录/记录可回看,
+          // GUI 在旧会话派发新任务照常（与 /new「就放着」裁定同款语义）
+          // 任务记录并入新座账本文件（用户裁定②「新会话只复制任务记录,不带后台任务板/团队板」:
+          // 此时旧座在飞已全部收口,并入的全是终态行——新会话「任务记录」可见,无 running 卡;
+          // keep 重放吸收=活会话任务状态无幽灵 running）
           try {
             const oldLedger = path.join(sess.dataDir, 'tasks', `ledger-${sess.attachedJournalId ?? ''}.jsonl`);
             if (fs.existsSync(oldLedger) && keep !== undefined) {
@@ -318,7 +325,7 @@ export class GuiDaemon {
               keep.runtime.harness.tasks.adoptLedger(newLedger);
             }
           } catch {
-            /* 并入尽力而为：失败=终态留在旧座账本（留档不丢） */
+            /* 并入尽力而为：失败=记录留在旧座账本（留档不丢） */
           }
         }
       },
