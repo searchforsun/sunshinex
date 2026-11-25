@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { ChannelsPane } from './ChannelsPane';
 import type { ChannelsPaneConn } from './ChannelsPane';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
+import { SESSION_DELETED_EVENT } from '../session-events';
 
 /**
  * ChannelsPane 桩测（channels Task 15 终形态重做 + 2026-11-22 密钥内联改版：推翻 D6 env 分组口径
@@ -43,7 +44,7 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
     return { ok: true as const, warnings: [] };
   });
   const testChannel = vi.fn(async (): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }> => ({ ok: true, botId: 'bot-1' }));
-  const deleteChannel = vi.fn(async (): Promise<{ ok: true }> => ({ ok: true }));
+  const deleteChannel = vi.fn(async (): Promise<{ ok: true; removedSessionIds?: string[] }> => ({ ok: true }));
   const models = vi.fn(async (): Promise<{ choices: Array<{ id: string; model: string }> }> => ({ choices: [{ id: 'bigmodel/glm-5.3', model: 'glm-5.3' }] }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
   const sunxTemplates = vi.fn(async () => ({ entries: opts.templates ?? [], warnings: [] }));
@@ -153,8 +154,22 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     // 确认弹窗:标题+警示文案(应用+会话记录+数据目录,不可恢复)
     expect(await screen.findByText(bi('Delete channel', '删除通道'))).toBeDefined();
     expect(screen.getByText(/This will permanently delete .telegram-1.|即将删除「telegram-1」/)).toBeDefined();
-    fireEvent.click(screen.getByRole('button', { name: bi('Delete', '删除') })); // 弹窗红钮
-    await waitFor(() => expect(deleteChannel).toHaveBeenCalledWith('telegram-1'));
+    // 被清会话 id 回执 → SESSION_DELETED_EVENT 逐 id 派发（2026-11-25 用户报障「删除通道后
+    // 停在死对话回不到欢迎页」：GUI 据事件把正开会话 deliberate 回欢迎页。旧实现 conn 层丢应答体,
+    // 事件恒不派发）
+    deleteChannel.mockResolvedValueOnce({ ok: true, removedSessionIds: ['s-runtime', 'j-journal'] });
+    const deleted: string[] = [];
+    const onDeleted = (e: Event): void => {
+      deleted.push((e as CustomEvent<string>).detail);
+    };
+    window.addEventListener(SESSION_DELETED_EVENT, onDeleted);
+    try {
+      fireEvent.click(screen.getByRole('button', { name: bi('Delete', '删除') })); // 弹窗红钮
+      await waitFor(() => expect(deleteChannel).toHaveBeenCalledWith('telegram-1'));
+      await waitFor(() => expect(deleted).toEqual(['s-runtime', 'j-journal']));
+    } finally {
+      window.removeEventListener(SESSION_DELETED_EVENT, onDeleted);
+    }
     // 摘卡:余 mock-2 一张
     await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
   });

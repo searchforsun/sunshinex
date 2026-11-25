@@ -545,9 +545,17 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     async deleteChannel(id: string): Promise<{ ok: true; removedSessionIds?: string[] }> {
       // DELETE /channels/:id(2026-11-23 用户裁定「真正的删除各种配置和目录」):条目移除+解绑+
-      // 聊天域目录真删(404 unknown channel 经 opError 透出)
-      await del(`/channels/${encodeURIComponent(id)}`);
-      return { ok: true };
+      // 聊天域目录真删(404 unknown channel 经 opError 透出)。**应答体必须解析**（2026-11-25
+      // 用户报障「删除通道后停在死对话回不到欢迎页」根修）:daemon 返 {removedDomains,
+      // removedSessionIds},GUI 据后者派 SESSION_DELETED_EVENT 卸载页签池/正开会话回欢迎页——
+      // 旧实现 await del 丢体恒返 {ok:true},事件永不派发
+      const res = await fetch(`${base}/channels/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders });
+      if (!res.ok) throw await opError(`/channels/${id}`, res);
+      const body = (await res.json().catch(() => ({}))) as { removedSessionIds?: unknown };
+      const removed = Array.isArray(body.removedSessionIds)
+        ? body.removedSessionIds.filter((x): x is string => typeof x === 'string')
+        : undefined;
+      return { ok: true, ...(removed !== undefined ? { removedSessionIds: removed } : {}) };
     },
     channelSessions() {
       // 裸 SessionRow[]（sunxSessions 同款消费形，无信封）

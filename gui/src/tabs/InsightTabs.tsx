@@ -101,6 +101,17 @@ export function BgTasksTab({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [hasRunning]);
+  /** 运行行对齐账本（2026-11-25 用户报障「后台任务还在显示运行中,记录已 stopped」）:直播帧可能
+   *  来自同 journal 的另一个运行时(绑定座 vs GUI 座),会话门会据实挡掉→面板行停在 running 没有
+   *  终态可收。有运行行时每 5s 按 GET /tasks 权威账本整替一次(终态行不轮询,零空转);
+   *  面板自身 rows=liveRows 更新后 hasRunning 归假即停 */
+  useEffect(() => {
+    if (!hasRunning || onRefresh === undefined) return;
+    const timer = setInterval(() => {
+      void onRefresh();
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [hasRunning, onRefresh]);
   // task_wait 定位:滚至行(不加描边 flash——用户裁定「跳转不加边框」);exec 展开详情
   useEffect(() => {
     if (focus === undefined) return;

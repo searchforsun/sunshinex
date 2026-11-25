@@ -453,13 +453,18 @@ function AppShell(): JSX.Element {
   const backHomeRef = useRef(backHome);
   backHomeRef.current = backHome;
 
-  /** 通道删除会话清场（2026-11-25 用户报障「删除后回来直接掉欢迎页+404」收口）:被 purge 的
+  /** 通道删除会话清场（2026-11-25 用户报障「删除通道后停在死对话回不到欢迎页」收口）:被 purge 的
    *  会话若正开着,deliberate 回欢迎页(2026-11-04「删除当前会话回欢迎页」裁定同款;页签池卸载
-   *  由 use-app-tabs 的 SESSION_DELETED_EVENT 监听承担) */
+   *  由 use-app-tabs 的 SESSION_DELETED_EVENT 监听承担)。**双寻址**（2026-11-25 复报根修）:
+   *  daemon sun-id 每次打开新铸,GUI 正开着的运行时 id 可能≠绑定座 id(或事件只列了 journalId)
+   *  ——运行 id 与 journalId 任一命中即回欢迎页 */
   useEffect(() => {
     const onDeleted = (e: Event): void => {
       const id = (e as CustomEvent<string>).detail;
-      if (id !== undefined && id === sessionRef.current) backHomeRef.current();
+      if (id === undefined) return;
+      if (id === sessionRef.current || (openJournalIdRef.current !== '' && id === openJournalIdRef.current)) {
+        backHomeRef.current();
+      }
     };
     window.addEventListener(SESSION_DELETED_EVENT, onDeleted);
     return () => window.removeEventListener(SESSION_DELETED_EVENT, onDeleted);
