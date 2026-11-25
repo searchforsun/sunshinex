@@ -302,9 +302,11 @@ export function handleSessionTasks(io: SessionHandlerIo, res: http.ServerRespons
   const session = io.sessions.get(id);
   if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
   // 板任务派发登记(boardDispatch)不进 GUI 后台任务面(2026-11-03 用户裁定):团队任务归任务板呈现,
-  // 此处只剩 exec / 后台 spawn(subagent);等待面(task_wait/agent_team_task_wait)仍见全量账本
+  // 此处只剩 exec / 后台 spawn(subagent);等待面(task_wait/agent_team_task_wait)仍见全量账本。
+  // 继承记录(inherited,2026-11-25 用户裁定「复制任务记录,不复制后台任务板」)同样不进本面板——
+  // /new 并入的旧座终态记录只作记录面可溯(task_status 可见),后台任务页签只列本会话自己的任务
   const rows = session.runtime.harness.tasks.list()
-    .filter((t2) => t2.boardDispatch !== true)
+    .filter((t2) => t2.boardDispatch !== true && t2.inherited !== true)
     .map((t2) => ({
     id: t2.id,
     kind: t2.kind,

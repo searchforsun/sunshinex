@@ -32,6 +32,10 @@ export interface BackgroundTask {
   /** 已被 task_wait/agent_team_task_wait 终态回执消费（bg-wake spec §3.1）：只在内存 live 对象置位，
    *  不入账本——重启后 running 行孤儿标 stopped 本就不唤醒 */
   receipted?: boolean;
+  /** 继承记录标（2026-11-25 用户裁定「复制任务记录,不复制后台任务板」）：/new 把旧座终态记录并入
+   *  新座账本时逐行打标——task_status 等记录面照常可见（历史可溯），GUI 后台任务页签查询面
+   *  （handleSessionTasks）按此标过滤：面板只列本会话自己的任务，不整屏继承旧任务 */
+  inherited?: boolean;
 }
 
 /** 本进程提交的活任务对象(进程级):同一 daemon 内会话 runtime 重建(换模式等)会新建 TaskRegistry

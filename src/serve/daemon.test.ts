@@ -2717,7 +2717,7 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
 
   test('④ sunx 通道 /new：旧座主链暂停+在飞任务真取消+任务记录并入新座（2026-11-25 三项根修）', async () => {
     await withChannelsDaemon(
-      async ({ daemon, bindingsFile }) => {
+      async ({ daemon, bindingsFile, base }) => {
         const mock = daemon.channelsEngine.mockAdapter('m1')!;
         mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '跑个五分钟后台任务' });
         await waitFor(() => {
@@ -2760,6 +2760,10 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
           assert.match(r.value.stdout, new RegExp(`${task.id} \\(exec, stopped, manual\\) bg-five-min`), '复制记录带取消原因');
           assert.ok(!r.value.stdout.includes('task-board-only'), '任务板派发登记（boardDispatch）不随记录复制');
         }
+        // 「复制任务记录,不复制后台任务板」（2026-11-25 用户裁定）：GUI 后台任务页签查询面
+        // GET /session/:id/tasks 不列继承记录（面板只列本会话自己的任务）,记录只在 task_status 面可见
+        const panel = await (await fetch(`${base}/session/${b2.sessionId}/tasks`, { headers: AUTH })).json() as Array<{ id: string }>;
+        assert.equal(panel.length, 0, '后台任务面板不列 /new 继承的旧记录');
       },
       (tmp) => [{ id: 'm1', platform: 'mock', enabled: true, root: tmp, mode: 'full-access', allow: { kind: 'all' }, sessionKind: 'sunx' }],
     );

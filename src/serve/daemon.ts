@@ -320,24 +320,31 @@ export class GuiDaemon {
           // **不 release**（2026-11-25 用户裁定①「原来的会话报错直接 404」根修）：旧座留在
           // 注册表——GUI 开着旧会话的 snapshot/pty/后台任务页照常寻址不 404,转录/记录可回看,
           // GUI 在旧会话派发新任务照常（与 /new「就放着」裁定同款语义）
-          // 任务记录并入新座（2026-11-25 用户裁定「只复制任务记录,不复制任务板和智能体团队」）:
-          // 此时旧座在飞已全部收口,并入的全是终态行——新会话任务状态/task_status 可见旧记录;
-          // **boardDispatch 行过滤不复制**（任务板派发登记=任务板记录,任务板/智能体团队本体
-          // teams/<journal> 按 journal 隔离,从不跨会话复制）
+          // 任务记录并入新座（2026-11-25 用户裁定「复制任务记录,不复制后台任务板」）:旧座在飞已
+          // 全部收口,并入的全是终态行——task_status 等记录面照常可见旧记录;逐行打 inherited 标,
+          // GUI 后台任务页签查询面按标过滤（面板只列本会话自己的任务,不整屏继承旧任务）;
+          // **boardDispatch 行过滤不复制**（任务板派发登记,任务板/智能体团队本体 teams/<journal>
+          // 按 journal 隔离,从不跨会话复制）
           try {
             const oldLedger = path.join(sess.dataDir, 'tasks', `ledger-${sess.attachedJournalId ?? ''}.jsonl`);
             // 仅 sunx 模式新座复制记录(2026-11-25 用户裁定「只有 sunx 模式会复制,普通会话只是
             // 取消老的任务」);standard 新座=纯取消,记录留旧座
             if (fs.existsSync(oldLedger) && keep !== undefined && keep.sessionKind === 'sunx') {
-              const rows = fs
-                .readFileSync(oldLedger, 'utf8')
-                .split('\n')
-                .filter((line) => line.trim() !== '' && !line.includes('"boardDispatch":true'))
-                .join('\n');
-              if (rows !== '') {
+              const rows: string[] = [];
+              for (const line of fs.readFileSync(oldLedger, 'utf8').split('\n')) {
+                if (line.trim() === '' || line.includes('"boardDispatch":true')) continue;
+                try {
+                  const row = JSON.parse(line) as { op?: string; task?: Record<string, unknown> };
+                  if (row.op === 'submit' && row.task !== undefined) row.task['inherited'] = true; // 记录可查、面板不列
+                  rows.push(JSON.stringify(row));
+                } catch {
+                  rows.push(line); // 坏行原样带过（adoptLedger 重放自会跳过）
+                }
+              }
+              if (rows.length > 0) {
                 const newLedger = path.join(keep.dataDir, 'tasks', `ledger-${keep.attachedJournalId ?? ''}.jsonl`);
                 fs.mkdirSync(path.dirname(newLedger), { recursive: true });
-                fs.appendFileSync(newLedger, `${rows}\n`, 'utf8');
+                fs.appendFileSync(newLedger, `${rows.join('\n')}\n`, 'utf8');
                 keep.runtime.harness.tasks.adoptLedger(newLedger);
               }
             }
