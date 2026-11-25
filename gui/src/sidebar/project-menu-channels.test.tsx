@@ -67,6 +67,28 @@ describe('ChannelsSection(侧栏「通道」分组,项目式布局)', () => {
     expect(container.querySelectorAll('.session-list .sx-session-row, .session-list li')).toHaveLength(2);
   });
 
+  /** ⑦ 组内按聊天聚排（2026-11-25 用户裁定「希望会话能通过聊天名称分组,但别再加第三层」）:
+   *  同聊天会话相邻（聊天按组内最新会话时间降序）,行标签=聊天名称·会话标题;无聊天信息退回标题 */
+  it('⑦ 组内按聊天聚排:同聊天相邻+聊天按最近时间排序,行标签=聊天名称·会话标题', () => {
+    const { container } = renderSection([
+      channelRow('a1', { chatId: 'oc_a', chatTitle: '算法组', title: '第一条', updatedAt: FIXED_TS + 10 }),
+      channelRow('b1', { chatId: 'oc_b', chatTitle: '产品群', title: '周报', updatedAt: FIXED_TS + 5 }),
+      channelRow('a2', { chatId: 'oc_a', chatTitle: '算法组', title: '第二条', updatedAt: FIXED_TS + 1 }),
+      channelRow('c1', { title: '无聊天档', updatedAt: FIXED_TS + 20 }),
+    ]);
+    expect(screen.getByText('算法组 · 第一条')).toBeDefined();
+    expect(screen.getByText('算法组 · 第二条')).toBeDefined();
+    expect(screen.getByText('产品群 · 周报')).toBeDefined();
+    expect(screen.getByText('无聊天档')).toBeDefined(); // 无 chatId/chatTitle → 纯标题
+    const order = [...container.querySelectorAll('.sx-session-row')].map((n) => n.textContent ?? '');
+    const idx = (t: string): number => order.findIndex((x) => x.includes(t));
+    // 聊天按最新会话时间降序:无聊天档(+20) → 算法组(+10) → 产品群(+5);算法组内按会话时间降序
+    expect(idx('无聊天档')).toBe(0);
+    expect(idx('算法组 · 第一条')).toBe(1);
+    expect(idx('算法组 · 第二条')).toBe(2);
+    expect(idx('产品群 · 周报')).toBe(3);
+  });
+
   it('②会话行点击 → onAttach(root, journalId, updatedAt) 直寻址参数对', () => {
     const onAttach = vi.fn();
     renderSection([channelRow('j9')], { onAttach });

@@ -86,7 +86,24 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
       byKey.set(key, g);
     }
     const list = [...byKey.values()];
-    for (const g of list) g.sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    // 组内按聊天聚排（2026-11-25 用户裁定「希望会话能通过聊天名称分组,但别再加第三层」）:
+    // 同一聊天的会话相邻成组——聊天按组内最新会话时间降序,聊天内按会话时间降序;零新增层级
+    const chatKeyOf = (s: ChannelSessionRow): string => s.chatId ?? s.chatTitle ?? '';
+    for (const g of list) {
+      const byChat = new Map<string, ChannelSessionRow[]>();
+      for (const s of g.sessions) {
+        const ck = chatKeyOf(s);
+        const arr = byChat.get(ck);
+        if (arr === undefined) byChat.set(ck, [s]);
+        else arr.push(s);
+      }
+      const chats = [...byChat.values()].map((rowsOfChat) => ({
+        latest: Math.max(...rowsOfChat.map((s) => s.updatedAt)),
+        rows: rowsOfChat.sort((a, b) => b.updatedAt - a.updatedAt),
+      }));
+      chats.sort((a, b) => b.latest - a.latest);
+      g.sessions = chats.flatMap((c) => c.rows);
+    }
     list.sort((a, b) => Math.max(...b.sessions.map((s) => s.updatedAt)) - Math.max(...a.sessions.map((s) => s.updatedAt)));
     return list;
   }, [rows]);
@@ -185,7 +202,13 @@ export const ChannelsSection = memo(function ChannelsSection(props: ChannelsSect
                       // 「后台任务执行中,不是主 agent 执行,不应该显示运行中图标」）——旧实现「live
                       // 即转圈」(liveSessionId 在场且非当前座就恒显),活着的空闲会话全部假运行
                       const running = active ? runningIds.has(activeSessionId) : sr.status === 'running';
-                      const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
+                      const title = sr.title ?? sr.firstUser ?? t('New session', '新会话');
+                      // 行标签=聊天名称 · 会话标题（2026-11-25 用户裁定「零层级分组:组内聚排+行内
+                      // 聊天名」）:聊天信息缺席（非通道行/旧档无 chatId）时退回纯会话标题
+                      const chatName = sr.chatTitle ?? sr.chatId;
+                      const label = chatName !== undefined && chatName !== ''
+                        ? `${chatName} · ${title}`
+                        : title;
                       return (
                         <SessionRowView
                           key={sr.id}
