@@ -33,6 +33,7 @@ import { slashItemsFor } from './chat/use-command-palette';
 import { useChatFold } from './chat/use-chat-fold';
 import { ChatScrollbar } from './chat/ChatScrollbar';
 import { useSessionEvents } from './chat/use-session-events';
+import { useConfigChanged } from '../settings/use-config-changed';
 import { useChatUndo } from './chat/use-chat-undo';
 import { useChatDynBlocks } from './chat/use-chat-dyn-blocks';
 import { useChatDraft } from './chat/use-chat-draft';
@@ -136,6 +137,16 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   /** G10-C4 composer pills:会话权限态 + 模型信息(snapshot 回显,切换即乐观更新);缺省 full-access(serve 缺省档) */
   const [sessMode, setSessMode] = useState<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>('full-access');
   const [sessEffort, setSessEffort] = useState<string | undefined>(undefined);
+  /** 设置变更帧计数（2026-11-25 用户裁定「通道设置/飞书侧更改模型强度要实时同步输入框」）：
+   *  settings tick 即重读快照 effort——强度 chip 随飞书 /effort、通道设置保存实时翻转 */
+  const cfgTicks = useConfigChanged(conn);
+  useEffect(() => {
+    if (cfgTicks.settings === 0) return; // 初值零跳过(挂载播种由 use-session-events 承担)
+    conn.sessionSnapshot(sessionId, { tail: 1 }).then(
+      (snap) => setSessEffort(snap.effort),
+      () => undefined,
+    );
+  }, [cfgTicks.settings, conn, sessionId]);
   /** 归档态(2026-10-21):快照播种对齐(sessMode 同链,use-session-events reseed 回填)——顶栏归档钮/徽标三态 */
   const [archived, setArchived] = useState(false);
   /** pill 开合('plus' = + 附加面板) */
@@ -522,6 +533,15 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   /** IME 组字段范围(compositionstart/update/end 三拍回抛,ComposerCard 上抛)——高亮层把与范围
    *  交叠的 token 压平为普通段,既有芯片全程保留(2026-11-05 用户实测「组字期芯片消失」根修) */
   const [compRange, setCompRange] = useState<{ start: number; end: number } | null>(null);
+  /** IME 组字段判等闸(2026-11-25 输入粘滞轮):三拍回抛每拍都是新对象,同值拍(部分 IME 一拍
+   *  多派/end 已 null 再派)直接吞掉——不换引用就不触发整树重渲 */
+  const compRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const setCompRangeGuarded = useCallback((r: { start: number; end: number } | null): void => {
+    const prev = compRangeRef.current;
+    if (prev === null ? r === null : r !== null && prev.start === r.start && prev.end === r.end) return;
+    compRangeRef.current = r;
+    setCompRange(r);
+  }, []);
   const renderHighlightSpans = (text: string): ReactNode =>
     hasMentionTokens(text)
       ? renderMentionSpans(text, resolveFileRef, refContentsRef.current, undefined, true, compRange)
@@ -750,7 +770,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         running={running}
         seeding={seeding}
         composerKeys={composerKeys}
-        setCompRange={setCompRange}
+        setCompRange={setCompRangeGuarded}
         refPal={refPal}
         setRefPal={setRefPal}
         refPanelItems={refPanelItems}

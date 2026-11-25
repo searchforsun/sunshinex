@@ -68,6 +68,10 @@ export interface ChannelRouterDeps {
   noteRunSubmit?: (sessionId: string, msg: InboundMessage) => void;
   /** 注册工作区根清单（/workspace 候选,engine 缺省装配 workspace-registry 扫描;测试注入桩） */
   workspaceRoots?: () => string[];
+  /** 模型/强度变更广播（2026-11-25 用户裁定「飞书侧更改要实时同步到活的会话输入框」）：
+   *  daemon 注入 config-changed settings 帧广播——GUI 模型 pill 随帧重拉 sessionModel、强度
+   *  chip 随帧重读快照;缺席=GUI 不刷新(仅 IM 回执可见) */
+  notifyConfigChanged?: () => void;
   /** /compact 压缩执行单点（engine 缺省装配 serve runCommand——GUI/TUI 同链路;测试注入桩）：
    *  返回三态同 session-commands CommandRunResult */
   compact?: (rt: SessionRuntime) => Promise<'ok' | 'unsupported' | 'busy'>;
@@ -394,6 +398,7 @@ export class ChannelRouter {
       await this.deps.ack(msg, '模型切换未生效，请稍后重试。');
       return;
     }
+    this.deps.notifyConfigChanged?.(); // GUI 输入框模型 pill 实时同步
     await this.deps.ack(msg, `已切换模型到 ${picked}，下一条消息生效。`);
   }
 
@@ -420,6 +425,7 @@ export class ChannelRouter {
       await this.deps.ack(msg, '未识别该思考强度，回复 /effort 查看档位列表。');
       return;
     }
+    this.deps.notifyConfigChanged?.(); // GUI 输入框强度 chip 实时同步
     await this.deps.ack(msg, `已切换思考强度到 ${EFFORT_LABELS[v] ?? v}，下一条消息生效。`);
   }
 

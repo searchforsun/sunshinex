@@ -98,7 +98,13 @@ export class ChannelsEngine {
   constructor(
     private readonly io: ChannelsSessionIo,
     private readonly bindings: ChannelsBindingsStore,
-    private readonly opts?: { configs?: () => ChannelConfig[]; log?: (s: string) => void },
+    private readonly opts?: {
+      configs?: () => ChannelConfig[];
+      log?: (s: string) => void;
+      /** 模型/强度变更广播（2026-11-25 用户裁定「飞书侧更改实时同步 GUI 输入框」）：daemon 注入
+       *  config-changed settings 帧广播——GUI 模型 pill/强度 chip 随帧重拉;缺席=GUI 不刷新 */
+      notifyConfigChanged?: () => void;
+    },
   ) {
     // 出站投影装配(裁定 2):boundSessions ← bindings 档反解;capsOf ← 在座适配器;deliver/streamDeliver
     // ← 本引擎包装;subscribe ← io.onFrame 帧泵直挂(M-4 顺序成立面:done 帧先入投影,onRunEnd 只补注记);
@@ -168,6 +174,7 @@ export class ChannelsEngine {
         this.runOrigin.set(sessionId, msg);
       },
       workspaceRoots: () => registeredWorkspaceRoots(),
+      notifyConfigChanged: () => this.opts?.notifyConfigChanged?.(),
       // /compact 压缩执行单点(2026-11-24 用户裁定「sunx 模式也支持 workspace、compact 等命令」):
       // serve runCommand 直通——GUI/TUI 聊天命令同链路(命令气泡/工具三态行/压缩回执全落转录)
       compact: (rt) => runCommand(rt, '/compact'),

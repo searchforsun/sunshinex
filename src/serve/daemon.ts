@@ -335,6 +335,9 @@ export class GuiDaemon {
       // 配置档：测试注入（opts.channelsConfigs）优先——engine.start() 调和时取值；缺省读全局档
       // channels 键（loadChannels 单点，config/channels.ts 全局豁免裁定）
       configs: channelsConfigs !== undefined ? () => channelsConfigs : () => loadChannels().value,
+      // 模型/强度变更广播（2026-11-25 用户裁定「飞书侧更改实时同步 GUI 输入框」）：config-changed
+      // settings 帧直发——GUI 模型 pill/强度 chip 随帧重拉实时同步
+      notifyConfigChanged: () => this.broadcastFrame({ kind: 'config-changed', resource: 'settings', scope: 'global', root: null }),
     });
   }
 
@@ -1713,6 +1716,22 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   private async handleChannelsPut(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     await configHandlers.handleChannelsPut(this.configIo, req, res, (channels: ChannelConfig[]) => {
       this.channelsEngine.applyConfigs(channels);
+      // 模型/强度实时同步到绑定活会话（2026-11-25 用户裁定「通道设置更改模型和强度要实时同步
+      // 到活的会话输入框下」）：cfg 有值=应用(setModel/setEffort 即改即落 meta),缺省=回全局
+      // 默认(setModel(undefined)/clearEffort);GUI 模型 pill 随紧随的 config-changed 帧重拉
+      for (const cfg of channels) {
+        for (const b of this.channelsBindings.all()) {
+          if (!b.key.startsWith(cfg.id + ':')) continue;
+          const sess = this.sessions.get(b.sessionId);
+          if (sess === undefined) continue;
+          if (cfg.model !== undefined || cfg.effort !== undefined) {
+            if (cfg.model !== undefined) sess.setModel(cfg.model);
+            else sess.setModel(undefined);
+            if (cfg.effort !== undefined) sess.setEffort(cfg.effort);
+            else sess.clearEffort();
+          }
+        }
+      }
       this.watcher.suppress('settings', 'global', null);
       this.broadcastFrame({ kind: 'config-changed', resource: 'settings', scope: 'global', root: null });
     });
