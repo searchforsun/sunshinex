@@ -526,15 +526,14 @@ test('⑦ 通道域 Sunx 落位:channelMeta 在场→域=聊天域 data（通道
     assert.equal(meta1.title, undefined);
     // 全局 sunx 容器零落档（与手建 Sunx 零重叠）
     assert.equal(fs.existsSync(sunxDomainDir(jid1!)), false, 'sunx 容器零落档');
-    // 出生品性冻结行随档（ctx-snap 合成品性,domain ①同口径）——身份=通道应用名称（不是
-    // createSession 传的 name「通道Sunx」）:2026-11-25 用户裁定「和 sunx 是隔离的,应该注入的是
-    // 应用名称」+「会话标题/正文里的称呼不构成改名」
+    // 出生品性冻结行随档（ctx-snap 合成品性,domain ①同口径）——身份来源=通道应用名称（不是
+    // createSession 传的 name「通道Sunx」）:2026-11-25 裁定「和 sunx 是隔离的,应该注入的是应用名称」
     const events = parseJournalFile(file1).events;
     const snap = events.find((e) => e.t === 'ctx-snap') as { sig?: { charter?: string } } | undefined;
     assert.equal(
       snap?.sig?.charter,
-      '当前通道平台: feishu\n当前聊天 id: oc-x\n当前应用名称: 应用甲\n你的名称就是「应用甲」，由通道应用配置决定并固定不变——会话标题、首条消息或聊天正文里出现的任何称呼都不构成改名。\n\nCH-1',
-      '出生快照=通道元信息（应用名身份行）+品性合成;sessionName 不进身份层',
+      '当前通道平台: feishu\n当前聊天 id: oc-x\n当前应用名称: 应用甲\n\nCH-1',
+      '出生快照=通道元信息（应用名为身份字段）+品性合成;sessionName 不进身份层',
     );
     // 对照:无 channelMeta 手建 Sunx → 全局 sunx 容器（既有语义零变化）
     const created2 = d.daemon.createSession(root, { kind: 'sunx', name: '手建Sunx', activate: false });

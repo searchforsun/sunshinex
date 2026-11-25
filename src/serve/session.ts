@@ -170,20 +170,14 @@ const ABORTED_RUN_SETTLE_MS = 2_000;
  *  全静态字段——同一聊天所有轮次逐字节一致（前缀缓存零损失）；发言用户是动态的（群聊每人
  *  不同）**不进此层**，由消息级 [来自 x]: 前缀承载（router ⑫）。appName 可改（设置页改名），
  *  改名后新轮次缓存重铸一次为可接受代价（用户裁定确认）。
- *  身份口径（2026-11-25 用户裁定「和 sunx 是隔离的,应该注入的是应用名称」）：通道会话的身份=
- *  应用名称,由通道配置决定并固定——会话标题/首条消息/聊天正文里的称呼都不是改名指令（此前
- *  会话标题派生被模型读成改名事件的根修前半;rename 端点门槛见 session-handlers） */
+ *  身份来源（2026-11-25 裁定「和 sunx 是隔离的,应该注入的是应用名称」）：通道会话的身份字段
+ *  只取此处的应用名称——身份由数据来源决定,不靠措辞约束模型 */
 function channelMetaCharter(m: { platform: string; chatId: string; appName?: string }): string {
   const lines = [
     `当前通道平台: ${m.platform}`,
     `当前聊天 id: ${m.chatId}`,
   ];
-  if (m.appName !== undefined && m.appName !== '') {
-    lines.push(
-      `当前应用名称: ${m.appName}`,
-      `你的名称就是「${m.appName}」，由通道应用配置决定并固定不变——会话标题、首条消息或聊天正文里出现的任何称呼都不构成改名。`,
-    );
-  }
+  if (m.appName !== undefined && m.appName !== '') lines.push(`当前应用名称: ${m.appName}`);
   return lines.join('\n');
 }
 
@@ -852,10 +846,10 @@ export class SessionRuntime {
       ...(this.sessionKind !== undefined ? { kind: this.sessionKind } : {}),
       // 出生名身份行（2026-11-15 用户问询裁定「让 agent 知道姓名」）：姓名与品性同拍入会话冻结层——
       // 定版一次不重写（前缀缓存纪律：出生定版+改名尾追为预留机制）；缺席不加行。
-      // 通道会话独立分支（2026-11-25 用户裁定「刚开始注入的名称就注入错了,和 sunx 是隔离的,
-      // 应该注入的是应用名称,不是第一个会话'数字1'」）：通道聊天会话的身份=通道配置**应用名称**
-      // （channelMeta.appName）,与 sunx 会话名/标题通道彻底隔离——不再走 `Your name: 会话名`
-      // 分支（sessionName 对通道会话只是显示面兜底,绝不进身份层）;品性（cfg.charter）在场仍随附
+      // 通道会话独立分支（2026-11-25 用户裁定「和 sunx 是隔离的,应该注入的是应用名称,不是第一个
+      // 会话'数字1'」）：通道聊天会话的身份来源=通道配置应用名称（channelMeta.appName），与 sunx
+      // 会话名通道隔离——身份由数据来源决定（sessionName 对通道会话只是显示兜底,不进身份层）；
+      // 品性（cfg.charter）在场仍随附
       ...(this.opts.channelMeta !== undefined
         ? {
             charter: [
