@@ -625,6 +625,63 @@ test('task_status null 窥视列出收养的历史记录（/new 复制任务记�
   }
 });
 
+test('task_status status 参数：默认 running；done/stopped/all 分档查历史；原因可见；非法档 INVALID_ARG', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-taskstatus-'));
+  try {
+    const tasks = new TaskRegistry(path.join(root, 'data'));
+    const registry = makeStatusRegistry(tasks);
+    const running = tasks.submit({ kind: 'exec', label: 'still-running' });
+    const done = tasks.submit({ kind: 'exec', label: 'finished-ok' });
+    tasks.finish(done.id, 'done', { exitCode: 0 });
+    const cancelled = tasks.submit({ kind: 'subagent', label: 'cancelled-work' });
+    tasks.finish(cancelled.id, 'stopped', { reason: 'manual' });
+
+    // 缺省 status=running：在跑行进回执,终态只在记录段
+    const def = await registry.execute('task_status', { taskIds: null }, stubSafety);
+    assert.ok(def.ok);
+    if (def.ok) {
+      assert.match(def.value.stdout, new RegExp(`${running.id} \\(exec\\) running`));
+      assert.doesNotMatch(def.value.stdout, new RegExp(`${done.id} \\(exec\\) done`), '终态不进在跑回执');
+    }
+    // done：只列 done,不列 running/stopped
+    const onlyDone = await registry.execute('task_status', { taskIds: null, status: 'done' }, stubSafety);
+    assert.ok(onlyDone.ok);
+    if (onlyDone.ok) {
+      assert.match(onlyDone.value.stdout, /task records \(done, 1\):/);
+      assert.match(onlyDone.value.stdout, new RegExp(`${done.id} \\(exec, done\\) finished-ok`));
+      assert.doesNotMatch(onlyDone.value.stdout, new RegExp(running.id));
+      assert.doesNotMatch(onlyDone.value.stdout, new RegExp(cancelled.id));
+    }
+    // stopped：带取消原因（用户主动取消）
+    const onlyStopped = await registry.execute('task_status', { taskIds: null, status: 'stopped' }, stubSafety);
+    assert.ok(onlyStopped.ok);
+    if (onlyStopped.ok) assert.match(onlyStopped.value.stdout, new RegExp(`${cancelled.id} \\(subagent, stopped, manual\\) cancelled-work`));
+    // all：在跑+终态全列
+    const all = await registry.execute('task_status', { taskIds: null, status: 'all' }, stubSafety);
+    assert.ok(all.ok);
+    if (all.ok) {
+      assert.match(all.value.stdout, /task records \(all, 3\):/);
+      for (const id of [running.id, done.id, cancelled.id]) assert.match(all.value.stdout, new RegExp(id));
+    }
+    // 空档文案 + 非法档
+    const emptyFailed = await registry.execute('task_status', { taskIds: null, status: 'failed' }, stubSafety);
+    assert.ok(emptyFailed.ok);
+    if (emptyFailed.ok) assert.equal(emptyFailed.value.stdout, 'no failed tasks');
+    const bad = await registry.execute('task_status', { taskIds: null, status: 'weird' }, stubSafety);
+    assert.equal(bad.ok, false);
+    if (!bad.ok) {
+      assert.equal(bad.error.code, 'INVALID_ARG');
+      assert.match(bad.error.message, /Unknown status: weird/);
+    }
+    // 显式 taskIds 不受 status 影响（保持既有桩描述/结论面）
+    const byId = await registry.execute('task_status', { taskIds: [done.id], status: 'running' }, stubSafety);
+    assert.ok(byId.ok);
+    if (byId.ok) assert.match(byId.value.stdout, new RegExp(`${done.id} \\(exec\\) done`));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('agent_team_task_wait 板终态回执 → markBoardReceipted 命中 dispatchTag 台账行', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'twb-'));
   try {

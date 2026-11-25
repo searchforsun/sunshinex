@@ -290,6 +290,11 @@ export function makeTaskWaitTool(
   };
 }
 
+/** task_status 可查状态档（2026-11-25 用户裁定「给一个参数查各种状态的任务,默认查正在运行」）：
+ *  running=在跑（缺省）；done/failed/stopped=终态分档；all=全量（含在跑） */
+const TASK_STATUS_FILTERS = ['running', 'done', 'failed', 'stopped', 'all'] as const;
+type TaskStatusFilter = (typeof TASK_STATUS_FILTERS)[number];
+
 /** task_status 工具工厂（2026-11-15 sunx P1 Task 3）：task_wait 的恒窥视变体——timeoutSeconds 固定 0
  *  （无阻塞档），sunx 编排主链在自身工作间隙快查台账。与 task_wait 同底座：waitMixed(timeout 0) 单点、
  *  receiptBody/formatReceipt 单点（回执头=既有窥视措辞）、终态行即置 markReceipted（bg-wake spec §3.1
@@ -308,17 +313,27 @@ export function makeTaskStatusTool(
         taskIds: {
           type: ['array', 'null'],
           items: { type: 'string' },
-          description: 'Background exec/spawn ledger ids to inspect; JSON null = all currently running ledger tasks (both kinds)',
+          description: 'Background exec/spawn ledger ids to inspect; JSON null = list ledger tasks filtered by `status` (default: currently running)',
+        },
+        status: {
+          type: 'string',
+          enum: [...TASK_STATUS_FILTERS],
+          description: 'Filter used only when taskIds is JSON null: running (default), done, failed, stopped, or all. Ignored when explicit taskIds are given',
         },
       },
     },
     name: 'task_status',
     description:
-      'Non-blocking status peek at background ledger tasks (exec and spawn): returns id, kind, status, exit code, and the exec log tail or the subagent conclusion — it never waits. Terminal rows in the receipt are consumed: you will not be woken again for them; running rows remain eligible for the background wake-up. The null peek also lists recent terminal task records (including history adopted from a previous session via /new). Use it for a quick check between your own work; use task_wait when you want to block until terminal state.',
+      'Non-blocking status peek at background ledger tasks (exec and spawn): returns id, kind, status, exit code, and the exec log tail or the subagent conclusion — it never waits. Terminal rows in the receipt are consumed: you will not be woken again for them; running rows remain eligible for the background wake-up. taskIds=null lists tasks filtered by status (default running; pass status="all"/"done"/"stopped"/"failed" to query history, including records adopted from a previous session via /new); the default running peek also appends the most recent terminal records. Use it for a quick check between your own work; use task_wait when you want to block until terminal state.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
-      const raw = input as { taskIds?: string[] | null };
+      const raw = input as { taskIds?: string[] | null; status?: string };
+      const rawStatus = raw.status;
+      if (rawStatus !== undefined && !(TASK_STATUS_FILTERS as readonly string[]).includes(rawStatus)) {
+        throw new CodedToolError('INVALID_ARG', `Unknown status: ${rawStatus}. Expected one of ${TASK_STATUS_FILTERS.join('/')}`);
+      }
+      const statusFilter: TaskStatusFilter = (rawStatus ?? 'running') as TaskStatusFilter;
       let ids: string[];
       const scheduledSection = (): string => {
         const jobs = scheduleList?.() ?? [];
@@ -332,6 +347,11 @@ export function makeTaskStatusTool(
           .join('\n');
         return `scheduled dispatches (auto-wake this session on completion):\n${rows}`;
       };
+      /** 记录行单点（记录段与 status 查询共用）：终态带取消原因（manual=用户主动取消） */
+      const recordRow = (t: BackgroundTask): string => {
+        const mark = t.stopReason !== undefined ? `, ${t.stopReason}` : '';
+        return `- ${t.id} (${t.kind}, ${t.status}${mark}) ${t.label}`;
+      };
       // 终态记录段（2026-11-25 用户裁定「sunx /new 复制任务记录要读取得到」根修）：null 窥视此前
       // 只列 running——让位并入的收养行全是终态,新会话查任务状态恒空。补终态记录段（近 8 条,
       // 含收养历史, submit 序倒尾截取）,纯展示不消费——唤醒靠 finish 旁路登记（adopt 重放零回调,
@@ -339,13 +359,25 @@ export function makeTaskStatusTool(
       const recordsSection = (): string => {
         const recs = tasks.list().filter((t) => t.status !== 'running').slice(-8);
         if (recs.length === 0) return '';
-        const rows = recs.map((t) => {
-          const mark = t.stopReason !== undefined ? `, ${t.stopReason}` : '';
-          return `- ${t.id} (${t.kind}, ${t.status}${mark}) ${t.label}`;
-        });
+        const rows = recs.map(recordRow);
         return `task records (terminal, most recent ${recs.length}):\n${rows.join('\n')}`;
       };
       if (raw.taskIds === null || raw.taskIds === undefined) {
+        if (statusFilter !== 'running') {
+          // 显式状态查询（2026-11-25 用户裁定）：按状态列台账（all=含在跑）,近 20 条防回执爆长;
+          // 终态行同「窥视即消费」口径置 receipted（对已终态行是零副作用,不产生幽灵唤醒）
+          const hits = tasks.list().filter((t) => statusFilter === 'all' || t.status === statusFilter);
+          if (hits.length === 0) {
+            const what = statusFilter === 'all' ? 'no tasks recorded' : `no ${statusFilter} tasks`;
+            return { exitCode: 0, stdout: what, stderr: '', timedOut: false };
+          }
+          const shown = hits.slice(-20);
+          const terminalIds = shown.filter((t) => t.status !== 'running').map((t) => t.id);
+          if (terminalIds.length > 0) tasks.markReceipted(terminalIds);
+          const label = statusFilter === 'all' ? 'all' : statusFilter;
+          const head = `task records (${label}, ${shown.length}${hits.length > shown.length ? ` of ${hits.length} most recent` : ''}):`;
+          return { exitCode: 0, stdout: `${head}\n${shown.map(recordRow).join('\n')}`, stderr: '', timedOut: false };
+        }
         ids = tasks.list().filter((t) => t.status === 'running').map((t) => t.id);
         if (ids.length === 0) {
           const sched = scheduledSection();
