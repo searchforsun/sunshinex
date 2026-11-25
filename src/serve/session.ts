@@ -169,13 +169,21 @@ const ABORTED_RUN_SETTLE_MS = 2_000;
 /** 通道元信息 → 会话冻结层文本（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：
  *  全静态字段——同一聊天所有轮次逐字节一致（前缀缓存零损失）；发言用户是动态的（群聊每人
  *  不同）**不进此层**，由消息级 [来自 x]: 前缀承载（router ⑫）。appName 可改（设置页改名），
- *  改名后新轮次缓存重铸一次为可接受代价（用户裁定确认） */
+ *  改名后新轮次缓存重铸一次为可接受代价（用户裁定确认）。
+ *  身份口径（2026-11-25 用户裁定「和 sunx 是隔离的,应该注入的是应用名称」）：通道会话的身份=
+ *  应用名称,由通道配置决定并固定——会话标题/首条消息/聊天正文里的称呼都不是改名指令（此前
+ *  会话标题派生被模型读成改名事件的根修前半;rename 端点门槛见 session-handlers） */
 function channelMetaCharter(m: { platform: string; chatId: string; appName?: string }): string {
   const lines = [
     `当前通道平台: ${m.platform}`,
     `当前聊天 id: ${m.chatId}`,
   ];
-  if (m.appName !== undefined && m.appName !== '') lines.push(`当前应用名称: ${m.appName}`);
+  if (m.appName !== undefined && m.appName !== '') {
+    lines.push(
+      `当前应用名称: ${m.appName}`,
+      `你的名称就是「${m.appName}」，由通道应用配置决定并固定不变——会话标题、首条消息或聊天正文里出现的任何称呼都不构成改名。`,
+    );
+  }
   return lines.join('\n');
 }
 
@@ -843,15 +851,23 @@ export class SessionRuntime {
       // 换铸走本单点,实例字段恒透传不丢;缺席=standard 字节不变
       ...(this.sessionKind !== undefined ? { kind: this.sessionKind } : {}),
       // 出生名身份行（2026-11-15 用户问询裁定「让 agent 知道姓名」）：姓名与品性同拍入会话冻结层——
-      // 定版一次不重写（前缀缓存纪律：出生定版+改名尾追为预留机制,改名 UI 尚不存在）；缺席不加行
-      ...(this.sessionKind === 'sunx' && this.sessionName !== undefined && this.sessionName !== ''
-        ? { charter: `Your name: ${this.sessionName}.
+      // 定版一次不重写（前缀缓存纪律：出生定版+改名尾追为预留机制）；缺席不加行。
+      // 通道会话独立分支（2026-11-25 用户裁定「刚开始注入的名称就注入错了,和 sunx 是隔离的,
+      // 应该注入的是应用名称,不是第一个会话'数字1'」）：通道聊天会话的身份=通道配置**应用名称**
+      // （channelMeta.appName）,与 sunx 会话名/标题通道彻底隔离——不再走 `Your name: 会话名`
+      // 分支（sessionName 对通道会话只是显示面兜底,绝不进身份层）;品性（cfg.charter）在场仍随附
+      ...(this.opts.channelMeta !== undefined
+        ? {
+            charter: [
+              channelMetaCharter(this.opts.channelMeta),
+              ...(this.sessionCharter !== undefined && this.sessionCharter !== '' ? [this.sessionCharter] : []),
+            ].join('\n\n'),
+          }
+        : this.sessionKind === 'sunx' && this.sessionName !== undefined && this.sessionName !== ''
+          ? { charter: `Your name: ${this.sessionName}.
 
 ${this.sessionCharter ?? ''}` }
-        : this.sessionCharter !== undefined ? { charter: this.sessionCharter }
-        // 通道元信息冻结层（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：出生定版
-        // 一次不重写——同一聊天逐字节一致（前缀缓存零损失）；动态发言用户走消息级 [来自 x]: 前缀
-        : this.opts.channelMeta !== undefined ? { charter: channelMetaCharter(this.opts.channelMeta) } : {}),
+          : this.sessionCharter !== undefined ? { charter: this.sessionCharter } : {}),
       // 持久化域透传（2026-11-15 sunx P3 Task 2 域绑定）：缺席=既有推导零变化
       ...(this.opts.dataDir !== undefined ? { dataDir: this.opts.dataDir } : {}),
       // 学习沉淀关闸（P2 遗留义务清偿,P3 Task 2 裁定）：sunx 装配 learnSkills:false——编排轮不沉淀
