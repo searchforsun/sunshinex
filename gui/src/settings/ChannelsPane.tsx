@@ -8,6 +8,7 @@ import { ChannelCard } from './ChannelCard';
 import { ChannelModalForm } from './ChannelModalForm';
 import { displayNameOf, identityOf, EMPTY_FORM, mergeDrafts, newChannelId, splitUserIds, toMsg } from './channel-drafts';
 import { notifyChannelsChanged } from '../sidebar/use-menu-channels';
+import { SESSION_DELETED_EVENT } from '../session-events';
 import type { ChannelDraft, ChannelForm, ChannelModal } from './channel-drafts';
 import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
 import type { SunxTemplateEntry } from '../connection-types';
@@ -38,7 +39,7 @@ export interface ChannelsPaneConn {
   putChannels(channels: ChannelConfigMsg[]): Promise<{ ok: true; warnings: string[] }>;
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string }>;
   /** DELETE /channels/:id(2026-11-23 用户裁定「真正的删除各种配置和目录」):条目移除+解绑+聊天域目录真删 */
-  deleteChannel(id: string): Promise<{ ok: true }>;
+  deleteChannel(id: string): Promise<{ ok: true; removedSessionIds?: string[] }>;
   /** GET /models:全局模型清单(2026-11-23 用户裁定「可以选择默认的模型和强度」)——弹窗缺省档数据源 */
   models(): Promise<{ choices: Array<{ id: string; model: string }> }>;
   /** GET /settings/sunx-templates(2026-11-24 用户裁定通道支持 Sunx 模式):品性模板清单,弹窗
@@ -167,11 +168,16 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
     setSavingId(id);
     conn
       .deleteChannel(id)
-      .then(() => {
+      .then((r) => {
         setSavingId('');
         setDelAsk(null);
         removedRef.current.add(id);
         setDrafts((prev) => (prev ?? []).filter((d) => d.id !== id));
+        // 被清会话通知（2026-11-25 用户报障「删除后回来直接掉欢迎页+404」）:SESSION_DELETED_EVENT
+        // 卸载该会话页签池/常驻 webview(App 对正开着的会话 deliberate 回欢迎页——2026-11-04 既有裁定)
+        for (const sid of r.removedSessionIds ?? []) {
+          if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(SESSION_DELETED_EVENT, { detail: sid }));
+        }
         notifyChannelsChanged(); // 侧栏通道组立即重拉(2026-11-25 用户裁定「删除后要立即隐藏」)
         load();
       }, (err: unknown) => {

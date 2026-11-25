@@ -23,6 +23,7 @@ import { readSessionMeta } from '../../session/journal';
 import { writeJsonAtomic } from '../../catalog/io';
 import { slugify } from '../../slug';
 import { enumerateContainerSessions } from '../sessions-list-handlers';
+import { listSessions } from '../../session/journal';
 import { readStrictSettingsRootForWrite } from '../config-handlers';
 import type { ChannelsEngine } from './engine';
 import type { ChannelsBindingsStore } from './store';
@@ -133,9 +134,20 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   const domainPrefix = `im-${slugify(id, { max: 60, fallback: 'chat' })}-`;
   const container = channelsContainerDir();
   let removedDomains = 0;
+  const removedSessionIds: string[] = [];
   try {
     for (const ent of fs.readdirSync(container, { withFileTypes: true })) {
       if (!ent.isDirectory() || !ent.name.startsWith(domainPrefix)) continue;
+      // 被清域内的会话 runtime id 收集（2026-11-25 用户报障「删除后回来直接掉欢迎页+404」）:
+      // GUI 据此卸载该会话页签池+正开着的会话 deliberate 回欢迎页(复用 SESSION_DELETED_EVENT
+      // 与 2026-11-04「删除当前会话回欢迎页」既有裁定)——registry 在座面(channelMeta.chatId)
+      // 双源并集(冷档 journal 反查 + 在座 dataDir 前缀)
+      for (const [, sess] of io.sessions.entries()) {
+        if (sess.dataDir !== undefined && sess.dataDir.startsWith(path.join(container, ent.name)) && !removedSessionIds.includes(sess.id)) removedSessionIds.push(sess.id);
+      }
+      for (const jr of listSessions(path.join(container, ent.name, 'data'))) {
+        if (!removedSessionIds.includes(jr.id)) removedSessionIds.push(jr.id);
+      }
       fs.rmSync(path.join(container, ent.name), { recursive: true, force: true });
       removedDomains += 1;
     }
@@ -155,7 +167,7 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   } catch {
     /* 容器缺席/不可读=无滞留域（合法空态） */
   }
-  io.send(res, 200, { ok: true, removedDomains });
+  io.send(res, 200, { ok: true, removedDomains, removedSessionIds });
 }
 
 /** GET /channels/bindings → 绑定档全列（store.all；行含 rootOverride 供聊天信息条回显） */

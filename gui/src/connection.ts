@@ -543,7 +543,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
       await del(`/channels/bindings/${encodeURIComponent(key)}`);
       return { ok: true };
     },
-    async deleteChannel(id: string): Promise<{ ok: true }> {
+    async deleteChannel(id: string): Promise<{ ok: true; removedSessionIds?: string[] }> {
       // DELETE /channels/:id(2026-11-23 用户裁定「真正的删除各种配置和目录」):条目移除+解绑+
       // 聊天域目录真删(404 unknown channel 经 opError 透出)
       await del(`/channels/${encodeURIComponent(id)}`);

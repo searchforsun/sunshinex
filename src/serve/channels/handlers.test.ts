@@ -247,7 +247,7 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
       const { io, replies, released } = stubIo({ bindings: store, sessions });
       handleChannelsDelete(io, {} as http.ServerResponse, 'del1');
       assert.equal(replies[0]!.status, 200);
-      assert.deepEqual(replies[0]!.body, { ok: true, removedDomains: 1 });
+      assert.equal((replies[0]!.body as { removedDomains: number }).removedDomains, 1, '域计数');
       // 条目移除(keep 原样)
       const onDisk = JSON.parse(fs.readFileSync(settingsPath, 'utf8')) as { channels: Array<{ id: string }> };
       assert.deepEqual(onDisk.channels.map((c) => c.id), ['keep']);

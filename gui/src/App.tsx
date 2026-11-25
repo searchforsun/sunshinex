@@ -6,6 +6,7 @@ import type { SessionProjection } from './projection';
 import { EMPTY_PROJECTION, useConnectionWiring } from './use-connection-wiring';
 import type { ChatSink } from './pages/Chat';
 import { registryProbe } from './tabs/registry';
+import { SESSION_DELETED_EVENT } from './session-events';
 import { ensureSession, setCollapsed, emptyTabSession, adoptStaleSeats, WELCOME_TAB_SEAT } from './tabs/tab-state';
 import type { TabStates } from './tabs/tab-state';
 import { useBoardSeed } from './use-board-seed';
@@ -434,6 +435,18 @@ function AppShell(): JSX.Element {
   /** 归档/删除当前会话回欢迎页(2026-11-04 用户裁定):事件监听挂一次,经 ref 取最新 backHome */
   const backHomeRef = useRef(backHome);
   backHomeRef.current = backHome;
+
+  /** 通道删除会话清场（2026-11-25 用户报障「删除后回来直接掉欢迎页+404」收口）:被 purge 的
+   *  会话若正开着,deliberate 回欢迎页(2026-11-04「删除当前会话回欢迎页」裁定同款;页签池卸载
+   *  由 use-app-tabs 的 SESSION_DELETED_EVENT 监听承担) */
+  useEffect(() => {
+    const onDeleted = (e: Event): void => {
+      const id = (e as CustomEvent<string>).detail;
+      if (id !== undefined && id === sessionRef.current) backHomeRef.current();
+    };
+    window.addEventListener(SESSION_DELETED_EVENT, onDeleted);
+    return () => window.removeEventListener(SESSION_DELETED_EVENT, onDeleted);
+  }, []);
 
   /** 当前会话标签席(welcome 期空席占位——TabStrip 灰条;宽 32) */
   const tabState = tabStates[isWelcome ? WELCOME_TAB_SEAT : openSessionId] ?? emptyTabSession();

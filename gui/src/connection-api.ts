@@ -134,7 +134,7 @@ export interface Connection {
   deleteChannelBinding(key: string): Promise<{ ok: true }>;
   /** DELETE /channels/:id（2026-11-23 用户裁定「删除弹窗确认,真正的删除各种配置和目录」）：
    *  通道真删除——settings 条目移除+绑定解绑+在座释放+聊天域目录(im-<slug>-*)真删 */
-  deleteChannel(id: string): Promise<{ ok: true }>;
+  deleteChannel(id: string): Promise<{ ok: true; removedSessionIds?: string[] }>;
   /** PUT /channels/bindings/:key body {rootOverride?: string|null}（2026-11-21 channels Task 13
    *  聊天信息条「绑定工作区切换」写面）：绑定不存在 404、空串/非串 400（写面从严）；null/缺席=
    *  清除、非空字符串=设置（trim 归一）——每次 PUT 完全决定 rootOverride 态；生效语义=下次
