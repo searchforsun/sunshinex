@@ -466,12 +466,13 @@ vi.mock('highlight.js/lib/common', async (importOriginal) => {
  *  (流式 token 帧只有流式条重渲染,稳定条目 md 解析零重跑)。
  *  2026-11-16 流畅轮:Chat 转录热路径改走 md-render 的缓存渲染面(renderMdCached/MarkdownCached,
  *  hast 级缓存)——计数桩同挂两入口(直调真实现,语义=「进解析管线次数」) */
-const md = vi.hoisted(() => ({ renders: 0 }));
+const md = vi.hoisted(() => ({ renders: 0, texts: [] as string[] }));
 vi.mock('react-markdown', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-markdown')>();
   const Real = actual.default;
   const Counting = (props: React.ComponentProps<typeof Real>): JSX.Element => {
     md.renders += 1;
+    md.texts.push(typeof props.children === 'string' ? props.children : '');
     return <Real {...props} />;
   };
   return { default: Counting };
@@ -480,12 +481,14 @@ vi.mock('./pages/chat/md-render', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./pages/chat/md-render')>();
   const CountingCached = (props: { md: string; components: import('react-markdown').Components; draft?: boolean }): JSX.Element => {
     md.renders += 1;
+    md.texts.push(props.md);
     return <actual.MarkdownCached {...props} />; // memo 对象须走 JSX 渲染,直调用即 undefined 元素
   };
   return {
     ...actual,
     renderMdCached: (mdText: string, components: unknown): unknown => {
       md.renders += 1;
+      md.texts.push(mdText);
       return actual.renderMdCached(mdText, components as never);
     },
     MarkdownCached: CountingCached,
@@ -899,9 +902,15 @@ describe('对话流渲染:会话播种基线 + 事件续推(md/gfm)', () => {
     fire(conn, ev('model-start'));
     fire(conn, ev('token', 'a')); // 流式条开条 → 尾块 markdown 实时渲染(+1)
     const before = md.renders;
-    fire(conn, ev('token', 'b')); // 流式增量:尾块重解析(2026-10-25 恒进解析器裁定)——恰 +1/帧;
-    fire(conn, ev('token', 'c')); // 稳定条(user)memo 跳过零重跑,若破 memo 会是 +2/帧
-    expect(md.renders).toBe(before + 2);
+    md.texts.length = 0; // 内容口径窗口:只看这两帧解析了哪些串
+    fire(conn, ev('token', 'b')); // 流式增量:尾块重解析(2026-10-25 恒进解析器裁定)
+    fire(conn, ev('token', 'c')); // 稳定条(user)memo 跳过零重跑
+    // memo 不变量(内容口径,2026-11-25):两帧只许解析流式尾串('ab'/'abc'/'abc'),稳定条
+    // ('stable')零重解析。帧数口径退役——React 18 startTransition 在测试调度下可能多跑一次
+    // 渲染通道(提交仍一次,DOM 单节点),渲染次数不再等价解析成本;稳定条零重跑才是本条目的回归意图
+    expect(md.texts.some((x) => x.includes('stable'))).toBe(false);
+    expect(md.texts.every((x) => x === '' || x.includes('ab'))).toBe(true);
+    expect(md.renders).toBeGreaterThanOrEqual(before + 2);
     expect(document.querySelector('.entry-assistant')?.textContent).toBe('abc');
     expect(document.querySelector('.entry-user')?.textContent).toContain('stable');
   });

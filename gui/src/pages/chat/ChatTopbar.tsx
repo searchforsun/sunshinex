@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Archive, ArchiveRestore, Bot, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
@@ -139,7 +139,9 @@ interface ChatTopbarProps {
   readonly computerUseActive?: boolean;
 }
 
-export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
+/** 2026-11-25 输入根治轮:memo——宿主 Chat 的草稿 state 每键重渲整棵树,顶栏 props(值 +
+ *  App/会话 hook 的稳定回调)与打字无关,memo 让按键帧整段跳过重渲 */
+export const ChatTopbar = memo(function ChatTopbar(props: ChatTopbarProps): JSX.Element {
   const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, channelChatId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
   /** 「编辑 Sunx」双模式弹窗编辑态(2026-11-15 用户裁定「复用创建弹窗,禁用工作区」;portal 自挂,
    *  挂载点随 header 尾。原 CharterDialog 退役——功能并入 NewSunxDialog 编辑模式) */
@@ -550,4 +552,4 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
     )}
     </>
   );
-}
+});

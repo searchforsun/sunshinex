@@ -106,21 +106,34 @@ export function ComposerCard({
 
   // =rows 不变→过早出纵向滚动条;改为按内容实际高度自增(scrollHeight,封顶 240px 与 CSS max-height 同源)
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  /** 首帧同步测量一次(挂载/换会话语义:恢复的长草稿不能先按 min-height 显示一帧) */
+  const measuredOnceRef = useRef(false);
   useLayoutEffect(() => {
-    const ta = taRef.current;
-    if (ta === null) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
-  }, [value, rows, highlight]);
-  // 滚动同步兜底(2026-11-05 用户实测「复制正常,上下滚动后光标对不齐」):onScroll 同步之外,
-  // 渲染后再钉一次——React 提交若瞬态缩短高亮内容,浏览器把 hl.scrollTop 钳到 0 且内容长回
-  // 不恢复=层间错位(onScroll 只在滚动事件期救,不救渲染期钳制)
-  useLayoutEffect(() => {
-    const ta = taRef.current;
-    const hl = hlRef.current;
-    if (ta === null || hl === null) return;
-    hl.scrollTop = ta.scrollTop;
-    hl.scrollLeft = ta.scrollLeft;
+    const apply = (): void => {
+      const ta = taRef.current;
+      if (ta === null) return;
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.min(ta.scrollHeight, 240)}px`;
+      // 滚动同步兜底(2026-11-05 用户实测「复制正常,上下滚动后光标对不齐」):onScroll 同步之外,
+      // 渲染后再钉一次——React 提交若瞬态缩短高亮内容,浏览器把 hl.scrollTop 钳到 0 且内容长回
+      // 不恢复=层间错位。与自增高并入同一处(2026-11-25 输入根治轮:原先两段各一个 layout
+      // effect,每键两次强制布局)
+      const hl = hlRef.current;
+      if (hl !== null) {
+        hl.scrollTop = ta.scrollTop;
+        hl.scrollLeft = ta.scrollLeft;
+      }
+    };
+    // 按键帧零同步布局(2026-11-25 输入根治轮):旧实现同步读 scrollHeight=每次按键都强制一次
+    // 文档布局,字符上屏被排在布局之后——长草稿/大正文下即「粘滞」。改为下一帧测量:字符先上屏,
+    // 高度一帧内跟到(人眼不可辨);首帧仍同步(见上注,防恢复草稿闪一帧 min-height)
+    if (!measuredOnceRef.current) {
+      measuredOnceRef.current = true;
+      apply();
+      return;
+    }
+    const raf = requestAnimationFrame(apply);
+    return () => cancelAnimationFrame(raf);
   }, [value, rows, highlight]);
   // 草稿 ref token 规范形(2026-11-07 用户实测「清理后再圈选,芯片飞/图标压字」根修):显示层
   // 重编号不改原文→·2 被显示成第 1 枚(短 2 字)=镜像层宽≠原文宽自此错位。此处把草稿原文

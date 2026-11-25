@@ -325,6 +325,9 @@ export function useComposerKeys(deps: {
     if (composingRef.current) return;
     const ta = inputRef.current;
     if (ta === null) return;
+    // 2026-11-25 输入根治轮:无 ⟦…⟧ token 直接放行——onSelect 每次按键都来,纯文本草稿下
+    // 扫描全文找 token(span 判定)是白付;token 恒以 ⟦ 起头,此判精确
+    if (!ta.value.includes('⟦')) return;
     const s = ta.selectionStart ?? 0;
     const en = ta.selectionEnd ?? 0;
     if (s !== en) return;

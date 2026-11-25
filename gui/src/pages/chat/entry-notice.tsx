@@ -19,6 +19,13 @@ export function agentMessageOf(entry: ChatEntry): { from: string; text: string }
   return { from: m[1], text: m[3] ?? '' };
 }
 
+/** 模型切换说明行判定（2026-11-25 用户裁定「模型切换系统提示要和 fork 系统提示一样,和上侧保持
+ *  距离」）:notice 正文由 session.ts 单点 t() 生成（中/英两语),此处按同一文案形态识别——
+ *  命中即按 fork-origin 同档上边距渲染（与上侧内容拉开分节距离） */
+export function isModelSwitchNotice(md: string): boolean {
+  return /^(?:模型从 .+ 切换至 .+|Model switched from .+ to .+)$/.test(md);
+}
+
 /** G14.19 旁白分类(G14 批):[skills]/[memory] 打头的学习/记忆系统信息用专用图标(Sparkles/
  *  Database 微着色)+剥标签前缀——与一般系统提示(Info 灰)一眼区分;非此类回 null 走 systemIconOf。
  *  2026-10-31 用户裁定 i18n+可点:saved/updated/learned 动词本地化(添加记忆/更新记忆/添加技能/

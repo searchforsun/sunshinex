@@ -240,8 +240,13 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
       : rawCmdData;
   })();
   // 2026-11-07 用户实测「+ 能实时加出来,/ 不实时」:/ 面板在场即现拉技能清单(运行中新装技能实时可弹)
+  // 2026-11-25 输入根治轮:只在「/ 面板由关到开」沿拉一次——旧实现每键都拉(打字 /xxx 时每个
+  // 字符一次 IPC 往返,面板明明已开着;技能清单不需要键级刷新)
+  const slashShownRef = useRef(false);
   useEffect(() => {
-    if (slashTokenAt(input, inputRef.current?.selectionStart ?? input.length) !== null) reloadSkills();
+    const on = slashTokenAt(input, inputRef.current?.selectionStart ?? input.length) !== null;
+    if (on && !slashShownRef.current) reloadSkills();
+    slashShownRef.current = on;
   }, [input, reloadSkills]);
   /** G14.213 欢迎页接力取用(ref 跳板):事件 hook 的 reseed 闭包经此恒取最新 submitText。
    *  声明前置于事件 hook(deps 求值早于 submitText 定义);赋值仍在其定义处,首帧空档无消费路径 */
@@ -512,25 +517,27 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
 
 
 
-  /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关) */
-  const slashPanelItems: CmdItem[] | null = (() => {
+  /** G14.95 面板项(渲染期,光标位置):/ 令牌 → 面板项;空=面板不开(无匹配自动关)。
+   *  2026-11-25 输入根治轮:memo 化(旧为渲染期 IIFE,每次 Chat 重渲都重建面板项数组→面板
+   *  overlays 元素树跟着重造;打字帧无相关变化时直接复用) */
+  const slashPanelItems: CmdItem[] | null = useMemo(() => {
     const caret = inputRef.current?.selectionStart ?? input.length;
     // 2026-11-05 用户裁定:技能回归 / 触发面板(插入引用行,kind='skill'——G14.213 纯文本语义,
     // Enter 有参=普通发送落软引用,不回命令通道;P0 命令派发退役口径不变)
     const items = slashItemsFor(cmdData, slashTokenAt(input, caret), skills ?? []);
     return items.length > 0 ? items : null;
-  })();
+  }, [cmdData, input, skills]);
 
   /** agents-teams P1 §3.2 $/# 引用面板项(渲染期):触发态在场 + 活性锚校验(G14.211 同款:
    *  锚位非 $/# 即不开)+ 过滤非空才开(全空=不开,与 @ 同门)。overlays 链首位=互斥收口:
    *  引用面板在场时 @/+/命令面板一律不渲染 */
-  const refPanelItems: RefItem[] | null = (() => {
+  const refPanelItems: RefItem[] | null = useMemo(() => {
     if (refPal === null) return null;
     if (input[refPal.from] !== '$' && input[refPal.from] !== '#') return null;
     // 空命中也返回 [](面板照开 + 空态引导,不再静默隐藏——用户实测:零目录时 $/# 弹了等于没弹;
     // 池空指路设置面,有池无匹配报无匹配)。$/# 拆开各自单域(2026-11-05 用户裁定)
     return buildRefPanelItems(liveRefEntries, refPal.query, refPal.sym);
-  })();
+  }, [refPal, input, liveRefEntries]);
 
   /** G14.95 输入框高亮层:token 着色 spans(与 textarea 同排版);ref 芯片 hover 全文取账本;
    *  composer=true:ref 芯片 ⟦⟧ 定界符保字宽+图标绝对定位(显形宽度=原文宽度硬约束) */

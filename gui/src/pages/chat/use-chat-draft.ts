@@ -48,6 +48,8 @@ export function useChatDraft({ archiveKey, refContentsRef, initialInsert, initia
   const oldestDirtyAtRef = useRef(0);
   const lastFlushAtRef = useRef(0);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** 芯片账本最近一次落盘时刻(5s 限流;见 flush 注) */
+  const lastRefsFlushAtRef = useRef(0);
   const flush = (): void => {
     if (flushTimerRef.current !== null) {
       clearTimeout(flushTimerRef.current);
@@ -59,8 +61,16 @@ export function useChatDraft({ archiveKey, refContentsRef, initialInsert, initia
     try {
       localStorage.setItem(`sx-draft:${key}`, inputMirrorRef.current);
       // 芯片内容账本随草稿同键持久化(2026-11-07 用户裁定「重启后草稿片段也要加载出来」):
-      // 文本恢复了、账本(内存态)不恢复=芯片空壳 hover/发送皆失。此刻 stringify 而非每键
-      localStorage.setItem(`sx-draft-refs:${key}`, JSON.stringify([...refContentsRef.current]));
+      // 文本恢复了、账本(内存态)不恢复=芯片空壳 hover/发送皆失。
+      // 2026-11-25 输入根治轮两道闸:①草稿无 ⟦…⟧ token 就不写账本(纯文本草稿下账本与草稿
+      // 无关,而账本存 @文件全文可达成百 KB——每次全量 stringify 纯浪费,打字首键的冷却直写
+      // 正撞在这条上);②带芯片时限流 5s(芯片内容不随普通按键变化,无需随草稿同步刷盘)
+      const text = inputMirrorRef.current;
+      const now = Date.now();
+      if (text.includes('⟦') && now - lastRefsFlushAtRef.current >= 5000) {
+        lastRefsFlushAtRef.current = now;
+        localStorage.setItem(`sx-draft-refs:${key}`, JSON.stringify([...refContentsRef.current]));
+      }
     } catch {
       // 隐私模式等写失败静默:草稿是尽力而为的会话便利,不入错误面
     }

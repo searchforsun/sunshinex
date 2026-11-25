@@ -4,7 +4,9 @@ import { createPortal } from 'react-dom';
 import { zoomScale } from '../../ui-zoom';
 import { t } from '../../i18n';
 import { FileIcon } from '../../file-icon';
-import { FileText, Globe, SquareTerminal } from 'lucide-react';
+import { Check, Copy, FileText, Globe, SquareTerminal } from 'lucide-react';
+import { useCopyFeedback } from '../../use-copy-feedback';
+import { TipButton } from './RunFooter';
 import { isAbsPath } from '../../ui-util';
 import type { RefItem } from './ref-palette';
 
@@ -538,6 +540,9 @@ const PANEL_H = 300;
 
 export function RefTokenChip({ inner, isTerm, content, composer }: { inner: string; isTerm: boolean; content: string; composer?: boolean }): JSX.Element {
   const [tip, setTip] = useState<{ x: number; y: number; h: number; w: number; below: boolean } | null>(null);
+  /** 片段复制回显（2026-11-25 用户裁定「文本/终端/网页片段最右侧增加复制按钮,使用项目已有的」）:
+   *  复用项目既有 TipButton+useCopyFeedback 单点（图标 Copy→Check,提示「复制/已复制」） */
+  const { status: copyStatus, copy: copyContent } = useCopyFeedback();
   // 2026-11-05 用户裁定「hover 提示可悬停」:指针从 chip 移入面板不关(面板 pointer-events:auto
   // 可滚动查看),移出面板/chip 才关——chip mouseleave 延迟 160ms 关,面板 mouseenter 取消
   const hideTimer = useRef<number | undefined>(undefined);
@@ -586,7 +591,19 @@ export function RefTokenChip({ inner, isTerm, content, composer }: { inner: stri
         onMouseLeave={() => setTip(null)}
         style={tip.below ? { left: tip.x, top: tip.y, maxHeight: tip.h, width: tip.w } : { left: tip.x, top: tip.y, transform: 'translateY(-100%)', maxHeight: tip.h, width: tip.w }}
       >
-        <span className="ref-chip-preview-head">{ico}<span>{bare}</span></span>
+        <span className="ref-chip-preview-head">
+          {ico}
+          <span className="ref-chip-preview-label">{bare}</span>
+          {/* 2026-11-25 用户裁定「复制/已复制 提示不用显示,显示成 √ 就可以」:无 tooltip,
+              仅图标 Copy→Check 作回执 */}
+          <TipButton
+            className="ref-chip-copy"
+            label="copy snippet"
+            tip=""
+            icon={copyStatus === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => copyContent(content)}
+          />
+        </span>
         <pre>{content}</pre>
       </span>,
       document.body,
@@ -687,6 +704,10 @@ export function refContentConsume(token: string): void {
  * 无条件搬移会把其他会话同键内容覆盖/孤立=「辅助会话/欢迎页 chip 相互串扰」根因,2026-11-07)。
  */
 export function canonicalizeRefTokens(value: string): { text: string; at: number; delta: number; renames: Array<{ from: string; to: string }> } | null {
+  // 2026-11-25 输入根治轮:无 ⟦…⟧ token 的纯文本直接返回——调用面是 ComposerCard 的每渲染
+  // effect(每键都跑),旧实现每键都要走整段 splitMentionTokens 扫描。token 全文恒以 ⟦ 起头,
+  // 此判精确无漏
+  if (!value.includes('⟦')) return null;
   const seq = new Map<string, number>();
   let pos = 0;
   let at = -1;

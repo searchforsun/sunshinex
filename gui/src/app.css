@@ -950,7 +950,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
  * 上下侧翻转由 JS 按 avail 空间决定,面板挂 body 层(避 .chat-dock transform 包含块劫持) */
 .ref-chip-preview { position: fixed; z-index: 80; width: min(300px, calc(100vw - 24px)); max-height: 300px; display: flex; flex-direction: column; overflow: hidden; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-elevated); box-shadow: var(--elev-prominent); pointer-events: auto; }
 /* 2026-11-05 用户裁定「第一行显示 chip 的 图标+名称」:头部固定不随内容滚动,内容区自滚 */
-.ref-chip-preview-head { display: inline-flex; align-items: center; gap: 5px; flex: none; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+.ref-chip-preview-head { display: flex; align-items: center; gap: 5px; flex: none; padding-bottom: 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+/* 片段复制钮(2026-11-25 用户裁定「最右侧增加一个复制按钮」):标题行右缘,复用 .sx-tip 图标钮 */
+.ref-chip-preview-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-chip-preview-head .ref-chip-copy { margin-left: auto; }
 .ref-chip-preview-head svg { width: 14px; height: 14px; }
 .ref-chip-preview pre { margin: 0; flex: 1; min-height: 0; overflow: auto; font: calc(14px * var(--fz))/1.6 var(--font-ui); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 /* G14.130 @文件 token 显形=图标+文件名:非行首图标放前导空白(left:-15px);行首 token
@@ -1472,6 +1475,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* fork 血缘横幅(2026-11-04 用户裁定「分叉于会话」分叉点系统提示,点击回父会话):图标在文字**前面**
    行内排(标准通知行的 .entry-icon 为前置列需 .entry-md.has-icon 包裹,横幅直接子级会纵排到文字上方
    ——flex 行内自纠);距上侧内容 30px(用户裁定,2026-11-04 20→30) */.fork-origin { display: flex; align-items: center; gap: 6px; margin-top: 30px; }.fork-origin .entry-icon { margin-top: 0; }.fork-origin-link { background: none; border: none; padding: 0; color: var(--accent); font-weight: 600; cursor: pointer; font: inherit; }.fork-origin-link:hover { text-decoration: underline; }
+/* 模型切换说明行(2026-11-25 用户裁定「和 fork 系统提示一样,和上侧保持距离」):同 fork-origin
+   分节上边距 30px——紧贴上文错误横幅/上一轮内容时不构成视觉粘连 */
+.entry-notice.model-switch { margin-top: 30px; }
 
 /* G14.84:ask_question 记录体——问题+回答结果(或已跳过),普通展开区域包裹(tool-md 同排版) */.tool-ask { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 4px; }.tool-ask .ask-q { font-size: calc(14px * var(--fz)); font-weight: 600; color: var(--fg); }
 /* G14.102 回答行:回答/自定义=accent 内容;skip=灰斜体;无前缀 */.tool-ask .ask-answer { display: flex; align-items: center; gap: 6px; margin-top: 2px; padding-top: 6px; border-top: 1px dashed var(--border); font-size: calc(14px * var(--fz)); }.tool-ask .ask-answer .ask-answer-text { color: var(--fg); }.tool-ask .ask-answer.kind-answer .ask-answer-text, .tool-ask .ask-answer.kind-custom .ask-answer-text { color: var(--accent); }.tool-ask .ask-answer.kind-dismissed .ask-answer-text { color: var(--fg-tertiary); font-style: italic; }.tool-ask .ask-answer-icon { display: inline-flex; color: var(--accent); }.tool-ask .ask-answer-text { color: var(--fg); }
@@ -2340,11 +2346,16 @@ button.agent-msg-from:hover { text-decoration: underline; }
 }
 .files-selbar button {
   display: inline-flex; align-items: center;
-  padding: 3px 10px; border: none; border-radius: var(--radius-xs);
+  padding: 3px 10px; border: none; /* 2026-11-25 用户裁定「hover 背景用项目统一弧度,当前太直」:
+     hover 块随 .sx-tip/菜单项同档 radius-sm(=22px 全局统一定版),不再用 5px 小件角 */
+  border-radius: var(--radius-sm);
   background: transparent; color: var(--fg);
   font: calc(14px * var(--fz)) var(--font-ui); cursor: pointer; white-space: nowrap;
 }
 .files-selbar button:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* 选区条复制钮(2026-11-25 用户裁定「添加到会话最右侧也增加一个复制按钮」):文字钮之后的图标钮,
+   与其余钮同 hover 面;宽度按图标钮收窄 */
+.files-selbar button.sx-tip { width: 26px; padding: 0 0 0 6px; margin-left: 2px; justify-content: center; }
 /* 2026-11-13 用户实测「亮色暗码,选中弹出的字体颜色不对,应该是黑色」根修:悬浮条浮在暗色
    代码井上,继承容器内被覆写的 --fg:#dfdfdf=浅字浮在浅弹层上;弹层自身带亮面底,前景钉回
    亮色主题黑值,不随暗面容器令牌走 */

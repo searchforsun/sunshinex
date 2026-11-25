@@ -1,5 +1,5 @@
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { agentMessageOf, noticeAccentOf, systemIconOf } from './entry-notice';
+import { agentMessageOf, isModelSwitchNotice, noticeAccentOf, systemIconOf } from './entry-notice';
 import type { ReactNode } from 'react';
 import type { Components } from 'react-markdown';
 import { AlertCircle, ArrowUp, Brain, Check, ChevronDown, ChevronRight, Copy, GitFork, Info, MessageSquare, PenLine, X, ImageOff } from 'lucide-react';
@@ -646,6 +646,8 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
    *  包括智能体团队的 send_message」):能力与入口一并撤除——气泡只读,复制保留 */
   const accent = noticeAccentOf(entry);
   const icon = accent !== null ? accent.icon : systemIconOf(entry);
+  /** 模型切换说明（2026-11-25 用户裁定与 fork 提示同档上边距）:notice 形态按文案单点识别 */
+  const modelSwitch = entry.kind === 'notice' && isModelSwitchNotice(entry.md);
   const { status: copied, copy: copyText } = useCopyFeedback();
   // G14.85:正文工作区文件链接化(工厂按 onOpenFile 装配;引用稳定仅 onOpenFile 变化时重建);
   // isDir=目录解析(目录链接显黄目录;context 缺省恒 false——代理转录等无会话索引面按文件)
@@ -749,7 +751,7 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
   }
   return (
     <div
-      className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}`}
+      className={`entry entry-${entry.kind}${streaming ? ' streaming' : ''}${modelSwitch ? ' model-switch' : ''}`}
       {...(accent?.tag !== undefined
         ? { 'data-notice-tag': accent.tag, 'data-notice-ref': accent.ref ?? '', 'data-notice-clickable': '1' }
         : {})}

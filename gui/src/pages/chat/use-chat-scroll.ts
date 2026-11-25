@@ -90,10 +90,14 @@ useLayoutEffect(() => {
   markProgBottom(el);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 内容引用是唯一触发面(见上注)
 }, [entries]);
-/** 流区贴底跟随(G13 反馈轮):贴底态下每次渲染(流式/条目增删/run 行)归底;离开底缘即放手
- *  (Chat onScroll:仅距底 <4 重贴,避免旧 80px 磁区在上滑后被 scroll 抢回)。useEffect 无依赖面
- *  =每渲染后跑;wheel 上翻与 stick ref 互补。P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop
- *  赋值收进动画帧——同帧多渲染调度一次,回调内重核 stick,放手即弃 */
+/** 流区贴底跟随(G13 反馈轮):贴底态下内容增长(流式/条目增删/run 行)后归底;离开底缘即放手
+ *  (Chat onScroll:仅距底 <4 重贴,避免旧 80px 磁区在上滑后被 scroll 抢回)。wheel 上翻与 stick
+ *  ref 互补。P1 Task 4 rAF 合并:scrollHeight 读取与 scrollTop 赋值收进动画帧——同帧多渲染
+ *  调度一次,回调内重核 stick,放手即弃。
+ *  2026-11-25 输入根治轮:依赖面收为 entries(旧为「每渲染后跑」)——打字/IME 组字每拍都会
+ *  重渲宿主,无依赖面=每键都读一次 scrollHeight(强制布局)+ 写 scrollTop,是输入粘滞的固定
+ *  成本;而「非条目来源」的增高各有专门信号(dock 高度 RO / 行开合 sx-row-toggle / mermaid
+ *  sx-mermaid-settled / 块实测走 MessageList 自钉),不需要通用兜底 */
 useEffect(() => {
   if (stickSuppressRef?.current === true) return; // 切回恢复静默窗:不得贴底(见 deps 注)
   if (bottomRafRef.current !== null) return;
@@ -107,7 +111,8 @@ useEffect(() => {
       markProgBottom(el);
     }
   });
-});
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 内容引用是唯一触发面(打字不贴底)
+}, [entries]);
 // 卸载收尾:取消在途回调(挂载期一次性 cleanup;每渲染 cleanup 会在渲染间隙取消在途调度,
 // 使在途守卫失效退回逐渲染调度——与 Produces 目标相悖,故不随渲染 effect 返回)
 useEffect(() => () => {

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { MutableRefObject } from 'react';
+import { Check, Copy } from 'lucide-react';
 import { t } from '../../i18n';
+import { useCopyFeedback } from '../../use-copy-feedback';
+import { TipButton } from './RunFooter';
 import { zoomScale } from '../../ui-zoom';
 import { mintSnippetToken, refContentRegister } from './mention';
 
@@ -22,6 +25,9 @@ export function SelActionsOverlay(props: {
 }): JSX.Element | null {
   const { containerRef, enabled = true, onInsert, onSideAsk } = props;
   const [sel, setSel] = useState<{ top: number; left: number; text: string } | null>(null);
+  /** 选区复制回显（2026-11-25 用户裁定「添加到会话最右侧也增加一个复制按钮」）:项目既有
+   *  TipButton+useCopyFeedback 单点（图标 Copy→Check,提示「复制/已复制」),正文纯复制出口 */
+  const { status: copyStatus, copy: copySelection } = useCopyFeedback();
   useEffect(() => {
     const el = containerRef.current;
     if (enabled === false || el === null) {
@@ -106,6 +112,15 @@ export function SelActionsOverlay(props: {
           {t('Ask in side chat', '辅助会话提问')}
         </button>
       )}
+      {/* 2026-11-25 用户裁定「复制/已复制 提示不用显示,显示成 √ 就可以」:无 tooltip,
+          仅图标 Copy→Check 作回执 */}
+      <TipButton
+        className="files-selbar-copy"
+        label="copy selection"
+        tip=""
+        icon={copyStatus === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+        onClick={() => copySelection(sel.text)}
+      />
     </div>
   );
 }
