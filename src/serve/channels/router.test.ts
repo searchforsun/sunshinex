@@ -93,6 +93,8 @@ interface HarnessOpts {
   commandText?: (rt: SessionRuntime, line: string) => Promise<string | undefined>;
   /** noteRunSubmit 捕获(bug2 run 起源):[sessionId, msgId] 序对 */
   noteRunSubmits?: Array<{ sessionId: string; msgId: string }>;
+  /** config-changed 广播计数（模型/强度实时同步；裸序号选择路径同口径） */
+  notifyCount?: { n: number };
 }
 
 function makeHarness(opts: HarnessOpts = {}) {
@@ -150,6 +152,9 @@ function makeHarness(opts: HarnessOpts = {}) {
     ...(opts.workspaceRoots !== undefined ? { workspaceRoots: opts.workspaceRoots } : {}),
     ...(opts.compact !== undefined ? { compact: opts.compact } : {}),
     ...(opts.commandText !== undefined ? { commandText: opts.commandText } : {}),
+    ...(opts.notifyCount !== undefined
+      ? { notifyConfigChanged: () => { opts.notifyCount!.n += 1; } }
+      : {}),
   };
   return { router: new ChannelRouter(deps), io, bindings, acks, createCalls, released, attached, noteSenders, runtimes };
 }
@@ -490,7 +495,9 @@ test('⑯ /workspace:无参列表;序号切换写 rootOverride;幂等/未知提�
 // ⑰ /model:无参列表(切换器桩);序号切换 rt.setModel;未知提示;单模型装配如实说明
 test('⑰ /model:无参列表;序号切换 setModel;未知提示;无切换器说明', async () => {
   let rtRef: RtStub | undefined;
+  const notifyCount = { n: 0 };
   const h = makeHarness({
+    notifyCount,
     runtimeFactory: () => {
       const rt = makeRuntime();
       rt.modelSwitcher = { currentId: () => 'glm', choices: () => [{ id: 'glm', model: 'glm-4.6' }, { id: 'ds', model: 'deepseek-v3' }] };
@@ -504,6 +511,7 @@ test('⑰ /model:无参列表;序号切换 setModel;未知提示;无切换器说
   await h.router.handleInbound(mkMsg({ msgId: 'd2', text: '/model' }));
   assert.ok(h.acks[1]!.text.includes('当前模型：glm'));
   assert.ok(h.acks[1]!.text.includes('2. deepseek-v3（ds）'));
+  assert.equal(notifyCount.n, 0, '列表不算切换');
   const setIds: Array<string | undefined> = [];
   rt.setModel = (id) => {
     setIds.push(id);
@@ -512,8 +520,16 @@ test('⑰ /model:无参列表;序号切换 setModel;未知提示;无切换器说
   await h.router.handleInbound(mkMsg({ msgId: 'd3', text: '/model 2' }));
   assert.deepEqual(setIds, ['ds']);
   assert.ok(h.acks[2]!.text.includes('已切换模型到 ds'));
+  assert.equal(notifyCount.n, 1, '带参切换广播 config-changed（GUI pill 实时同步）');
+  // 裸序号选择（列表武装后回「1」）同口径广播（2026-11-25 用户报障根修）
+  await h.router.handleInbound(mkMsg({ msgId: 'd3b', text: '/model' })); // 重新武装列表
+  await h.router.handleInbound(mkMsg({ msgId: 'd3c', text: '1' }));
+  assert.deepEqual(setIds, ['ds', 'glm']);
+  assert.ok(h.acks[4]!.text.includes('已切换模型到 glm'));
+  assert.equal(notifyCount.n, 2, '裸序号选择路径也广播（此前漏=会话里没主动切换）');
   await h.router.handleInbound(mkMsg({ msgId: 'd4', text: '/model nope' }));
-  assert.ok(h.acks[3]!.text.includes('未找到该模型'));
+  assert.ok(h.acks[5]!.text.includes('未找到该模型'));
+  assert.equal(notifyCount.n, 2, '失败不广播');
 
   const h2 = makeHarness({
     runtimeFactory: () => {
@@ -529,7 +545,8 @@ test('⑰ /model:无参列表;序号切换 setModel;未知提示;无切换器说
 
 // ⑱ /effort:无参列表(EFFORT_ORDER 序,显示名镜像 GUI);序号/档位名切换 rt.setEffort;非法提示
 test('⑱ /effort:无参列表;序号/名切换 setEffort;非法提示', async () => {
-  const h = makeHarness();
+  const notifyCount = { n: 0 };
+  const h = makeHarness({ notifyCount });
   await h.router.handleInbound(mkMsg({ msgId: 'f1', text: '先聊一句' }));
   const rt = rtOf(h, bindingKey('m1', 'c1'));
   rt.snapshotResponse = () => ({ queued: [], effort: 'medium' });
@@ -545,11 +562,19 @@ test('⑱ /effort:无参列表;序号/名切换 setEffort;非法提示', async (
   await h.router.handleInbound(mkMsg({ msgId: 'f3', text: '/effort 5' })); // 序号 5=high
   assert.deepEqual(efforts, ['high']);
   assert.ok(h.acks[2]!.text.includes('已切换思考强度到 高'));
+  assert.equal(notifyCount.n, 1, '带参切换广播 config-changed');
   await h.router.handleInbound(mkMsg({ msgId: 'f4', text: '/effort xhigh' })); // 档位名直切
   assert.deepEqual(efforts, ['high', 'xhigh']);
+  assert.equal(notifyCount.n, 2);
+  // 裸序号选择（列表武装后回「5」）同口径广播（2026-11-25 用户报障根修）
+  await h.router.handleInbound(mkMsg({ msgId: 'f4b', text: '/effort' })); // 重新武装
+  await h.router.handleInbound(mkMsg({ msgId: 'f4c', text: '5' }));
+  assert.deepEqual(efforts, ['high', 'xhigh', 'high']);
+  assert.equal(notifyCount.n, 3, '裸序号选择路径也广播（此前漏=会话里没主动切换）');
   await h.router.handleInbound(mkMsg({ msgId: 'f5', text: '/effort ultra' }));
-  assert.ok(h.acks[4]!.text.includes('未识别该思考强度'));
-  assert.equal(efforts.length, 2); // 非法值未落 setEffort
+  assert.ok(h.acks[6]!.text.includes('未识别该思考强度'));
+  assert.equal(efforts.length, 3); // 非法值未落 setEffort
+  assert.equal(notifyCount.n, 3, '失败不广播');
 });
 
 // ⑲ 排队两选项（2026-11-24 用户裁定「默认是 daemon 排队,1/2=模拟插入和立即发出」）：消息照常

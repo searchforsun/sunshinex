@@ -608,6 +608,7 @@ export class ChannelRouter {
         await this.deps.ack(msg, '模型切换未生效，回复 /model 重新查看。');
         return;
       }
+      this.deps.notifyConfigChanged?.(); // GUI 输入框模型 pill 实时同步（2026-11-25 用户报障「飞书侧切换了,会话里没主动切换」：裸序号路径漏广播）
       await this.deps.ack(msg, `已切换模型到 ${picked}，下一条消息生效。`);
       return;
     }
@@ -615,6 +616,7 @@ export class ChannelRouter {
       await this.deps.ack(msg, '思考强度切换未生效，回复 /effort 重新查看。');
       return;
     }
+    this.deps.notifyConfigChanged?.(); // GUI 输入框强度 chip 实时同步（同上,裸序号路径漏广播根修）
     await this.deps.ack(msg, `已切换思考强度到 ${EFFORT_LABELS[picked] ?? picked}，下一条消息生效。`);
   }
 
