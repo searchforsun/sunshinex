@@ -175,7 +175,11 @@ export async function handleSessionRename(io: SessionHandlerIo, req: http.Incomi
   writeSessionMeta(session.dataDir, jid, { title }); // 域绑定寻址（P3 Task 3）：sunx 随域,standard=resolveDataDir 既有推导字节不变
   // sunx 改名同步（2026-11-15 用户裁定「支持改名,按照你的方式」）：尾追一行进链——模型下一轮即知新名
   // （append-only 前缀零破坏;出生名冻结层定版不重写,改名行=唯一同步通道,后到者优先）
-  if (session.sessionKind === 'sunx') {
+  // 通道聊天会话不注入（2026-11-25 用户报障「飞书发『任务状态』被当成我的改名指令」根修）：
+  // 通道 Sunx 的身份=通道配置的应用名（出生品性冻结层），会话名只是显示标签；且通道会话名由
+  // GUI 首条消息总结自动派生（use-chat-title 总结→rename 同链）——注入 [rename] 会把一次普通
+  // 的标题派生变成模型眼里的「用户把我改名」，模型据此改写记忆/自称
+  if (session.sessionKind === 'sunx' && session.channelMeta === undefined) {
     session.runtime.harness.context.appendChain([{ action: 'note', observation: `[rename] The user renamed you to "${title}" — use this name from now on.` }]);
   }
   io.send(res, 200, { ok: true, title });
