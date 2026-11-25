@@ -10,6 +10,7 @@ import { applyDeveloperMode } from './developer-mode';
 import { applyZoom, type UiZoom } from './ui-zoom';
 import { initUiPrefSync } from './ui-pref-sync';
 import { booleanPrefAppliers } from './ui-pref-boolean';
+import { applyShortcutOverridesRemote } from './shortcuts/store';
 
 /**
  * 外观偏好同步 hook(2026-10-27 技术债轮 D53 批E 自 App.tsx 外提,行为零变化):
@@ -54,6 +55,7 @@ export function useAppearanceSync(connInstance: Connection | null): void {
         if (v === 'code' || v === 'office') applyUiMode(v);
       },
       developerMode: (v) => applyDeveloperMode(v === '1'),
+      shortcuts: applyShortcutOverridesRemote, // 2026-11-25 快捷键注册表轮:公共档权威整表回灌
       ...booleanPrefAppliers(),
     });
   }, [connInstance]);

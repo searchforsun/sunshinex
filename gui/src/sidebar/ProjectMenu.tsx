@@ -29,6 +29,10 @@ import { ArchiveSection } from './archive-group';
 import { PinnedSection } from './pinned-section';
 import type { PinEntry } from './pin-store';
 import type { SearchAction } from '../search-actions';
+import { onShortcut } from '../shortcuts/dispatch';
+import { useShortcutKeys } from '../shortcuts/store';
+import { comboParts } from '../shortcuts/registry';
+import type { ShortcutId } from '../shortcuts/registry';
 
 // FolderAddIcon 消费方(App.tsx)零迁移:原路径再导出
 export { FolderAddIcon } from './project-menu-util';
@@ -162,6 +166,18 @@ interface ProjectMenuProps {
 
 /** runningIds 缺省空集(2026-11-16 流畅轮:模块级单例——内联 `new Set()` 每渲染换身份击穿 memo 分区) */
 const EMPTY_RUNNING: ReadonlySet<string> = new Set();
+
+/** 菜单动作键位角标(2026-11-25 快捷键注册表轮):注册表生效档渲染(用户改键即时跟随;
+ *  与设置·快捷键页同源零漂移),单枚紧凑徽标('Ctrl+Shift+O');未绑/已清除不渲染(免死角标) */
+function MenuKbd(props: { readonly id: ShortcutId }): JSX.Element | null {
+  const keys = useShortcutKeys(props.id);
+  if (keys === null) return null;
+  return (
+    <kbd className="sx-menu-kbd" aria-hidden="true">
+      {comboParts(keys).join('+')}
+    </kbd>
+  );
+}
 
 export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const { conn, activeSessionId, activeRoot, onOpenSession, onOpenSettings, onOpenSchedules, onOpenSchedule, onOpenSettingsItem, onNewChat, onComposeIn, onOpenDirectory, dirView, onCloseDirView, onOpenFileFromTree, onOpenLiveSeat } = props;
@@ -668,6 +684,44 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   }, []);
   const openNewSunxDialog = useCallback((): void => setSunxOpen(true), []);
 
+  /** 侧栏动作接全局键面(2026-11-25 快捷键注册表轮:键面匹配在集中分发器,此处只接动作 bus;
+   *  处理器回 true=已消费分发器才拦截)。可选回调未配(独立测试装配面)回 false 放行不拦。
+   *  菜单收起态本组件卸载=键面随收(与钮同生命周期,可接受) */
+  useEffect(() => {
+    const offs = [
+      onShortcut('app.newChat', () => {
+        onNewChat();
+        return true;
+      }),
+      onShortcut('app.newSunx', () => {
+        openNewSunxDialog();
+        return true;
+      }),
+      onShortcut('app.schedules', () => {
+        if (onOpenSchedules === undefined) return false;
+        onOpenSchedules();
+        return true;
+      }),
+      onShortcut('app.search', () => {
+        setSearchOpen((v) => !v);
+        return true;
+      }),
+      onShortcut('app.settings', () => {
+        if (onOpenSettings === undefined) return false;
+        onOpenSettings();
+        return true;
+      }),
+      onShortcut('app.shortcuts', () => {
+        if (onOpenSettingsItem === undefined) return false;
+        onOpenSettingsItem('shortcuts');
+        return true;
+      }),
+    ];
+    return () => {
+      for (const off of offs) off();
+    };
+  }, [onNewChat, onOpenSchedules, onOpenSettings, onOpenSettingsItem, openNewSunxDialog]);
+
   return (
     <nav className={`sx-menu${props.closing === true ? ' sx-closing' : ''}`} aria-label="projects">
       <header className="sx-menu-head" data-drag-band>
@@ -699,6 +753,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         >
           <SquarePen size={16} strokeWidth={1.75} />
           <span>{t('New chat', '新对话')}</span>
+          <MenuKbd id="app.newChat" />
         </button>
       )}
       {/* 「新建 Sunx」入口与「新对话」真同级(2026-11-15 用户实测反馈;sunx P1 Task 6 的 RECENTS
@@ -711,6 +766,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       >
         <SunxIcon size={16} strokeWidth={1.75} />
         <span>{t('New Sunx', '新建 Sunx')}</span>
+        <MenuKbd id="app.newSunx" />
       </button>) : null}
       {/* 定时任务主区页入口(2026-11-20):「新建 Sunx」下方、「搜索」上方;dirView 态随同隐藏 */}
       {onOpenSchedules !== undefined && (dirView === undefined || dirView === null || onCloseDirView === undefined) ? (
@@ -722,6 +778,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         >
           <Clock size={16} strokeWidth={1.75} />
           <span>{t('Scheduled tasks', '定时任务')}</span>
+          <MenuKbd id="app.schedules" />
         </button>
       ) : null}
       {/* 2026-10-24 用户裁定:搜索升级「新对话」同级项(图标+文字;原头部小钮退役) */}
@@ -733,6 +790,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       >
         <Search size={16} strokeWidth={1.75} />
         <span>{t('Search', '搜索')}</span>
+        <MenuKbd id="app.search" />
       </button>) : null}
       {searchOpen && (
         <ProjectSearch

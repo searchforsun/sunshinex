@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { TabStrip } from './TabStrip';
 import { TAB_REGISTRY, registryProbe } from './registry';
 import { ensureSession, openTab } from './tab-state';
+import { installShortcutDispatcher } from '../shortcuts/dispatch';
 
 const base = {
   onSelect: vi.fn(), onClose: vi.fn(), onOpenType: vi.fn(),
@@ -141,8 +142,9 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(add?.classList.contains('is-pinned')).toBe(false);
   });
 
-  it('快捷键:Alt+W 关活动,Ctrl+Alt+→/← 切换', () => {
+  it('快捷键:Alt+W 关活动,Ctrl+Alt+→/← 切换(2026-11-25 注册表轮:键面匹配走集中分发器——独立装配面同装,链路=分发器匹配→bus→本组件处理器)', () => {
     const handlers = { ...base };
+    const uninstall = installShortcutDispatcher();
     render(<TabStrip {...handlers} tabs={[]} activeUid={null} />);
     fireEvent.keyDown(window, { key: 'w', altKey: true });
     expect(handlers.onCloseActive).toHaveBeenCalled();
@@ -150,6 +152,7 @@ describe('TabStrip(spec §1 标签条)', () => {
     expect(handlers.onCycle).toHaveBeenCalledWith(1);
     fireEvent.keyDown(window, { key: 'ArrowLeft', ctrlKey: true, altKey: true });
     expect(handlers.onCycle).toHaveBeenCalledWith(-1);
+    uninstall();
   });
 
   it('页签条空白处是窗口拖拽面', () => {

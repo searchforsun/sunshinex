@@ -15,7 +15,7 @@ type UiPrefConn = {
 
 /** 偏好键全集（布尔族段自 ui-pref-boolean 注册表生成——D84：新增布尔偏好只写工厂一份 spec，
  *  本文件与宿主 appliers 零新增；非布尔键仍字面量登记） */
-type PrefKey = 'uiZoom' | 'theme' | 'fontPreset' | 'paletteLight' | 'paletteDark' | 'uiFontSize' | 'codeFontSize' | 'uiMode' | 'developerMode' | BooleanPrefKey;
+type PrefKey = 'uiZoom' | 'theme' | 'fontPreset' | 'paletteLight' | 'paletteDark' | 'uiFontSize' | 'codeFontSize' | 'uiMode' | 'developerMode' | 'shortcuts' | BooleanPrefKey;
 
 const LOCAL_KEYS: Record<PrefKey, string> = {
   uiZoom: 'sunshinex.ui-zoom',
@@ -27,6 +27,7 @@ const LOCAL_KEYS: Record<PrefKey, string> = {
   codeFontSize: 'sunshinex.code-font-size',
   uiMode: 'sunshinex.ui-mode',
   developerMode: 'sunshinex.developer-mode',
+  shortcuts: 'sunshinex.shortcuts', // 2026-11-25 快捷键注册表轮:动作 id → 键串 JSON(值整体一串)
   ...booleanLocalKeys(),
 };
 
@@ -43,7 +44,7 @@ let applyingRemote = false;
 let appliers: UiPrefAppliers | null = null;
 
 /** palette:配色偏好已由 flush 写入本地层,回调只需按当前模式重落根 */
-type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void; darkBubbles: (v: string) => void; darkCode: (v: string) => void; usageStats: (v: string) => void; artifactCards: (v: string) => void; conciseMode: (v: string) => void; developerMode: (v: string) => void; changeCards: (v: string) => void; sessionInfoCards: (v: string) => void };
+type UiPrefAppliers = { zoom: (v: string) => void; theme: (v: string) => void; fontPreset: (v: string) => void; palette: () => void; uiFontSize: (v: string) => void; codeFontSize: (v: string) => void; uiMode: (v: string) => void; darkBubbles: (v: string) => void; darkCode: (v: string) => void; usageStats: (v: string) => void; artifactCards: (v: string) => void; conciseMode: (v: string) => void; developerMode: (v: string) => void; changeCards: (v: string) => void; sessionInfoCards: (v: string) => void; shortcuts: (v: string) => void };
 
 /** 远程值落地分发单点(2026-11-07 收敛——此前 flush 内逐键 if 链;2026-11-23 D84:布尔族段自
  *  工厂注册表生成,新增布尔偏好三登记点全部归一):Record<键,…> 使 LOCAL_KEYS 加键而本表漏配
@@ -58,6 +59,7 @@ const APPLY_REMOTE: Record<PrefKey, (a: UiPrefAppliers, v: string) => void> = {
   codeFontSize: (a, v) => a.codeFontSize(v),
   uiMode: (a, v) => a.uiMode(v),
   developerMode: (a, v) => a.developerMode(v),
+  shortcuts: (a, v) => a.shortcuts(v),
   ...booleanRemoteDispatch(),
 };
 

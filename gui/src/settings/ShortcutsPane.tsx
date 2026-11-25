@@ -1,91 +1,158 @@
+import { useEffect, useState } from 'react';
 import { t } from '../i18n';
+import { EDITABLE_GROUPS, SHORTCUT_DEFS, STATIC_SHORTCUT_GROUPS, comboAllowed, comboParts, eventToCombo } from '../shortcuts/registry';
+import { resetAllShortcuts, resetShortcut, resolveShortcutKeys, setShortcutCapturing, setShortcutOverride, shortcutConflict, useShortcutOverrides } from '../shortcuts/store';
+import type { ShortcutId } from '../shortcuts/registry';
 
 /**
- * 设置·快捷键说明页(静态文档面,无读写):全 GUI 键位按场景分组列示——全局/窗口、对话输入框、
- * 消息区、图片灯箱、设置与弹层。键位以 <kbd> 徽标渲染(样式 .sx-kbd),描述双语 t()。
- * 数据即本文档表(与实现一一对应:use-nav-history/TabStrip/use-composer-keys/WelcomeComposer/
- * EntryViews/PlanCard/AskDock/ImageLightbox/SettingsShell 等;新增快捷键须同步此表)。
+ * 设置·快捷键页(2026-11-25 注册表轮,原「静态文档面,无读写」退役):前两组=可编辑动作
+ * (数据源 shortcuts 注册表 SHORTCUT_DEFS,与集中分发器/侧栏角标同源零漂移)——点键位格
+ * 进入录制态,按新组合即改(与默认同值=回落档删除;Backspace 清除=显示「无」;Esc 取消;
+ * 冲突行内红字提示且不落档),行尾 ↺ 单条重置、有改键时页头「全部恢复默认」。
+ * 其余组=静态说明(STATIC_SHORTCUT_GROUPS:组件局部键面不可改键;输入框微导航已按调研裁定
+ * 精简不上面板)。键位以 <kbd> 徽标渲染(样式 .sx-kbd),描述双语 t()。
  */
 
-interface ShortcutRow {
-  readonly keys: readonly string[];
-  readonly desc: { readonly en: string; readonly zh: string };
+function shortcutLabel(id: ShortcutId): string {
+  const def = SHORTCUT_DEFS.find((d) => d.id === id);
+  return def !== undefined ? t(def.label.en, def.label.zh) : id;
 }
-interface ShortcutGroup {
-  readonly title: { readonly en: string; readonly zh: string };
-  readonly rows: readonly ShortcutRow[];
-}
-
-export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
-  {
-    title: { en: 'Global & window', zh: '全局与窗口' },
-    rows: [
-      { keys: ['Alt', '←'], desc: { en: 'Navigate back', zh: '会话导航历史·后退' } },
-      { keys: ['Alt', '→'], desc: { en: 'Navigate forward', zh: '会话导航历史·前进' } },
-      { keys: ['Alt', 'W'], desc: { en: 'Close active tab', zh: '关闭当前标签页' } },
-      { keys: ['Ctrl', 'Alt', '→'], desc: { en: 'Next tab', zh: '切换到下一个标签页' } },
-      { keys: ['Ctrl', 'Alt', '←'], desc: { en: 'Previous tab', zh: '切换到上一个标签页' } },
-    ],
-  },
-  {
-    title: { en: 'Message composer', zh: '对话输入框' },
-    rows: [
-      { keys: ['Enter'], desc: { en: 'Send message', zh: '发送消息' } },
-      { keys: ['Shift', 'Enter'], desc: { en: 'New line', zh: '插入换行' } },
-      { keys: ['/'], desc: { en: 'Open command & skill palette', zh: '打开命令/技能面板' } },
-      { keys: ['@'], desc: { en: 'Reference a file (opens file panel)', zh: '引用文件(打开文件面板)' } },
-      { keys: ['↑'], desc: { en: 'Move highlight up in panels', zh: '面板内高亮上移(命令/@ 文件面板)' } },
-      { keys: ['↓'], desc: { en: 'Move highlight down in panels', zh: '面板内高亮下移' } },
-      { keys: ['Tab'], desc: { en: 'Complete highlighted command', zh: '补全当前高亮命令' } },
-      { keys: ['Esc'], desc: { en: 'Dismiss command / file panel', zh: '关闭命令/文件面板' } },
-      { keys: ['Enter'], desc: { en: 'Pick highlighted @ file / run typed command', zh: '选中高亮 @ 文件 / 直跑已敲参数的命令' } },
-      { keys: ['←'], desc: { en: 'Jump over an @ token (caret at boundary)', zh: '跨整个 @ 引用移动光标(位于边界时)' } },
-      { keys: ['→'], desc: { en: 'Jump over an @ token (caret at boundary)', zh: '跨整个 @ 引用移动光标(位于边界时)' } },
-      { keys: ['Backspace'], desc: { en: 'Delete whole @ token', zh: '整删光标所在 @ 引用' } },
-    ],
-  },
-  {
-    title: { en: 'Conversation area', zh: '消息区' },
-    rows: [
-      { keys: ['Enter'], desc: { en: 'Toggle finished-turn summary (focused)', zh: '折叠/展开已结束轮次摘要(聚焦时)' } },
-      { keys: ['Esc'], desc: { en: 'Cancel message edit (without saving)', zh: '退出消息编辑(不保存)' } },
-      { keys: ['Enter'], desc: { en: 'Submit message edit', zh: '提交消息编辑' } },
-      { keys: ['Enter'], desc: { en: 'Re-plan with feedback (plan card, non-empty)', zh: '带反馈重新计划(计划卡反馈框非空时)' } },
-      { keys: ['Enter'], desc: { en: 'Submit question card answers', zh: '提交选择题挂起卡' } },
-    ],
-  },
-  {
-    title: { en: 'Image lightbox', zh: '图片灯箱' },
-    rows: [
-      { keys: ['+'], desc: { en: 'Zoom in', zh: '放大' } },
-      { keys: ['-'], desc: { en: 'Zoom out', zh: '缩小' } },
-      { keys: ['0'], desc: { en: 'Reset zoom', zh: '复位缩放' } },
-      { keys: ['Esc'], desc: { en: 'Close lightbox', zh: '关闭灯箱' } },
-    ],
-  },
-  {
-    title: { en: 'Settings & overlays', zh: '设置与弹层' },
-    rows: [
-      { keys: ['Esc'], desc: { en: 'Leave settings / close menus & popovers', zh: '设置页返回会话 / 关闭菜单与弹层' } },
-      { keys: ['Enter'], desc: { en: 'Commit text input / activate item', zh: '提交文本输入 / 激活选中项' } },
-      { keys: ['↑', '↓'], desc: { en: 'Move within dropdown options', zh: '下拉选项间移动' } },
-    ],
-  },
-];
 
 export function ShortcutsPane(): JSX.Element {
+  /** 覆盖档快照(重置钮显隐;subscribeShortcuts 驱动重渲) */
+  const overrides = useShortcutOverrides();
+  /** 录制态:recId=正在改键的动作;recConflict=该键已被谁占用(行内红字,不落档) */
+  const [recId, setRecId] = useState<ShortcutId | null>(null);
+  const [recConflict, setRecConflict] = useState<ShortcutId | null>(null);
+
+  /** 录制器(window keydown 捕获态;capture 旗令集中分发器让位):Esc 取消、Backspace 清除、
+   *  纯修饰键等待主键、裸键不收(准入面 registry.comboAllowed)、冲突停留提示、合法即落档 */
+  useEffect(() => {
+    if (recId === null) return;
+    setShortcutCapturing(true);
+    const onKey = (e: KeyboardEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.key === 'Escape' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+        setRecId(null);
+        setRecConflict(null);
+        return;
+      }
+      if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        setShortcutOverride(recId, ''); // 清除绑定(显示「无」)
+        setRecId(null);
+        setRecConflict(null);
+        return;
+      }
+      const combo = eventToCombo(e);
+      if (combo === null) return; // 纯修饰键:等待主键
+      if (!comboAllowed(combo)) {
+        setRecConflict(null); // 裸键不收:留在录制态,提示文案已注明需含 Ctrl/Alt
+        return;
+      }
+      const other = shortcutConflict(combo, recId);
+      if (other !== null) {
+        setRecConflict(other);
+        return;
+      }
+      setShortcutOverride(recId, combo);
+      setRecId(null);
+      setRecConflict(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      setShortcutCapturing(false);
+    };
+  }, [recId]);
+
+  const anyOverride = Object.keys(overrides).length > 0;
+
   return (
     <section className="sx-settings-form sx-settings-body" aria-label="settings pane shortcuts">
       {/* 与 SettingsForm 各面板同款 <h2> 标题(导航项文字一致),对齐设置页版式 */}
       <h2>{t('Shortcuts', '快捷键')}</h2>
       <div className="sx-shortcuts-page">
-        {/* 2026-11-06 用户裁定:页首说明文字撤下(其他设置页无此形态);分组改深色背景块卡 */}
-        {SHORTCUT_GROUPS.map((g, gi) => (
-          <div key={g.title.en} className="sx-shortcuts-group">
+        {/* 2026-11-06 用户裁定:页首说明文字撤下(其他设置页无此形态);分组改深色背景块卡。
+            2026-11-25 注册表轮:有改键时页头出「全部恢复默认」 */}
+        {anyOverride && (
+          <div className="sx-shortcuts-toolbar">
+            <button
+              type="button"
+              className="sx-shortcut-resetall"
+              onClick={() => {
+                setRecId(null);
+                setRecConflict(null);
+                resetAllShortcuts();
+              }}
+            >
+              {t('Reset all to defaults', '全部恢复默认')}
+            </button>
+          </div>
+        )}
+        {/* 可编辑动作组(注册表驱动):键位格=录制触发钮;行尾 ↺ 仅改过键的行渲染 */}
+        {EDITABLE_GROUPS.map((g) => (
+          <div key={g.id} className="sx-shortcuts-group">
             <h3 className="sx-shortcuts-title">{t(g.title.en, g.title.zh)}</h3>
             <div className="sx-shortcuts-rows">
-              {g.rows.map((r, i) => (
-                <div key={i} className="sx-shortcut-row" data-setting-key={`shortcut:${gi}:${i}`}>
+              {SHORTCUT_DEFS.filter((d) => d.group === g.id).map((def) => {
+                const recording = recId === def.id;
+                const overridden = overrides[def.id] !== undefined;
+                const cur = resolveShortcutKeys(def.id);
+                return (
+                  <div key={def.id} className="sx-shortcut-row" data-setting-key={`shortcut:${def.id}`}>
+                    <button
+                      type="button"
+                      className={`sx-shortcut-edit${recording ? (recConflict !== null ? ' recording conflict' : ' recording') : ''}`}
+                      data-tip={recording ? undefined : t('Click to rebind', '点击修改')}
+                      aria-label={`${def.id} keybinding`}
+                      onClick={() => {
+                        if (recording) return;
+                        setRecConflict(null);
+                        setRecId(def.id);
+                      }}
+                    >
+                      {recording ? (
+                        <span className={`sx-shortcut-rec-hint${recConflict !== null ? ' conflict' : ''}`}>
+                          {recConflict !== null
+                            ? `${t('Already used by ', '与「')}${shortcutLabel(recConflict)}${t(' — press another combo, or Esc to cancel', '」冲突,换一键位或 Esc 取消')}`
+                            : t('Press keys (with Ctrl/Alt) · Esc cancel · Backspace clear', '按下新组合键(需含 Ctrl/Alt)· Esc 取消 · Backspace 清除')}
+                        </span>
+                      ) : cur === null ? (
+                        <kbd className="sx-kbd sx-kbd-none">{t('None', '无')}</kbd>
+                      ) : (
+                        comboParts(cur).map((chip, i) => (
+                          <kbd key={i} className="sx-kbd">
+                            {chip}
+                          </kbd>
+                        ))
+                      )}
+                    </button>
+                    <span className="sx-shortcut-desc">{t(def.label.en, def.label.zh)}</span>
+                    {overridden && !recording ? (
+                      <button
+                        type="button"
+                        className="sx-shortcut-reset"
+                        data-tip={t('Reset to default', '恢复默认')}
+                        aria-label={t('Reset to default', '恢复默认')}
+                        onClick={() => resetShortcut(def.id)}
+                      >
+                        ↺
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {/* 静态说明组(组件局部键面,不可改键;行锚 shortcut:static:<组>:<行> 与设置搜索同源) */}
+        {STATIC_SHORTCUT_GROUPS.map((g, gi) => (
+          <div key={g.id} className="sx-shortcuts-group">
+            <h3 className="sx-shortcuts-title">{t(g.title.en, g.title.zh)}</h3>
+            <div className="sx-shortcuts-rows">
+              {g.rows.map((r, ri) => (
+                <div key={ri} className="sx-shortcut-row" data-setting-key={`shortcut:static:${gi}:${ri}`}>
                   <span className="sx-shortcut-keys">
                     {r.keys.map((k) => (
                       <kbd key={k} className="sx-kbd">

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { emptyNavHistory, pushNav } from './nav-history';
 import type { NavControls, NavHistory, NavLoc } from './nav-history';
+import { onShortcut } from './shortcuts/dispatch';
 
 /**
  * 应用级导航历史 hook(2026-10-27 技术债轮 D53 批D 自 App.tsx 外提,行为零变化):
@@ -71,19 +72,24 @@ export function useNavHistory(deps: NavHistoryDeps): AppNavHistory {
     () => ({ canBack: nav.idx > 0, canForward: nav.idx < nav.stack.length - 1, back: navBack, forward: navForward }),
     [nav, navBack, navForward],
   );
-  /** Alt+←/→(浏览器惯例):preventDefault 免浏览器态吞作自身历史导航;设置页整壳替换无钮,键面同封 */
+  /** Alt+←/→(浏览器惯例):2026-11-25 注册表轮移集中分发器(bus 订阅,键面匹配在 dispatch.ts)。
+   *  canBack/canForward 不满足回 false 放行(分发器不拦——浏览器态原生历史导航不受牵连);
+   *  设置/定时覆盖层挂起由 App 落旗分发器统一(此处 settingsOpen 守卫保留为双保险) */
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-      if (settingsOpen) return;
-      if (e.key === 'ArrowLeft' ? !navControls.canBack : !navControls.canForward) return;
-      e.preventDefault();
-      if (e.key === 'ArrowLeft') navControls.back();
-      else navControls.forward();
+    const offBack = onShortcut('nav.back', () => {
+      if (settingsOpen || !navControls.canBack) return false;
+      navControls.back();
+      return true;
+    });
+    const offForward = onShortcut('nav.forward', () => {
+      if (settingsOpen || !navControls.canForward) return false;
+      navControls.forward();
+      return true;
+    });
+    return () => {
+      offBack();
+      offForward();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, [settingsOpen, navControls]);
 
   return { navControls, recordNav, setNav };

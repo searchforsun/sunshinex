@@ -15,6 +15,7 @@ import { TAB_REGISTRY, TAB_ICONS, tabEntry } from './registry';
 import { disambiguateTabTitles, type ClosedTab } from './tab-state';
 import { TabSearchPop } from './TabSearchPop';
 import { useDeveloperMode } from '../developer-mode';
+import { onShortcut } from '../shortcuts/dispatch';
 
 /** 2026-10-25 web 站标(用户报障「页签只有地球图标,应显网站图标」):daemon /web/meta 代取的
  *  favicon URL;加载失败(防盗链/离线)退地球图标。img 独立组件——onError 是逐标签的本地态 */
@@ -144,22 +145,34 @@ export function TabStrip(props: TabStripProps): JSX.Element {
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen, searchOpen]);
 
-  // 快捷键(window keydown,卸载解绑):Alt+W 关活动;Ctrl+Alt+→/← 环回切换;disabled 不响应
+  // 快捷键(2026-11-25 注册表轮:键面匹配移集中分发器 dispatch.ts,此处只接动作 bus;
+  // 处理器回 true=已消费分发器才拦截)。disabled 不响应;e.repeat 长按连发守卫保留——
+  // 按住 Alt+W 只关一次(连发即连关全部标签)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.repeat) return; // 长按连发守卫:按住 Alt+W 只关一次(连发即连关全部标签)
-      if (disabled) return;
-      if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'w' || e.key === 'W')) {
-        onCloseActive();
-        return;
-      }
-      if (e.ctrlKey && e.altKey && !e.metaKey) {
-        if (e.key === 'ArrowRight') onCycle(1);
-        else if (e.key === 'ArrowLeft') onCycle(-1);
-      }
+    const guard = (e: KeyboardEvent): boolean => {
+      if (e.repeat || disabled) return false;
+      return true;
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    const offs = [
+      onShortcut('tabs.close', (e) => {
+        if (!guard(e)) return false;
+        onCloseActive();
+        return true;
+      }),
+      onShortcut('tabs.next', (e) => {
+        if (!guard(e)) return false;
+        onCycle(1);
+        return true;
+      }),
+      onShortcut('tabs.prev', (e) => {
+        if (!guard(e)) return false;
+        onCycle(-1);
+        return true;
+      }),
+    ];
+    return () => {
+      for (const off of offs) off();
+    };
   }, [disabled, onCloseActive, onCycle]);
 
   // 2026-10-23 用户裁定:折叠钮退役——[|] 唯一渲染=固定窗控簇(页签条自有钮与收起迷你条

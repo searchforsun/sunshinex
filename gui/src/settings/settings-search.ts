@@ -1,6 +1,6 @@
 import { KEY_DESCRIPTIONS, SETTINGS_PANES } from './SettingsForm';
 import { SETTINGS_GROUPS } from './settings-groups';
-import { SHORTCUT_GROUPS } from './ShortcutsPane';
+import { SHORTCUT_DEFS, STATIC_SHORTCUT_GROUPS, comboParts } from '../shortcuts/registry';
 
 /**
  * 设置面搜索索引(2026-11-21 用户裁定「还有一些设置页的项等等……不用单独点击设置页」):
@@ -117,17 +117,29 @@ function buildIndex(): SettingsSearchItem[] {
       zh: '现支持 Telegram/Mock;飞书、钉钉、企业微信即将支持',
     },
   });
-  // ③ 快捷键说明行(ShortcutsPane 文档表同源;点击开快捷键页并滚到该行)
+  // ③ 快捷键行(2026-11-25 注册表轮:动作行自 shortcuts 注册表,键位显**默认档**——索引
+  // 模块级只读构造一次,改键后的生效档以设置页为准;静态说明行自 STATIC_SHORTCUT_GROUPS;
+  // 行锚与 ShortcutsPane data-setting-key 同串,点击开快捷键页并滚到该行)
   const shortcutsTitle = PANE_TITLES.get('shortcuts') ?? { en: 'Shortcuts', zh: '快捷键' };
-  SHORTCUT_GROUPS.forEach((group, gi) => {
+  for (const def of SHORTCUT_DEFS) {
+    out.push({
+      id: `shortcut:${def.id}`,
+      pane: 'shortcuts',
+      paneTitle: shortcutsTitle,
+      row: `shortcut:${def.id}`,
+      label: def.label,
+      keys: [...comboParts(def.keys)],
+    });
+  }
+  STATIC_SHORTCUT_GROUPS.forEach((group, gi) => {
     group.rows.forEach((r, ri) => {
       out.push({
-        id: `shortcut:${gi}:${ri}`,
+        id: `shortcut:static:${gi}:${ri}`,
         pane: 'shortcuts',
         paneTitle: shortcutsTitle,
-        row: `shortcut:${gi}:${ri}`,
+        row: `shortcut:static:${gi}:${ri}`,
         label: r.desc,
-        keys: r.keys,
+        keys: [...r.keys],
       });
     });
   });

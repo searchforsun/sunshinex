@@ -21,6 +21,7 @@ import { useShellLayout } from './use-shell-layout';
 import { useTabPersistence } from './use-tab-persistence';
 import { useAgentBuckets, useChatMemory, useShadowHydrationRefs, bindShadowHydration } from './use-agent-projections';
 import { useNavHistory } from './use-nav-history';
+import { installShortcutDispatcher, setShortcutsSuspended } from './shortcuts/dispatch';
 import { useRestoreLast } from './use-restore-last';
 import { useWindowDrag } from './window-shell';
 import { useAppLinks } from './use-app-links';
@@ -450,6 +451,16 @@ function AppShell(): JSX.Element {
    *  Alt+←/→ 键面一条链一个文件(navLock 回放抑制/零过期闭包语义随码);落点动词注入
    *  (welcome=壳层清场,chat=openSession 直达——会话常驻 daemon 零重播链) */
   const { navControls, recordNav } = useNavHistory({ goWelcome: leaveToWelcome, openSession, settingsOpen: settingsOpen || schedulesMain });
+
+  /** 快捷键集中分发器(2026-11-25 注册表轮):window keydown 捕获态按 shortcuts 注册表匹配 →
+   *  动作 bus(use-nav-history/TabStrip/ProjectMenu 各自订阅;键位用户改键即时生效)。
+   *  设置/定时任务覆盖层全屏期间键面整体挂起(与旧 nav 键同口径),仅「快捷键帮助」白名单豁免——
+   *  设置页内 Ctrl+/ 仍可唤起本页 */
+  useEffect(() => installShortcutDispatcher(), []);
+  const overlaysSuspended = settingsOpen || schedulesMain;
+  useEffect(() => {
+    setShortcutsSuspended(overlaysSuspended);
+  }, [overlaysSuspended]);
 
   /** 2026-11-16 流畅轮恒稳回调簇(全部 useStableCallback——读面经当帧闭包,身份恒定):
    *  memo 化三子树的下发面。原内联箭头逐渲染换新,击穿 memo=App 壳任一 setState 全树重渲 */
