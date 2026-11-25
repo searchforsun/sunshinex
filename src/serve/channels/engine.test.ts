@@ -35,6 +35,9 @@ interface RtStub {
   runEndCbs: Array<(info: { stopReason?: string }) => void>;
   submits: Array<{ text: string; images?: string[] }>;
   submitExternal: (text: string, images?: string[]) => { ok: true } | { ok: false; status: 409; error: string };
+  /** 链注入捕获面（应用名称广播消费） */
+  notes: string[];
+  runtime: { harness: { context: { appendChain: (rows: Array<{ observation: string }>) => void } } };
 }
 
 function makeRuntime(): RtStub {
@@ -43,6 +46,8 @@ function makeRuntime(): RtStub {
     status: () => rt._status,
     submits: [],
     runEndCbs: [],
+    notes: [],
+    runtime: { harness: { context: { appendChain: (rows) => { rt.notes.push(rows[0]!.observation); } } } },
     submit: (text, images) => {
       rt.submits.push({ text, images });
       return { ok: true };
@@ -313,4 +318,31 @@ test('⑥c run 起源气泡绑定:run 产物回触发消息,不随后续入站�
   const body = mock.replied.filter((r) => r.msg.text.includes('回答正文'));
   assert.equal(body.length, 1);
   assert.equal(body[0]!.msgId, 'e-a1', 'run 产物回起源气泡,不随后续入站漂移');
+});
+
+// 通道应用名称变更广播（2026-11-25 用户裁定「通道中更新名称要广播给所有的活的会话的 rename」）：
+// 通道 Sunx 身份=应用名称（rename 注入门槛见 session-handlers）——设置页改名必须让该通道每个
+// 活会话收到 [rename]；未在座跳过、同名/清空零注入、首次装载（prev 无该 id）零注入
+test('⑦ 应用名称变更 → 该通道全部活会话收到 [rename] 广播；未在座/同名/首装零注入', () => {
+  const h = makeHarness();
+  h.engine.applyConfigs([mkCfg({ name: '飞书1' })]); // 首次装载:prev 空,零注入
+  h.runtimes.set('s-live', makeRuntime());
+  h.bindings.upsert({ key: bindingKey('m1', 'c-live'), sessionId: 's-live', journalId: 'j1', updatedAt: 1 });
+  h.bindings.upsert({ key: bindingKey('m1', 'c-dead'), sessionId: 's-dead', journalId: 'j2', updatedAt: 1 }); // 未注册=非活会话
+  h.bindings.upsert({ key: bindingKey('m2', 'c-other'), sessionId: 's-other', journalId: 'j3', updatedAt: 1 }); // 他通道
+  h.runtimes.set('s-other', makeRuntime());
+
+  h.engine.applyConfigs([mkCfg({ name: '飞书1' })]); // 同名:零注入
+  assert.equal(h.runtimes.get('s-live')!.notes.length, 0);
+
+  h.engine.applyConfigs([mkCfg({ name: 'Sunshinex代理人' })]); // 改名 → 活会话各一行
+  assert.deepEqual(h.runtimes.get('s-live')!.notes, ['[rename] The user renamed you to "Sunshinex代理人" — use this name from now on.']);
+  assert.equal(h.runtimes.get('s-other')!.notes.length, 0, '他通道会话不广播');
+
+  h.engine.applyConfigs([mkCfg({ name: '' })]); // 清空:零注入(无新名可采)
+  assert.equal(h.runtimes.get('s-live')!.notes.length, 1);
+
+  h.engine.applyConfigs([mkCfg({ name: '二号机器人' })]); // 清空→再命名:仍广播新名
+  assert.equal(h.runtimes.get('s-live')!.notes.length, 2);
+  assert.ok(h.runtimes.get('s-live')!.notes[1]!.includes('二号机器人'));
 });

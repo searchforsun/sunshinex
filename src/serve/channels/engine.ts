@@ -209,7 +209,9 @@ export class ChannelsEngine {
   /** 配置调和(幂等,键=cfg.id):新增/启用且在座未起 → launch(失败记 health detail 不抛);
    *  移除/停用 → teardown(stop+删表);router configs() 门持本快照 */
   applyConfigs(configs: ChannelConfig[]): void {
+    const prev = this.snapshot;
     this.snapshot = [...configs];
+    this.broadcastAppNameChanges(prev, configs); // 应用名称变更 → 该通道全部活会话改名广播
     const nextIds = new Set(configs.map((c) => c.id));
     for (const cfg of configs) {
       this.knownConfigs.set(cfg.id, cfg);
@@ -228,6 +230,37 @@ export class ChannelsEngine {
     // 停用≠移除:停用条目仍在快照,行保留(enabled:false);移除=快照缺席,行即清
     for (const id of [...this.knownConfigs.keys()]) {
       if (!nextIds.has(id)) this.knownConfigs.delete(id);
+    }
+  }
+
+  /** 应用名称变更广播（2026-11-25 用户裁定「通道中更新名称要广播给所有的活的会话的 rename」）：
+   *  通道 Sunx 的 agent 身份=通道配置应用名称（出生品性冻结层定版,见 session-handlers rename
+   *  门槛注）——设置页改应用名称即身份变更,必须让该通道**每一个活会话**（bindings 档反查在座
+   *  runtime）收到 [rename] 尾追行,否则各聊天里模型仍自称旧名。prev 无该 id（首次装载/重启
+   *  播种）或名称未变/清空 → 零注入（重启不产生噪音改名行）;未在座（无活 runtime）跳过——
+   *  链已封存无处可追,下次 attach 靠出生冻结层 + 会话显示名 */
+  private broadcastAppNameChanges(prev: ChannelConfig[], next: ChannelConfig[]): void {
+    for (const cfg of next) {
+      const before = prev.find((c) => c.id === cfg.id);
+      if (before === undefined) continue; // 首次装载/新增:无可比的旧名
+      const from = before.name ?? '';
+      const to = cfg.name ?? '';
+      if (from === to || to === '') continue; // 同名/清空:零注入
+      let hit = 0;
+      for (const b of this.bindings.all()) {
+        if (!b.key.startsWith(`${cfg.id}:`)) continue;
+        const rt = this.io.getSession(b.sessionId);
+        if (rt === undefined) continue; // 只广播活会话
+        try {
+          rt.runtime.harness.context.appendChain([
+            { action: 'note', observation: `[rename] The user renamed you to "${to}" — use this name from now on.` },
+          ]);
+          hit += 1;
+        } catch (e) {
+          this.log(`appName broadcast(${cfg.id}/${b.sessionId}) 失败吞错: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      this.log(`通道 ${cfg.id} 应用名称 ${from === '' ? '(未命名)' : from} → ${to}，已广播 ${hit} 个活会话`);
     }
   }
 
