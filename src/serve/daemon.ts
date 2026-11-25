@@ -317,7 +317,9 @@ export class GuiDaemon {
           // keep 重放吸收=活会话任务状态无幽灵 running）
           try {
             const oldLedger = path.join(sess.dataDir, 'tasks', `ledger-${sess.attachedJournalId ?? ''}.jsonl`);
-            if (fs.existsSync(oldLedger) && keep !== undefined) {
+            // 仅 sunx 模式新座复制记录(2026-11-25 用户裁定「只有 sunx 模式会复制,普通会话只是
+          // 取消老的任务」);standard 新座=纯取消,记录留旧座
+          if (fs.existsSync(oldLedger) && keep !== undefined && keep.sessionKind === 'sunx') {
               const rows = fs.readFileSync(oldLedger, 'utf8');
               const newLedger = path.join(keep.dataDir, 'tasks', `ledger-${keep.attachedJournalId ?? ''}.jsonl`);
               fs.mkdirSync(path.dirname(newLedger), { recursive: true });

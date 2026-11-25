@@ -691,7 +691,10 @@ export class ChannelRouter {
     // 等,/help 查看」——不再提品性复用/留档可回看）:快照读当轮生效档
     const snap = seat.rt.snapshotResponse();
     const effort = snap.effort !== undefined ? (EFFORT_LABELS[snap.effort] ?? snap.effort) : '跟随全局默认';
-    await this.deps.ack(msg, `已切换到新会话。当前模型：${snap.model ?? '默认主模型'}，思考强度：${effort}。调整请使用 /model、/effort 等命令——发送 /help 查看。`);
+    await this.deps.ack(
+      msg,
+      `已切换到新会话。当前模型：${snap.model ?? '默认主模型'}，思考强度：${effort}。\n调整请使用 /model、/effort 等命令，其他命令可使用 /help 查看。`,
+    );
   }
 
   /** 绑定解析三态（⑦⑧⑨）+ 提交分派：在座直用 → attach 重开（失败释放残座）→ 新建；
