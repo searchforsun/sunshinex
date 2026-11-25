@@ -60,8 +60,18 @@ export function ShortcutsPane(): JSX.Element {
       setRecConflict(null);
     };
     window.addEventListener('keydown', onKey, true);
+    // 行外任意 mousedown 即退出录制(2026-11-25 用户裁定「点其他地方直接退出,符合直觉」);
+    // 本行编辑钮内的 mousedown 放行——再点同行=取消,交由 click 链自理(外点关闭同 D49 各弹层惯例)
+    const onDown = (e: MouseEvent): void => {
+      const inEditor = e.target instanceof Element ? e.target.closest('.sx-shortcut-edit.recording') : null;
+      if (inEditor !== null) return;
+      setRecId(null);
+      setRecConflict(null);
+    };
+    document.addEventListener('mousedown', onDown);
     return () => {
       window.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousedown', onDown);
       setShortcutCapturing(false);
     };
   }, [recId]);
@@ -107,7 +117,12 @@ export function ShortcutsPane(): JSX.Element {
                       data-tip={recording ? undefined : t('Click to rebind', '点击修改')}
                       aria-label={`${def.id} keybinding`}
                       onClick={() => {
-                        if (recording) return;
+                        if (recording) {
+                          // 再点同行=取消录制(提示文案已极简,不写 Esc/Backspace,故给个显式退出)
+                          setRecId(null);
+                          setRecConflict(null);
+                          return;
+                        }
                         setRecConflict(null);
                         setRecId(def.id);
                       }}
@@ -115,8 +130,8 @@ export function ShortcutsPane(): JSX.Element {
                       {recording ? (
                         <span className={`sx-shortcut-rec-hint${recConflict !== null ? ' conflict' : ''}`}>
                           {recConflict !== null
-                            ? `${t('Already used by ', '与「')}${shortcutLabel(recConflict)}${t(' — press another combo, or Esc to cancel', '」冲突,换一键位或 Esc 取消')}`
-                            : t('Press keys (with Ctrl/Alt) · Esc cancel · Backspace clear', '按下新组合键(需含 Ctrl/Alt)· Esc 取消 · Backspace 清除')}
+                            ? `${t('Already used by ', '与「')}${shortcutLabel(recConflict)}${t('', '」冲突')}`
+                            : t('Press new keys', '按下新组合键')}
                         </span>
                       ) : cur === null ? (
                         <kbd className="sx-kbd sx-kbd-none">{t('None', '无')}</kbd>

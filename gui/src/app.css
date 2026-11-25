@@ -3645,10 +3645,12 @@ input.sx-setting-input { width: 100%; }
 .sx-shortcut-row:last-child { border-bottom: none; }
 .sx-shortcut-keys { display: flex; align-items: center; gap: 4px; flex: none; }
 .sx-shortcut-desc { color: var(--fg-secondary); font-size: calc(14px * var(--fz)); text-align: right; min-width: 0; }
+/* 行内出现 ↺ 重置钮时标签仍恒贴右(2026-11-25 用户裁定「不要跑到中间」):auto 边距吃掉 space-between 的自由空间,钮只缀在标签之后 */
+.sx-shortcut-row .sx-shortcut-desc { margin-left: auto; }
 .sx-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; padding: 1px 6px; font-size: calc(14px * var(--fz)); font-family: inherit; line-height: calc(20px * var(--fz)); color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--radius-sm); }
 /* ===== 快捷键注册表轮(2026-11-25 调研 Codex/Claude Code/ChatGPT 桌面版):侧栏动作键位角标 + 设置页录制改键 ===== */
-/* 侧栏菜单动作右侧角标:注册表生效档单枚紧凑徽标('Ctrl+Shift+O');窄菜单先裁动作文字(span 省略)不裁键位 */
-.sx-new-chat .sx-menu-kbd { margin-left: auto; flex: none; font-size: calc(11px * var(--fz)); line-height: 16px; padding: 0 5px; font-family: inherit; font-weight: 400; color: var(--fg-tertiary); background: color-mix(in srgb, var(--fg) 4%, transparent); border: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); border-radius: 4px; white-space: nowrap; letter-spacing: 0.2px; }
+/* 侧栏菜单动作右侧键位提示:注册表生效档,纯灰字无框无底(2026-11-25 用户裁定「不要边框」,对标 ZCode 菜单键位灰字);窄菜单先裁动作文字(span 省略)不裁键位 */
+.sx-new-chat .sx-menu-kbd { margin-left: auto; flex: none; font-size: calc(12px * var(--fz)); line-height: calc(16px * var(--fz)); font-family: inherit; color: var(--fg-tertiary); white-space: nowrap; letter-spacing: 0.2px; }
 .sx-new-chat > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 设置·快捷键页:键位格=录制触发钮(虚线 hover 预示可点),录制态 accent 描边,冲突态转 err */
 .sx-shortcuts-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }
