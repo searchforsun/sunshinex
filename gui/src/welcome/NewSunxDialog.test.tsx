@@ -135,7 +135,7 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull()); // 关弹窗
   });
 
-  it('ESC 关;点外(遮罩)关', () => {
+  it('ESC 关;点外(遮罩)不关(2026-11-25 用户裁定:编辑弹窗不点空白关闭,防误触丢草稿)', () => {
     const conn = makeConn();
     const { unmount } = render(<Harness conn={conn} />);
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -143,7 +143,7 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     unmount();
     render(<Harness conn={conn} />);
     fireEvent.click(document.querySelector('.modal-overlay')!); // 遮罩本体=点外
-    expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'New Sunx' })).toBeDefined(); // 点外不关
   });
 
   it('提交中禁重复提交(busy 锁:钮 disabled+在途再点不双发)', async () => {
@@ -165,7 +165,7 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New Sunx' })).toBeNull());
   });
 
-  it('busy 中三条关闭路径全部拒关(fix round 1:创建中不可取消——ESC/点外/✕ 均不动;resolve 后照常走 openSession+关)', async () => {
+  it('busy 中关闭路径全部拒关(fix round 1:创建中不可取消——ESC/✕ 均不动;resolve 后照常走 openSession+关)', async () => {
     let release: ((v: { sessionId: string }) => void) | null = null;
     const conn = makeConn(
       () =>
@@ -179,9 +179,8 @@ describe('NewSunxDialog(新建 Sunx 弹窗:姓名/工作目录/品性三元组)'
     await waitFor(() =>
       expect((screen.getByRole('button', { name: bi('Creating…', '创建中…') }) as HTMLButtonElement).disabled).toBe(true),
     );
-    // busy 中 ESC / 点外(遮罩) / ✕(disabled):一律拒关——弹窗停留
+    // busy 中 ESC / ✕(disabled):一律拒关——弹窗停留(点外已随 2026-11-25 裁定整体退役,无关闭面)
     fireEvent.keyDown(document, { key: 'Escape' });
-    fireEvent.click(document.querySelector('.modal-overlay')!);
     expect((screen.getByRole('button', { name: 'close sunx dialog' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'close sunx dialog' }));
     expect(screen.getByRole('dialog', { name: 'New Sunx' })).toBeDefined();

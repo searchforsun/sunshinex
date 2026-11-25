@@ -38,14 +38,10 @@ createRoot(root).render(
   </React.StrictMode>,
 );
 
-// 开机画面收尾(index.html #boot,2026-10-27 用户需求「开机动画+产品logo」):双 rAF=首帧
-// 已 paint,淡出交接应用首屏;__sxBootDone 由 index.html 内联控制脚本定义,reload 跳过演时
-// 已 remove(可选调用,静默无副作用)
-requestAnimationFrame(() => {
-  requestAnimationFrame(() => {
-    window.__sxBootDone?.();
-  });
-});
+// 开机画面收尾(index.html #boot):2026-11-25 用户裁定「全部加载到位才显内容,否则显示
+// loading」——收尾改由 App 壳内容就绪驱动(连接+恢复链+快照播种到位)调 __sxBootDone,
+// 此处不再首帧自动放行(旧双 rAF=首 paint 即淡出,内容随后慢慢渗入即本轮报障根因);
+// index.html 内置 8s 兜底,应用卡死不留死屏
 
 // G14.74b 全局悬浮提示：单例 fixed 气泡（完全不参与布局——伪元素气泡在 hover 期参与布局，
 // 会把滚动容器撑出假滚动条）。随锚点视口定位：上方优先、放不下翻下方、左右夹持不出窗；

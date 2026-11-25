@@ -431,9 +431,10 @@ export function ChatTopbar(props: ChatTopbarProps): JSX.Element {
           // G14.32 辅助对话:顶栏无标题(标签页已具名,双显冗余)
           <span className="chat-title" />
         ) : titleEditing ? (
-          /* 2026-10-24 用户裁定:改名=弹窗(⋯ 菜单「重命名会话」触发),内联输入退役 */
-          <div className="modal-overlay" onClick={() => setTitleEditing(false)}>
-            <div className="modal-body rename-dialog" onClick={(e) => e.stopPropagation()}>
+          /* 2026-10-24 用户裁定:改名=弹窗(⋯ 菜单「重命名会话」触发),内联输入退役;
+             2026-11-25 用户裁定:编辑弹窗不点空白关闭(误触不丢草稿),关闭走取消/确认/Esc */
+          <div className="modal-overlay">
+            <div className="modal-body rename-dialog">
               <div className="dirpicker-head">{t('Rename session', '重命名会话')}</div>
               <input
                 className="chat-title-input"

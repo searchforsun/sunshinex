@@ -304,7 +304,9 @@ interface EditorModalProps {
 
 /** 模态壳单点（D96 收敛：EditorModal/rewind-confirm/SkillPreviewModal 三份手写壳——backdrop+
  *  role=dialog/aria-modal/tabIndex=-1+挂载落焦+document keydown 捕获 Esc→stopPropagation→onClose
- *  +header(h3) 各持一份，仅 footer/修饰类/portal/头部动作不同）。Esc 与遮罩点击恒走 onClose
+ *  +header(h3) 各持一份，仅 footer/修饰类/portal/头部动作不同）。Esc 恒走 onClose；遮罩点击同走
+ *  onClose 但可经 backdropClose=false 关闭（2026-11-25 用户裁定「编辑性弹窗不点外关」——EditorModal
+ *  全族传 false,误触空白不丢已填表单;确认/预览弹窗缺省 true 原行为不变）。
  *  （busy 守卫面以守卫过的回调注入即原语义）；Esc preventDefault 随壳恒带（capture 段截断壳层
  *  「Esc 回会话态」语义不变）；挂载落焦内置（简单落焦，不做完整焦点陷阱） */
 export function ModalShell(props: {
@@ -319,8 +321,10 @@ export function ModalShell(props: {
   readonly headerActions?: ReactNode;
   /** 头部 × 钮（rewind 三按钮面原无 ×）；缺省 true */
   readonly closeButton?: boolean;
+  /** 点空白（遮罩）关闭；缺省 true。编辑性弹窗传 false（误触不丢表单） */
+  readonly backdropClose?: boolean;
 }): JSX.Element {
-  const { title, onClose, children, modifier, portal = false, headerActions, closeButton = true } = props;
+  const { title, onClose, children, modifier, portal = false, headerActions, closeButton = true, backdropClose = true } = props;
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     dialogRef.current?.focus(); // 焦点落对话框(简单落焦;jsdom/真浏览器同径)
@@ -337,7 +341,7 @@ export function ModalShell(props: {
     return () => document.removeEventListener('keydown', onKey, true);
   }, [onClose]);
   const shell = (
-    <div className="sx-editor-modal-backdrop" onClick={onClose}>
+    <div className="sx-editor-modal-backdrop" onClick={backdropClose ? onClose : undefined}>
       <div
         ref={dialogRef}
         className={`sx-editor-modal${modifier !== undefined ? ` ${modifier}` : ''}`}
@@ -369,7 +373,7 @@ export function ModalShell(props: {
 export function EditorModal({ open, title, onClose, onSubmit, children }: EditorModalProps): JSX.Element | null {
   if (!open) return null;
   return (
-    <ModalShell title={title} onClose={onClose}>
+    <ModalShell title={title} onClose={onClose} backdropClose={false}>
       <form
         className="sx-editor-modal-body"
         onSubmit={(e) => {

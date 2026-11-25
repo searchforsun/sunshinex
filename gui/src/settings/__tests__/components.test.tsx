@@ -202,15 +202,16 @@ describe('EditorModal', () => {
     // 右上 ×=关
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(closes).toEqual([1, 1]);
-    // 遮罩点击=关;对话框体内点击不关(stopPropagation)
+    // 遮罩点击不关(2026-11-25 用户裁定「编辑性弹窗不点空白关闭」——EditorModal backdropClose=false,
+    // 误触空白不丢已填表单);对话框体内点击同不关
     const backdrop = container.querySelector('.sx-editor-modal-backdrop')!;
     fireEvent.click(backdrop);
-    expect(closes).toEqual([1, 1, 1]);
+    expect(closes).toEqual([1, 1]);
     fireEvent.click(screen.getByRole('dialog', { name: 'Edit thing' }));
-    expect(closes).toEqual([1, 1, 1]);
+    expect(closes).toEqual([1, 1]);
     // Esc=document 捕获段关闭(stopPropagation 截断壳层 document 冒泡段「Esc 回会话态」监听)
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(closes).toEqual([1, 1, 1, 1]);
+    expect(closes).toEqual([1, 1, 1]);
   });
 
   it('Modal 内共享 Select(2026-10-30 z 修正回归保护):弹窗开共享 Select 弹层容器出现在 document 且在弹窗遮罩内,选项可点选上抛;ModalField=标签行(label+hint)+控件行', () => {

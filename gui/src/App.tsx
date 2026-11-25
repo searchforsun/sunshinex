@@ -406,8 +406,31 @@ function AppShell(): JSX.Element {
     };
   }, [recentVersion, openSessionId, openJournalId, page, runningIds.size]);
   /** 恢复现场(use-restore-last 单点,2026-10-27 技术债轮 D53 批F 外提):指针档重放打开链,
-   *  单次闸防 StrictMode 双跑(与既有 effect 序一致——原位即在此回调域) */
-  useRestoreLast({ connInstance, connState, openSession });
+   *  单次闸防 StrictMode 双跑(与既有 effect 序一致——原位即在此回调域)。
+   *  onSettled(2026-11-25 开机就绪轮):恢复落空(无指针/链失败)=欢迎页即终态,放行开机画面;
+   *  恢复成功不在此放行——等恢复会话首个快照播种落地(chatSeededStable)才交接 */
+  useRestoreLast({
+    connInstance,
+    connState,
+    openSession,
+    onSettled: (restored) => {
+      if (!restored) setBootReady(true);
+    },
+  });
+
+  /** 开机画面收尾闸(2026-11-25 用户裁定「全部加载到位才显内容,否则显示 loading」):boot-ready
+   *  三路放行——①恢复链落定且无会话可恢复(欢迎页终态,useRestoreLast onSettled);②恢复会话首个
+   *  快照播种落地(chatSeededStable,转录/页签/投影一次就位);③连接失败面(reconnecting/closed,
+   *  放行既有错误面)。就绪前 index.html #boot splash 恒盖(应用壳在下层照常装配拉数据,揭幕
+   *  即整装);index.html 内置 8s 兜底,应用卡死不留死屏 */
+  const [bootReady, setBootReady] = useState(false);
+  useEffect(() => {
+    if (!bootReady) return;
+    window.__sxBootDone?.(); // 幂等(index.html done 闸);boot 已被兜底移除时静默无副作用
+  }, [bootReady]);
+  useEffect(() => {
+    if (connState === 'reconnecting' || connState === 'closed') setBootReady(true); // 连接失败:放行错误面
+  }, [connState]);
 
   /** 返回欢迎态的壳层清场(记录面分离:backHome 记史,导航回放经 applyNav 复用本函数) */
   const leaveToWelcome = useStableCallback((): void => {
@@ -481,6 +504,7 @@ function AppShell(): JSX.Element {
     seedFromSnapshot(snap);
     // todo 批次权威投影播种(daemon journal 全量派生;快照未带=旧 daemon,清空走纯派生面)
     setSeededTodoBatches(snap.todoBatches ?? []);
+    setBootReady(true); // 开机就绪轮:恢复会话首个快照播种落地=内容整装,放行开机画面(幂等)
   });
   const runInTerminalStable = useStableCallback((command: string): void => {
     openTabInSession('terminal', { nonce: `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, seedCmd: command });

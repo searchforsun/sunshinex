@@ -257,16 +257,10 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   const submit = isEdit ? submitEdit : submitCreate;
 
   return createPortal(
-    <div
-      className="modal-overlay"
-      onClick={() => {
-        // 点外关:busy 拒关(提交在途不可取消);浏览面先回表单(创建模式),表单面整弹窗关
-        if (busy) return;
-        if (browse) setBrowse(false);
-        else onClose();
-      }}
-    >
-      <div className="modal-body sx-sunx-dialog" role="dialog" aria-label={isEdit ? t('Edit Sunx', '编辑 Sunx') : t('New Sunx', '新建 Sunx')} onClick={(e) => e.stopPropagation()}>
+    // 点外不关（2026-11-25 用户裁定「编辑性弹窗不点空白关闭」——误触空白不丢已填表单;关闭走
+    // ×/取消/Esc;原 busy 拒关守卫随点外关一并退役）
+    <div className="modal-overlay">
+      <div className="modal-body sx-sunx-dialog" role="dialog" aria-label={isEdit ? t('Edit Sunx', '编辑 Sunx') : t('New Sunx', '新建 Sunx')}>
         <header className="dirpicker-head">
           {/* 弹窗头名片标(2026-11-17 用户裁定「Sunx 图标是产品名片,欢迎页要加上」):与标题同簇,
               24px 小号;编辑模式同标(同一实例身份) */}

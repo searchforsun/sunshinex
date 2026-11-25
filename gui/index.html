@@ -17,8 +17,9 @@
     </script>
     <style>
       /* 开机画面(2026-10-27 用户需求「开机动画+产品logo」):内联零依赖——首 paint 即现,
-         不等 app.css/JS 束;主题随上方引导已落的 data-theme。收尾由 src/main.tsx 挂载后
-         调 window.__sxBootDone 淡出交接(下方控制脚本定义)。 */
+         不等 app.css/JS 束;主题随上方引导已落的 data-theme。收尾由 App 壳内容就绪
+         (连接+恢复链+快照播种到位)调 window.__sxBootDone 淡出交接(下方控制脚本定义;
+         2026-11-25 用户裁定「全部加载到位才显内容,否则显示 loading」——就绪前恒 splash)。 */
       #boot {
         position: fixed; inset: 0; z-index: 2147483647;
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
@@ -77,17 +78,12 @@
       <div class="boot-bar"><i></i></div>
     </div>
     <script>
-      /* 开机画面控制:同渲染会话 reload 不再演(dev HMR 不扰);挂载收尾 __sxBootDone 淡出;
-         8s 兜底——React 挂载失败也放行画面,不留死屏 */
+      /* 开机画面控制:每次加载都演(reload 同为一次启动,2026-11-25 用户裁定 loading 面);
+         收尾 __sxBootDone 由 App 壳内容就绪驱动(连接+恢复链+快照播种),本脚本不自行放行;
+         8s 兜底——应用挂载/恢复链卡死也放行画面,不留死屏 */
       (function () {
         var boot = document.getElementById('boot');
         if (boot === null) return;
-        var again = false;
-        try {
-          again = sessionStorage.getItem('sunshinex.booted') === '1';
-          sessionStorage.setItem('sunshinex.booted', '1');
-        } catch (e) { /* 存储禁用:每次都演 */ }
-        if (again) { boot.remove(); return; }
         var done = false;
         var finish = function () {
           if (done === true) return;

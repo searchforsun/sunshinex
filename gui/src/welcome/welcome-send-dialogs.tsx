@@ -92,8 +92,9 @@ export function WelcomeIsoBranchDialog({
   onCreate: (name: string) => void;
 }): JSX.Element {
   return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Isolated workspace needs a new branch', '隔离工作区将创建新分支')} onClick={(e) => e.stopPropagation()}>
+    // 点外不关（2026-11-25 用户裁定「编辑性弹窗不点空白关闭」——带输入框的分支弹窗误触不丢草稿）
+    <div className="modal-overlay">
+      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Isolated workspace needs a new branch', '隔离工作区将创建新分支')}>
         <p className="sx-dirty-target">
           {t('The isolated workspace will create a new branch', '隔离工作区将创建新分支')}
         </p>
@@ -150,8 +151,9 @@ export function WelcomeHeldBranchDialog({
 }): JSX.Element {
   const heldBranch = branch;
   return createPortal(
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Branch already checked out', '分支已被签出')} onClick={(e) => e.stopPropagation()}>
+    // 点外不关（同上：带输入框的编辑性弹窗）
+    <div className="modal-overlay">
+      <div className="modal-body sx-dirty-dialog" role="dialog" aria-label={t('Branch already checked out', '分支已被签出')}>
         <p className="sx-dirty-target">
           {t('Branch already checked out', '分支已被签出')} <b>{heldBranch === '' ? '' : heldBranch}</b>
         </p>

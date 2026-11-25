@@ -79,7 +79,9 @@ export function ChatComposerDock(props: {
   running: boolean;
   seeding: boolean;
   composerKeys: ReturnType<typeof useComposerKeys>;
-  setCompRange: Dispatch<SetStateAction<{ start: number; end: number } | null>>;
+  /** 组字段回抛 setter(2026-11-25 输入粘滞轮收窄为普通 setter:Chat 侧判等闸只收值对象,
+   *  ComposerCard 三拍回抛也只传值对象,无需 updater 形态) */
+  setCompRange: (range: { start: number; end: number } | null) => void;
   refPal: RefPal | null;
   setRefPal: Dispatch<SetStateAction<RefPal | null>>;
   refPanelItems: import('./ref-palette').RefItem[] | null;

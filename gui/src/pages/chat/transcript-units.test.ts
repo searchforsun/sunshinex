@@ -57,14 +57,25 @@ describe('转录块模型:块划分(镜像 DayGroupBlock 聚合规则)', () => {
     expect([spans[0]!.kind, spans[0]!.start, spans[0]!.end]).toEqual(['seg', 0, 3]);
   });
 
-  it('内容估算:正文按 md 长度放大、折叠段保持头行高度、用户气泡随文长增长(2026-11-19 冷开长帧轮)', () => {
-    const long = 'x'.repeat(3000);
+  it('内容估算:按视觉行数随文长放大且不高估、CJK 记双宽、折叠段保持头行高度(2026-11-25 长正文白屏轮)', () => {
+    const long = 'x'.repeat(3000); // 无换行长文:按 88 半角宽/行折行
     const entries = [e('u1', 'user', long), e('a1', 'assistant', long), e('t1', 'tool', long)];
     const spans = dayUnitSpans(0, 'd', '', entries, new Set(['t1']), false, isCmd, officeHidden);
     const byKey = new Map(spans.map((s) => [s.key, s]));
-    expect(byKey.get('a1')!.est!).toBeGreaterThan(150 + 1000); // 3000 字 ≫ 常数 150
-    expect(byKey.get('u1')!.est!).toBeGreaterThan(96 + 500);
+    // 3000 半角字符 ≈ 35 视觉行 × 22px + 头高:随长度放大,但不再按旧口径 0.7px/字高估 2-3 倍
+    // (高估=spacer 空洞超 overscan → 滑动白屏,见 transcript-units estLines 注)
+    const estA = byKey.get('a1')!.est!;
+    expect(estA).toBeGreaterThan(150 + 500);
+    expect(estA).toBeLessThan(1200);
+    expect(byKey.get('u1')!.est!).toBeGreaterThan(96 + 400);
     expect(byKey.get('seg:t1')!.est).toBe(44); // 整段折叠=只有 Worked 头
+    // 显式换行=行数直算;CJK/全角记 2 宽(50 字/行折成 2 视觉行)
+    const ascii30 = Array.from({ length: 30 }, () => 'x'.repeat(60)).join('\n');
+    const cjk30 = Array.from({ length: 30 }, () => '中'.repeat(50)).join('\n');
+    const sp2 = dayUnitSpans(0, 'd', '', [e('a2', 'assistant', ascii30), e('a3', 'assistant', cjk30)], new Set(), false, isCmd, officeHidden);
+    const byKey2 = new Map(sp2.map((s) => [s.key, s]));
+    expect(byKey2.get('a2')!.est!).toBe(120 + 30 * 22);
+    expect(byKey2.get('a3')!.est!).toBe(120 + 60 * 22);
     // 前缀和吃 est;实测值仍优先
     const off = prefixOffsets(spans, new Map());
     expect(off[2]! - off[1]!).toBe(byKey.get('a1')!.est);

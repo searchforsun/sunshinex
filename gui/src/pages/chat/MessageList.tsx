@@ -2,6 +2,7 @@ import type { RewindOps } from './chat-types';
 import type { ComposerEnv } from './edit-composer';
 import type { MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
 import { fmtTokens as fmtTokensShared } from '../../ui-util';
@@ -12,7 +13,7 @@ import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { platformMeta } from '../../sidebar/use-menu-channels';
 import { useUsageStats } from '../../usage-stats';
-import { dayUnitSpans, firstUnitAt, prefixOffsets, reuseUnchangedSpans, sliceRange } from './transcript-units';
+import { dayUnitSpans, firstUnitAt, prefixOffsets, reuseUnchangedSpans, sliceRange, unitEstimate } from './transcript-units';
 import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
 import { peekScrollAnchor } from './scroll-mem';
 import type { UnitSpan } from './transcript-units';
@@ -133,13 +134,18 @@ export interface MessageListProps {
 /** 虚拟块视图(2026-11-19 滑动去重渲):滚动期 unit 对象与 renderUnit 回调恒稳(useCallback),
  *  React.memo 让已挂载块整段 bail-out——旧实现每次切片换界都重调全部块的 renderUnit,块内
  *  ToolSegBlock/Markdown 元素全量重建;模型/折叠/流式换新回调时照常重渲(身份判等) */
-const UnitView = memo(function UnitView({ unit, render, unitRef }: {
+const UnitView = memo(function UnitView({ unit, render, unitRef, claimEnter }: {
   unit: UnitSpan;
   render: (u: UnitSpan) => ReactNode;
   unitRef: (el: HTMLDivElement | null) => void;
+  /** 入场认领(2026-11-25):只在**本实例挂载**时问一次,结果存进 state——切片换界重挂的块
+   *  已在宿主登记,认领返回 false 不重放动画;同一实例后续重渲沿用初值,属性不掉、动画不被
+   *  流式更新打断(旧实现把判定放在 render 期且见了命中就回 true,重挂会重放) */
+  claimEnter: (key: string) => boolean;
 }): JSX.Element {
+  const [enter] = useState(() => claimEnter(unit.key));
   return (
-    <div className="chat-unit" data-unit-key={unit.key} ref={unitRef}>
+    <div className="chat-unit" data-unit-key={unit.key} data-enter={enter ? '' : undefined} ref={unitRef}>
       {render(unit)}
     </div>
   );
@@ -402,11 +408,14 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const landingRef = useRef(0);
   const rafRef = useRef(0);
   const unitRoRef = useRef<ResizeObserver | null>(null);
-  /** 滚动期暂存的高度实测(停手后批量落账;滚动中改 spacer=每帧 Layout/Layerize) */
+  /** 滚动期暂存的高度实测(流式增长块停手后批量落账;滚动中改 spacer=每帧 Layout/Layerize。
+   *  非流式块挂载即落账,见 RO callback 注) */
   const pendingHeightsRef = useRef<Map<string, number>>(new Map());
   const settleTimerRef = useRef<number | null>(null);
   /** 高度落账调度单点(RO/滚动两路共用;RO effect 挂载时写入) */
   const scheduleHeightsRef = useRef<() => void>(() => undefined);
+  /** 立即落账入口(换界前冲刷待办;RO effect 挂载时写入) */
+  const flushHeightsRef = useRef<(() => void) | null>(null);
   const office = useUiMode() === 'office';
   /** 日分组(块模型的组边界;memo 免逐渲染 Intl 构造) */
   const dayGroups = useMemo(() => daySkeleton.map((s) => ({
@@ -583,12 +592,42 @@ export function MessageList(props: MessageListProps): JSX.Element {
         || (viewTop >= (off[cur.first] ?? 0) + RANGE_EDGE_MARGIN && viewBot <= (off[cur.last] ?? 0) - RANGE_EDGE_MARGIN)
       );
       if (!covered) {
-        const r = sliceRange(off, viewTop, h, VIRTUAL_OVERSCAN);
+        // 换界前把待落账高度并入模型(2026-11-25):换界会卸载上方块,它们的实测高若还躺在
+        // 待办里,顶 spacer 就退回估算——估算与实测差多少,视口内容就整段跳多少
+        let offSlice = off;
+        if (pendingHeightsRef.current.size > 0) {
+          flushHeightsRef.current?.();
+          offSlice = prefixOffsets(unitsRef.current, heightsRef.current);
+        }
+        const r = sliceRange(offSlice, viewTop, h, VIRTUAL_OVERSCAN);
         if (cur === null || r.first !== cur.first || r.last !== cur.last) {
           rangeRef.current = r;
-          // 滚动驱动的挂载窗变更保持同步(2026-11-19 实测对照:试过 transition 降级,连续滚动
-          // 下被反复打断+覆盖滞后,帧线反而变差 p99 ~20→23-26;overscan 900px 内同步挂块更稳)
-          setRange(r);
+          // 挂载窗变更同帧提交(2026-11-25 白闪轮):rAF 里的 setState 走调度器任务,可能落到
+          // 本帧绘制之后——旧窗已滚出视口、新块还没挂=整屏空白一帧;flushSync 把挂载压进当前帧
+          flushSync(() => setRange(r));
+        }
+      }
+      // 视口空洞兜底(2026-11-25 长正文白屏轮):模型再怎么滞后也不许把视口晾在 spacer 里。
+      // 量首末已挂块的真实盒位,视口整体落到挂载区之外即把 scrollTop 钳回区界;下一帧切片
+      // 随落账后的模型(或下一块挂载)自然复位
+      if (!(props.chatStickRef !== undefined && props.chatStickRef.current) && landingRef.current === 0) {
+        const rr = rangeRef.current;
+        const n = unitsRef.current.length;
+        if (rr !== null && rr.first < rr.last && rr.first >= 0 && rr.last <= n) {
+          const firstNode = unitElsRef.current.get(unitsRef.current[rr.first]!.key);
+          const lastNode = unitElsRef.current.get(unitsRef.current[rr.last - 1]!.key);
+          if (firstNode !== undefined && lastNode !== undefined && firstNode.isConnected && lastNode.isConnected) {
+            const cTop = el.getBoundingClientRect().top;
+            const fTop = firstNode.getBoundingClientRect().top - cTop;
+            const lBot = lastNode.getBoundingClientRect().bottom - cTop;
+            if (lBot <= 0) {
+              el.scrollTop += lBot - h; // 视口在挂载区下方(底部 spacer 空洞):贴回内容末尾
+              scrollTopRef.current = el.scrollTop;
+            } else if (fTop >= h) {
+              el.scrollTop += fTop; // 视口在挂载区上方:贴回内容开头
+              scrollTopRef.current = el.scrollTop;
+            }
+          }
         }
       }
       // 待落账高度:滚动中不断顺延(停手 200ms 后批量应用,见 RO effect)
@@ -658,9 +697,19 @@ export function MessageList(props: MessageListProps): JSX.Element {
   /** 块高度实测(ResizeObserver 单点):高度表更新→spacer 重算;视口上方块变化同帧回钉 scrollTop */
   useLayoutEffect(() => {
     if (LAYOUT_FREE || typeof ResizeObserver === 'undefined') return;
-    /** 高度落账(滚动静默后批量应用):滚动中只入待办——逐拍改 spacer 高度=每帧 Layout/Layerize
-     *  (实测滚动期 Layerize 703ms/2s),成熟列表的做法都是滚动期零布局、停手后一次校正 */
-    const applyPending = (): void => {
+    /** 块是否仍在流式增长(末条正文/运行中的工具段):流式块逐帧长高,落账推迟到停手 */
+    const isStreamingUnit = (idx: number): boolean => {
+      const u = unitsRef.current[idx];
+      if (u === undefined || u.kind === 'day') return false;
+      const g = dayGroupsRef.current[u.group];
+      if (g === undefined) return false;
+      for (let k = u.start; k < u.end; k += 1) if (g.entries[k]?.streaming === true) return true;
+      return false;
+    };
+    /** 高度落账(流式块滚动静默后批量应用):逐拍改 spacer 高度=每帧 Layout/Layerize(实测
+     *  滚动期 Layerize 703ms/2s),成熟列表的做法都是滚动期零布局、停手后一次校正。
+     *  compensate=false=换界前冲刷:spacer 与刚卸载的真实高度精确互换,无需再补 scrollTop */
+    const applyPending = (compensate: boolean = true): void => {
       settleTimerRef.current = null;
       const el = chatScrollRef.current;
       const pending = pendingHeightsRef.current;
@@ -676,7 +725,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         // 块整体在视口顶之上(底边 ≤ scrollTop)且是**已实测值的再变化**(内容真长高/缩短)才回钉。
         // 首测(旧值缺省=估算占位)不算:浏览器早已按真实高度排版,DOM 位移为 0——把「实测-估算」
         // 也当增量会重复补差(实测刻度跳转 ~300ms 后上滑 13.6px 即此,模型追赶≠真实位移)
-        if (old !== undefined && idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) above += h - old;
+        if (compensate && old !== undefined && idx !== undefined && off[idx + 1] !== undefined && off[idx + 1]! <= el.scrollTop) above += h - old;
       }
       pending.clear();
       // 增量不在此写 scrollTop(见 pendingAboveRef 注):交下方 layout effect 在提交后统一回钉
@@ -686,9 +735,16 @@ export function MessageList(props: MessageListProps): JSX.Element {
     const deferApply = (): void => {
       if (settleTimerRef.current !== null) clearTimeout(settleTimerRef.current);
       const idleFor = performance.now() - lastScrollAtRef.current;
-      settleTimerRef.current = window.setTimeout(applyPending, Math.max(60, 200 - Math.min(idleFor, 190)));
+      settleTimerRef.current = window.setTimeout(() => applyPending(true), Math.max(60, 200 - Math.min(idleFor, 190)));
     };
     scheduleHeightsRef.current = deferApply;
+    flushHeightsRef.current = (): void => {
+      if (settleTimerRef.current !== null) {
+        clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+      applyPending(false);
+    };
     const ro = new ResizeObserver((entries) => {
       // 卸载块剪枝(节点已脱离文档:RO 不再交付,map 不留悬引用)
       for (const [k, n] of unitElsRef.current) {
@@ -698,7 +754,11 @@ export function MessageList(props: MessageListProps): JSX.Element {
         }
       }
       const pending = pendingHeightsRef.current;
+      const el = chatScrollRef.current;
+      const cTop = el !== null ? el.getBoundingClientRect().top : 0;
       let got = false;
+      let applied = 0;
+      let above = 0;
       for (const en of entries) {
         const node = en.target as HTMLElement;
         const key = node.dataset.unitKey ?? '';
@@ -707,8 +767,30 @@ export function MessageList(props: MessageListProps): JSX.Element {
         if (!(h > 0.5)) continue;
         const old = pending.get(key) ?? heightsRef.current.get(key);
         if (old !== undefined && Math.abs(old - h) <= 0.5) continue;
-        pending.set(key, h);
-        got = true;
+        const idx = unitIndexByKeyRef.current.get(key);
+        if (idx !== undefined && isStreamingUnit(idx)) {
+          pending.set(key, h);
+          got = true;
+          continue;
+        }
+        // 非流式块**挂载即落账**(2026-11-25 长正文白屏轮根因之一):旧实现一律推迟到停手,推迟
+        // 窗内 offsets 仍是估算——750px 列宽下长正文/代码块可高估 2-3 倍,slice 按模型算,视口滑
+        // 进「模型说还有内容、真实 DOM 已是空白 spacer」的区间就再也补挂不出来(白屏)。落账后
+        // 模型与真实排版同步;块在视口上方时同步补偿 scrollTop(内容实测差多少,视口就补多少)
+        const u = idx !== undefined ? unitsRef.current[idx] : undefined;
+        const modelH = old ?? (u !== undefined ? unitEstimate(u.kind, u.entryKind, u.est) : h);
+        heightsRef.current.set(key, h);
+        rememberUnitHeight(props.heightScope ?? '', key, h);
+        pending.delete(key);
+        applied += 1;
+        if (el !== null && node.getBoundingClientRect().bottom <= cTop) above += h - modelH;
+      }
+      if (applied > 0) {
+        if (above !== 0 && el !== null) {
+          el.scrollTop += above;
+          scrollTopRef.current = el.scrollTop;
+        }
+        setHeightVer((v) => v + 1);
       }
       if (got) deferApply();
     });
@@ -717,6 +799,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
     return () => {
       ro.disconnect();
       unitRoRef.current = null;
+      flushHeightsRef.current = null;
       if (settleTimerRef.current !== null) {
         clearTimeout(settleTimerRef.current);
         settleTimerRef.current = null;
@@ -1051,6 +1134,23 @@ export function MessageList(props: MessageListProps): JSX.Element {
   useEffect(() => {
     propsRef.current.onRenderWindowChange?.(visibleCount);
   }, [visibleCount]);
+  /** 入场动画闸(2026-11-25 停手抖动轮):.chat .entry 的 sx-entry-in(淡入+4px 上滑)原随
+   *  .entry 节点全量生效——虚拟窗口切片换界会卸载再重挂块,重挂节点是新 DOM=动画重放,滑动
+   *  时视口边上内容反复淡入+上滑=「一闪一闪」。改为只随「真正的新条目」:首渲染批次全部记已见
+   *  不播(切会话打开不再整屏淡入),此后首挂才有 data-enter;已见过 key 的任何重挂=不重放 */
+  const enteredRef = useRef<Set<string>>(new Set());
+  const enteredPrimedRef = useRef(false);
+  useEffect(() => { enteredPrimedRef.current = true; }, []);
+  /** 挂载认领(UnitView 每实例问一次):true 仅当过了首帧 priming 且本 key 从未进过列表 */
+  const claimEnter = useCallback((key: string): boolean => {
+    if (!enteredPrimedRef.current) {
+      enteredRef.current.add(key);
+      return false;
+    }
+    if (enteredRef.current.has(key)) return false;
+    enteredRef.current.add(key);
+    return true;
+  }, []);
   return (
     <main
       className="chat"
@@ -1103,7 +1203,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {virtual && <div className="chat-spacer" style={{ height: offsets[firstUnit] ?? 0 }} aria-hidden="true" />}
         {units.slice(firstUnit, lastUnit).map((u) =>
           virtual ? (
-            <UnitView key={u.key} unit={u} render={renderUnit} unitRef={unitRefCb} />
+            <UnitView key={u.key} unit={u} render={renderUnit} unitRef={unitRefCb} claimEnter={claimEnter} />
           ) : (
             <Fragment key={u.key}>{renderUnit(u)}</Fragment>
           ),

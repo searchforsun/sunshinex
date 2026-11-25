@@ -41,12 +41,37 @@ export function isSegmentEntry(e: ChatEntry, hiddenKeys: ReadonlySet<string>): b
   return e.kind === 'tool' || e.kind === 'thinking' || ((e.kind === 'assistant' || e.kind === 'user' || e.kind === 'notice') && hiddenKeys.has(e.key));
 }
 
-/** 内容估算(px):字符量 × 每字符占高。样本口径=实测正文 3058 字≈2479px(0.81);正文取略
- *  保守的 0.7(表格留白多、代码折行少),用户气泡窄取 0.5,折叠段按行数主算 */
-const estUser = (md: string): number => Math.max(96, 72 + Math.ceil(md.length * 0.5));
+/** 内容估算(px):按**视觉行数**算(2026-11-25 长正文白屏轮)——正文列宽 750px、字号 14px、
+ *  行高 14×1.6=22px(thread-width.ts / 根令牌),一行约容 88 个半角宽字符,CJK/全角记 2 宽。
+ *  旧口径「字符数 × 0.5/0.7px」把 ASCII 长文(代码块/表格)高估 2-3 倍(实测 3000 字正文真实
+ *  ≈800px 估成 2220px):spacer 空洞大到超过 overscan 后,视口一滑进「模型说还有内容、真实
+ *  DOM 已是空白 spacer」的区间就再也补挂不出来=滑动白屏。行数口径把首帧误差压到 ±30% 内 */
+const EST_LINE_PX = 22;
+/** md 视觉行数:显式换行成行;CJK/全角按 2 宽,超出列宽折行 */
+function estLines(md: string, cols: number = 88): number {
+  let lines = 1;
+  let col = 0;
+  for (let i = 0; i < md.length; i += 1) {
+    const c = md.charCodeAt(i);
+    if (c === 10) {
+      lines += 1;
+      col = 0;
+      continue;
+    }
+    col += c >= 0x2e80 ? 2 : 1;
+    if (col > cols) {
+      lines += 1;
+      col = 0;
+    }
+  }
+  return lines;
+}
+/** 用户气泡列宽更窄(气泡限宽),每行半角宽取 72 */
+const estUser = (md: string): number => Math.max(96, 72 + estLines(md, 72) * EST_LINE_PX);
 const estAssistant = (md: string, entryKind?: ChatEntry['kind']): number =>
-  entryKind === 'notice' ? 48 : Math.max(150, 120 + Math.ceil(md.length * 0.7));
-const estSeg = (count: number, chars: number): number => 44 + count * 30 + Math.ceil(chars * 0.2);
+  entryKind === 'notice' ? 48 : Math.max(150, 120 + estLines(md) * EST_LINE_PX);
+/** 折叠段:行数主导(每行 ≈30px),字符量只作小幅修正 */
+const estSeg = (count: number, chars: number): number => 44 + count * 30 + Math.ceil(chars * 0.05);
 /** 单条块内容估算(日分隔/命令/run 与渲染高度基本无关,沿常数) */
 function estOfEntry(entry: ChatEntry, kind: UnitKind): number {
   if (kind === 'user') return estUser(entry.md);

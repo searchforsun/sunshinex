@@ -6,13 +6,16 @@ import type { Connection, ConnectionState } from './connection';
  * G14.2xx 浏览器刷新后重放打开链——应用级指针档(lastRoot+lastJournalId,openSession 落笔),
  * 连接就绪即启动一次 newSession(root) 装配壳 → attach(journal) 播种 → openSession 三连;
  * 指针不可用(档删/目录迁移/首启)静默落欢迎页。restoredRef 单次闸(StrictMode 双跑防重放)。
+ * onSettled(2026-11-25 开机就绪轮):恢复链**落空**(无指针/链路失败,欢迎页即终态)时回调
+ * restored=false——App 壳据此放行开机画面;恢复成功不回调,由首个快照播种(onSeeded)收尾。
  */
 export function useRestoreLast(deps: {
   readonly connInstance: Connection | null;
   readonly connState: ConnectionState;
   readonly openSession: (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft?: boolean, kindHint?: string) => void;
+  readonly onSettled?: (restored: boolean) => void;
 }): void {
-  const { connInstance, connState, openSession } = deps;
+  const { connInstance, connState, openSession, onSettled } = deps;
   const restoredRef = useRef(false);
   useEffect(() => {
     if (restoredRef.current || connInstance === null || connState !== 'open') return;
@@ -21,7 +24,10 @@ export function useRestoreLast(deps: {
       .then(() => connInstance.appGuiState())
       .then(({ state }) => {
         const o = (state ?? {}) as { lastRoot?: unknown; lastJournalId?: unknown };
-        if (typeof o.lastRoot !== 'string' || o.lastRoot === '' || typeof o.lastJournalId !== 'string' || o.lastJournalId === '') return;
+        if (typeof o.lastRoot !== 'string' || o.lastRoot === '' || typeof o.lastJournalId !== 'string' || o.lastJournalId === '') {
+          onSettled?.(false); // 无指针:欢迎页即终态,放行开机画面
+          return;
+        }
         const lastRoot: string = o.lastRoot;
         const lastJournalId: string = o.lastJournalId;
         return connInstance
@@ -29,7 +35,7 @@ export function useRestoreLast(deps: {
           .then(({ sessionId }) => connInstance.attach(sessionId, lastJournalId).then((r) => ({ sessionId: r.sessionId, root: r.root || lastRoot, journalId: lastJournalId, kind: r.kind }))) // 收编以返回 id 为准;root=attach 归位真根(树会话重启回工作树)
           .then(({ sessionId, root, journalId, kind }) => openSession(sessionId, root, journalId, false, kind));
       })
-      .catch(() => undefined);
+      .catch(() => onSettled?.(false)); // 链路失败:欢迎页即终态,放行开机画面(成功路由 onSeeded 收尾)
     // eslint 不入依赖(openSession 恒稳:仅 setter/refs;恢复链仅启动一次)
   }, [connInstance, connState]);
 }
