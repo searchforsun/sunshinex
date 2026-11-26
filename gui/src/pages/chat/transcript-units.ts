@@ -145,23 +145,26 @@ export function dayUnitSpans(
   return out;
 }
 
-/** 折叠轮末段投影(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
- *  查看了文件』折叠工具行」):每个折叠轮内最后一个**可折叠** seg 块 → 该轮 run key。折叠态下该段
- *  只露折叠头一行(段内全隐),点击=展开整轮;运行中折叠(留末条工具/正文)同理——末段本就可见,
- *  该投影自然空转(仅 closed 段生效,见 ToolSegBlock)。user 块=轮界(新开场),日分隔/命令行不断轮。
- *  foldable 判据由调用面给(ToolGroups.isConciseFoldableSeg):轮尾常挂只含记忆/技能旁白的隐段,
- *  不是折叠行,取它=head 永不出现(2026-11-26 实测根因) */
+/** 折叠轮末段投影(2026-11-26 用户两轮裁定):折叠态下露折叠头的段 → 该段所属 run key。
+ *  - 封口轮:只露**最后一个可折叠段**(「折叠时也要显示最后一个正文和最后一个折叠工具行」);
+ *  - 在途轮(liveRunKey;「折叠运行中,显示最后一个正文和折叠工具思考行」):该轮**所有**可折叠段
+ *    都露头——折叠体全隐只剩折叠行走廊,正文只留最后一段。
+ *  头行点击=展开整轮。user 块=轮界(新开场),日分隔/命令行不断轮。foldable 判据由调用面给
+ *  (ToolGroups.isConciseFoldableSeg):轮尾常挂只含记忆/技能旁白的隐段,不是折叠行,取它=头永不出现 */
 export function foldedPeekSegs(
   units: readonly UnitSpan[],
   collapsedRuns: ReadonlySet<string>,
   foldable: (u: UnitSpan) => boolean,
+  liveRunKey?: string,
 ): Map<string, string> {
   const out = new Map<string, string>();
   let runKey: string | undefined;
-  let lastSeg: string | undefined;
+  let segs: string[] = [];
   const flush = (): void => {
-    if (runKey !== undefined && lastSeg !== undefined) out.set(lastSeg, runKey);
-    lastSeg = undefined;
+    if (runKey !== undefined && segs.length > 0) {
+      for (const k of runKey === liveRunKey ? segs : segs.slice(-1)) out.set(k, runKey);
+    }
+    segs = [];
   };
   for (const u of units) {
     if (u.kind === 'run') {
@@ -174,7 +177,7 @@ export function foldedPeekSegs(
       runKey = undefined;
       continue;
     }
-    if (runKey !== undefined && u.kind === 'seg' && foldable(u)) lastSeg = u.key;
+    if (runKey !== undefined && u.kind === 'seg' && foldable(u)) segs.push(u.key);
   }
   flush();
   return out;

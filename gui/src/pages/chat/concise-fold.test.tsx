@@ -18,13 +18,14 @@ const none = (): null => null;
 const tool = (key: string, name: string, input: Record<string, unknown>, text = 'ok'): ChatEntry =>
   ({ key, kind: 'tool', name, input, text } as unknown as ChatEntry);
 
-function mount(props: { seg: ChatEntry[]; closed: boolean; live?: boolean; peekRunKey?: string; onExpandRun?: (k: string) => void }): HTMLElement {
+function mount(props: { seg: ChatEntry[]; closed: boolean; live?: boolean; liveRun?: boolean; peekRunKey?: string; onExpandRun?: (k: string) => void }): HTMLElement {
   const renderTool = (e: ChatEntry) => <ToolEntryView key={e.key} entry={e} conn={conn} sessionId="s" />;
   const r = render(
     <ToolSegBlock
       seg={props.seg}
       closed={props.closed}
       live={props.live}
+      liveRun={props.liveRun}
       peekRunKey={props.peekRunKey}
       onExpandRun={props.onExpandRun}
       renderTool={renderTool}
@@ -36,6 +37,15 @@ function mount(props: { seg: ChatEntry[]; closed: boolean; live?: boolean; peekR
 }
 
 describe('简洁模式折叠头恒在', () => {
+  it('运行中(在途轮)展开:折叠体默认打开=段内工具行全可见,点折叠头可逐段收起', () => {
+    const seg = [tool('a', 'read', { path: 'a.ts' }), tool('b', 'grep', { pattern: 'x' }), tool('c', 'read', { path: 'c.ts' })];
+    const c = mount({ seg, closed: false, liveRun: true });
+    expect(c.querySelector('.concise-fold')).not.toBeNull();
+    expect(c.querySelector('.concise-body')!.className).toContain('open'); // 运行中=全行可见
+    expect(c.querySelectorAll('.entry-tool').length).toBe(3);
+    fireEvent.click(c.querySelector('.concise-fold') as HTMLButtonElement);
+    expect(c.querySelector('.concise-body')!.className).not.toContain('open'); // 用户手点=收起
+  });
   it('运行末段(未折叠):折叠头在位且 body 收着,末条工具行仍钉在折叠体之外', () => {
     const seg = [tool('a', 'read', { path: 'a.ts' }), tool('b', 'grep', { pattern: 'x' }), tool('c', 'read', { path: 'c.ts' })];
     const c = mount({ seg, closed: false, live: true });
