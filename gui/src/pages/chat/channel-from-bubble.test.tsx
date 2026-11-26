@@ -36,6 +36,15 @@ describe('通道消息气泡来源行', () => {
     expect(badge!.querySelector('.user-from-channel-pop button')).not.toBeNull();
   });
 
+  it('飞书 @ 占位符不进气泡(旧档/未还原消息):@_user_1 从正文剥除', () => {
+    const { container } = render(<UserEntryView entry={userEntry('[来自 景楷（ou_1）]: @_user_1 1')} platform="feishu" />);
+    expect(container.textContent).toContain('1');
+    expect(container.textContent).not.toContain('_user_1');
+    // 非 feishu 平台不剥（同名片段可能是正常文本）
+    const other = render(<UserEntryView entry={userEntry('@_user_1 原文')} platform="telegram" />);
+    expect(other.container.textContent).toContain('_user_1');
+  });
+
   it('单聊无前缀:普通用户气泡零变化(无来源行)', () => {
     const { container } = render(<UserEntryView entry={userEntry('单聊原文')} platform="feishu" />);
     expect(container.querySelector('.user-from-channel')).toBeNull();

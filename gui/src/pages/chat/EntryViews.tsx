@@ -482,11 +482,19 @@ function ChannelFromBadge({ from, userId, platform }: { from: string; userId?: s
   );
 }
 
+/** 飞书 @ 占位符清理（2026-11-25 用户裁定「@_user_1 不应该显示在用户气泡中」）:飞书文本消息
+ *  内联占位符是平台内部编码,服务端新消息已还原成姓名;旧档/未还原消息在显示侧剥掉,避免被
+ *  当成 @引用 chip 渲染成蓝色文件串。仅 feishu 平台生效（其它平台文本里的同名片段零影响） */
+export function stripFeishuMentionTokens(md: string): string {
+  return md.replace(/@_user_\d+\s*/g, '');
+}
+
 export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
-  const rawMd = sideChat === true ? stripSideNote(entry.md) : entry.md;
+  const rawMd0 = sideChat === true ? stripSideNote(entry.md) : entry.md;
+  const rawMd = platform === 'feishu' ? stripFeishuMentionTokens(rawMd0) : rawMd0;
   // 通道群聊来源前缀剥离（2026-11-25 用户裁定「气泡上侧显示飞书图标+用户名称,hover 显示 id」）:
   // router ⑫ 的 `[来自 x]: ` 前缀不再留在气泡正文,改由上方来源章承载;单聊无前缀=零变化
   const channelFrom = sideChat === true ? null : channelFromOf(rawMd);
