@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { Background, BackgroundVariant, Controls, Handle, Position, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import type { Edge, Node, NodeProps } from '@xyflow/react';
 import { Graph as DagreGraph, layout as dagreLayout } from '@dagrejs/dagre';
-import { AlarmClock, Bot, Square } from 'lucide-react';
+import { AlarmClock, Square, UsersRound } from 'lucide-react';
 import type { BoardTask } from '../projection';
 import { t } from '../i18n';
 import { fmtDurMs } from '../ui-util';
@@ -194,7 +194,7 @@ function TaskNode({ data, selected }: NodeProps<Node<TaskNodeData, 'task'>>): JS
         <div className="tb-dag-node-meta">
           {data.agent !== '' && (
             <span className="tb-dag-node-agent">
-              <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
+              <UsersRound size={14} strokeWidth={1.75} aria-hidden="true" />
               {data.agent}
             </span>
           )}

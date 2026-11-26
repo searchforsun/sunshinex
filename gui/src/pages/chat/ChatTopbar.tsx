@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Bot, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff, UsersRound } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
@@ -35,7 +35,7 @@ export interface DynBlock {
 const DYN_META: Record<DynBlockKind, { label: string; icon: typeof ListTodo; tab: 'tasks' | 'agents' | 'bgtasks' | 'plans' }> = {
   todo: { label: '待办', icon: ListTodo, tab: 'tasks' },
   plan: { label: '计划', icon: NotebookPen, tab: 'plans' },
-  task: { label: '团队任务', icon: Bot, tab: 'agents' },
+  task: { label: '团队任务', icon: UsersRound, tab: 'agents' }, // 团队域=双人(2026-11-26;Bot 归子智能体)
   bg: { label: '后台任务', icon: Hourglass, tab: 'bgtasks' },
 };
 

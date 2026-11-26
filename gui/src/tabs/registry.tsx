@@ -10,7 +10,7 @@ import { lazy } from 'react';
 import { useState } from 'react';
 import { SideChatComposer } from './side-chat-composer';
 import { t } from '../i18n';
-import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, KanbanSquare, NotebookPen, Package } from 'lucide-react';
+import { FileText, GitCompare, FileDiff, ListTodo, Hourglass, Database, MessageCircle, Sparkles, SquareTerminal, Bot, Globe, KanbanSquare, NotebookPen, Package, UsersRound } from 'lucide-react';
 import { normalizeWebUrl, webPageName } from './tab-meta';
 import type { SingletonProbe, TabTypeId, TabParams } from './tab-state';
 
@@ -151,7 +151,7 @@ export const TAB_ICONS: Partial<Record<TabTypeId, typeof FileText>> = {
   diff: GitCompare, // G14.180 审查(改动对比)——与欢迎页快捷卡同图标
   turndiff: FileDiff, // 本轮改动单文件页签(2026-11-10)
   tasks: ListTodo, // G14.180 待办——与欢迎页快捷卡同图标
-  agents: Bot, // G8d 子智能体活动聚合卡
+  agents: UsersRound, // 智能体团队聚合面(2026-11-26 用户裁定「智能体团队的图标换成双人…和子智能体区分」——Bot 归单个子智能体)
   agent: Bot, // G14.175 子智能体只读转录页(机器人图标,用户裁决)
   bgtasks: Hourglass, // G14.180 后台任务(等待执行)
   memory: Database, // G14.180 持久记忆(2026-10-31 用户裁定:与正文 [memory] 回显同件,Brain 退役)
