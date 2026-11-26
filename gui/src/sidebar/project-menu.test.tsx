@@ -560,4 +560,22 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;20
     await waitFor(() => expect(screen.queryByText('编排一')).toBeNull());
     expect(screen.getByText('编排三')).toBeDefined(); // 未归档行原样
   });
+
+  it('归档 SUNX 层行点击走 attachSunx 直寻址（2026-11-26 用户实测「归档的sunx无法打开」/session/sun-…/attach 400）', async () => {
+    // 归档层行此前统一走 attachJournal（standard newSession+attach）——sunx 档在域容器不在 projects 区，
+    // 必然 400；归档 SUNX 专域行必须走 attachSunx（域定位/壳铸造/attach 全链 daemon 单点）
+    const conn = makeConn();
+    conn.sunxSessions = vi.fn(async () =>
+      [{ id: 'sx-arch', title: '归档编排', updatedAt: 9, kind: 'sunx', root: 'D:/w/p1', archived: true }] as never,
+    );
+    const open = vi.fn();
+    const newSession = vi.spyOn(conn, 'newSession');
+    renderMenu(conn, { onOpenSession: open });
+    await screen.findByText('SUNX');
+    fireEvent.click(screen.getByRole('button', { name: 'archive sunx' })); // 进「归档 SUNX」层
+    fireEvent.click(await screen.findByText('归档编排'));
+    await waitFor(() => expect(conn.attachSunx).toHaveBeenCalledWith('sx-arch'));
+    await waitFor(() => expect(open).toHaveBeenCalledWith('sx-live-sx-arch', 'D:/w/p1', 'sx-arch', 'sunx'));
+    expect(newSession).not.toHaveBeenCalled(); // 不再铸 standard 壳（400 根因路径）
+  });
 });

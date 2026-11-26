@@ -573,6 +573,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
     [conn, loadArchived, loadWorkspaces, reloadOpenGroups],
   );
 
+  /** 归档层行点击（2026-11-26 用户实测「归档的sunx无法打开吗？又没有删除」/session/sun-…/attach 400）：
+   *  归档 SUNX 专域行必须走 attachSunx 直寻址——standard newSession+attach 在 projects 区找不到域档
+   *  （sunx 档在 ~/.sunshinex/sunx/<jid>/data）=400；通道/session 域沿用 attachJournal（行 root=域目录） */
+  const openArchivedRow = useCallback((root: string, journalId: string, updatedAt?: number): void => {
+    if (archiveScope === 'sunx') {
+      attachSunxJournal(journalId, updatedAt);
+      return;
+    }
+    attachJournal(root, journalId, updatedAt);
+  }, [archiveScope, attachSunxJournal, attachJournal]);
   /** 置顶簇(行快照入列/撤钉/钉 id 集)收口 use-menu-sections(D62 批J) */
   const { pinSessionRow, unpinRow, pinnedIds } = useMenuPins(pins, persistPins, markSeen);
   /** 归档层红删除(二次确认 morph 后):受控删除会话档全家后重拉归档层/组计数/Recents;
@@ -938,7 +948,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             rows={archiveRows}
             scope={archiveScope}
             busy={busy}
-            onOpenSession={attachJournal}
+            onOpenSession={openArchivedRow}
             onUnarchive={unarchiveArchivedRow}
             onDelete={deleteArchivedRow}
             activeSessionId={activeSessionId}
