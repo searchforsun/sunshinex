@@ -152,9 +152,15 @@ interface LarkUserResponse {
   data?: { user?: { name?: string } };
 }
 
-/** Lark 聊天信息响应体最小形状(GET im/v1/chats/:chat_id:data.name——群聊名;单聊常空) */
+/** Lark 聊天信息响应体最小形状(GET im/v1/chats/:chat_id:data.name——群聊名;单聊常空,
+ *  chat_mode='p2p' 用于单聊判定) */
 interface LarkChatResponse {
-  data?: { name?: string };
+  data?: { name?: string; chat_mode?: string };
+}
+
+/** Lark 群成员响应体最小形状(GET im/v1/chats/:chat_id/members:data.items[].name——单聊回落人名) */
+interface LarkChatMembersResponse {
+  data?: { items?: Array<{ name?: string }> };
 }
 
 export class FeishuAdapter implements ChannelAdapter {
@@ -322,8 +328,9 @@ export class FeishuAdapter implements ChannelAdapter {
     }
   }
 
-  /** 发送者姓名（通讯录 API + 进程内缓存,含失败缓存）：权限未开（需 contact:user.base:readonly
-   *  等通讯录读域）静默降级 open_id */
+  /** 发送者姓名（通讯录 API + 进程内缓存）:权限未开（需 contact:user.base:readonly 等通讯录
+   *  读域）静默降级 open_id。**只缓存成功**（2026-11-25 根修:失败曾永久缓存→权限后来开通也
+   *  再不重试,直到进程重启）——失败即摘缓存,下条消息再试 */
   private userName(openId: string): Promise<string | undefined> {
     const hit = this.nameCache.get(openId);
     if (hit !== undefined) return hit;
@@ -340,31 +347,51 @@ export class FeishuAdapter implements ChannelAdapter {
       } catch {
         return undefined;
       }
-    })();
+    })().then((name) => {
+      if (name === undefined) this.nameCache.delete(openId); // 失败不缓存:权限后开可重试
+      return name;
+    });
     this.nameCache.set(openId, p);
     return p;
   }
 
-  /** 聊天名称（GET im/v1/chats/:chat_id 的 name + 进程内缓存,含失败缓存;需 im:chat:readonly 域）：
-   *  群聊=群名（悬浮卡聊天名称行,2026-11-24 用户裁定「群聊就是群聊名称」）;单聊常空 → router
-   *  回落发送者姓名（「单聊就是聊天人名称」）。尽力而为失败静默 */
+  /** 聊天名称（GET im/v1/chats/:chat_id 的 name;需 im:chat:readonly 域）：群聊=群名（悬浮卡
+   *  聊天名称行,2026-11-24 用户裁定「群聊就是群聊名称」）;单聊群名常空——**成员列表回落**
+   *  （chats/:chat_id/members 同域可取成员姓名,2026-11-25 用户报障「有 im:chat 权限仍拿不到
+   *  单聊名称」根修:不再依赖通讯录读域）。
+   *  失败**不缓存**（2026-11-25 同轮根修:失败曾永久缓存→权限后开/版本发布后仍恒 undefined,
+   *  直到进程重启才重试）——成功才进 chatCache,失败即摘,下条消息自然重试（每消息至多一次调用） */
   private chatName(chatId: string): Promise<string | undefined> {
     const hit = this.chatCache.get(chatId);
     if (hit !== undefined) return hit;
-    const p = (async () => {
+    const p = (async (): Promise<string | undefined> => {
       if (this.client === undefined) return undefined;
       try {
         const resp = (await this.client.request({ method: 'GET', url: `/open-apis/im/v1/chats/${chatId}` })) as LarkChatResponse;
         const name = resp?.data?.name;
-        return typeof name === 'string' && name !== '' ? name : undefined;
+        if (typeof name === 'string' && name !== '') return name;
+        // 单聊（chat_mode=p2p）群名为空:成员列表取非机器人成员姓名（同一 im:chat:readonly 权限）
+        if (resp?.data?.chat_mode === 'p2p') {
+          const members = (await this.client.request({
+            method: 'GET',
+            url: `/open-apis/im/v1/chats/${chatId}/members`,
+            params: { member_id_type: 'open_id' },
+          })) as LarkChatMembersResponse;
+          for (const m of members?.data?.items ?? []) {
+            if (typeof m.name === 'string' && m.name !== '') return m.name;
+          }
+        }
+        return undefined;
       } catch (e) {
-        // 群名读取失败可诊断（2026-11-25 用户报障「hover 还是显示聊天 id」）:群聊名称需应用
-        // 开通「获取群组信息」(im:chat:readonly)——失败静默降级仍按 chatId 展示,但留一行日志
-        // 供排查（每 chat 一次,缓存 Promise 保证不刷屏）
+        // 读取失败可诊断（2026-11-25 用户报障「hover 还是显示聊天 id」）:群聊名称需应用开通
+        // 「获取群组信息」(im:chat:readonly)——失败静默降级仍按 chatId 展示,但留一行日志供排查
         (this.deps.log ?? (() => {}))(`feishu chat info 读取失败(${chatId}): ${e instanceof Error ? e.message : String(e)}；群聊名称需应用开通 im:chat:readonly`);
         return undefined;
       }
-    })();
+    })().then((name) => {
+      if (name === undefined) this.chatCache.delete(chatId); // 失败不缓存:权限后开/发布后可重试
+      return name;
+    });
     this.chatCache.set(chatId, p);
     return p;
   }
