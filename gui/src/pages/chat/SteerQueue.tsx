@@ -114,14 +114,8 @@ export function SteerQueue(props: SteerQueueProps): JSX.Element {
                 <GripVertical size={14} strokeWidth={1.75} aria-hidden="true" />
               </span>
               <span className="steer-row-text">
-                {q.images !== undefined && q.images.length > 0 && (
-                  <span className="steer-img-thumbs" aria-label={t('Attached images', '附件图片')}>
-                    {q.images.slice(0, 4).map((src, k) => (
-                      <img key={`${k}:${src.slice(-24)}`} src={src} alt="" />
-                    ))}
-                    {q.images.length > 4 && <span className="steer-img-more">+{q.images.length - 4}</span>}
-                  </span>
-                )}
+                {/* 2026-11-26 用户裁定「排队里面不需要显示图片缩略」:队列行不渲缩略图(排队图源
+                    直读本地路径,列表里常成破图;纯图消息已由下方「(图片)」占位代表) */}
                 {q.text !== '' ? (
                   /* 2026-11-05 用户裁定「发送到队列就没有 chip 了」:排队态存的是发送期展开档
                      (⟦token⟧ 已围栏化),行渲染与用户气泡同构折叠回芯片(hover 同件) */

@@ -3076,9 +3076,6 @@ input.sx-setting-input { width: 100%; }
 .user-img-strip img{width:96px;height:96px;max-width:100%;object-fit:cover;border-radius:var(--radius-sm);display:block;border:1px solid var(--border)}
 .user-img-strip img.clickable{cursor:zoom-in}
 .sx-plus-file-input{display:none}
-.steer-img-thumbs{display:inline-flex;gap:4px;margin-right:6px;vertical-align:middle}
-.steer-img-thumbs img{width:28px;height:28px;border-radius:6px;object-fit:cover;display:block}
-.steer-img-more{font-size: calc(14px * var(--fz));opacity:.6;align-self:center}
 .steer-img-only{opacity:.6;display:inline-flex;align-items:center;gap:4px}
 .sx-lightbox{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center}
 .sx-lightbox-img{max-width:92vw;max-height:84vh;border-radius:var(--radius-sm);box-shadow:0 8px 40px rgba(0,0,0,.5);cursor:grab;touch-action:none}
