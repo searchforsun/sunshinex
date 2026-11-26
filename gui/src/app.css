@@ -566,12 +566,15 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   margin-left: 4px;
   border-radius: 50%;
   background: var(--accent);
-}.sx-welcome-title { margin: 0; color: var(--fg-secondary); }.sx-welcome-hint { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }/* 通道权限自检弹窗（2026-11-25 用户裁定「弹窗说明缺少哪些权限/必须/可选/兜底」） */
-.sx-perm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.sx-perm-row { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
-.sx-perm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+}.sx-welcome-title { margin: 0; color: var(--fg-secondary); }.sx-welcome-hint { margin: 0; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); }/* 通道权限自检弹窗（2026-11-25 用户裁定「更简洁,符合项目规范」）:设置页无框行制——名称左/
+   状态右(纯文字四档色,不做描边胶囊),scope 行小字灰,兜底说明仅在缺失时出现;行间细分隔线 */
+.sx-perm-list { list-style: none; margin: 0; padding: 0; }
+.sx-perm-row { display: flex; flex-direction: column; gap: 2px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.sx-perm-row:first-child { padding-top: 0; }
+.sx-perm-row:last-child { padding-bottom: 0; border-bottom: none; }
+.sx-perm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .sx-perm-label { font-weight: 600; color: var(--fg); }
-.sx-perm-chip { flex: none; font-size: calc(12px * var(--fz)); padding: 1px 8px; border-radius: var(--radius-sm); border: 1px solid currentColor; }
+.sx-perm-chip { flex: none; font-size: calc(13px * var(--fz)); }
 .sx-perm-chip.ok { color: var(--ok); }
 .sx-perm-chip.miss { color: var(--err); }
 .sx-perm-chip.unknown { color: var(--warn); }
