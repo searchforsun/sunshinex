@@ -398,7 +398,7 @@ test('⑪ 审批 y/n 回复截胡:pendingReply 命中即消费,不提交不应�
 test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调(结构化 sender 含 chatKind/userId)', async () => {
   const h = makeHarness();
   await h.router.handleInbound(mkMsg({ msgId: 'g1', chatKind: 'group', atBot: true, userId: 'u1', userDisplay: 'Alice', text: '跑个测试' }));
-  assert.equal(rtOf(h, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 Alice]: 跑个测试');
+  assert.equal(rtOf(h, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 Alice（u1）]: 跑个测试'); // 名字+id 括注(2026-11-25 hover 显 id 可复制)
   assert.deepEqual(h.noteSenders, [{ sessionId: 's1', display: 'Alice', userId: 'u1', chatKind: 'group' }]);
 
   const h2 = makeHarness();
@@ -409,7 +409,7 @@ test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调
   // userDisplay 缺省回退 userId
   const h3 = makeHarness();
   await h3.router.handleInbound(mkMsg({ msgId: 'g3', chatKind: 'group', atBot: true, userId: 'u9', text: 'hi' }));
-  assert.equal(rtOf(h3, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 u9]: hi');
+  assert.equal(rtOf(h3, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 u9]: hi'); // 姓名缺席=id 兜底不重复括注
   assert.deepEqual(h3.noteSenders, [{ sessionId: 's1', display: 'u9', userId: 'u9', chatKind: 'group' }]);
 });
 
@@ -679,7 +679,7 @@ test('⑳ Sunx 模式:新建与 /new 都透传 kind/name/charter;ack 明示品�
     kind: 'sunx',
     name: '飞书助手',
     charter: '品行章程原文',
-    channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手' },
+    channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手', userId: 'u1' }, // 单聊用户身份入冻结层(2026-11-25)
   });
   await h.router.handleInbound(mkMsg({ msgId: 'sx2', text: '/new' }));
   assert.deepEqual(h.createCalls[1]!.opts, {
@@ -688,7 +688,7 @@ test('⑳ Sunx 模式:新建与 /new 都透传 kind/name/charter;ack 明示品�
     kind: 'sunx',
     name: '飞书助手',
     charter: '品行章程原文',
-    channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手' },
+    channelMeta: { platform: 'mock', chatId: 'c1', appName: '飞书助手', userId: 'u1' }, // 单聊用户身份入冻结层(2026-11-25)
   });
   assert.ok(h.acks[1]!.text.includes('已切换到新会话'), '/new 回执=成功切换+当前档(2026-11-25 裁定,不再提品性复用)');
   // 普通会话通道:opts 无 sunx 三键（零变化面）;ack 旧文案

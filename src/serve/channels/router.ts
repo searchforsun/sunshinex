@@ -27,7 +27,7 @@ import type { Result } from '../../result';
 /** 会话 IO 面（engine/Task 7 装配 daemon 既有单点：createSession/attach 走 session-lifecycle、
  *  resolveApproval 接审批回执路由同款方法） */
 export interface ChannelsSessionIo {
-  createSession(root: string, opts?: { mode?: 'read-only' | 'acceptEdits' | 'full-access'; activate?: boolean; model?: string; effort?: string; kind?: 'sunx'; name?: string; charter?: string; channelMeta?: { platform: string; chatId: string; appName?: string } }): Result<{ sessionId: string }>;
+  createSession(root: string, opts?: { mode?: 'read-only' | 'acceptEdits' | 'full-access'; activate?: boolean; model?: string; effort?: string; kind?: 'sunx'; name?: string; charter?: string; channelMeta?: { platform: string; chatId: string; appName?: string; userName?: string; userId?: string } }): Result<{ sessionId: string }>;
   getSession(id: string): SessionRuntime | undefined;
   attach(id: string, journalId: string): Result<{ sessionId: string; root: string }>;
   releaseSession(id: string): void;
@@ -678,7 +678,7 @@ export class ChannelRouter {
     this.queueChoices.delete(key); // 旧会话排队条目的选择待答随之作废（绑定将换新座,选择语义失效;
     this.chatSelects.delete(key); // 列表序号选择待答同作废
     // daemon 队列本体不动——旧座生命照旧「就放着就可以」,队列条目随旧座既有语义自然接续）
-    const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg, msg.chatId));
+    const created = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, binding), this.createOpts(cfg, msg.chatId, msg));
     if (!created.ok) {
       await this.deps.ack(msg, `新会话创建失败：${created.error.message}`);
       return;
@@ -720,7 +720,7 @@ export class ChannelRouter {
         // 重启即空，旧 runtime id 不在座，直接 attach 旧 id 必失败走⑦新建=「重启换新会话」。
         // 先按派生根铸壳再 attach journal 收编（two-step，侧栏 attachJournal 同款链）——转录/
         // 记录/板全保，绑定翻新到壳 id
-        const shell = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, existing), this.createOpts(cfg, msg.chatId));
+        const shell = this.deps.io.createSession(this.resolveRoot(cfg, msg.chatId, existing), this.createOpts(cfg, msg.chatId, msg));
         if (shell.ok) {
           const attached = this.deps.io.attach(shell.value.sessionId, existing.journalId);
           if (attached.ok) {
@@ -740,7 +740,7 @@ export class ChannelRouter {
     if (rt === undefined || sessionId === undefined) {
       if (existing !== undefined) this.deps.io.releaseSession(existing.sessionId); // ⑨b attach 失败/无 journalId → 残座释放走新建
       const root = this.resolveRoot(cfg, msg.chatId, existing);
-      const created = this.deps.io.createSession(root, this.createOpts(cfg, msg.chatId)); // ⑦ 新建
+      const created = this.deps.io.createSession(root, this.createOpts(cfg, msg.chatId, msg)); // ⑦ 新建
       if (!created.ok) {
         await this.deps.ack(msg, `会话创建失败：${created.error.message}`);
         return;
@@ -920,7 +920,7 @@ export class ChannelRouter {
    *  sessionKind==='sunx' 时 kind/name/charter 透传（name=应用名称作出生 title;charter 逐字进
    *  品性冻结层）；channelMeta（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）——出生
    *  定版冻结层,同一聊天逐字节一致（前缀缓存零损失;动态发言用户走 ⑫ 消息级 [来自 x]: 前缀不入此层） */
-  private createOpts(cfg: ChannelConfig, chatId: string): { mode: ChannelConfig['mode']; activate: false; model?: string; effort?: string; kind?: 'sunx'; name?: string; charter?: string; channelMeta: { platform: string; chatId: string; appName?: string } } {
+  private createOpts(cfg: ChannelConfig, chatId: string, msg: InboundMessage): { mode: ChannelConfig['mode']; activate: false; model?: string; effort?: string; kind?: 'sunx'; name?: string; charter?: string; channelMeta: { platform: string; chatId: string; appName?: string; userName?: string; userId?: string } } {
     const sunx = cfg.sessionKind === 'sunx';
     return {
       mode: cfg.mode,
@@ -930,7 +930,19 @@ export class ChannelRouter {
       ...(sunx ? { kind: 'sunx' as const } : {}),
       ...(sunx && cfg.name !== undefined && cfg.name !== '' ? { name: cfg.name } : {}),
       ...(sunx && cfg.charter !== undefined && cfg.charter !== '' ? { charter: cfg.charter } : {}),
-      channelMeta: { platform: cfg.platform, chatId, ...(cfg.name !== undefined ? { appName: cfg.name } : {}) },
+      channelMeta: {
+        platform: cfg.platform,
+        chatId,
+        ...(cfg.name !== undefined ? { appName: cfg.name } : {}),
+        // 单聊用户身份进冻结层（2026-11-25 用户裁定「上下文中应该知道当前用户 userid 和用户名」）:
+        // 群聊发送者随消息变,由消息级 [来自 名字（id）] 前缀承载;单聊对象固定=聊天人
+        ...(msg.chatKind === 'direct'
+          ? {
+              ...(msg.userDisplay !== undefined && msg.userDisplay !== '' ? { userName: msg.userDisplay } : {}),
+              ...(msg.userId !== '' ? { userId: msg.userId } : {}),
+            }
+          : {}),
+      },
     };
   }
 

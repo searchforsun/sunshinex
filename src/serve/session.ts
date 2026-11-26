@@ -173,12 +173,19 @@ const ABORTED_RUN_SETTLE_MS = 2_000;
  *  改名后新轮次缓存重铸一次为可接受代价（用户裁定确认）。
  *  身份来源（2026-11-25 裁定「和 sunx 是隔离的,应该注入的是应用名称」）：通道会话的身份字段
  *  只取此处的应用名称——身份由数据来源决定,不靠措辞约束模型 */
-function channelMetaCharter(m: { platform: string; chatId: string; appName?: string }): string {
+function channelMetaCharter(m: { platform: string; chatId: string; appName?: string; userName?: string; userId?: string }): string {
   const lines = [
     `当前通道平台: ${m.platform}`,
     `当前聊天 id: ${m.chatId}`,
   ];
   if (m.appName !== undefined && m.appName !== '') lines.push(`当前应用名称: ${m.appName}`);
+  // 单聊用户身份（2026-11-25 用户裁定「上下文中应该知道当前用户 userid 和用户名」）:群聊发送者
+  // 随消息变（消息级 [来自 名字（id）] 前缀承载）,单聊对象固定=聊天人——出生定版进冻结层
+  if (m.userName !== undefined || m.userId !== undefined) {
+    const name = m.userName !== undefined && m.userName !== '' ? m.userName : m.userId ?? '';
+    const id = m.userId !== undefined && m.userId !== '' && m.userId !== name ? `（${m.userId}）` : '';
+    if (name !== '') lines.push(`当前聊天用户: ${name}${id}`);
+  }
   return lines.join('\n');
 }
 
@@ -213,7 +220,7 @@ export interface SessionRuntimeOpts {
   /** 通道元信息（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：assemble() 透传
    *  ContextManager 会话冻结层——出生定版一次不重写（前缀缓存纪律：同一聊天逐字节一致；
    *  动态发言用户走消息级 [来自 x]: 前缀不入此层）；缺席=普通会话装配字节不变 */
-  channelMeta?: { platform: string; chatId: string; appName?: string };
+  channelMeta?: { platform: string; chatId: string; appName?: string; userName?: string; userId?: string };
   /** 定时分派清单接缝（2026-11-25 用户裁定④,session-lifecycle io 透传）：task_status 工具回执附段 */
   schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
   /** 持久化域目录（2026-11-15 sunx P3 Task 2 域绑定）：sunx 出生即铸档时由 createSessionIn 注入

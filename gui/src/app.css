@@ -820,10 +820,19 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 图标黑白色（2026-11-26 用户裁定）：跟随前景主题色，不随名称的 accent 走 */
 .user-from-sunx-icon { color: var(--fg); flex: none; }
-/* 通道群聊来源章（2026-11-25 用户裁定「参考智能体团队,气泡上侧飞书图标+用户名称,不用蓝色,
-   不可跳转,hover 显示飞书 id」）:布局同 Sunx 来源行（复用 .user-from-sunx* 类）,名称用次要色
-   非强调色——纯归因信息不可点;id 走 data-tip 悬浮 */
-.user-from-channel .user-from-sunx-btn { color: var(--fg-secondary); font-weight: 500; cursor: default; }
+/* 通道群聊来源章（2026-11-25 用户裁定「气泡上侧平台图标+用户名称,不蓝色不可跳转;hover 显示
+   用户 id,右侧复制按钮」）:名称常显次要色;悬停弹小面板（popover 自带顶部 6px 内距=鼠标从名称
+   移入面板不断悬停）内含 id 与复制钮 */
+.user-from-channel-badge { position: relative; display: inline-flex; align-items: center; gap: 6px; color: var(--fg-secondary); font-weight: 500; cursor: default; max-width: 100%; }
+.user-from-channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-from-channel-pop {
+  position: absolute; top: 100%; right: 0; z-index: 90;
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 7px 4px 4px 8px; /* 顶部 6px 桥接内距:移入面板不打断悬停 */
+  background: var(--surface-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  box-shadow: var(--elev-prominent); white-space: nowrap;
+  font: calc(12px * var(--fz)) var(--font-mono, var(--font-ui)); color: var(--fg-secondary);
+}
 button.user-from-sunx-btn { cursor: pointer; }
 button.user-from-sunx-btn:hover { text-decoration: underline; }
 /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」根修:.entry 的 content-visibility(auto=paint

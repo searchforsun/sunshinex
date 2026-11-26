@@ -140,10 +140,15 @@ export function bindingKey(channelId: string, chatId: string): string {
 }
 
 /** 入站提交文本（⑫ 群聊注入单点,router 提交与 engine drain 回显匹配共用）：群聊
- *  `[来自 x]: ` 前缀+正文,单聊原文——run 起源移动按「提交文本===回显帧文本」回配 */
+ *  `[来自 名字（用户id）]: ` 前缀+正文,单聊原文——run 起源移动按「提交文本===回显帧文本」回配。
+ *  id 括注（2026-11-25 用户裁定「hover 显示用户 id,可复制」）：姓名解析成功时也带 id——GUI 来源行
+ *  显示名字、hover 面板显示 id 并可复制；姓名缺席时退化为 `[来自 id]:`（不重复括注） */
 export function inboundSubmitText(msg: InboundMessage): string {
   const body = msg.text ?? '';
-  return msg.chatKind === 'group' ? `[来自 ${msg.userDisplay ?? msg.userId}]: ${body}` : body;
+  if (msg.chatKind !== 'group') return body;
+  const display = msg.userDisplay ?? msg.userId;
+  const at = display !== msg.userId && msg.userId !== '' ? `（${msg.userId}）` : '';
+  return `[来自 ${display}${at}]: ${body}`;
 }
 
 export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnings: string[] } {

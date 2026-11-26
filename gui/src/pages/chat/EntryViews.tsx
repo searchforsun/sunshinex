@@ -432,16 +432,54 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-/** 通道群聊来源前缀（router ⑫ 注入 `[来自 <发送者>]: <正文>`）→ {from,text}：气泡上方按智能体
- *  团队同款形态显示「平台图标 + 发送者名」（2026-11-25 用户裁定「不用显示成蓝色,不可跳转,
- *  hover 显示对应飞书 id」）;单聊不注入前缀=null,普通用户条零变化。发送者名缺席时 router 以
- *  userId 兜底,此处的 from 即该 id */
-export function channelFromOf(md: string): { from: string; text: string } | null {
-  const m = /^\s*\[来自 ([^\]\n]+)\]\s*[:：]\s*/.exec(md);
+/** 通道群聊来源前缀（router ⑫ 注入 `[来自 名字（用户id）]: <正文>`,旧档 `[来自 名字|id]:`）→
+ *  {from,userId?,text}：气泡上方显示「平台图标 + 发送者名」（2026-11-25 用户裁定「不用显示成
+ *  蓝色,不可跳转;hover 显示用户 id,右侧复制按钮」）;单聊不注入前缀=null,普通用户条零变化 */
+export function channelFromOf(md: string): { from: string; userId?: string; text: string } | null {
+  const m = /^\s*\[来自 ([^\]\n（]+?)(?:（([^）\n]+)）)?\]\s*[:：]\s*/.exec(md);
   if (m === null) return null;
   const from = m[1]!.trim();
   if (from === '') return null;
-  return { from, text: md.slice(m[0].length) };
+  const rawId = m[2]?.trim();
+  // 旧档姓名缺席时 router 以 userId 兜底（from 即 id）：识别 ou_/on_ 形态同样给复制面
+  const userId = rawId !== undefined && rawId !== '' ? rawId : /^(?:ou|on)_[0-9a-z]+$/i.test(from) ? from : undefined;
+  return { from, ...(userId !== undefined ? { userId } : {}), text: md.slice(m[0].length) };
+}
+
+/** 通道群聊来源行（2026-11-25 用户裁定）：名称行常态；悬停弹小面板显用户 id + 右侧复制按钮
+ *  （useCopyFeedback 点击反馈 √）；不可跳转，名称不蓝色 */
+function ChannelFromBadge({ from, userId, platform }: { from: string; userId?: string; platform?: string }): JSX.Element {
+  const meta = platformMeta(platform);
+  const HeaderIcon = meta.Icon;
+  const [hover, setHover] = useState(false);
+  const { status: copyStatus, copy } = useCopyFeedback();
+  return (
+    <div className="user-from-sunx user-from-channel">
+      <span className="user-from-channel-badge" onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
+        <HeaderIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+        <span className="user-from-channel-name">{from}</span>
+        {hover && (
+          <span className="user-from-channel-pop" role="tooltip">
+            <span className="user-from-channel-id">{userId ?? from}</span>
+            {userId !== undefined && (
+              <button
+                type="button"
+                className="sx-iconbtn"
+                aria-label={t('Copy user ID', '复制用户 ID')}
+                data-tip={t('Copy user ID', '复制用户 ID')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copy(userId);
+                }}
+              >
+                {copyStatus === 'ok' ? <Check size={13} strokeWidth={2} aria-hidden="true" /> : <Copy size={13} strokeWidth={1.75} aria-hidden="true" />}
+              </button>
+            )}
+          </span>
+        )}
+      </span>
+    </div>
+  );
 }
 
 export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string } & UserEntryOpts): JSX.Element {
@@ -606,21 +644,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           )}
         </div>
       )}
-      {/* 通道群聊来源章（2026-11-25 用户裁定「参考智能体团队,在气泡上侧显示一个飞书图标跟上
-          用户名称,不用显示成蓝色,因为不可跳转,hover 时显示对应飞书 id」）:同 user-from-sunx
-          布局,内置次要色非链接;发送者 id 放 data-tip（名称缺席时 router 以 id 兜底,即此 id） */}
-      {channelFrom !== null && (() => {
-        const headerMeta = platformMeta(platform);
-        const HeaderIcon = headerMeta.Icon;
-        return (
-          <div className="user-from-sunx user-from-channel">
-            <span className="user-from-sunx-btn" data-tip={channelFrom.from}>
-              <HeaderIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-              <span>{channelFrom.from}</span>
-            </span>
-          </div>
-        );
-      })()}
+      {/* 通道群聊来源章（2026-11-25 用户裁定「气泡上侧飞书图标+用户名称,不蓝色不可跳转;hover
+          显示用户 id,右侧复制按钮」）:悬停面板显 id+复制,名称本身非链接 */}
+      {channelFrom !== null && <ChannelFromBadge from={channelFrom.from} userId={channelFrom.userId} platform={platform} />}
       {/* 2026-10-26 用户裁定:图片与气泡分离——图片条独立在气泡外(上方右对齐),纯图消息不渲染空气泡 */}
       {entry.images !== undefined && entry.images.length > 0 && (
         <UserImageStrip conn={conn} root={root} images={entry.images} onOpen={onOpenImage} />

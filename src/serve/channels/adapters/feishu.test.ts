@@ -3,7 +3,7 @@
  *  SDK 外连面(WS/HTTP)不进单测——适配器经 engine dry-run 链路覆盖。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent } from './feishu';
+import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent, feishuResolveMentions } from './feishu';
 
 const p2pText = {
   sender: { sender_id: { open_id: 'ou_1', user_id: 'uid_1' }, sender_type: 'user' },
@@ -37,6 +37,33 @@ test('group + mentions:group/atBot=true(双保险)', () => {
   assert.ok(m !== undefined);
   assert.equal(m.chatKind, 'group');
   assert.equal(m.atBot, true);
+});
+
+test('@ 提及占位符还原成姓名(2026-11-25 用户报障「上下文只看到 @_user_1,不知道是谁」):key 全文替换,name 缺席回落 open_id;无 mentions/畸形零改动', () => {
+  const mentions = [
+    { key: '@_user_1', name: '景楷', id: { open_id: 'ou_1' } },
+    { key: '@_user_2', name: '', id: { open_id: 'ou_2' } },
+  ];
+  assert.equal(feishuResolveMentions('@_user_1 你好 @_user_2', mentions), '@景楷 你好 @ou_2');
+  assert.equal(feishuResolveMentions('纯文本', mentions), '纯文本');
+  assert.equal(feishuResolveMentions('@_user_1', undefined), '@_user_1');
+  assert.equal(feishuResolveMentions('@_user_1', [{ key: 1 }]), '@_user_1');
+});
+
+test('group 事件正文:@_user_N 占位符随事件落地为姓名(模型上下文可读)', () => {
+  const data = {
+    ...p2pText,
+    message: {
+      ...p2pText.message,
+      chat_type: 'group',
+      chat_id: 'oc_g3',
+      content: JSON.stringify({ text: '@_user_1 1' }),
+      mentions: [{ key: '@_user_1', name: '景楷（孙啊超）', id: { open_id: 'ou_1' } }],
+    },
+  };
+  const m = feishuEventToInbound('fs1', data);
+  assert.ok(m !== undefined);
+  assert.equal(m.text, '@景楷（孙啊超） 1');
 });
 
 test('group 无 mentions:atBot=false', () => {

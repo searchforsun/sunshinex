@@ -81,6 +81,28 @@ function eventOf(data: unknown): FeishuMessageEvent {
   return rec as FeishuMessageEvent;
 }
 
+/** 纯函数（单测锚点）：飞书文本消息里的 @ 提及占位符（`@_user_1`）→ 真实姓名
+ *  （2026-11-25 用户报障「agent 上下文里只看到 @_user_1,不知道是谁」）:mentions 数组自带
+ *  key/name/id——按 key 全文替换成 `@姓名`（姓名缺席用 open_id 兜底;机器人自身也会在这份名单）;
+ *  非文本/无占位符/形状不符零改动 */
+export function feishuResolveMentions(text: string, mentions: unknown): string {
+  if (text === '' || !Array.isArray(mentions)) return text;
+  let out = text;
+  for (const m of mentions) {
+    if (typeof m !== 'object' || m === null) continue;
+    const rec = m as Record<string, unknown>;
+    const key = typeof rec['key'] === 'string' ? rec['key'] : '';
+    if (!key.startsWith('@_')) continue;
+    const name = typeof rec['name'] === 'string' && rec['name'] !== '' ? rec['name'] : '';
+    const idObj = typeof rec['id'] === 'object' && rec['id'] !== null ? (rec['id'] as Record<string, unknown>) : undefined;
+    const openId = typeof idObj?.['open_id'] === 'string' ? idObj['open_id'] : '';
+    const display = name !== '' ? name : openId;
+    if (display === '') continue;
+    out = out.split(key).join(`@${display}`);
+  }
+  return out;
+}
+
 /** 纯映射(单测锚点):飞书事件 → 规范化 InboundMessage;非 text 消息/字段缺失 → undefined(丢弃) */
 export function feishuEventToInbound(channelId: string, data: unknown): InboundMessage | undefined {
   const ev = eventOf(data);
@@ -97,6 +119,8 @@ export function feishuEventToInbound(channelId: string, data: unknown): InboundM
   } catch {
     text = ''; // 畸形 content 降级空文本(消息仍受理,无正文)
   }
+  // @ 提及占位符还原成姓名（模型上下文可读;群聊准入判据仍看 mentions 原数组）
+  text = feishuResolveMentions(text, msg.mentions);
   const chatKind = msg.chat_type === 'group' ? 'group' : 'direct';
   const senderId = ev.sender?.sender_id?.open_id ?? ev.sender?.sender_id?.user_id ?? '';
   return {
