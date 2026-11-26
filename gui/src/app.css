@@ -427,11 +427,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   border: none; border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg-icon); cursor: pointer;
 }.files-act:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 12%, transparent); }
-/* 2026-11-25 用户实测「亮色+暗色代码下侧栏 md 预览按钮 hover 不明显、看不清」:后段
-   `.sx-changes-act,.files-act{background:transparent}` 把常驻底覆盖没了——暗面预览上只剩孤零零
-   白图标。此处以同档后出复位:常驻 5% 前景底(明暗两态都成"钮"),hover 12% 与主对话侧栏钮同语言 */
-.files-actions .files-act { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.files-actions .files-act:hover { background: color-mix(in srgb, var(--fg) 12%, transparent); }
 /* G14.121 md 格式化预览面:prose 基础排版;mermaid/代码块组件自带样式 */.files-md { flex: 1; min-height: 0; overflow: auto; padding: 10px 14px 24px; font: calc(14px * var(--fz))/1.7 var(--font-ui); }.files-md h1, .files-md h2, .files-md h3, .files-md h4 { margin: 14px 0 10px; line-height: 1.35; } /* 2026-11-13 用户裁定「缩小一点标题的上行距」20→14 */.files-md ul, .files-md ol { margin: 10px 0; padding-left: 22px; }.files-md blockquote { margin: 8px 0; padding: 2px 12px; border-left: 3px solid var(--border); color: var(--fg-secondary); }.files-md a { color: var(--accent); }/* G14.213 行内限定(:not(pre)>code):灰底/内边距只上行内 code——块代码吃灰底则横滚露区无底(底色须归不滚动的 .code-block 卡) */.files-md :not(pre) > code { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--radius-xs); padding: 0 4px; font: var(--f-code, 12px) var(--font-mono); }.files-md table { border-collapse: collapse; margin: 12px 0; }.files-md th, .files-md td { border: 1px solid var(--border); padding: 8px 12px; } /* 2026-11-07 二轮 4→8 */.files-editor { flex: 1; min-height: 0; }
 /* 空态(裸开档):引导+路径输入(加载入口仅此处与错误态在场) */.files-empty { flex: 1; min-height: 0; display: flex; flex-direction: column; }.files-hint { margin: 40px 0 12px; text-align: center; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }.files-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 24px; }.files-path { flex: 1; min-width: 0; background: var(--surface-soft); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }.files-load { flex: none; padding: 4px 12px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); }.files-load:hover:not(:disabled) { border-color: var(--border-strong); color: var(--fg); }.files-loading { flex: none; padding: 4px 12px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }.files-notice { flex: none; margin: 8px 24px; color: var(--fg); font-size: calc(14px * var(--fz)); }
 /* 行段锚定位高亮(2026-11-14「#L40-L57 预览支持」):目标行整行淡 accent 底,读时一眼看到段 */
@@ -2373,6 +2368,10 @@ button.agent-msg-from:hover { text-decoration: underline; }
    亮色主题黑值,不随暗面容器令牌走 */
 html[data-theme='light'] .files-selbar { color: #1a1c1f; }
 html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
+/* 2026-11-25 用户实测「添加到会话 hover 显示不清」:亮色主题下选区条自身=亮面(surface-elevated),
+   但它常挂在暗码容器内(.files-body 覆写 --fg=#dfdfdf)——hover 混白落亮面即隐形。亮色主题一律
+   按亮面前景压实(#1a1c1f 10%),与文字色同口径 */
+html[data-theme='light'] .files-selbar button:hover { background: color-mix(in srgb, #1a1c1f 10%, transparent); }
 /* 2026-11-04 元素/终端片段引用芯片(⟦…⟧ token):accent 浅底圆角小件,图标+定位说明 */
 .hn-ref { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: var(--f-base-size, 14px); }
 .hn-ref .hn-ref-ico { display: inline-flex; align-items: center; flex: none; }

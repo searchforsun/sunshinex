@@ -12,6 +12,7 @@ import { FileIcon } from '../file-icon';
 import { isAbsPath, normRel, OPEN_DEFAULT_KEY } from '../ui-util';
 import { MdImageContext } from './chat/md-render';
 import { useCopyFeedback } from '../use-copy-feedback';
+import { TipButton } from './chat/RunFooter';
 import { SessionRowMenu } from '../sidebar/session-row-menu';
 import { buildMdComponents, keepUrl, MD_REHYPE_PLUGINS, MD_REMARK_PLUGINS } from './Chat';
 
@@ -131,7 +132,10 @@ export function Files({ conn, sessionId, initialPath, initialLine, initialLineEn
   const selRangeRef = useRef<{ line: number } | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   /** G14.154 悬浮工具条状态(绝对定位 React 面,跟随选区;弃 monaco overlay——其位置不随选区重算) */
-  const [selBar, setSelBar] = useState<{ top: number; left: number; rel: string; lines: string } | null>(null);
+  const [selBar, setSelBar] = useState<{ top: number; left: number; rel: string; lines: string; text: string } | null>(null);
+  /** 选区复制回显（2026-11-25 用户裁定「添加到会话的 hover 右侧要加复制按钮」）:项目既有
+   *  TipButton+useCopyFeedback,无 tooltip,图标 Copy→Check 即回执;与顶部文件复制各自独立 */
+  const { status: selCopied, copy: copySelection } = useCopyFeedback();
   /** Monaco RO 同帧 layout(2026-10-29 果冻残余根修):RO 句柄随编辑器卸载断开 */
   const monoRoRef = useRef<ResizeObserver | null>(null);
   useEffect(() => () => {
@@ -374,6 +378,13 @@ export function Files({ conn, sessionId, initialPath, initialLine, initialLineEn
               >
                 {t('Ask in side chat', '在辅助对话中提问')}
               </button>
+              <TipButton
+                className="files-selbar-copy"
+                label="copy selection"
+                tip=""
+                icon={selCopied === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+                onClick={() => copySelection(selBar.text)}
+              />
             </div>
           )}
           {/* G14.134 动作钮(预览切换/复制)常驻内容区右上角——不在面包屑行、不靠 hover 显形 */}
@@ -525,7 +536,7 @@ export function Files({ conn, sessionId, initialPath, initialLine, initialLineEn
                       if (rootNorm !== '' && rel.startsWith(rootNorm + '/')) rel = rel.slice(rootNorm.length + 1);
                       selRef.current = { rel, lines };
                       selRangeRef.current = { line: s };
-                      setSelBar({ rel, lines, top: 0, left: 8 });
+                      setSelBar({ rel, lines, text, top: 0, left: 8 });
                       place(s);
                     });
                     ed.onDidScrollChange(refresh);
