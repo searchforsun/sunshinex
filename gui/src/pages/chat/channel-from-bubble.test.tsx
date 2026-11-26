@@ -15,9 +15,9 @@ function userEntry(md: string): ChatEntry {
  *  正文剥离,改由上侧来源行承载;hover 走 data-tip(名称缺席时 router 以 userId 兜底=即 id) */
 describe('通道消息气泡来源行', () => {
   it('前缀剥离 + hover 面板显用户 id 与复制按钮（名字（id）形态）', () => {
-    const { container } = render(<UserEntryView entry={userEntry('[来自 景楷（ou_abc123）]: 帮我看下这个报错')} platform="feishu" />);
+    const { container } = render(<UserEntryView entry={userEntry('[From 景楷 (ou_abc123)]: 帮我看下这个报错')} platform="feishu" />);
     expect(container.textContent).toContain('帮我看下这个报错');
-    expect(container.textContent).not.toContain('[来自');
+    expect(container.textContent).not.toContain('[From');
     const badge = container.querySelector('.user-from-channel-badge');
     expect(badge).not.toBeNull();
     expect(badge!.textContent).toContain('景楷');
@@ -28,8 +28,8 @@ describe('通道消息气泡来源行', () => {
     expect(badge!.querySelector('.user-from-channel-pop button')).not.toBeNull(); // 复制钮(文案随语言)
   });
 
-  it('旧档 [来自 id] 形态:id 作名称展示,hover 面板同样可复制', () => {
-    const { container } = render(<UserEntryView entry={userEntry('[来自 ou_abc123]: 旧消息')} platform="feishu" />);
+  it('姓名缺席 [From id] 形态:id 作名称展示,hover 面板同样可复制', () => {
+    const { container } = render(<UserEntryView entry={userEntry('[From ou_abc123]: 旧消息')} platform="feishu" />);
     const badge = container.querySelector('.user-from-channel-badge');
     expect(badge!.textContent).toContain('ou_abc123');
     fireEvent.mouseEnter(badge!);
@@ -43,8 +43,8 @@ describe('通道消息气泡来源行', () => {
   });
 
   it('辅助会话不剥前缀:sideChat 口径保持原状', () => {
-    const { container } = render(<UserEntryView entry={userEntry('[来自 张三]: 旁问')} platform="feishu" sideChat />);
+    const { container } = render(<UserEntryView entry={userEntry('[From 张三]: 旁问')} platform="feishu" sideChat />);
     expect(container.querySelector('.user-from-channel')).toBeNull();
-    expect(container.textContent).toContain('[来自 张三]: 旁问');
+    expect(container.textContent).toContain('[From 张三]: 旁问');
   });
 });

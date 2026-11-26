@@ -395,10 +395,10 @@ test('⑪ 审批 y/n 回复截胡:pendingReply 命中即消费,不提交不应�
   assert.equal(rt.submits.length, 1);
 });
 
-test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调(结构化 sender 含 chatKind/userId)', async () => {
+test('⑫ 群聊 submit 注入 [From x]: 英文前缀;单聊原文;noteSender 回调(结构化 sender 含 chatKind/userId)', async () => {
   const h = makeHarness();
   await h.router.handleInbound(mkMsg({ msgId: 'g1', chatKind: 'group', atBot: true, userId: 'u1', userDisplay: 'Alice', text: '跑个测试' }));
-  assert.equal(rtOf(h, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 Alice（u1）]: 跑个测试'); // 名字+id 括注(2026-11-25 hover 显 id 可复制)
+  assert.equal(rtOf(h, bindingKey('m1', 'c1')).submits[0]!.text, '[From Alice (u1)]: 跑个测试'); // 名字+id 括注(2026-11-25 hover 显 id 可复制)
   assert.deepEqual(h.noteSenders, [{ sessionId: 's1', display: 'Alice', userId: 'u1', chatKind: 'group' }]);
 
   const h2 = makeHarness();
@@ -409,7 +409,7 @@ test('⑫ 群聊 submit 注入 [来自 x]: 前缀;单聊原文;noteSender 回调
   // userDisplay 缺省回退 userId
   const h3 = makeHarness();
   await h3.router.handleInbound(mkMsg({ msgId: 'g3', chatKind: 'group', atBot: true, userId: 'u9', text: 'hi' }));
-  assert.equal(rtOf(h3, bindingKey('m1', 'c1')).submits[0]!.text, '[来自 u9]: hi'); // 姓名缺席=id 兜底不重复括注
+  assert.equal(rtOf(h3, bindingKey('m1', 'c1')).submits[0]!.text, '[From u9]: hi'); // 姓名缺席=id 兜底不重复括注
   assert.deepEqual(h3.noteSenders, [{ sessionId: 's1', display: 'u9', userId: 'u9', chatKind: 'group' }]);
 });
 

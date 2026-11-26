@@ -432,18 +432,22 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-/** 通道群聊来源前缀（router ⑫ 注入 `[来自 名字（用户id）]: <正文>`,旧档 `[来自 名字|id]:`）→
- *  {from,userId?,text}：气泡上方显示「平台图标 + 发送者名」（2026-11-25 用户裁定「不用显示成
- *  蓝色,不可跳转;hover 显示用户 id,右侧复制按钮」）;单聊不注入前缀=null,普通用户条零变化 */
+/** 通道群聊来源前缀（router ⑫ 注入英文单语 `[From 名字 (用户id)]: <正文>`;历史中文形态一并
+ *  容忍）→ {from,userId?,text}：气泡上方显示「平台图标 + 发送者名」（2026-11-25 用户裁定
+ *  「不用显示成蓝色,不可跳转;hover 显示用户 id,右侧复制按钮」）;单聊不注入前缀=null */
 export function channelFromOf(md: string): { from: string; userId?: string; text: string } | null {
-  const m = /^\s*\[来自 ([^\]\n（]+?)(?:（([^）\n]+)）)?\]\s*[:：]\s*/.exec(md);
-  if (m === null) return null;
-  const from = m[1]!.trim();
+  const head = /^\s*\[(?:From|来自)\s+([\s\S]*?)\]\s*[:：]\s*/.exec(md);
+  if (head === null) return null;
+  const inner = head[1]!.trim();
+  if (inner === '') return null;
+  // 末尾括注是用户 id（ou_/on_/un_/uid_ 或 u1 形态）才拆分——姓名里自带的括号（如「景楷 (孙啊超)」）
+  // 保留在名称内,不会被误当 id
+  const idM = /^(.*?)\s*[(（]((?:ou|on|un|uid)_[0-9a-z]+|u\d+)[)）]\s*$/i.exec(inner);
+  const from = (idM !== null ? idM[1]! : inner).trim();
   if (from === '') return null;
-  const rawId = m[2]?.trim();
-  // 旧档姓名缺席时 router 以 userId 兜底（from 即 id）：识别 ou_/on_ 形态同样给复制面
+  const rawId = idM?.[2]?.trim();
   const userId = rawId !== undefined && rawId !== '' ? rawId : /^(?:ou|on)_[0-9a-z]+$/i.test(from) ? from : undefined;
-  return { from, ...(userId !== undefined ? { userId } : {}), text: md.slice(m[0].length) };
+  return { from, ...(userId !== undefined ? { userId } : {}), text: md.slice(head[0].length) };
 }
 
 /** 通道群聊来源行（2026-11-25 用户裁定）：名称行常态；悬停弹小面板显用户 id + 右侧复制按钮

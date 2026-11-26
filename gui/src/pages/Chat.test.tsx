@@ -211,6 +211,10 @@ describe('Chat 会话流 Codex 形(B3b)', () => {
     };
     expect(folderOf(renderMentionSpans('@src', (n) => (n === 'src' ? 'gui/src/' : undefined)))).toBe(true);
     expect(folderOf(renderMentionSpans('@a.ts'))).toBeUndefined();
+    // 人名 @ 提及不渲染成文件/文件夹 chip（2026-11-25 用户裁定「用户气泡的非文件图标不要渲染成
+    // 文件夹」）:无解析面且不像路径 → 纯文本
+    const person = renderMentionSpans('@Sunshinex代理人') as ReactElement[];
+    expect(person.every((el) => !String(el?.props?.className ?? '').includes('hn-file'))).toBe(true);
   });
 
   it('G14.2xx rankFileHits:精确 basename 置顶 > 前缀 > 包含 > 子序列,同级保原序;cap 排序后再截', () => {

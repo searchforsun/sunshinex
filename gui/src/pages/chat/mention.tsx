@@ -439,6 +439,9 @@ export const renderMentionSpans = (text: string, lookup?: (name: string) => stri
     }
     if (tk.kind === 'file') {
       const tokenBody = tk.text.slice(1);
+      // 人名 @ 提及不渲染成文件/文件夹 chip（2026-11-25 用户裁定「用户气泡的非文件图标不要渲染成
+      // 文件夹」）:无解析面且 token 不像路径（无 /、\、.、:）=聊天里 @ 的是人不是文件——保留纯文本
+      if (lookup === undefined && !/[\\/.:]/.test(tokenBody)) return <span key={i}>{tk.text}</span>;
       const anchor = /^(.*)(:L\d+(?:-L\d+)?)$/.exec(tokenBody);
       const pathNoAnchor = tokenBody.replace(/:L\d+(?:-L\d+)?$/, '');
       const bare = pathNoAnchor.replace(/[\\/]+$/, '');

@@ -147,8 +147,10 @@ export function inboundSubmitText(msg: InboundMessage): string {
   const body = msg.text ?? '';
   if (msg.chatKind !== 'group') return body;
   const display = msg.userDisplay ?? msg.userId;
-  const at = display !== msg.userId && msg.userId !== '' ? `（${msg.userId}）` : '';
-  return `[来自 ${display}${at}]: ${body}`;
+  // 英文前缀（2026-11-25 用户裁定「'来自'应该使用英文,避免双语转换」）:模型面单语,ID 用 ASCII
+  // 括号括注（姓名缺失时不重复括注）
+  const at = display !== msg.userId && msg.userId !== '' ? ` (${msg.userId})` : '';
+  return `[From ${display}${at}]: ${body}`;
 }
 
 export function parseChannelsKey(raw: unknown): { value: ChannelConfig[]; warnings: string[] } {
