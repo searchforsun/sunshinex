@@ -46,8 +46,8 @@ test('@ 提及占位符还原成姓名(2026-11-25 用户报障「上下文只看
   ];
   assert.equal(feishuResolveMentions('@_user_1 你好 @_user_2', mentions), '@景楷 你好 @ou_2');
   assert.equal(feishuResolveMentions('纯文本', mentions), '纯文本');
-  assert.equal(feishuResolveMentions('@_user_1', undefined), '@_user_1');
-  assert.equal(feishuResolveMentions('@_user_1', [{ key: 1 }]), '@_user_1');
+  assert.equal(feishuResolveMentions('@_user_1 你好', undefined), '你好'); // 残留占位符一律清除
+  assert.equal(feishuResolveMentions('@_user_1', [{ key: 1 }]), ''); // mentions 形状不符同样不留编码
 });
 
 test('group 事件正文:@_user_N 占位符随事件落地为姓名(模型上下文可读)', () => {

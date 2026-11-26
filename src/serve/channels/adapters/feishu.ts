@@ -86,7 +86,11 @@ function eventOf(data: unknown): FeishuMessageEvent {
  *  key/name/id——按 key 全文替换成 `@姓名`（姓名缺席用 open_id 兜底;机器人自身也会在这份名单）;
  *  非文本/无占位符/形状不符零改动 */
 export function feishuResolveMentions(text: string, mentions: unknown): string {
-  if (text === '' || !Array.isArray(mentions)) return text;
+  if (text === '') return text;
+  // 残留占位符一律清除（mentions 缺失/形状不符时也不得把平台内部编码送进模型与转录）:
+  // 新消息的用户气泡只含用户内容（2026-11-25 用户裁定「不兼容老记录,保证新气泡只包含用户消息」）
+  const stripLeftovers = (v: string): string => v.replace(/@_user_\d+\s*/g, '');
+  if (!Array.isArray(mentions)) return stripLeftovers(text);
   let out = text;
   for (const m of mentions) {
     if (typeof m !== 'object' || m === null) continue;
@@ -100,7 +104,9 @@ export function feishuResolveMentions(text: string, mentions: unknown): string {
     if (display === '') continue;
     out = out.split(key).join(`@${display}`);
   }
-  return out;
+  // 残留占位符一律清除（mentions 缺失/形状不符时也不得把平台内部编码送进模型与转录）:
+  // 新消息的用户气泡只含用户内容（2026-11-25 用户裁定「不兼容老记录,保证新气泡只包含用户消息」）
+  return out.replace(/@_user_\d+\s*/g, '');
 }
 
 /** 纯映射(单测锚点):飞书事件 → 规范化 InboundMessage;非 text 消息/字段缺失 → undefined(丢弃) */
