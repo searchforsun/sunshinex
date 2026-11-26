@@ -1817,7 +1817,12 @@ button.user-from-sunx-btn:hover { background-image: linear-gradient(currentColor
   background: var(--surface-code); border-radius: var(--radius-md);
   font-size: calc(14px * var(--fz)); line-height: 1.65;
   max-height: 280px; overflow-y: auto; /* G14.2xx 定高内滚:技能正文长则面板内滚动,不无限撑高流区 */
-}.tool-md p { margin: 0 0 6px; }.tool-md > :last-child { margin-bottom: 0; }.tool-md pre { margin: 4px 0; padding: 6px 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); font: var(--f-code, 11px)/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }.tool-md code { font-family: var(--font-mono); }
+}.tool-md p { margin: 0 0 6px; }
+/* 跨 Sunx 投递行展开体（2026-11-26 用户裁定「展开颜色太亮了，应该只是工具行，不要和正文冲突」）：
+   工具细节档——目标行 tertiary 小字、正文 secondary 13px，权重低于正文，不读成第二段对话 */
+.tool-md.tool-sunx-msg { color: var(--fg-secondary); font-size: calc(13px * var(--fz)); line-height: 1.6; }
+.tool-sunx-msg .tool-sunx-target { color: var(--fg-tertiary); font-size: calc(12px * var(--fz)); margin-bottom: 4px; }
+.tool-sunx-msg .tool-sunx-body { white-space: pre-wrap; overflow-wrap: anywhere; }.tool-md > :last-child { margin-bottom: 0; }.tool-md pre { margin: 4px 0; padding: 6px 8px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-sm); font: var(--f-code, 11px)/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }.tool-md code { font-family: var(--font-mono); }
 /* G14.5 Monaco diff(VSCode 原生 DiffEditor):圆角井容器+右上角标钮(diff 标签入口) */.diff-panel {
   position: relative;
   border-radius: 0; /* G14.109 直角(对标全文件 diff 视图) */

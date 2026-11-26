@@ -149,16 +149,14 @@ export function ToolEntryBody({
     const toId = receipt?.[2] ?? (typeof input.to === 'string' ? input.to : '');
     const toName = receipt?.[1] ?? '';
     const sent = typeof input.text === 'string' ? input.text : '';
+    // 工具细节档（2026-11-26 用户裁定「展开颜色太亮了，应该只是工具行，不要和正文冲突」）：
+    // 目标行 tertiary 小字、正文 secondary 13px——权重低于正文，不读成第二段对话
     body = (
-      <div className="tool-md ask-record">
-        <div className="ask-q">
+      <div className="tool-md tool-sunx-msg">
+        <div className="tool-sunx-target">
           {t('Target Sunx', '目标 Sunx')}: {toName !== '' ? `${toName} (${toId})` : toId}
         </div>
-        {sent !== '' && (
-          <div className="ask-answer kind-answer">
-            <span className="ask-answer-text">{sent}</span>
-          </div>
-        )}
+        {sent !== '' && <div className="tool-sunx-body">{sent}</div>}
       </div>
     );
   } else if (toolName === 'skill') {
