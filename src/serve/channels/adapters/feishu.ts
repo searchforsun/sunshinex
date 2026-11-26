@@ -157,9 +157,10 @@ interface LarkChatResponse {
   data?: { name?: string };
 }
 
-/** Lark 群成员响应体最小形状(GET im/v1/chats/:chat_id/members:data.items[].name——单聊回落人名) */
+/** Lark 群成员响应体最小形状(GET im/v1/chats/:chat_id/members:data.items[]——
+ *  member_id+name 建姓名表,单聊名称回落也取 name;分页 has_more/page_token) */
 interface LarkChatMembersResponse {
-  data?: { items?: Array<{ name?: string }> };
+  data?: { items?: Array<{ member_id?: string; name?: string }>; has_more?: boolean; page_token?: string };
 }
 
 export class FeishuAdapter implements ChannelAdapter {
@@ -174,6 +175,9 @@ export class FeishuAdapter implements ChannelAdapter {
   private readonly nameCache = new Map<string, Promise<string | undefined>>();
   /** 聊天名称缓存（chatId → 群名,含失败=undefined 不再反复打）：hover 聊天名称行富化面 */
   private readonly chatCache = new Map<string, Promise<string | undefined>>();
+  /** 群成员姓名表缓存（chatId → open_id→name;2026-11-25 用户报障「群聊权限已有,用户名还是拿不到」）:
+   *  通讯录取名失败时按群成员列表回落——同一 im:chat:readonly 权限即可取成员姓名;只缓存成功 */
+  private readonly memberNamesCache = new Map<string, Promise<Map<string, string> | undefined>>();
 
   constructor(_cfg: ChannelConfig, private readonly deps: AdapterDeps) {
     this.id = _cfg.id;
@@ -210,10 +214,12 @@ export class FeishuAdapter implements ChannelAdapter {
           // 发送者姓名+聊天名称富化（缓存命中零等待;首见各一次查询）：群聊 [来自 x]: 前缀、
           // 绑定锁定展示与悬浮卡聊天名称行可读;权限未开/失败静默降级（姓名保 open_id——@
           // 标签由飞书侧渲名不受影响;聊天名称缺席由 router 单聊回落发送者姓名）
-          const [name, chat] = await Promise.all([
+          const [contactName, chat] = await Promise.all([
             inbound.userId !== '' ? this.userName(inbound.userId) : Promise.resolve(undefined),
             this.chatName(inbound.chatId, inbound.chatKind), // 形态入参:单聊按成员列表回落人名
           ]);
+          // 通讯录取名失败（权限/可见范围）→ 群成员列表回落（im:chat:readonly 已有即可）
+          const name = contactName ?? (inbound.userId !== '' ? await this.memberName(inbound.chatId, inbound.userId) : undefined);
           const enriched: InboundMessage = { ...inbound, ...(name !== undefined ? { userDisplay: name } : {}), ...(chat !== undefined ? { chatTitle: chat } : {}) };
           sink(enriched);
         } catch (e) {
@@ -247,6 +253,7 @@ export class FeishuAdapter implements ChannelAdapter {
     this.processingReactions.clear();
     this.nameCache.clear();
     this.chatCache.clear();
+    this.memberNamesCache.clear();
     try {
       this.ws?.close(true);
     } catch {
@@ -343,7 +350,10 @@ export class FeishuAdapter implements ChannelAdapter {
         })) as LarkUserResponse;
         const name = resp?.data?.user?.name;
         return typeof name === 'string' && name !== '' ? name : undefined;
-      } catch {
+      } catch (e) {
+        // 可诊断日志（2026-11-25 用户报障「群聊权限已有,用户名拿不到」）:姓名走通讯录 API,
+        // 需「通讯录」读权限（contact:user.base:readonly）且应用可见范围含该用户——与群权限无关
+        (this.deps.log ?? (() => {}))(`feishu 用户姓名读取失败(${openId}): ${e instanceof Error ? e.message : String(e)}；通讯录读权限 contact:user.base:readonly 未授权或用户不在应用可见范围`);
         return undefined;
       }
     })().then((name) => {
@@ -397,6 +407,50 @@ export class FeishuAdapter implements ChannelAdapter {
       return name;
     });
     this.chatCache.set(chatId, p);
+    return p;
+  }
+
+  /** 群成员姓名回落（2026-11-25 用户报障「群聊权限已有,用户名拿不到」根修）:通讯录取名需
+   *  contact 读域——改用 GET im/v1/chats/:chat_id/members（im:chat:readonly 同域）建
+   *  open_id→name 表;按 chat 缓存,只缓存成功。分页至多 3 页(300 人)防大群卡顿,超出者回落 id */
+  private memberName(chatId: string, openId: string): Promise<string | undefined> {
+    const hit = this.memberNamesCache.get(chatId);
+    const load = hit ?? this.loadMemberNames(chatId);
+    return load.then((m) => m?.get(openId));
+  }
+
+  /** 拉群成员姓名表（成功才入缓存;失败留诊断日志,下条消息重试） */
+  private loadMemberNames(chatId: string): Promise<Map<string, string> | undefined> {
+    const p = (async (): Promise<Map<string, string> | undefined> => {
+      if (this.client === undefined) return undefined;
+      const names = new Map<string, string>();
+      let pageToken = '';
+      for (let page = 0; page < 3; page += 1) {
+        const resp = (await this.client.request({
+          method: 'GET',
+          url: `/open-apis/im/v1/chats/${chatId}/members`,
+          params: { member_id_type: 'open_id', page_size: '100', ...(pageToken !== '' ? { page_token: pageToken } : {}) },
+        })) as LarkChatMembersResponse;
+        for (const m of resp?.data?.items ?? []) {
+          if (typeof m.member_id === 'string' && typeof m.name === 'string' && m.name !== '') names.set(m.member_id, m.name);
+        }
+        const next = resp?.data?.page_token;
+        if (resp?.data?.has_more !== true || typeof next !== 'string' || next === '') break;
+        pageToken = next;
+      }
+      return names.size > 0 ? names : undefined;
+    })().then(
+      (m) => {
+        if (m === undefined) this.memberNamesCache.delete(chatId); // 失败不缓存:可重试
+        return m;
+      },
+      (e: unknown) => {
+        this.memberNamesCache.delete(chatId);
+        (this.deps.log ?? (() => {}))(`feishu 群成员列表读取失败(${chatId}): ${e instanceof Error ? e.message : String(e)}；成员姓名回落需 im:chat:readonly`);
+        return undefined;
+      },
+    );
+    this.memberNamesCache.set(chatId, p);
     return p;
   }
 }
