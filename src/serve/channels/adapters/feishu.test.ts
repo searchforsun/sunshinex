@@ -3,7 +3,8 @@
  *  SDK 外连面(WS/HTTP)不进单测——适配器经 engine dry-run 链路覆盖。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent, feishuResolveMentions, feishuPermissionVerdict } from './feishu';
+import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent, feishuResolveMentions, feishuPermissionVerdict, FeishuAdapter } from './feishu';
+import type { ChannelConfig } from '../model';
 
 const p2pText = {
   sender: { sender_id: { open_id: 'ou_1', user_id: 'uid_1' }, sender_type: 'user' },
@@ -123,6 +124,30 @@ test('权限探测三态:成功=已开通;权限码/权限文案=缺失;业务�
   assert.equal(feishuPermissionVerdict({ code: 99991672, msg: 'Access denied. One of the following scopes is required' }), false);
   assert.equal(feishuPermissionVerdict({ code: 40004, msg: 'user not found' }), true); // 有权限:业务校验拦下
   assert.equal(feishuPermissionVerdict({ code: 230001, msg: 'invalid receive_id' }), true);
+  // 成员枚举探测:假 chat_id 被资源校验拦下(99992356)=有权限;权限缺失=99991672(见上)
+  assert.equal(feishuPermissionVerdict({ code: 99992356, msg: 'The request you send is not a valid {open_chat_id}' }), true);
   assert.equal(feishuPermissionVerdict({ code: -1, msg: 'Request failed with status code 400' }), null); // 失败≠已开通
   assert.equal(feishuPermissionVerdict({}), null);
+});
+
+test('成员读取探测口径(2026-11-26 用户报障「权限都显示已开通,用户名仍是 id」):群列表/群信息成功不代表成员可读——按 members 接口判,通讯录 granted 但无姓名时留诊断', async () => {
+  const cfg = { id: 'fs1', platform: 'feishu', enabled: true } as unknown as ChannelConfig;
+  const logs: string[] = [];
+  const adapter = new FeishuAdapter(cfg, { secret: 's', ident: { appId: 'cli_aa1b94ff0bf89d14' }, log: (s) => logs.push(s) });
+  // 假 client:仅 members 缺权限(99991672),其余为业务错——旧实现用 /im/v1/chats 列表探测会误报已开通
+  const calls: string[] = [];
+  const fake = {
+    request: async (req: { method: string; url: string }): Promise<unknown> => {
+      calls.push(`${req.method} ${req.url}`);
+      if (req.url.endsWith('/members')) throw { message: 'Request failed with status code 400', response: { status: 400, data: { code: 99991672, msg: 'Access denied. One of the following scopes is required: [im:chat:readonly, im:chat, im:chat.group_info:readonly, im:chat.members:read]' } } };
+      throw { message: 'Request failed with status code 400', response: { status: 400, data: { code: 99992351, msg: 'The request you send is not a valid {open_id}' } } };
+    },
+  };
+  (adapter as unknown as { client: unknown }).client = fake;
+  const rows = await adapter.probePermissions!();
+  assert.deepEqual(rows.map((r) => r.scope), ['im:chat.members:read', 'contact:user.base:readonly', 'im:message:send_as_bot']);
+  assert.equal(rows[0]!.granted, false); // 成员读取真缺(旧口径误报 true)
+  assert.equal(rows[1]!.granted, true); // 通讯录 API 可用(但数据范围可能不含姓名,见 userName 日志)
+  assert.equal(rows[2]!.granted, true);
+  assert.ok(calls.some((c) => c.includes('/members')) && !calls.some((c) => c.endsWith('/open-apis/im/v1/chats')));
 });

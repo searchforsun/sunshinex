@@ -400,7 +400,11 @@ export class FeishuAdapter implements ChannelAdapter {
         })) as LarkUserResponse;
         this.logBiz('用户姓名读取', resp, openId);
         const name = resp?.data?.user?.name;
-        return typeof name === 'string' && name !== '' ? name : undefined;
+        if (typeof name === 'string' && name !== '') return name;
+        // 可诊断:接口 code 0 但用户对象只有 open_id/user_id/union_id——权限已开,是**数据权限
+        // 范围**未覆盖该成员（2026-11-26 用户报障「权限都显示已开通,还是拿不到用户名」实测）
+        (this.deps.log ?? (() => {}))(`feishu 用户姓名缺失(${openId}): 通讯录接口成功但未含 name——应用通讯录数据权限范围未覆盖该用户（开发者后台「权限管理→数据权限」可放到全员），或为外部租户用户`);
+        return undefined;
       } catch (e) {
         // 可诊断日志（2026-11-25 用户报障「群聊权限已有,用户名拿不到」）:姓名走通讯录 API,
         // 需「通讯录」读权限（contact:user.base:readonly）且应用可见范围含该用户——与群权限无关
@@ -469,12 +473,16 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   /** 权限自检（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明,哪些必须/哪些可选,
-   *  缺失时兜底显示什么」）:空聊天态可探测的两项 + 发送权限（无法探测,提示需确认）——
-   *  ① im:chat:readonly:GET /im/v1/chats 探群信息/成员读取（缺→聊天名称与发送者姓名无法富化,
-   *     回落显示聊天 id/用户 id）;
+   *  缺失时兜底显示什么」）——2026-11-26 用户报障「权限都已开通,用户名/聊天名还是 id」后按**真实
+   *  被拦的接口**重定口径:
+   *  ① im:chat.members:read(或 im:chat:readonly/im:chat/im:chat.group_info:readonly 任一):
+   *     成员**枚举**才被 scope 拦——GET /im/v1/chats/:chat_id 与 /im/v1/chats 对 bot 所在聊天
+   *     不受限（实测成功）,旧实现拿群列表当探测口径→把成员读取误报成已开通;
+   *     用假 chat_id 探 members:缺权限=99991672,有权限=chat_id 非法业务错;
    *  ② contact:user.base:readonly:用无效 open_id 探通讯录读域——权限缺失与「用户不存在」按错误码
-   *     区分（缺权限码集/消息含 scope/permission → granted:false）;
-   *  ③ im:message:send_as_bot:发送消息权限无法在无目标聊天时探测,granted:null 提示自行确认。 */
+   *     区分（缺权限码集/消息含 scope/permission → granted:false）;**granted:true 仍可能拿不到姓名**
+   *     （应用通讯录数据权限范围不含该成员时飞书 code 0 但只回 open_id,见 userName 日志）;
+   *  ③ im:message:send_as_bot:发送权限探测（无效 receive_id 试探,权限缺失码区分）。 */
   async probePermissions(): Promise<ChannelPermissionRow[]> {
     if (this.client === undefined) return [];
     const grantedOf = (r: LarkRespBase): boolean | null => feishuPermissionVerdict(r);
@@ -501,16 +509,20 @@ export class FeishuAdapter implements ChannelAdapter {
       }
     };
     const rows: ChannelPermissionRow[] = [];
-    // ① 群信息/成员读取:列表接口成功=有权限
-    const chat = await call('GET', '/open-apis/im/v1/chats', { params: { page_size: '1' } });
-    const chatGranted = chat.code === 0 ? true : grantedOf(chat) === false ? false : null;
-    this.logBiz('权限探测(im:chat:readonly)', chat, 'list chats');
+    // ① 群成员枚举（发送者姓名回落/单聊对方名称的唯一无通讯录读域路径）:bot 所在聊天的群信息与
+    // 群列表不拦 scope(实测 GET /im/v1/chats/:id、/im/v1/chats 均 code 0),members 才要求
+    // [im:chat:readonly, im:chat, im:chat.group_info:readonly, im:chat.members:read] 之一——
+    // 假 chat_id 探测:缺权限 99991672;有权限则为 chat_id 非法业务错(99992356)
+    const members = await call('GET', '/open-apis/im/v1/chats/oc_00000000000000000000000000000000/members', {
+      params: { member_id_type: 'open_id' },
+    });
+    this.logBiz('权限探测(im:chat.members:read)', members, 'probe members');
     rows.push({
-      scope: 'im:chat:readonly',
-      label: '获取群组信息 / 群成员',
+      scope: 'im:chat.members:read',
+      label: '读取群成员（发送者姓名 / 单聊对方名称）',
       required: true,
-      granted: chatGranted,
-      fallback: '缺失时聊天名称、发送者姓名无法富化——hover 与消息来源行回落显示聊天 id / 用户 id',
+      granted: members.code === 0 ? true : grantedOf(members),
+      fallback: '缺失时群聊发送者姓名、单聊聊天名称拿不到（回落显示 open_id / 聊天 id）。申请 im:chat.members:read，或 im:chat:readonly / im:chat / im:chat.group_info:readonly 任一',
     });
     // ② 通讯录读:无效 open_id 试探——权限码=缺失;用户不存在类业务错=有权限
     const probe = await call('GET', '/open-apis/contact/v3/users/ou_00000000000000000000000000000000', { params: { user_id_type: 'open_id' } });
@@ -520,7 +532,7 @@ export class FeishuAdapter implements ChannelAdapter {
       label: '获取用户基本信息（通讯录）',
       required: false,
       granted: grantedOf(probe),
-      fallback: '缺失时发送者姓名回落为群成员列表（需 im:chat:readonly）;两者都缺失则显示用户 id',
+      fallback: '已开通仍可能只返回 open_id 不含姓名——应用「通讯录数据权限范围」需包含对方成员；缺失时姓名回落群成员列表',
     });
     // ③ 发送消息:无效接收目标试探（user 全零 open_id 必不存在,误发为零）——权限码=缺失;
     // 接收方不存在类业务错=有权限
