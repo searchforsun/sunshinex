@@ -2,7 +2,7 @@ import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { agentMessageOf, isModelSwitchNotice, noticeAccentOf, systemIconOf } from './entry-notice';
 import type { ReactNode } from 'react';
 import type { Components } from 'react-markdown';
-import { AlertCircle, ArrowUp, Brain, Check, ChevronDown, ChevronRight, Copy, GitFork, Info, MessageSquare, PenLine, X, ImageOff } from 'lucide-react';
+import { AlertCircle, ArrowUp, Bot, Brain, Check, ChevronDown, ChevronRight, Copy, GitFork, Info, PenLine, X, ImageOff } from 'lucide-react';
 import { t, getLanguage } from '../../i18n';
 import { BUBBLE_MAX_HEIGHT, ClampToggle, useClampMotion } from '../../clamp-block';
 import { localizeNotice } from '../../i18n-notice';
@@ -472,7 +472,7 @@ function ChannelFromBadge({ from, userId, platform }: { from: string; userId?: s
                   copy(userId);
                 }}
               >
-                {copyStatus === 'ok' ? <Check size={13} strokeWidth={2} aria-hidden="true" /> : <Copy size={13} strokeWidth={1.75} aria-hidden="true" />}
+                {copyStatus === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
               </button>
             )}
           </span>
@@ -639,14 +639,13 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
               className="user-from-sunx-btn"
               onClick={() => onOpenSunx(entry.fromSunx!.id, entry.fromSunx!.runSeq)}
             >
-              {/* 图标=黑白色（2026-11-26 用户裁定「图标不应该是蓝色的，就是黑白色」）：跟随前景
-                  主题色，名称仍为蓝色链接档 */}
-              <SunxIcon size={14} strokeWidth={1.75} className="user-from-sunx-icon" aria-hidden="true" />
+              {/* 图标随名称同走 accent（2026-11-26 二轮裁定「这个sunx图标改回原来的蓝色」） */}
+              <SunxIcon size={16} strokeWidth={1.75} aria-hidden="true" />
               <span>{entry.fromSunx.name}</span>
             </button>
           ) : (
             <span className="user-from-sunx-btn" aria-hidden="true">
-              <SunxIcon size={14} strokeWidth={1.75} className="user-from-sunx-icon" />
+              <SunxIcon size={16} strokeWidth={1.75} />
               <span>{entry.fromSunx.name}</span>
             </span>
           )}
@@ -792,14 +791,16 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
     return (
       <div className="entry entry-user entry-user-insert agent-msg" data-from={fromLabel}>
         <div className="agent-msg-head">
-          <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+          {/* 成员互发图标=机器人（2026-11-26 用户裁定「从气泡图标改成机器人的图标」）：图标进可点元素
+              内部——与名称同 accent 色、同段下划线（用户裁定「图标灰度不一致」「蓝色下划线要包含图标」） */}
           {fromLeader && onOpenLeader !== undefined ? (
             <button
               type="button"
               className="agent-msg-from"
               onClick={() => onOpenLeader({ from: 'leader', text: msg.text })}
             >
-              {fromLabel}
+              <Bot size={16} strokeWidth={1.75} aria-hidden="true" />
+              <span>{fromLabel}</span>
             </button>
           ) : !fromLeader && onOpenAgent !== undefined ? (
             <button
@@ -807,10 +808,14 @@ export const ChatEntryView = memo(function ChatEntryView({ entry, footerRun, con
               className="agent-msg-from"
               onClick={() => onOpenAgent(msg.from, msg.from)}
             >
-              {fromLabel}
+              <Bot size={16} strokeWidth={1.75} aria-hidden="true" />
+              <span>{fromLabel}</span>
             </button>
           ) : (
-            <span className="agent-msg-from">{fromLabel}</span>
+            <span className="agent-msg-from">
+              <Bot size={16} strokeWidth={1.75} aria-hidden="true" />
+              <span>{fromLabel}</span>
+            </span>
           )}
         </div>
         {msg.text !== '' && (

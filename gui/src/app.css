@@ -808,18 +808,16 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
 /* 跨 Sunx 来源行(2026-11-26 用户裁定「上面 sunx 图标加名称显示」「点击气泡上蓝色 sunx 名字」
    「参考智能体团队的样式」):与 .agent-msg-head/.agent-msg-from 同款——14px、名称 accent+600、
-   hover 下划线(无底片)、gap 6、图标=Sunx 产品小字形(SunxIcon 14px,黑白色——见 .user-from-sunx-icon);
+   hover 下划线(无底片)、gap 6、图标=Sunx 产品小字形(SunxIcon 14px,与名称同走 accent 蓝);
    右对齐贴气泡上缘;不挂 data-tip（2026-11-26 用户裁定「不要显示 hover 信息」） */
 .user-from-sunx { display: flex; align-items: center; justify-content: flex-end; gap: 6px; max-width: 85%; margin: 0 2px 4px 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 .user-from-sunx-btn {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 0; border: none; background: transparent;
+  padding: 0 0 1px; border: none; background: transparent;
   color: var(--accent); /* 蓝色 Sunx 名(与成员消息 .agent-msg-from 同档) */
   font: inherit; font-weight: 600; cursor: default; max-width: 100%;
 }
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 图标黑白色（2026-11-26 用户裁定）：跟随前景主题色，不随名称的 accent 走 */
-.user-from-sunx-icon { color: var(--fg); flex: none; }
 /* 通道群聊来源章（2026-11-25 用户裁定「气泡上侧平台图标+用户名称,不蓝色不可跳转;hover 显示
    用户 id,右侧复制按钮」）:名称常显次要色;悬停弹小面板（popover 自带顶部 6px 内距=鼠标从名称
    移入面板不断悬停）内含 id 与复制钮 */
@@ -834,7 +832,9 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font: calc(12px * var(--fz)) var(--font-mono, var(--font-ui)); color: var(--fg-secondary);
 }
 button.user-from-sunx-btn { cursor: pointer; }
-button.user-from-sunx-btn:hover { text-decoration: underline; }
+/* hover 下划线覆盖图标+名称整段（2026-11-26 用户裁定「蓝色下划线要包含图标」）：渐变底线随
+   元素盒宽，无 text-decoration 只盖文字的问题，也无布局位移 */
+button.user-from-sunx-btn:hover { background-image: linear-gradient(currentColor, currentColor); background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat; }
 /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」根修:.entry 的 content-visibility(auto=paint
    containment) 让每条目自成 stacking context,兄弟按 DOM 序压盖——内部 z-index 出不去,气泡下方
    悬浮动作钮被后续条目整层盖住。hover/focus 时整条提层(flex item 可用 z-index):3>邻条 auto */
@@ -2341,8 +2341,11 @@ button.user-from-sunx-btn:hover { text-decoration: underline; }
   font-size: calc(14px * var(--fz));
 }
 .agent-msg-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
-  padding: 0;
+  padding: 0 0 1px;
   border: none;
   background: transparent;
   color: var(--accent);
@@ -2351,7 +2354,8 @@ button.user-from-sunx-btn:hover { text-decoration: underline; }
   cursor: default;
 }
 button.agent-msg-from { cursor: pointer; }
-button.agent-msg-from:hover { text-decoration: underline; }
+/* 下划线覆盖机器人图标+名称整段（与 .user-from-sunx-btn 同款渐变底线） */
+button.agent-msg-from:hover { background-image: linear-gradient(currentColor, currentColor); background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat; }
 .agent-msg-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--fg); }
 
 /* G14.150 侧栏左缘统一列(x=14):品牌/新对话/项目组行 与 分区头(项目/最近会话) 对齐 */
