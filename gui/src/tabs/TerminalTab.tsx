@@ -11,7 +11,10 @@ import type { Connection } from '../connection';
 import { t } from '../i18n';
 import { mintSnippetToken } from '../pages/chat/mention';
 import { watchThemeChange } from '../theme';
-import { currentPalette } from '../palette';
+import { Check, Copy } from 'lucide-react';
+import { useCopyFeedback } from '../use-copy-feedback';
+import { TipButton } from '../pages/chat/RunFooter';
+import { effectivePalette } from '../palette';
 import type { Palette } from '../palette';
 import { zoomScale } from '../ui-zoom';
 import type { TabParams } from './tab-state';
@@ -74,8 +77,10 @@ const XTERM_ANSI_LIGHT = {
  *  (实测亮色下 PowerShell 命令名亮黄近不可读) */
 const xtermThemeFor = (p: Palette, background?: string): ITheme => ({
   // 画布底色=主对话背景 surface(2026-11-11 用户裁定「侧栏终端正文也改主对话背景色」):
-  // 下栏经 --terminal-dock-bg(=var(--surface) 解析值)覆写,右栏直用 tokens.surface,双面同色
-  background: background ?? p.tokens.surface,
+  // 下栏经 --terminal-dock-bg(=var(--surface) 解析值)覆写,右栏直用 tokens.surface,双面同色。
+  // 2026-11-25「暗色代码下下栏/侧栏终端也要变暗」:effectivePalette 在亮色+暗码时返回暗色档——
+  // 此时忽略 dock 传入的亮面井色(它按亮主题解析),统一取暗面 surface,双面同暗
+  background: p.mode === 'dark' ? p.tokens.surface : (background ?? p.tokens.surface),
   foreground: p.tokens.fg,
   cursor: p.tokens.accent,
   selectionBackground: `${p.tokens.accent}40`,
@@ -93,6 +98,9 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
   /** 选区悬浮工具条(2026-11-03 用户裁定「终端选中后添加到会话/辅助会话」):xterm 选区非空即显,
    *  位置=mouseup 落点(相对容器);双动作=原文入主对话 composer(事件同 Files 页)/辅助会话提问 */
   const [selBar, setSelBar] = useState<{ x: number; y: number; text: string } | null>(null);
+  /** 选区复制回显（2026-11-25 用户裁定「终端 hover 也加复制按钮」）:项目既有
+   *  TipButton+useCopyFeedback 单点,无 tooltip,图标 Copy→Check 即回执 */
+  const { status: copyStatus, copy: copySelection } = useCopyFeedback();
   /** xterm 实例引用(background 到场补涂用——下栏井色 dock 挂载后才解析,装配期尚未定) */
   const termRef = useRef<Terminal | null>(null);
 
@@ -104,7 +112,7 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
    *  缺省井色建——prop 到达即重涂 options.theme */
   useEffect(() => {
     if (termRef.current === null || background === undefined) return;
-    termRef.current.options.theme = xtermThemeFor(currentPalette(), background);
+    termRef.current.options.theme = xtermThemeFor(effectivePalette(), background);
   }, [background]);
 
   useEffect(() => {
@@ -221,10 +229,10 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
           const fontSpec = terminalFontSpec(); // 字体预设管线(2026-10-29 用户裁定「终端可控也跟随」):family=--font-mono 生效值,size=--f-code——canvas 接 CSS 变量字符串不解析,经 computed 取实值
           // scrollOnEraseInDisplay:清屏(ED2)把屏上内容推进滚动区而非抹除——新壳启动即发清屏,不开则
           // 回种的历史屏一出现就被抹掉(Windows Terminal/PuTTY 同款 cls 语义)
-          termRef.current = term = new Terminal({ theme: xtermThemeFor(currentPalette(), backgroundRef.current), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
+          termRef.current = term = new Terminal({ theme: xtermThemeFor(effectivePalette(), backgroundRef.current), fontFamily: fontSpec.family, fontSize: fontSpec.size, scrollOnEraseInDisplay: true });
           // 主题热随(2026-11-04 亮色终端裁定):html[data-theme] 变更即换 theme,存活的 pty 不重连
           const unwatch = watchThemeChange(() => {
-            if (term !== null) term.options.theme = xtermThemeFor(currentPalette(), background);
+            if (term !== null) term.options.theme = xtermThemeFor(effectivePalette(), background);
           });
           unwatchTheme?.(); // 回退重装配覆写前先退订上一轮(观察器滞留面)
           unwatchTheme = unwatch;
@@ -393,6 +401,13 @@ export function TerminalTab({ conn, sessionId, uid, params, ptyIdFor, onPtyAlloc
               {t('Ask in side chat', '在辅助会话中提问')}
             </button>
           )}
+          <TipButton
+            className="files-selbar-copy"
+            label="copy selection"
+            tip=""
+            icon={copyStatus === 'ok' ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+            onClick={() => copySelection(selBar.text)}
+          />
         </div>
       )}
     </div>
