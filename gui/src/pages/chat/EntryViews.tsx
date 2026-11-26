@@ -14,6 +14,7 @@ import { useCopyFeedback } from '../../use-copy-feedback';
 import type { ChatEntry } from '../../chat-reducer';
 import type { WakeRef } from '../../../../src/session/entry';
 import { buildMdComponents, RefTokenChip, rebuildPickTokens, renderMentionSpans, splitBrowserFences, useDirResolver, MarkdownCached, renderMdCached } from '../Chat';
+import { platformMeta } from '../../sidebar/use-menu-channels';
 import { RunChangesBar, RunFooter, TipButton } from './RunFooter';
 import { ArtifactsStrip } from './ArtifactsStrip';
 import { useChangeCards } from '../../change-cards';
@@ -431,14 +432,30 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean } & UserEntryOpts): JSX.Element {
+/** 通道群聊来源前缀（router ⑫ 注入 `[来自 <发送者>]: <正文>`）→ {from,text}：气泡上方按智能体
+ *  团队同款形态显示「平台图标 + 发送者名」（2026-11-25 用户裁定「不用显示成蓝色,不可跳转,
+ *  hover 显示对应飞书 id」）;单聊不注入前缀=null,普通用户条零变化。发送者名缺席时 router 以
+ *  userId 兜底,此处的 from 即该 id */
+export function channelFromOf(md: string): { from: string; text: string } | null {
+  const m = /^\s*\[来自 ([^\]\n]+)\]\s*[:：]\s*/.exec(md);
+  if (m === null) return null;
+  const from = m[1]!.trim();
+  if (from === '') return null;
+  return { from, text: md.slice(m[0].length) };
+}
+
+export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
   const rawMd = sideChat === true ? stripSideNote(entry.md) : entry.md;
+  // 通道群聊来源前缀剥离（2026-11-25 用户裁定「气泡上侧显示飞书图标+用户名称,hover 显示 id」）:
+  // router ⑫ 的 `[来自 x]: ` 前缀不再留在气泡正文,改由上方来源章承载;单聊无前缀=零变化
+  const channelFrom = sideChat === true ? null : channelFromOf(rawMd);
+  const rawMd2 = channelFrom !== null ? channelFrom.text : rawMd;
   // 跨 Sunx 前缀+回答提示行同剥显(2026-11-26 二轮):二者只属模型面/链面,气泡正文从归属元数据
   // 走后单独渲染来源行
-  const displayMd = entry.fromSunx !== undefined ? rawMd.replace(FROM_SUNX_PREFIX, '').replace(FROM_SUNX_HINT, '') : rawMd;
+  const displayMd = entry.fromSunx !== undefined ? rawMd2.replace(FROM_SUNX_PREFIX, '').replace(FROM_SUNX_HINT, '') : rawMd2;
   const [confirm, setConfirm] = useState<{ text: string; images?: string[] } | null>(null);
   const [editHint, setEditHint] = useState('');
   const confirmDialog = confirm !== null && rewindOps !== undefined && (
@@ -588,6 +605,21 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           )}
         </div>
       )}
+      {/* 通道群聊来源章（2026-11-25 用户裁定「参考智能体团队,在气泡上侧显示一个飞书图标跟上
+          用户名称,不用显示成蓝色,因为不可跳转,hover 时显示对应飞书 id」）:同 user-from-sunx
+          布局,内置次要色非链接;发送者 id 放 data-tip（名称缺席时 router 以 id 兜底,即此 id） */}
+      {channelFrom !== null && (() => {
+        const headerMeta = platformMeta(platform);
+        const HeaderIcon = headerMeta.Icon;
+        return (
+          <div className="user-from-sunx user-from-channel">
+            <span className="user-from-sunx-btn" data-tip={channelFrom.from}>
+              <HeaderIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{channelFrom.from}</span>
+            </span>
+          </div>
+        );
+      })()}
       {/* 2026-10-26 用户裁定:图片与气泡分离——图片条独立在气泡外(上方右对齐),纯图消息不渲染空气泡 */}
       {entry.images !== undefined && entry.images.length > 0 && (
         <UserImageStrip conn={conn} root={root} images={entry.images} onOpen={onOpenImage} />

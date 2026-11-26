@@ -803,6 +803,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font: inherit; font-weight: 600; cursor: default; max-width: 100%;
 }
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 通道群聊来源章（2026-11-25 用户裁定「参考智能体团队,气泡上侧飞书图标+用户名称,不用蓝色,
+   不可跳转,hover 显示飞书 id」）:布局同 Sunx 来源行（复用 .user-from-sunx* 类）,名称用次要色
+   非强调色——纯归因信息不可点;id 走 data-tip 悬浮 */
+.user-from-channel .user-from-sunx-btn { color: var(--fg-secondary); font-weight: 500; cursor: default; }
 button.user-from-sunx-btn { cursor: pointer; }
 button.user-from-sunx-btn:hover { text-decoration: underline; }
 /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」根修:.entry 的 content-visibility(auto=paint

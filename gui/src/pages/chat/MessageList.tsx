@@ -326,6 +326,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
           conn={conn}
           root={root}
           sideChat={sideChat}
+          platform={channelPlatform}
         />
       );
     }
@@ -960,6 +961,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
           conn={conn}
           root={root}
           sideChat={sideChat}
+          platform={channelPlatform}
         />
       );
     }
