@@ -5,7 +5,7 @@ import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { flushSync } from 'react-dom';
 import { t } from '../../i18n';
 import type { Connection } from '../../connection';
-import { fmtTokens as fmtTokensShared } from '../../ui-util';
+import { fmtTokens as fmtTokensShared, rAFConverge } from '../../ui-util';
 import { groupEntriesByDay } from '../../chat-groups';
 import type { ChatEntry } from '../../chat-reducer';
 import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
@@ -79,6 +79,10 @@ export interface MessageListProps {
   /** 跨 Sunx 来源行跳转(2026-11-26):user 气泡来源行点击 → attachSunx 打开该实例并定位发送轮
    *  (runSeq;未配=只读) */
   readonly onOpenSunx?: (journalId: string, runSeq?: number) => void;
+  /** 跨 Sunx 归因定位请求(2026-11-26「和左侧刻度一样,定位到轮次就可以」):key=k<runSeq> 的条目；
+   *  落点复用刻度跳转单点(revealEntry 扩窗 + rAFConverge 收敛,无闪光)；消费后 onRevealDone 清信号 */
+  readonly revealRequest?: { key: string; nonce: number } | null;
+  readonly onRevealDone?: () => void;
   readonly rewindOps?: RewindOps;
   readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
@@ -1003,6 +1007,52 @@ export function MessageList(props: MessageListProps): JSX.Element {
     }
     return true;
   };
+  /** 跨 Sunx 归因定位请求消费（2026-11-26 用户裁定「和左侧刻度一样,定位到轮次就可以」——不闪
+   *  高亮）：落点单点复用刻度跳转路径（挂载即 scrollTop+ rAFConverge；未挂载先 revealEntry 扩窗/
+   *  虚拟落点，false=扩窗中则 ≤90 帧有界轮询后收敛，与 ChatRail.jump 同口径）。一次性消费：
+   *  请求下达即置 handled 防重入，完成后 onRevealDone 清宿主信号（切回不重复跳） */
+  const revealEntryRef = useRef(revealEntry);
+  revealEntryRef.current = revealEntry;
+  const revealDoneRef = useRef<(() => void) | undefined>(props.onRevealDone);
+  revealDoneRef.current = props.onRevealDone;
+  const revealHandledRef = useRef(0);
+  const revealReq = props.revealRequest;
+  useEffect(() => {
+    if (revealReq === null || revealReq === undefined || revealHandledRef.current === revealReq.nonce) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    revealHandledRef.current = revealReq.nonce;
+    const sel = `.entry[data-entry-key="${CSS.escape(revealReq.key)}"]`;
+    const land = (node: HTMLElement): void => {
+      el.scrollTop += node.getBoundingClientRect().top - el.getBoundingClientRect().top;
+      rAFConverge(el, () => node.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => { el.scrollTop += d; }, 2);
+    };
+    const hit = el.querySelector<HTMLElement>(sel);
+    if (hit !== null) {
+      land(hit);
+      revealDoneRef.current?.();
+      return;
+    }
+    if (revealEntryRef.current(revealReq.key)) {
+      // 全量模型：revealEntry 已按块坐标落点并自收敛（刻度跳转同口径）
+      revealDoneRef.current?.();
+      return;
+    }
+    // 扩窗中：块序列/切片落定后节点才出现——有界 rAF 轮询（≤90 帧，与刻度跳转同口径）
+    let tries = 0;
+    const seek = (): void => {
+      const n2 = el.querySelector<HTMLElement>(sel);
+      if (n2 === null) {
+        tries += 1;
+        if (tries < 90) requestAnimationFrame(seek);
+        return;
+      }
+      land(n2);
+    };
+    requestAnimationFrame(seek);
+    revealDoneRef.current?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- revealReq 即信号;refs/单点取现值
+  }, [revealReq, chatScrollRef]);
   /** 模型坐标落点 + 实测收敛:目标块可能尚未挂载/高度仍是估算——先按前缀和落位(切片随滚动
    *  事件重算、目标块随后挂载),再按真实盒位置迭代校正(默认 ≤40 帧,eps=2;刻度跳转 150 帧)。
    *  收敛期置 landingRef 代次:阅读锚回钉让路,且新落点会令旧循环自行退出(不互抢 scrollTop) */

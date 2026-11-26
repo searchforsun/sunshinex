@@ -172,7 +172,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const chatLastDistRef = useRef(0);
   /** 滚动内容锚镜像(非贴底每拍更新;切回锚式落点数据源,同 scroll-mem 存档) */
   const chatAnchorRef = useRef<{ key: string; off: number } | undefined>(undefined);
-  useChatLocate({ leaderFocus, chatScrollRef, chatStickRef, sunxPeerFocus, journalId, entriesTick: chat.entries.length, onSunxPeerFocusDone });
+  useChatLocate({ leaderFocus, chatScrollRef, chatStickRef });
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
@@ -292,6 +292,15 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const runFooterByEntry = runFooterPrevRef.current;
 
   /** 回退/派生轮寻址簇(fork 序位/rewind 操作面/轮次 checkpoint 通道)收口 use-chat-undo(D62 批I) */
+  /** 跨 Sunx 归因定位请求（2026-11-26 用户裁定「和左侧刻度一样,定位到轮次就可以」）：命中本会话
+   *  才下发——key=k<发送方 run seq>；落点单点在 MessageList（刻度跳转同路径，无闪光）。useMemo 保
+   *  引用恒定（ChatTranscript memo 判等面不破） */
+  const sunxRevealRequest = useMemo(
+    () => (sunxPeerFocus !== null && sunxPeerFocus !== undefined && journalId !== undefined && journalId !== '' && sunxPeerFocus.journalId === journalId
+      ? { key: `k${sunxPeerFocus.runSeq}`, nonce: sunxPeerFocus.nonce }
+      : undefined),
+    [sunxPeerFocus, journalId],
+  );
   const { onForkRun, rewindOps, onTurnOpen, onTurnRestore } = useChatUndo({ conn, sessionId, chatRef, entries: chat.entries, expandRefsRef, setChat, onFork, onRewind, onOpenTurnDiff });
   /** 编辑卡输入环境:@短写记账表共享——编辑卡选中的文件在发送期(resendFrom)照样展开 */
   const composerEnv = useMemo<ComposerEnv>(() => ({ sessionId, pickRelRef }), [sessionId]);
@@ -715,6 +724,8 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         onFork={kindHint === 'sunx' ? undefined : onForkRun} // Sunx fork=域内新线程入口,旧会话级 fork 关闭(2026-11-21)
         onOpenSession={onOpenSession}
         onOpenSunx={onOpenSunx}
+        revealRequest={sunxRevealRequest}
+        onRevealDone={onSunxPeerFocusDone}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
         sunxName={sunxLabel}

@@ -126,5 +126,7 @@ export const ChatTranscript = memo(function ChatTranscript(props: Omit<MessageLi
     && a.channelPlatform === b.channelPlatform
     && a.initialRenderWindow === b.initialRenderWindow
     && a.restoreAnchor === b.restoreAnchor
-    && a.heightScope === b.heightScope,
+    && a.heightScope === b.heightScope
+    && a.revealRequest === b.revealRequest
+    && a.onRevealDone === b.onRevealDone,
 );
