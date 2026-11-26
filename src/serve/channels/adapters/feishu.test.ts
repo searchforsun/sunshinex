@@ -3,7 +3,7 @@
  *  SDK 外连面(WS/HTTP)不进单测——适配器经 engine dry-run 链路覆盖。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent, feishuResolveMentions } from './feishu';
+import { feishuEventToInbound, feishuAckReactionPayload, feishuMentionPrefix, feishuPostContent, feishuResolveMentions, feishuPermissionVerdict } from './feishu';
 
 const p2pText = {
   sender: { sender_id: { open_id: 'ou_1', user_id: 'uid_1' }, sender_type: 'user' },
@@ -116,4 +116,13 @@ test('markdown post 消息(2026-11-23 用户裁定「不是卡片,普通文本�
   );
   // md 标签内 at 提及=<at user_id>(CommonMark+GFM 子集的飞书扩展,与 text 面同语法)
   assert.equal(feishuMentionPrefix({ userId: 'ou_abc' }), '<at user_id="ou_abc"></at> ');
+});
+
+test('权限探测三态:成功=已开通;权限码/权限文案=缺失;业务错误=已开通;失败无码=未知(2026-11-25 用户指正「假的鉴权」)', () => {
+  assert.equal(feishuPermissionVerdict({ code: 0 }), true);
+  assert.equal(feishuPermissionVerdict({ code: 99991672, msg: 'Access denied. One of the following scopes is required' }), false);
+  assert.equal(feishuPermissionVerdict({ code: 40004, msg: 'user not found' }), true); // 有权限:业务校验拦下
+  assert.equal(feishuPermissionVerdict({ code: 230001, msg: 'invalid receive_id' }), true);
+  assert.equal(feishuPermissionVerdict({ code: -1, msg: 'Request failed with status code 400' }), null); // 失败≠已开通
+  assert.equal(feishuPermissionVerdict({}), null);
 });

@@ -200,6 +200,19 @@ interface LarkChatMembersResponse extends LarkRespBase {
   data?: { items?: Array<{ member_id?: string; name?: string }>; has_more?: boolean; page_token?: string };
 }
 
+/** 飞书权限探测三态判定（纯函数·单测锚点，2026-11-25 用户指正「没申请的显示已开通,已开通的
+ *  显示未确认」根修）：**只有明确证据才给 true**——code 0=成功;非权限码的业务错误(参数非法/
+ *  目标不存在)=有权限;权限码(99991672 系)或权限文案=false;无可解析码/传输失败=null(未知),
+ *  绝不再把「请求失败」当「已开通」 */
+export function feishuPermissionVerdict(resp: { code?: number; msg?: string }): boolean | null {
+  const PERMISSION_DENIED = new Set([99991672, 99991663, 99991668, 99991679, 1061045]);
+  if (resp.code === 0) return true;
+  if (resp.code === undefined || resp.code === -1) return null;
+  if (PERMISSION_DENIED.has(resp.code)) return false;
+  if (/scope|permission|access denied|无权限|权限不足|未授权/i.test(resp.msg ?? '')) return false;
+  return true;
+}
+
 export class FeishuAdapter implements ChannelAdapter {
   readonly id: string;
   private connected = false;
@@ -464,51 +477,63 @@ export class FeishuAdapter implements ChannelAdapter {
    *  ③ im:message:send_as_bot:发送消息权限无法在无目标聊天时探测,granted:null 提示自行确认。 */
   async probePermissions(): Promise<ChannelPermissionRow[]> {
     if (this.client === undefined) return [];
-    const rows: ChannelPermissionRow[] = [];
+    const grantedOf = (r: LarkRespBase): boolean | null => feishuPermissionVerdict(r);
+    /** 请求封装:HTTP 4xx/5xx 时 SDK 抛异常——从 error.response.data 取飞书错误体（旧实现丢了它,
+     *  把失败误判成有权限）;403 无体映射为权限码,其余无体=未知(-1) */
     const call = async (
       method: 'GET' | 'POST',
       url: string,
       extra?: { params?: Record<string, string>; data?: unknown },
-    ): Promise<LarkRespBase & { data?: unknown }> => {
+    ): Promise<LarkRespBase> => {
       try {
-        return (await this.client!.request({ method, url, ...(extra?.params !== undefined ? { params: extra.params } : {}), ...(extra?.data !== undefined ? { data: extra.data } : {}) })) as LarkRespBase & { data?: unknown };
+        return (await this.client!.request({ method, url, ...(extra?.params !== undefined ? { params: extra.params } : {}), ...(extra?.data !== undefined ? { data: extra.data } : {}) })) as LarkRespBase;
       } catch (e) {
-        return { code: -1, msg: e instanceof Error ? e.message : String(e) };
+        const err = e as { message?: string; response?: { status?: number; data?: unknown } };
+        const body = err.response?.data;
+        if (typeof body === 'object' && body !== null) {
+          const b = body as Record<string, unknown>;
+          if (typeof b['code'] === 'number' || typeof b['msg'] === 'string') {
+            return { ...(typeof b['code'] === 'number' ? { code: b['code'] } : {}), ...(typeof b['msg'] === 'string' ? { msg: b['msg'] } : {}) };
+          }
+        }
+        if (err.response?.status === 403) return { code: 99991672, msg: '403 Forbidden' };
+        return { code: -1, msg: err.message ?? String(e) };
       }
     };
-    // ① 群信息/成员读取
+    const rows: ChannelPermissionRow[] = [];
+    // ① 群信息/成员读取:列表接口成功=有权限
     const chat = await call('GET', '/open-apis/im/v1/chats', { params: { page_size: '1' } });
+    const chatGranted = chat.code === 0 ? true : grantedOf(chat) === false ? false : null;
+    this.logBiz('权限探测(im:chat:readonly)', chat, 'list chats');
     rows.push({
       scope: 'im:chat:readonly',
       label: '获取群组信息 / 群成员',
       required: true,
-      granted: chat.code === 0,
+      granted: chatGranted,
       fallback: '缺失时聊天名称、发送者姓名无法富化——hover 与消息来源行回落显示聊天 id / 用户 id',
     });
-    // ② 通讯录读（用无效 open_id 探测权限面:缺权限码集判定）
-    const DENIED = new Set([99991672, 99991663, 99991668, 99991679]);
+    // ② 通讯录读:无效 open_id 试探——权限码=缺失;用户不存在类业务错=有权限
     const probe = await call('GET', '/open-apis/contact/v3/users/ou_00000000000000000000000000000000', { params: { user_id_type: 'open_id' } });
-    const deniedByMsg = /scope|permission|access denied|权限/i.test(probe.msg ?? '');
+    this.logBiz('权限探测(contact:user.base:readonly)', probe, 'probe user');
     rows.push({
       scope: 'contact:user.base:readonly',
       label: '获取用户基本信息（通讯录）',
       required: false,
-      granted: probe.code === 0 ? true : !(deniedByMsg || (probe.code !== undefined && DENIED.has(probe.code))),
+      granted: grantedOf(probe),
       fallback: '缺失时发送者姓名回落为群成员列表（需 im:chat:readonly）;两者都缺失则显示用户 id',
     });
-    // ③ 发送消息:以**无效接收目标**试探（user 全零 open_id 必不存在）——缺权限=权限错误码/文案,
-    // 有权限=「接收方不存在」类业务错;真正发不出去的误伤为零（2026-11-25 用户指正「该项已开通
-    // 却标未探测」:空聊天态并非不可探测,试探目标非法即可安全区分）
+    // ③ 发送消息:无效接收目标试探（user 全零 open_id 必不存在,误发为零）——权限码=缺失;
+    // 接收方不存在类业务错=有权限
     const sendProbe = await call('POST', '/open-apis/im/v1/messages', {
       params: { receive_id_type: 'open_id' },
       data: { receive_id: 'ou_00000000000000000000000000000000', msg_type: 'text', content: JSON.stringify({ text: 'permission probe' }) },
     });
-    const sendDenied = /scope|permission|access denied|无权限|权限不足/i.test(sendProbe.msg ?? '') || (sendProbe.code !== undefined && DENIED.has(sendProbe.code));
+    this.logBiz('权限探测(im:message:send_as_bot)', sendProbe, 'probe send');
     rows.push({
       scope: 'im:message:send_as_bot',
       label: '以应用身份发送消息',
       required: true,
-      granted: sendProbe.code === -1 ? null : sendProbe.code === 0 ? true : !sendDenied,
+      granted: grantedOf(sendProbe),
       fallback: '缺失时机器人无法回复消息',
     });
     return rows;
