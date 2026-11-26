@@ -583,7 +583,7 @@ describe('run 状态行(G11 §1)', () => {
     expect(document.querySelectorAll('.seg-collapse:not(.open)').length).toBe(0);
   });
 
-  it('运行中折叠后封段:回到常规折叠——末条工具也收起,只留终答(2026-11-07 用户报障「完成后没自动折叠」)', async () => {
+  it('运行中折叠后封段:回到常规折叠——末条工具收起,留终答+末段折叠行(2026-11-26 追加裁定)', async () => {
     mountChat([]);
     await flushed();
     const t0 = Date.now();
@@ -597,8 +597,11 @@ describe('run 状态行(G11 §1)', () => {
     expect([...document.querySelectorAll('.seg-collapse.open')].map((n) => n.textContent ?? '').join('|')).toContain('b.ts'); // 在途:末条留外
     fire({ type: 'done', text: '全部完成', ts: t0 + 6 });
     expect(document.querySelector('.entry-run.sealed')).not.toBeNull();
-    expect(document.querySelectorAll('.seg-collapse.open').length).toBe(0); // 封段:无留外段
-    expect([...document.querySelectorAll('.seg-collapse:not(.open)')].map((n) => n.textContent ?? '').join('|')).toContain('b.ts');
+    // 2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个折叠工具行」:封段折叠=终答+末段折叠头一行
+    const peek = document.querySelector('.seg-collapse.open .concise-fold');
+    expect(peek).not.toBeNull();
+    expect(peek!.textContent).toContain('Read files'); // 摘要=类别动词(不是末条原生工具行)
+    expect(document.querySelector('.seg-collapse.open .entry-tool')).toBeNull(); // 段内工具行全收
     expect(document.body.textContent).toContain('全部完成'); // 终答可见
   });
 
@@ -1098,15 +1101,15 @@ describe('G14.31 轮折叠与辅助对话全新视图', () => {
     const runRow = document.querySelector('.entry-run.sealed')!;
     expect(runRow.getAttribute('aria-expanded')).toBe('false'); // done 即自动折叠
     expect(runRow.querySelector('.run-chev')).not.toBeNull();
-    // G14.73:工具行保持挂载,包进收起的 seg-collapse(visibility hidden,平滑过渡)
-    const collapsedSeg = document.querySelector('.seg-collapse:not(.open)');
-    expect(collapsedSeg).not.toBeNull();
-    expect(collapsedSeg?.querySelector('.entry-tool')).not.toBeNull();
+    // 2026-11-26:折叠轮末段只露折叠头一行(折叠行常驻;段内工具行不再挂载,展开整轮时回来)
+    const peekHead = document.querySelector('.seg-collapse.open > .concise-fold');
+    expect(peekHead).not.toBeNull();
+    expect(document.querySelector('.seg-collapse.open .entry-tool')).toBeNull();
     fireEvent.click(runRow); // 展开
     expect(runRow.getAttribute('aria-expanded')).toBe('true');
     expect(document.querySelector('.seg-collapse.open .entry-tool')).not.toBeNull(); // 再点展开
     fireEvent.click(runRow); // 再收合
-    expect(document.querySelector('.seg-collapse:not(.open)')).not.toBeNull();
+    expect(document.querySelector('.seg-collapse.open > .concise-fold')).not.toBeNull(); // 折叠行回到单行摘要
   });
 
   it('G14.166 spawn 折叠行带子智能体名(label 优先,回退 agent_id;无名只出动词)', async () => {
@@ -2050,7 +2053,8 @@ describe('P1 行级 memo render-count(Task 3):token 突发/交错帧已落位 to
     });
     await flushed();
     await flushed(); // sealed 自动折叠(useAutoCollapseRuns)落定
-    expect(document.querySelector('.tool-summary')).not.toBeNull(); // 隐藏行仍挂载(G14.31)
+    // 2026-11-26:封段折叠=末段折叠头一行(工具行不再挂载,见 ToolSegBlock peek)
+    expect(document.querySelector('.seg-collapse.open > .concise-fold')).not.toBeNull();
     hlCounters.__reset();
     fire({ type: 'model-start', ts: Date.now() }); // 新成员帧:骨架重算但折叠组身份不变
     for (let i = 0; i < 3; i += 1) {

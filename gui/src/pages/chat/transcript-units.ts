@@ -145,6 +145,41 @@ export function dayUnitSpans(
   return out;
 }
 
+/** 折叠轮末段投影(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
+ *  查看了文件』折叠工具行」):每个折叠轮内最后一个**可折叠** seg 块 → 该轮 run key。折叠态下该段
+ *  只露折叠头一行(段内全隐),点击=展开整轮;运行中折叠(留末条工具/正文)同理——末段本就可见,
+ *  该投影自然空转(仅 closed 段生效,见 ToolSegBlock)。user 块=轮界(新开场),日分隔/命令行不断轮。
+ *  foldable 判据由调用面给(ToolGroups.isConciseFoldableSeg):轮尾常挂只含记忆/技能旁白的隐段,
+ *  不是折叠行,取它=head 永不出现(2026-11-26 实测根因) */
+export function foldedPeekSegs(
+  units: readonly UnitSpan[],
+  collapsedRuns: ReadonlySet<string>,
+  foldable: (u: UnitSpan) => boolean,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  let runKey: string | undefined;
+  let lastSeg: string | undefined;
+  const flush = (): void => {
+    if (runKey !== undefined && lastSeg !== undefined) out.set(lastSeg, runKey);
+    lastSeg = undefined;
+  };
+  for (const u of units) {
+    if (u.kind === 'run') {
+      flush();
+      runKey = collapsedRuns.has(u.key) ? u.key : undefined;
+      continue;
+    }
+    if (u.kind === 'user') {
+      flush();
+      runKey = undefined;
+      continue;
+    }
+    if (runKey !== undefined && u.kind === 'seg' && foldable(u)) lastSeg = u.key;
+  }
+  flush();
+  return out;
+}
+
 /** 未实测单位的估算高度(px;实测后由高度表覆盖)。块自带 est(按 md 长度算)优先;
  *  缺省常数仅作老调用面/日分隔兜底。值影响首帧切片与滚动条比例,偏差在块挂载测量后按
  *  「上方变化回钉」校正,不产生视觉跳动 */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ChatEntry } from '../../chat-reducer';
-import { dayUnitSpans, isSegmentEntry, prefixOffsets, reuseUnchangedSpans, sliceRange, unitEstimate } from './transcript-units';
+import { dayUnitSpans, foldedPeekSegs, isSegmentEntry, prefixOffsets, reuseUnchangedSpans, sliceRange, unitEstimate } from './transcript-units';
 import type { UnitSpan } from './transcript-units';
 
 /** 2026-11-18 结构性改造第一层:转录块模型(纯投影)单测。
@@ -170,5 +170,57 @@ describe('块 identity 复用(2026-11-19 流式组重切不整组重渲)', () =>
     expect(out[1]).not.toBe(oldSpans[1]); // u0 新块
     expect(out[2]).toBe(oldSpans[1]); // u1(start 0→1)按引用命中
     expect(out[3]).toBe(oldSpans[2]); // u2 同理
+  });
+});
+
+describe('折叠轮末段投影(2026-11-26 折叠时也显示最后一个折叠工具行)', () => {
+  const span = (key: string, kind: UnitSpan['kind']): UnitSpan =>
+    ({ key, kind, group: 0, start: 0, end: 0, label: '' }) as unknown as UnitSpan;
+  /** 判据桩:key 前缀 'tail:' = 只含记忆/技能旁白的隐段(不是折叠行) */
+  const foldable = (u: UnitSpan): boolean => !u.key.startsWith('tail:');
+
+  it('每个折叠轮取最后一个可折叠 seg;未折叠轮不产', () => {
+    const units = [
+      span('u0', 'user'),
+      span('r1', 'run'),
+      span('seg:a', 'seg'),
+      span('m1', 'assistant'),
+      span('seg:b', 'seg'),
+      span('m2', 'assistant'),
+      span('r2', 'run'),
+      span('seg:c', 'seg'),
+      span('m3', 'assistant'),
+    ];
+    const peek = foldedPeekSegs(units, new Set(['r1']), foldable);
+    expect([...peek]).toEqual([['seg:b', 'r1']]); // 只留 r1 的末段(seg:c 属未折叠 r2)
+  });
+
+  it('轮尾纯旁白隐段(记忆/技能)不占末段位:取它前面那个折叠段', () => {
+    const units = [
+      span('r1', 'run'),
+      span('seg:a', 'seg'),
+      span('tail:n1', 'seg'), // 只含 [memory]/[skills] 旁白,不是折叠行
+      span('m2', 'assistant'),
+    ];
+    const peek = foldedPeekSegs(units, new Set(['r1']), foldable);
+    expect([...peek]).toEqual([['seg:a', 'r1']]);
+  });
+
+  it('新开场用户条收束上一轮;日分隔/命令行不断轮', () => {
+    const units = [
+      span('day:d', 'day'),
+      span('r1', 'run'),
+      span('c1', 'cmd'),
+      span('seg:a', 'seg'),
+      span('u1', 'user'),
+      span('seg:z', 'seg'),
+    ];
+    const peek = foldedPeekSegs(units, new Set(['r1']), foldable);
+    expect([...peek]).toEqual([['seg:a', 'r1']]);
+  });
+
+  it('无可折叠 seg 的折叠轮不产(纯正文轮=既有轮折叠语义不变)', () => {
+    const units = [span('r1', 'run'), span('m1', 'assistant')];
+    expect(foldedPeekSegs(units, new Set(['r1']), foldable).size).toBe(0);
   });
 });

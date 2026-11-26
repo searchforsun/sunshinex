@@ -13,7 +13,7 @@ import { SunxMark } from '../../sunx-icon';
 import { WelcomeLogo } from '../../welcome/welcome-logo';
 import { platformMeta } from '../../sidebar/use-menu-channels';
 import { useUsageStats } from '../../usage-stats';
-import { dayUnitSpans, firstUnitAt, prefixOffsets, reuseUnchangedSpans, sliceRange, unitEstimate } from './transcript-units';
+import { dayUnitSpans, firstUnitAt, foldedPeekSegs, prefixOffsets, reuseUnchangedSpans, sliceRange, unitEstimate } from './transcript-units';
 import { rememberUnitHeight, unitHeightsFor } from './unit-heights';
 import { peekScrollAnchor } from './scroll-mem';
 import type { UnitSpan } from './transcript-units';
@@ -42,7 +42,7 @@ const VIRTUAL_OVERSCAN = 900;
 const RANGE_EDGE_MARGIN = 240;
 import { ChatEntryView, CommandEntryView, isCommandEntry, RunEntryView, ThinkingEntryView, UserEntryView } from './EntryViews';
 import { ToolEntryView } from './ToolEntry';
-import { ToolSegBlock } from './ToolGroups';
+import { ToolSegBlock, isConciseFoldableSeg } from './ToolGroups';
 import { ChatRail } from './ChatRail';
 import { isMidRunInsert } from './use-chat-fold';
 
@@ -492,12 +492,29 @@ export function MessageList(props: MessageListProps): JSX.Element {
    *  换新会让回调换新→UnitView 全量重渲;组内容变化已由上方成员引用校验反映为 span 换新 */
   const dayGroupsRef = useRef(dayGroups);
   dayGroupsRef.current = dayGroups;
-  /** 运行中的末段(2026-11-19 简洁模式常显最后一条工具行):末个 seg 块,供 ToolSegBlock 钉住 */
+  /** 块内条目(折叠面判据用:轮尾常挂只含记忆/技能旁白的隐段,它不是折叠行) */
+  const segEntriesOf = useCallback((u: UnitSpan): ChatEntry[] => {
+    const g = dayGroupsRef.current[u.group];
+    return g === undefined ? [] : g.entries.slice(u.start, u.end);
+  }, []);
+  /** 运行中的末段(2026-11-19 简洁模式常显最后一条工具行;2026-11-26 折叠头同在其上):
+   *  末个「含并入面工具行」的 seg 块——纯旁白段不是折叠行,不占此位(liveSegKey 落错=头与行全无) */
   const liveSegKey = useMemo(() => {
     if (!running) return undefined;
-    for (let i = units.length - 1; i >= 0; i -= 1) if (units[i]!.kind === 'seg') return units[i]!.key;
+    for (let i = units.length - 1; i >= 0; i -= 1) {
+      const u = units[i]!;
+      if (u.kind === 'seg' && isConciseFoldableSeg(segEntriesOf(u))) return u.key;
+    }
     return undefined;
-  }, [units, running]);
+  }, [units, running, segEntriesOf]);
+  /** 折叠轮末段(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
+   *  查看了文件』折叠工具行」):每个折叠轮内最后一个可折叠 seg 块在折叠态露折叠头一行当本轮
+   *  工作摘要(其余段照旧全隐),点击该头=展开整轮——与点轮头同动作。纯投影,见 transcript-units */
+  const foldedPeek = useMemo(
+    () => foldedPeekSegs(units, collapsedRuns, (u) => isConciseFoldableSeg(segEntriesOf(u))),
+    [units, collapsedRuns, segEntriesOf],
+  );
+
   const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
   /** 用户气泡块序号(刻度加亮按模型二分:线所属轮=块顶≤判定线的最后一枚用户块) */
   const userUnitIdx = useMemo(() => {
@@ -902,6 +919,8 @@ export function MessageList(props: MessageListProps): JSX.Element {
           seg={segEntries}
           closed={hiddenKeys.has(segEntries[0]!.key)}
           live={u.key === liveSegKey}
+          peekRunKey={foldedPeek.get(u.key)}
+          onExpandRun={toggleRunStable}
           renderTool={renderTool}
           renderThinking={renderThinking}
           renderAssistant={renderAssistant}
@@ -967,7 +986,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         sideChat={sideChat}
       />
     );
-  }, [hiddenKeys, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, onSendArg, onOpenSunxArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
+  }, [hiddenKeys, foldedPeek, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, onSendArg, onOpenSunxArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
    *  (滚动事件驱动切片),渲染落定后由 landOnUnit 独占实测收敛(返回 true=刻度侧不再另开循环) */

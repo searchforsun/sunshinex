@@ -110,6 +110,11 @@ function toolRowRe(re: RegExp | string): HTMLButtonElement | null {
   return rows.find((r) => (typeof re === 'string' ? norm(r).includes(re) : re.test(norm(r)))) ?? null;
 }
 
+/** 展开全部封段轮(2026-11-26 简洁折叠轮末段只挂折叠头一行——工具行须先展开轮才挂载) */
+function expandSealedRuns(): void {
+  for (const row of Array.from(document.querySelectorAll<HTMLElement>('.entry-run.sealed'))) fireEvent.click(row);
+}
+
 
 /**
  * G3.5 无头验收 e2e(会话维):真 GuiDaemon(dist)→ createConnection 全链(HTTP 会话维端点 +
@@ -1006,6 +1011,7 @@ describe('G7 write 执行 + fetchDiff 双列:full-access 域内写(预置旧文�
       expect(container.querySelector('.status-idle')).toBeDefined();
 
       // —— 工具条展开(实时帧 callId 配对面)→ fetchDiff → DiffLines 行级 old/new 双行 ——
+      expandSealedRuns(); // 封段轮默认折叠:先展开轮,工具行才挂载
       fireEvent.click(toolRowRe(`Write ${REL} `)!);
       await waitFor(
         () => expect(container.querySelector('.diff-line.del')?.textContent).toContain(OLD),
@@ -1237,6 +1243,7 @@ describe('G8a-T6 场景A(G8d-T6 重写;G14.27 零标签空态→菜单开任务�
 
       // —— 展开 write 条目(G7 定位复用)→ 点 path 钮 → **Diff 标签**开且活动(title=path)——
       //    (G8d T2 语义变更:callId 在场主通道 onOpenDiff;旧断言面 Files/.files-view 随接线退役)
+      expandSealedRuns(); // 封段轮默认折叠:先展开轮,工具行才挂载
       fireEvent.click(toolRowRe(`Write ${REL} `)!);
       const pathBtn = container.querySelector<HTMLButtonElement>('.tool-path');
       expect(pathBtn?.getAttribute('aria-label')).toBe(REL);

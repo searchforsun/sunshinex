@@ -37,6 +37,12 @@ function conciseSummary(seg: ChatEntry[]): [string, string] {
   return [en.join(' · '), zh.join(' · ')];
 }
 
+/** 段含并入面工具行=折叠层成立(逃逸行恒独立)。ToolSegBlock 渲染面与 MessageList 的
+ *  「末段/折叠轮末段」投影共用同一判据——轮尾常挂只含记忆/技能旁白的隐段,不是折叠行 */
+export function isConciseFoldableSeg(seg: readonly ChatEntry[]): boolean {
+  return seg.some((e) => e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name)));
+}
+
 /** 交织双方形图标(2026-11-14 用户裁定「折叠行前缀=两个正方形相互交织的形状」):前面方块吃
  *  surface 底色盖住后方方块一角=交织观感,两枚均 currentColor 描边随字体色 */
 function ConciseIcon(): JSX.Element {
@@ -161,6 +167,8 @@ function segPropsEqual(prev: ToolSegBlockProps, next: ToolSegBlockProps): boolea
     && prev.seg.every((e, i) => e === next.seg[i])
     && prev.closed === next.closed
     && prev.live === next.live
+    && prev.peekRunKey === next.peekRunKey
+    && prev.onExpandRun === next.onExpandRun
     && prev.renderTool === next.renderTool
     && prev.renderThinking === next.renderThinking
     && prev.renderAssistant === next.renderAssistant
@@ -170,9 +178,15 @@ function segPropsEqual(prev: ToolSegBlockProps, next: ToolSegBlockProps): boolea
 interface ToolSegBlockProps {
   seg: ChatEntry[];
   closed: boolean;
-  /** 本轮运行中的末段(2026-11-19 用户裁定「简洁模式下,折叠运行中,也要常驻显示最后一个折叠
-   *  工具行,不要一会显示一会不显示」):简洁模式下该段把最后一条工具行钉在外面常显,折叠头暂隐 */
+  /** 本轮运行中的末段(2026-11-19 用户裁定「折叠运行中也要常驻显示最后一个折叠工具行」):
+   *  该段把段内最后一条并入面工具行钉在折叠体之外常显(运行行本身=进度),折叠头照常在其上
+   *  (2026-11-26 追加裁定:折叠行不许因运行中而消失) */
   live?: boolean;
+  /** 折叠轮末段(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
+   *  查看了文件』折叠工具行」):该段在轮折叠态只露折叠头一行(摘要=整段类别动词),段内内容全隐;
+   *  点击=展开整轮(onExpandRun(peekRunKey),与点轮头同动作)。非折叠态/非简洁模式不生效 */
+  peekRunKey?: string;
+  onExpandRun?: (runKey: string) => void;
   renderTool: (e: ChatEntry) => ReactNode;
   renderThinking: (e: ChatEntry) => ReactNode;
   renderAssistant: (e: ChatEntry) => ReactNode;
@@ -188,14 +202,17 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   seg,
   closed,
   live,
+  peekRunKey,
+  onExpandRun,
   renderTool,
   renderThinking,
   renderAssistant,
   renderEntry,
 }: ToolSegBlockProps): JSX.Element {
-  /** 钉住判定先行(见下),nodes 随之剔除钉住条目——同一条只渲一份 DOM(2026-11-19) */
-  const conciseEarly = useConciseMode();
-  const foldableEarly = conciseEarly && seg.some((e) => e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name)));
+  /** 简洁折叠面判定(段内含并入面工具行才加折叠层;逃逸行恒独立) */
+  const concise = useConciseMode();
+  const foldableEarly = concise && isConciseFoldableSeg(seg);
+  /** 运行末段钉住行:段内最后一条并入面工具行(钉在折叠体之外,body 成员剔除以免双渲) */
   const pinnedEarly = foldableEarly && live === true && !closed
     ? [...seg].reverse().find((e) => e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name)))
     : undefined;
@@ -249,13 +266,12 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   }, []);
 
   /** 简洁模式段级折叠(2026-11-14 用户裁定):并入面条目≥1 才加折叠层;段内全为逃逸行不折叠。
-   *  运行中=现有渲染原样(既有聚合行流光+当前运行行),跑完→折叠头出现(slide-up 淡入),
-   *  展开=内层既有聚合行(第二层);concise-hidden 用 grid 高度 0fr 过渡做并入动画。
-   *  运行中常显最后一条折叠工具行(2026-11-19 用户裁定):live 段把末条并入面工具行钉在折叠体
-   *  之外,折叠头暂隐——工具切换/正文流式期间不随 anyRunning 抖动闪隐(pinnedEarly 已在顶部算定) */
+   *  折叠头恒在(2026-11-26 用户裁定「简洁模式下只显示最后一个(工具行)、不显示『运行了命令,
+   *  查看了文件』折叠行」之根修:2026-11-19 的「运行末段钉末条原生工具行+头暂隐」退役——它把
+   *  运行中末段渲染成原生工具行,折叠行消失且随 anyRunning 抖动)。现在任何状态都是「折叠头+
+   *  body」:运行中头照常常驻(摘要随类别增长,不闪隐),点开=看内层既有聚合行(第二层)。
+   *  折叠轮末段(headOnly):轮已折叠=内容全隐,该段只露折叠头一行当本轮工作摘要,点击=展开整轮 */
   const foldable = foldableEarly;
-  const anyRunning = foldable && seg.some((e) => executingOf(e));
-  const pinned = pinnedEarly;
   /** 展开态跨渲染保持 */
   const [segOpen, setSegOpen] = useState(false);
   const segNodes = nodes.map((n) => {
@@ -294,23 +310,29 @@ export const ToolSegBlock = memo(function ToolSegBlock({
     );
   });
   const inner = <div className="seg-inner">{segNodes}</div>;
+  if (foldable && closed && peekRunKey !== undefined) {
+    // 折叠轮末段只露折叠头一行(段内条目全部随轮折叠,头行点击=展开整轮)
+    return (
+      <div className="seg-collapse open">
+        <ConciseFold open={false} onToggle={() => onExpandRun?.(peekRunKey)} summary={conciseSummary(seg)} />
+      </div>
+    );
+  }
   return (
     <div className={`seg-collapse${closed ? '' : ' open'}`}>
       {foldable ? (
         // 2026-11-14 结构重修:concise 折叠=ConciseFold 头+concise-body(单子链 grid 0fr/1fr——
         // 此前把折叠类挂 seg-inner 多子容器上,grid 行高只作用首行=空占位/相互覆盖根因)
         <div className="concise-wrap">
-          {!anyRunning && pinned === undefined && (
-            <ConciseFold
-              open={segOpen}
-              onToggle={() => setSegOpen((v) => !v)}
-              summary={conciseSummary(seg)}
-            />
-          )}
-          {pinned !== undefined && <div className="concise-live">{renderTool(pinned)}</div>}
-          <div className={`concise-body${segOpen && !anyRunning && pinned === undefined ? ' open' : ''}`}>
+          <ConciseFold
+            open={segOpen}
+            onToggle={() => setSegOpen((v) => !v)}
+            summary={conciseSummary(seg)}
+          />
+          <div className={`concise-body${segOpen ? ' open' : ''}`}>
             <div className="concise-body-inner">{inner}</div>
           </div>
+          {pinnedEarly !== undefined && <div className="concise-live">{renderTool(pinnedEarly)}</div>}
         </div>
       ) : (
         inner

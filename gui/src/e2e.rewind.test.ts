@@ -98,6 +98,8 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       await waitFor(() => expect(fgSeat(container).querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
 
       // 被丢弃轮打开的 Diff 页签:回退后应随时间线消失
+      // 2026-11-26 简洁折叠轮末段只挂折叠头一行——先展开封段轮,工具行才挂载
+      for (const run of [...fgSeat(container).querySelectorAll<HTMLElement>('.entry-run.sealed')]) fireEvent.click(run);
       const writeRow = [...fgSeat(container).querySelectorAll<HTMLButtonElement>('button')].find((b) => (b.textContent ?? '').includes('b.txt'));
       fireEvent.click(writeRow!);
       await waitFor(() => expect(fgSeat(container).querySelector('.tool-path[aria-label="b.txt"]')).not.toBeNull(), { timeout: 15_000 });
