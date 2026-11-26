@@ -58,11 +58,12 @@ function callerRef(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: st
 }
 
 /**
- * 活实例枚举（排己；归档不列）：域容器逐域 listSessions（行形=id/title/firstUser/updatedAt/archived/
- * root/runs/steps）+ 旁车 charterText。只有 liveByJournal 命中的行才进列（裁定「只投活实例」——
- * 列表即可达面，与 send 的活实例判据同源零漂移）。
+ * 实例枚举（排己；归档不列）：域容器逐域 listSessions（行形=id/title/firstUser/updatedAt/archived/
+ * root/runs/steps）+ 旁车 charterText。**存在即列**——GUI SUNX 分组可见面=未归档存在实例面，枚举
+ * 与之同口径（2026-11-26 用户裁定「gui侧肯定都是活的」）；在座与否只作状态标注（running/idle/
+ * not open），未在座实例投递时自动 attach（见 deliver 的 ensureLive 缝）——不再以「有运行时」为列/投条件。
  */
-export function listLiveSunxPeers(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: string): SunxPeerInfo[] {
+export function listSunxPeers(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: string): SunxPeerInfo[] {
   const caller = sessions.get(callerId);
   const callerJournal = caller?.attachedJournalId;
   const live = liveByJournal(sessions);
@@ -80,15 +81,15 @@ export function listLiveSunxPeers(sessions: ReadonlyMap<string, PeersSessionLike
       if (r.archived === true) continue; // 归档实例不列（同分组口径）
       if (r.id === callerJournal) continue; // 排己
       const rt = live.get(r.id);
-      if (rt === undefined) continue; // 只列活实例（裁定②）
       const meta = readSessionMeta(dataDir, r.id);
       const name = r.title ?? meta.title ?? r.firstUser ?? 'Sunx';
       const charter = meta.charterText ?? undefined;
       out.push({
         id: r.id,
         name,
-        running: rt.status() !== 'idle',
-        awaiting: rt.pendingSnapshot().length > 0,
+        running: rt !== undefined && rt.status() !== 'idle',
+        live: rt !== undefined,
+        awaiting: rt !== undefined && rt.pendingSnapshot().length > 0,
         root: r.root ?? meta.root ?? '',
         updatedAt: r.updatedAt,
         ...(r.runs !== undefined ? { runs: r.runs } : {}),
@@ -112,14 +113,20 @@ export function deliverSunxPeerMessage(
   callerId: string,
   to: string,
   text: string,
+  /** 在座化缝（daemon 注入 attachSunxIn 薄委托）：目标存在但未打开→attach 后投递（与点侧栏行同链）。
+   *  缺席（测试/CLI）=未在座即拒 */
+  opts?: { ensureLive?: (journalId: string) => boolean },
 ): SunxPeerSendResult {
   const from = callerRef(sessions, callerId);
   if (from === undefined) return { ok: false, error: 'caller session has no journal yet - cannot send_sunx_messages before your first run' };
   if (to === from.id) return { ok: false, error: 'cannot send_sunx_messages to yourself' };
-  const live = liveByJournal(sessions);
-  const target = live.get(to);
+  let target = liveByJournal(sessions).get(to);
   if (target === undefined) {
-    return { ok: false, error: `cannot send_sunx_messages to ${to}: not a live Sunx instance (open it first; see list_sunx_peers)` };
+    // 存在但未打开（GUI 分组可见面）：attach 开座后投递（与侧栏行点击同一重开链）
+    if (opts?.ensureLive !== undefined && opts.ensureLive(to)) target = liveByJournal(sessions).get(to);
+    if (target === undefined) {
+      return { ok: false, error: `cannot send_sunx_messages to ${to}: unknown or not openable Sunx instance (see list_sunx_peers)` };
+    }
   }
   if (target.sessionKind !== 'sunx') {
     return { ok: false, error: `cannot send_sunx_messages to ${to}: not a Sunx session` };

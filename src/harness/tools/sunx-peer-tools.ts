@@ -11,8 +11,11 @@ export interface SunxPeerInfo {
   id: string;
   /** 实例名（meta.title 原样；缺省回落首条用户消息摘要/'Sunx'） */
   name: string;
-  /** 在飞轮状态（活实例恒有：idle/running——只投活实例，枚举即活实例表） */
+  /** 在飞轮状态（在座且非 idle） */
   running: boolean;
+  /** 是否在座（daemon 会话表有运行时）。false=实例存在但未打开——投递会自动打开（与点侧栏行同链）；
+   *  GUI 分组可见面=未归档存在实例面，枚举与此同口径（2026-11-26 用户问询「gui侧肯定都是活的」） */
+  live: boolean;
   /** 有待裁决挂起（ask/approval/plan-approval 非空） */
   awaiting: boolean;
   root: string;
@@ -49,7 +52,7 @@ function peerLines(peers: readonly SunxPeerInfo[]): string {
   if (peers.length === 0) return '(no other live Sunx instances)';
   const out: string[] = [];
   for (const p of peers) {
-    const status = p.running ? 'running' : 'idle';
+    const status = p.running ? 'running' : p.live ? 'idle' : 'not open';
     out.push(`${p.name} [${status}${p.awaiting ? ', awaiting input' : ''}] id=${p.id}`);
     out.push(`  root: ${p.root}`);
     out.push(`  updated: ${new Date(p.updatedAt).toISOString()}${p.runs !== undefined ? ` · runs: ${p.runs}` : ''}${p.steps !== undefined ? ` · steps: ${p.steps}` : ''}`);
@@ -65,7 +68,7 @@ export function makeListSunxPeersTool(peers?: SunxPeersSeam): RegisteredTool {
     parameters: { type: 'object', additionalProperties: false, properties: {} },
     name: 'list_sunx_peers',
     description:
-      'List the other live Sunx instances (name, running state, workspace, activity, charter). Each line carries id=<journalId> - pass that id to send_sunx_messages. Only live (open) instances are listed; archived or closed instances are not reachable.',
+      'List the other Sunx instances (name, state, workspace, activity, charter). Each line carries id=<journalId> - pass that id to send_sunx_messages. Every existing instance is listed; "[not open]" means it has no live session yet and sending to it opens it first. Archived instances are not listed.',
     category: 'task',
     fullObservation: true,
     executor: async () => {
@@ -90,7 +93,7 @@ export function makeSendSunxMessagesTool(peers?: SunxPeersSeam): RegisteredTool 
     },
     name: 'send_sunx_messages',
     description:
-      'Send a message to another live Sunx instance. It arrives there as a user message (viewer sees a user bubble attributed to you); a running instance queues it until its current run ends, an idle instance starts a run. When you receive a message from another Sunx (user text prefixed with "[fromSunx: <name> (<journalId>)]"), answer that Sunx with this tool - never treat it as a message from the user. Only live instances are reachable; errors name the reason.',
+      'Send a message to another Sunx instance (it is opened first if not open yet). It arrives there as a user message (viewer sees a user bubble attributed to you); a running instance queues it until its current run ends, an idle instance starts a run. When you receive a message from another Sunx (user text prefixed with "[fromSunx: <name> (<journalId>)]"), answer that Sunx with this tool - never treat it as a message from the user. Errors name the reason.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {

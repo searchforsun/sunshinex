@@ -11,7 +11,7 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../session/journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
-import { listLiveSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
+import { listSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles, fetchRemoteBranches } from './session-changes';
 import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
@@ -406,8 +406,12 @@ export class GuiDaemon {
       // 跨 Sunx 对等消息接缝（2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」；「只投活实例」）:
       // 按 sessionId 产出枚举/投递出口——daemon 会话表（活实例判据）+ sunx 域容器（名称/品行/活动）
       sunxPeersFor: (sessionId) => ({
-        list: async () => listLiveSunxPeers(this.sessions, sessionId),
-        send: async (to, text) => deliverSunxPeerMessage(this.sessions, sessionId, to, text),
+        list: async () => listSunxPeers(this.sessions, sessionId),
+        send: async (to, text) =>
+          deliverSunxPeerMessage(this.sessions, sessionId, to, text, {
+            // 未在座实例投递=先 attach 开座（与点侧栏 SUNX 行同一重开链）
+            ensureLive: (jid) => this.attachSunxRuntime(jid).ok,
+          }),
       }),
       // 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示,显示何时执行」）:
       // ScheduleEngine root 过滤——启用中/未结束的分派随 task_status 回执附段
@@ -2124,6 +2128,13 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     await sessionHandlers.handleAttach(this.sessionIo, req, res, id);
   }
 
+  /** sunx 重开链单点（HTTP /sunx/attach 与跨 Sunx 对等投递共用）：薄委托 lifecycle.attachSunxIn
+   *  （域定位/壳铸造/attach 全链都在单点）。对等投递面用它把「存在但未打开」的目标实例开座后投递
+   *  ——与用户点侧栏 SUNX 行同一链（2026-11-26 用户问询「gui侧肯定都是活的」：存在即活，在座只是状态） */
+  private attachSunxRuntime(journalId: string): Result<{ sessionId: string; root: string }> {
+    return lifecycle.attachSunxIn(this.lifecycleIo, journalId);
+  }
+
   /** POST /sunx/attach {journalId}（2026-11-15 sunx P3 Task 2）：sunx 重开链——薄委托
    *  lifecycle.attachSunxIn（域定位/壳铸造/attach 全链都在单点）；body 形判 400 面与 handleAttach 同口径 */
   private async handleSunxAttach(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -2137,7 +2148,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       this.send(res, 400, { error: 'journalId must be a non-empty string' });
       return;
     }
-    const r = lifecycle.attachSunxIn(this.lifecycleIo, journalId);
+    const r = this.attachSunxRuntime(journalId);
     if (!r.ok) {
       this.send(res, r.error.code === 'INVALID_STATE' ? 409 : 400, { error: r.error.message });
       return;

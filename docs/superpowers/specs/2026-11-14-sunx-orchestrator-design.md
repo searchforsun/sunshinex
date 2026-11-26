@@ -474,8 +474,10 @@ Sunx 发一句用户消息」。用户裁定 R1–R6：
 
 - **R1 两工具**：`list_sunx_peers`（发现）+ `send_sunx_messages`（投递）。两者进 `SUNX_FACE_TOOLS`
   白名单，同时进 `SUNX_ORCHESTRATION_TOOLS` fork 子面剔除族（子智能体互聊=绕过防子生孙）。
-- **R2 只投活实例**：目标必须是 daemon 会话表里在座的运行时（`attachedJournalId` 命中）；未在座=
-  不可达（不自动 attach），错误原样进工具面。发现面同判据——列表即可达面，零漂移。
+- **R2 活实例=存在的实例**（2026-11-26 用户二轮问询「这个活实例怎么判定，gui 侧肯定都是活的」）：
+  判据=域内存在、未归档（即 GUI SUNX 分组可见面）；在座与否只作状态标注（running/idle/not open）。
+  投递到未在座实例先 `attachSunxIn` 开座再投（与用户点侧栏 SUNX 行同一重开链），开座失败/未知档
+  才拒绝，错误原样进工具面。发现面与投递面同判据，零漂移。
 - **R3 发送=用户消息语义（直接进入排队）**：对方视角=用户气泡。idle 目标 `submitExternal`（回显帧+
   起轮）/ running 目标 `steer`（排队，轮收束补跑）；idle→running 受理竞态 409 回退入队。
   排队行随档携带归因（steer 行 fromSunx），drain 出队气泡归因不丢。

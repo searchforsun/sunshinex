@@ -82,7 +82,7 @@ test('跨 Sunx 对等消息两件（2026-11-26 用户裁定）：sunx 装配注�
       model: new ScriptedAdapter([]),
       learnSkills: false,
       sunxPeers: {
-        list: async () => [{ id: 'peer-1', name: 'Planner', running: false, awaiting: false, root: 'D:/w', updatedAt: 1, charter: '规划者' }],
+        list: async () => [{ id: 'peer-1', name: 'Planner', running: false, live: true, awaiting: false, root: 'D:/w', updatedAt: 1, charter: '规划者' }],
         send: async (to, text) => {
           sent.push({ to, text });
           return { ok: true, name: 'Planner', queued: false };

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { listLiveSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
+import { listSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
 import type { PeersSessionLike } from './sunx-peers';
 import type { SunxPeerRef } from '../types';
 
@@ -61,7 +61,7 @@ function fakeSession(over: Partial<PeersSessionLike> & { jid?: string; name?: st
   return s;
 }
 
-test('发现:只列活实例(排己/归档不列/未在座不列),名称/品行原样透出', () => {
+test('发现:存在即列(排己/归档不列;未在座标 not open),名称/品行原样透出', () => {
   seedDomain('peer-a', { title: 'Planner', charterText: '你是规划者。\n先读板。', root: 'D:/w/alpha' });
   seedDomain('peer-archived', { title: 'Archived One', archived: true });
   seedDomain('peer-cold', { title: 'Cold One' });
@@ -73,13 +73,15 @@ test('发现:只列活实例(排己/归档不列/未在座不列),名称/品行�
   sessions.set('s-r', fakeSession({ jid: 'peer-running', name: 'Coder', st: 'running' }));
   sessions.set('s-x', fakeSession({ jid: 'peer-archived', name: 'Archived One', st: 'idle' })); // 归档在座也不列
 
-  const out = listLiveSunxPeers(sessions, 's-caller');
-  assert.deepEqual(out.map((p) => p.id).sort(), ['peer-a', 'peer-running'], '只列活实例且排己/排归档/排冷档');
+  const out = listSunxPeers(sessions, 's-caller');
+  assert.deepEqual(out.map((p) => p.id).sort(), ['peer-a', 'peer-cold', 'peer-running'], '存在即列（含未在座冷档），排己/排归档');
   const a = out.find((p) => p.id === 'peer-a')!;
   assert.equal(a.name, 'Planner', '名称为 meta.title 原样');
   assert.equal(a.charter, '你是规划者。\n先读板。', '品行原文透出（内容是什么就是什么，不翻译）');
   assert.equal(a.root, 'D:/w/alpha');
   assert.equal(a.running, false);
+  assert.equal(a.live, true, '在座标 live');
+  assert.equal(out.find((p) => p.id === 'peer-cold')!.live, false, '未在座 live=false（存在即活，在座只是状态）');
   assert.equal(out.find((p) => p.id === 'peer-running')!.running, true, 'running 状态随在座会话');
 });
 
@@ -128,7 +130,27 @@ test('投递:idle→running 受理竞态(409) 回退入队（不丢消息）', (
   assert.equal(target.queued.length, 1);
 });
 
-test('投递拒绝:未知/非活/自己/非 sunx/caller 无 journal 各有明确原因', () => {
+test('投递:未在座实例先 attach 开座再投递（ensureLive 缝；与点侧栏行同链）', () => {
+  seedDomain('peer-a', { title: 'Planner' });
+  const sessions = new Map<string, PeersSessionLike>();
+  sessions.set('s-caller', fakeSession({ jid: 'caller-jid', name: 'Caller', st: 'idle' }));
+  // 目标未在座：ensureLive 模拟 attach（开座后 Map 里出现运行时）
+  const ensureLive = (jid: string): boolean => {
+    if (jid !== 'peer-a') return false;
+    sessions.set('s-a2', fakeSession({ jid: 'peer-a', name: 'Planner', st: 'idle' }));
+    return true;
+  };
+  const r = deliverSunxPeerMessage(sessions, 's-caller', 'peer-a', '开座投递', { ensureLive });
+  assert.deepEqual(r, { ok: true, name: 'Planner', queued: false }, 'attach 后按 idle 常规投递');
+  const a = sessions.get('s-a2') as FakeSession;
+  assert.equal(a.sent.length, 1, '消息落到新开的座');
+  // ensureLive 失败=不可开（未知档）→ 明确拒绝
+  const bad = deliverSunxPeerMessage(sessions, 's-caller', 'peer-x', 'x', { ensureLive: () => false });
+  assert.equal(bad.ok, false);
+  assert.match((bad as { error: string }).error, /unknown or not openable/, '开座失败=named 拒绝');
+});
+
+test('投递拒绝:未知/未在座(无开座缝)/自己/非 sunx/caller 无 journal 各有明确原因', () => {
   seedDomain('peer-a', { title: 'Planner' });
   const sessions = new Map<string, PeersSessionLike>();
   sessions.set('s-caller', fakeSession({ jid: 'caller-jid', name: 'Caller' }));
@@ -136,9 +158,9 @@ test('投递拒绝:未知/非活/自己/非 sunx/caller 无 journal 各有明确
   sessions.set('s-std', fakeSession({ jid: 'peer-std', name: 'Normal' }));
   (sessions.get('s-std') as { sessionKind: string }).sessionKind = 'standard';
 
-  const cold = deliverSunxPeerMessage(sessions, 's-caller', 'peer-cold', 'x');
+  const cold = deliverSunxPeerMessage(sessions, 's-caller', 'peer-cold', 'x'); // 无 ensureLive 缝
   assert.equal(cold.ok, false);
-  assert.match((cold as { error: string }).error, /not a live Sunx instance/, '未在座=只投活实例拒绝');
+  assert.match((cold as { error: string }).error, /unknown or not openable/, '无开座缝=未在座即拒');
 
   const self = deliverSunxPeerMessage(sessions, 's-caller', 'caller-jid', 'x');
   assert.equal(self.ok, false);
