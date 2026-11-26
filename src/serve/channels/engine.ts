@@ -32,7 +32,7 @@ import type { ChannelsSessionIo } from './router';
 import { ReplyProjector } from './reply';
 import type { ReplyTarget } from './reply';
 import { createChannelAdapter, ChannelAdapterError } from './adapters/types';
-import type { ChannelAdapter, StreamDelta } from './adapters/types';
+import type { ChannelAdapter, ChannelPermissionRow, StreamDelta } from './adapters/types';
 import { MockChannelAdapter } from './adapters/mock';
 import { registeredWorkspaceRoots } from '../workspace-registry';
 import { inboundSubmitText } from './model';
@@ -325,6 +325,30 @@ export class ChannelsEngine {
     } catch (e) {
       const code = e instanceof ChannelAdapterError ? e.code : 'start-failed';
       return { ok: false, error: e instanceof Error ? e.message : String(e), code };
+    }
+  }
+
+  /** 通道权限自检（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明」）:与 test()
+   *  同款 dry-run 独立实例（空 sink、不动在座表、同源密钥门）;适配器无 probePermissions（mock/
+   *  telegram 等）返回空列——GUI 弹窗以平台能力如实呈现 */
+  async permissions(id: string): Promise<{ ok: boolean; rows: ChannelPermissionRow[]; error?: string }> {
+    const cfg =
+      this.snapshot.find((c) => c.id === id) ??
+      this.knownConfigs.get(id) ??
+      this.opts?.configs?.().find((c) => c.id === id);
+    if (cfg === undefined) return { ok: false, rows: [], error: `通道 ${id} 未配置` };
+    const gate = this.secretGateError(cfg); // fail-closed 密钥门（与 launch/test 同源）
+    if (gate !== undefined) return { ok: false, rows: [], error: gate };
+    let adapter: ChannelAdapter | undefined;
+    try {
+      adapter = createChannelAdapter(cfg, { secret: cfg.secret ?? '', ident: cfg.ident ?? {}, log: (s) => this.log(s) });
+      await adapter.start(() => {});
+      const rows = adapter.probePermissions !== undefined ? await adapter.probePermissions() : [];
+      return { ok: true, rows };
+    } catch (e) {
+      return { ok: false, rows: [], error: e instanceof Error ? e.message : String(e) };
+    } finally {
+      if (adapter !== undefined) await adapter.stop().catch(() => {});
     }
   }
 

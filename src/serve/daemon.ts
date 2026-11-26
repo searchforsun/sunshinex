@@ -1235,6 +1235,12 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'PUT', path: '/settings/channels', auth: true, run: (req, res) => this.handleChannelsPut(req, res) },
     { method: 'GET', path: '/channels', auth: true, run: async (_req, res) => channelsHandlers.handleChannelsList(this.channelsHandlerIo, res) },
     { method: 'POST', path: '/channels/:id/test', auth: true, run: async (_req, res, p) => channelsHandlers.handleChannelsTest(this.channelsHandlerIo, res, p.id) },
+    // 通道权限自检（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明」）:
+    // dry-run 独立实例探测,返 {ok, rows:[{scope,label,required,granted,fallback}]}
+    { method: 'GET', path: '/channels/:id/permissions', auth: true, run: async (_req, res, p) => {
+        const r = await this.channelsEngine.permissions(p.id);
+        this.send(res, 200, r);
+      } },
     // 通道密钥写面(2026-11-22 终形态修复波,spec §8.2):PUT {secret} → 全局 settings.json env 块
     // 密钥写面(2026-11-22 内联裁定:写 channels 条目 secret 字段,读面回显)。
     // 写后链重载(env 槽落 process.env——紧随的 testChannel/适配器下次启动取新值);响应零回显 secret

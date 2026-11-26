@@ -10,7 +10,7 @@ import { displayNameOf, identityOf, EMPTY_FORM, mergeDrafts, newChannelId, split
 import { notifyChannelsChanged } from '../sidebar/use-menu-channels';
 import { SESSION_DELETED_EVENT } from '../session-events';
 import type { ChannelDraft, ChannelForm, ChannelModal } from './channel-drafts';
-import type { ChannelConfigMsg, ChannelHealthRowMsg } from '../connection-api';
+import type { ChannelConfigMsg, ChannelHealthRowMsg, ChannelPermissionRowMsg } from '../connection-api';
 import type { SunxTemplateEntry } from '../connection-types';
 import type { WorkspaceRow } from '../connection';
 
@@ -46,6 +46,9 @@ export interface ChannelsPaneConn {
    *  模式=Sunx 时挑选数据源;可选——旧桩缺省时模板下拉隐藏,textarea 直填不受影响 */
   sunxTemplates?(): Promise<{ entries: SunxTemplateEntry[]; warnings: string[] }>;
   workspaces(): Promise<WorkspaceRow[]>;
+  /** GET /channels/:id/permissions（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗
+   *  说明,卡片一个按钮」）:可选——旧测试桩缺席时按钮/自动检测静默跳过 */
+  channelPermissions?(id: string): Promise<{ ok: boolean; rows: ChannelPermissionRowMsg[]; error?: string }>;
 }
 
 /** 健康徽标轮询窗(毫秒;brief §12 裁定 5s 一次) */
@@ -159,6 +162,24 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
 
   /** 删除确认弹窗态(2026-11-23 用户裁定「删除增加弹窗确认,不是原地二次确认」):id+展示名 */
   const [delAsk, setDelAsk] = useState<{ id: string; name: string } | null>(null);
+  /** 权限自检弹窗态（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明,卡片一个
+   *  按钮」）:loading=探测中;rows=平台无关口径(scope/label/required/granted/fallback) */
+  const [permAsk, setPermAsk] = useState<{
+    id: string;
+    name: string;
+    loading: boolean;
+    rows: ChannelPermissionRowMsg[];
+    error?: string;
+  } | null>(null);
+  /** 权限自检单点（卡片按钮与创建成功后自动调用同源） */
+  const checkPermissions = (id: string, name: string): void => {
+    if (typeof conn.channelPermissions !== 'function') return; // 旧桩缺席:静默跳过
+    setPermAsk({ id, name, loading: true, rows: [] });
+    conn.channelPermissions(id).then(
+      (r) => setPermAsk((prev) => (prev !== null && prev.id === id ? { ...prev, loading: false, rows: r.rows, ...(r.ok ? {} : { error: r.error ?? '' }) } : prev)),
+      (err: unknown) => setPermAsk((prev) => (prev !== null && prev.id === id ? { ...prev, loading: false, rows: [], error: errText(err) } : prev)),
+    );
+  };
   /** 删除钮:开确认弹窗(真删除不可恢复,文案明示) */
   // 确认文案用**真名或内部 id**(未命名不套平台占位):删除不可逆,须精确指认是哪一条
   const askDelete = (d: ChannelDraft): void => setDelAsk({ id: d.id, name: d.name !== '' ? d.name : d.id });
@@ -305,6 +326,9 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
         setModal(null);
         setForm(EMPTY_FORM);
         load();
+        // 创建通道时主动检测权限（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗
+        // 说明」）:新增后自动探一次并弹说明（编辑保存不打扰）;非 feishu 平台该面空列=不弹
+        if (modal.mode === 'add' && saved.platform === 'feishu') checkPermissions(id, displayNameOf(saved));
         // 自动取名(2026-11-22 用户裁定「保存时自动获取飞书的应用名称做占位」):应用名称留空
         // 且试连拿到平台侧应用名 → 静默回填 name=botId 再落一次(全表写,门保持闭合)
         return conn.testChannel(id).then(
@@ -378,6 +402,7 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
             busy={busy}
             onDelete={() => askDelete(d)}
             onTest={() => testOnly(d.id)}
+            onCheckPermissions={() => checkPermissions(d.id, displayNameOf(d))}
             onEdit={() => openModal(d)}
             onToggle={() => toggleCard(d)}
           />
@@ -427,6 +452,41 @@ export function ChannelsPane({ conn }: ChannelsPaneProps): JSX.Element {
             <button type="submit" form="sx-channel-del-form" className="sx-danger-solid" disabled={savingId === delAsk.id}>
               {savingId === delAsk.id ? t('Deleting…', '删除中…') : t('Delete', '删除')}
             </button>
+          </div>
+        </ModalShell>
+      )}
+      {/* 权限自检弹窗(2026-11-25 用户裁定):列出必开/可选权限、当前状态与缺失时的兜底表现 */}
+      {permAsk !== null && (
+        <ModalShell title={`${t('Permissions', '权限检查')} · ${permAsk.name}`} onClose={() => setPermAsk(null)} modifier="sx-turn-confirm">
+          <div className="sx-turn-confirm-body">
+            {permAsk.loading && <p>{t('Checking permissions…', '正在检测权限…')}</p>}
+            {permAsk.error !== undefined && permAsk.error !== '' && <ErrorBanner text={permAsk.error} />}
+            {!permAsk.loading && permAsk.error === undefined && permAsk.rows.length === 0 && (
+              <p>{t('This platform has no permission probe.', '该平台暂无可检测的权限项。')}</p>
+            )}
+            {permAsk.rows.length > 0 && (
+              <ul className="sx-perm-list">
+                {permAsk.rows.map((r) => (
+                  <li key={r.scope} className="sx-perm-row">
+                    <div className="sx-perm-head">
+                      <span className="sx-perm-label">{r.label}</span>
+                      <span className={`sx-perm-chip ${r.granted === true ? 'ok' : r.granted === false ? 'miss' : 'unknown'}`}>
+                        {r.granted === true
+                          ? t('Granted', '已开通')
+                          : r.granted === false
+                            ? t('Missing', '缺失')
+                            : t('Unverified', '需自行确认')}
+                      </span>
+                    </div>
+                    <div className="sx-perm-scope">{r.scope}{r.required ? ` · ${t('Required', '必须')}` : ` · ${t('Optional', '可选')}`}</div>
+                    {r.granted !== true && <div className="sx-perm-fallback">{r.fallback}</div>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="sx-turn-confirm-actions">
+            <button type="button" onClick={() => setPermAsk(null)}>{t('Close', '关闭')}</button>
           </div>
         </ModalShell>
       )}

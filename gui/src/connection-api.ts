@@ -48,6 +48,15 @@ import type { ConnectionState } from './connection-types';
  *  ChannelConfigMsg=PUT /settings/channels 写面入参行（parseChannelsKey 归一形）、
  *  ChannelHealthRowMsg=GET /channels 健康快照行、ChannelBindingMsg=GET /channels/bindings 绑定行
  *  （行含 rootOverride——channels Task 9 handlers 实装，供聊天信息条回显） */
+/** 通道权限自检行（与 serve adapters/types ChannelPermissionRow 同构） */
+export interface ChannelPermissionRowMsg {
+  scope: string;
+  label: string;
+  required: boolean;
+  granted: boolean | null;
+  fallback: string;
+}
+
 export interface ChannelConfigMsg {
   id: string;
   platform: 'feishu' | 'dingtalk' | 'wecom' | 'telegram' | 'mock';
@@ -124,6 +133,10 @@ export interface Connection {
    *  not-found/secret-missing/ident-invalid/connect-failed/start-failed，D111：GUI 按码映射文案
    *  免 daemon 文案子串耦合），成功 {ok:true,botId} */
   testChannel(id: string): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }>;
+  /** GET /channels/:id/permissions（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗
+   *  说明,哪些必须/哪些可选,缺失时兜底显示什么」）：dry-run 独立实例探测；rows 平台无关口径
+   *  （granted null=无法在空聊天态探测，需自行确认） */
+  channelPermissions(id: string): Promise<{ ok: boolean; rows: ChannelPermissionRowMsg[]; error?: string }>;
   /** GET /channels/bindings：绑定档全列（行含 rootOverride 供聊天信息条回显——Task 13 消费） */
   channelBindings(): Promise<{ bindings: ChannelBindingMsg[] }>;
   /** DELETE /channels/bindings/:key：解除绑定（journal 留盘；缺失 404 非幂等，写面从严）——

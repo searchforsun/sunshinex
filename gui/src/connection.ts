@@ -524,6 +524,12 @@ export function createConnection(opts: ConnectionOpts): Connection {
     testChannel(id: string) {
       return postJson<{ ok: boolean; botId?: string; error?: string; code?: string }>(`/channels/${encodeURIComponent(id)}/test`, {});
     },
+    channelPermissions(id: string) {
+      // 权限自检（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明」）
+      return getJson<{ ok: boolean; rows: Array<{ scope: string; label: string; required: boolean; granted: boolean | null; fallback: string }>; error?: string }>(
+        `/channels/${encodeURIComponent(id)}/permissions`,
+      );
+    },
     channelBindings() {
       return getJson<{ bindings: ChannelBindingMsg[] }>('/channels/bindings');
     },

@@ -45,11 +45,12 @@ function makeConn(chans: ChannelHealthRowMsg[] = [], opts: { cfg?: ChannelConfig
   });
   const testChannel = vi.fn(async (): Promise<{ ok: boolean; botId?: string; error?: string; code?: string }> => ({ ok: true, botId: 'bot-1' }));
   const deleteChannel = vi.fn(async (): Promise<{ ok: true; removedSessionIds?: string[] }> => ({ ok: true }));
+  const channelPermissions = vi.fn(async () => ({ ok: true, rows: [{ scope: 'im:chat:readonly', label: '群信息', required: true, granted: false, fallback: '回落显示聊天 id' }, { scope: 'contact:user.base:readonly', label: '通讯录', required: false, granted: true, fallback: '回落成员列表' }] }));
   const models = vi.fn(async (): Promise<{ choices: Array<{ id: string; model: string }> }> => ({ choices: [{ id: 'bigmodel/glm-5.3', model: 'glm-5.3' }] }));
   const workspaces = vi.fn(async () => [{ slug: 'proj-a', root: 'D:/proj/a', mtime: 1, sessionCount: 0 }]);
   const sunxTemplates = vi.fn(async () => ({ entries: opts.templates ?? [], warnings: [] }));
-  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces, sunxTemplates } as unknown as ChannelsPaneConn;
-  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, models, workspaces, sunxTemplates };
+  const conn = { channelsView, settingsChannels, putChannels, testChannel, deleteChannel, channelPermissions, models, workspaces, sunxTemplates } as unknown as ChannelsPaneConn;
+  return { conn, channelsView, settingsChannels, putChannels, testChannel, deleteChannel, channelPermissions, models, workspaces, sunxTemplates };
 }
 
 describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联回显）', () => {
@@ -172,6 +173,22 @@ describe('ChannelsPane（Task 15 终形态：ProvidersPane 克隆 + 密钥内联
     }
     // 摘卡:余 mock-2 一张
     await waitFor(() => expect(container.querySelectorAll('.sx-rc')).toHaveLength(1));
+  });
+
+  /** ⑰ 权限自检（2026-11-25 用户裁定「卡片一个按钮,弹窗说明缺哪些权限/必须/可选/兜底」）:
+   *  卡片盾形钮 → GET /channels/:id/permissions → 弹窗逐项显状态(已开通/缺失/需自行确认)+
+   *  缺失项兜底说明 */
+  it('opens the permissions dialog with per-scope status and fallbacks', async () => {
+    const { conn, channelPermissions } = makeConn([healthRow({ id: 'feishu-x', platform: 'feishu' })]);
+    render(<ChannelsPane conn={conn} />);
+    fireEvent.click(await screen.findByRole('button', { name: bi('Check permissions feishu-x', '检查权限 feishu-x') }));
+    await waitFor(() => expect(channelPermissions).toHaveBeenCalledWith('feishu-x'));
+    expect(await screen.findByText(bi('Missing', '缺失'))).toBeDefined();
+    expect(screen.getByText('回落显示聊天 id')).toBeDefined(); // 缺失项兜底说明
+    expect(screen.getByText(bi('Granted', '已开通'))).toBeDefined();
+    expect(screen.getByText(/im:chat:readonly/)).toBeDefined();
+    expect(screen.getByText(/· (Required|必须)/)).toBeDefined();
+    expect(screen.getByText(/· (Optional|可选)/)).toBeDefined();
   });
 
   /** ⑥ full-access 红字警示（弹窗内 role=alert） */

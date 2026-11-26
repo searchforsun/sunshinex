@@ -23,7 +23,7 @@
  */
 import { CHANNEL_MAX_TEXT_LENGTH } from '../model';
 import { ChannelAdapterError } from './types';
-import type { AdapterDeps, ChannelAdapter, ChatRef } from './types';
+import type { AdapterDeps, ChannelAdapter, ChannelPermissionRow, ChatRef } from './types';
 import type { ChannelConfig, DeliveryCaps, InboundMessage, OutboundMessage } from '../model';
 
 /** 飞书 App ID 形态（SDK start() 同款校验——非法形态 SDK 静默不连,此处提前给可读错误） */
@@ -148,18 +148,25 @@ interface LarkReactionResponse {
 }
 
 /** Lark 通讯录响应体最小形状(GET contact/v3/users/:open_id:data.user.name) */
-interface LarkUserResponse {
+interface LarkUserResponse extends LarkRespBase {
   data?: { user?: { name?: string } };
 }
 
+/** Lark 业务响应公共头（2026-11-25 排查:SDK request 对 code!==0 的**业务错误不抛异常**,
+ *  直接回 {code,msg}——旧实现只看 data 字段,权限失败被静默吞掉且日志永不触发） */
+interface LarkRespBase {
+  code?: number;
+  msg?: string;
+}
+
 /** Lark 聊天信息响应体最小形状(GET im/v1/chats/:chat_id:data.name——群聊名;单聊常空/不支持) */
-interface LarkChatResponse {
+interface LarkChatResponse extends LarkRespBase {
   data?: { name?: string };
 }
 
 /** Lark 群成员响应体最小形状(GET im/v1/chats/:chat_id/members:data.items[]——
  *  member_id+name 建姓名表,单聊名称回落也取 name;分页 has_more/page_token) */
-interface LarkChatMembersResponse {
+interface LarkChatMembersResponse extends LarkRespBase {
   data?: { items?: Array<{ member_id?: string; name?: string }>; has_more?: boolean; page_token?: string };
 }
 
@@ -348,6 +355,7 @@ export class FeishuAdapter implements ChannelAdapter {
           url: `/open-apis/contact/v3/users/${openId}`,
           params: { user_id_type: 'open_id' },
         })) as LarkUserResponse;
+        this.logBiz('用户姓名读取', resp, openId);
         const name = resp?.data?.user?.name;
         return typeof name === 'string' && name !== '' ? name : undefined;
       } catch (e) {
@@ -377,6 +385,7 @@ export class FeishuAdapter implements ChannelAdapter {
       if (this.client === undefined) return undefined;
       try {
         const resp = (await this.client.request({ method: 'GET', url: `/open-apis/im/v1/chats/${chatId}` })) as LarkChatResponse;
+        this.logBiz('聊天信息读取', resp, chatId);
         const name = resp?.data?.name;
         if (typeof name === 'string' && name !== '') return name;
       } catch (e) {
@@ -410,6 +419,60 @@ export class FeishuAdapter implements ChannelAdapter {
     return p;
   }
 
+  /** 业务错误日志单点（code!==0 时打一行;成功/无 code 零动作）——权限失败从此可诊断 */
+  private logBiz(name: string, resp: LarkRespBase, key: string): void {
+    if (resp.code === undefined || resp.code === 0) return;
+    (this.deps.log ?? (() => {}))(`feishu ${name} 失败(${key}): code=${resp.code} msg=${resp.msg ?? ''}`);
+  }
+
+  /** 权限自检（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明,哪些必须/哪些可选,
+   *  缺失时兜底显示什么」）:空聊天态可探测的两项 + 发送权限（无法探测,提示需确认）——
+   *  ① im:chat:readonly:GET /im/v1/chats 探群信息/成员读取（缺→聊天名称与发送者姓名无法富化,
+   *     回落显示聊天 id/用户 id）;
+   *  ② contact:user.base:readonly:用无效 open_id 探通讯录读域——权限缺失与「用户不存在」按错误码
+   *     区分（缺权限码集/消息含 scope/permission → granted:false）;
+   *  ③ im:message:send_as_bot:发送消息权限无法在无目标聊天时探测,granted:null 提示自行确认。 */
+  async probePermissions(): Promise<ChannelPermissionRow[]> {
+    if (this.client === undefined) return [];
+    const rows: ChannelPermissionRow[] = [];
+    const call = async (url: string, params?: Record<string, string>): Promise<LarkRespBase & { data?: unknown }> => {
+      try {
+        return (await this.client!.request({ method: 'GET', url, ...(params !== undefined ? { params } : {}) })) as LarkRespBase & { data?: unknown };
+      } catch (e) {
+        return { code: -1, msg: e instanceof Error ? e.message : String(e) };
+      }
+    };
+    // ① 群信息/成员读取
+    const chat = await call('/open-apis/im/v1/chats', { page_size: '1' });
+    rows.push({
+      scope: 'im:chat:readonly',
+      label: '获取群组信息 / 群成员',
+      required: true,
+      granted: chat.code === 0,
+      fallback: '缺失时聊天名称、发送者姓名无法富化——hover 与消息来源行回落显示聊天 id / 用户 id',
+    });
+    // ② 通讯录读（用无效 open_id 探测权限面:缺权限码集判定）
+    const DENIED = new Set([99991672, 99991663, 99991668, 99991679]);
+    const probe = await call('/open-apis/contact/v3/users/ou_00000000000000000000000000000000', { user_id_type: 'open_id' });
+    const deniedByMsg = /scope|permission|access denied|权限/i.test(probe.msg ?? '');
+    rows.push({
+      scope: 'contact:user.base:readonly',
+      label: '获取用户基本信息（通讯录）',
+      required: false,
+      granted: probe.code === 0 ? true : !(deniedByMsg || (probe.code !== undefined && DENIED.has(probe.code))),
+      fallback: '缺失时发送者姓名回落为群成员列表（需 im:chat:readonly）;两者都缺失则显示用户 id',
+    });
+    // ③ 发送消息（无法探测）
+    rows.push({
+      scope: 'im:message:send_as_bot',
+      label: '以应用身份发送消息',
+      required: true,
+      granted: null,
+      fallback: '缺失时机器人无法回复（该权限需在开放平台自行确认;建议开通）',
+    });
+    return rows;
+  }
+
   /** 群成员姓名回落（2026-11-25 用户报障「群聊权限已有,用户名拿不到」根修）:通讯录取名需
    *  contact 读域——改用 GET im/v1/chats/:chat_id/members（im:chat:readonly 同域）建
    *  open_id→name 表;按 chat 缓存,只缓存成功。分页至多 3 页(300 人)防大群卡顿,超出者回落 id */
@@ -431,6 +494,7 @@ export class FeishuAdapter implements ChannelAdapter {
           url: `/open-apis/im/v1/chats/${chatId}/members`,
           params: { member_id_type: 'open_id', page_size: '100', ...(pageToken !== '' ? { page_token: pageToken } : {}) },
         })) as LarkChatMembersResponse;
+        this.logBiz('群成员列表读取', resp, chatId);
         for (const m of resp?.data?.items ?? []) {
           if (typeof m.member_id === 'string' && typeof m.name === 'string' && m.name !== '') names.set(m.member_id, m.name);
         }

@@ -48,7 +48,23 @@ export interface ChannelAdapter {
   stream?(target: ChatRef, delta: StreamDelta): Promise<void>;
   ack?(inbound: InboundMessage, kind: 'accepted' | 'queued'): Promise<void>;
   botName?(): Promise<string | undefined>;
+  /** 权限自检（2026-11-25 用户裁定「创建通道时主动检测缺少哪些权限,给弹窗说明」）:适配器按平台
+   *  能力逐项探测——required=必须(缺失即功能不可用/兜底降级),granted null=无法在空聊天态探测
+   *  （仅能提示需自行确认）;fallback=缺失时的兜底表现（给用户解释「否则会显示成什么」） */
+  probePermissions?(): Promise<ChannelPermissionRow[]>;
   emit?(msg: InboundMessage): void;
+}
+
+/** 通道权限自检行（平台无关口径;feishu 的首个实现见 adapters/feishu.ts） */
+export interface ChannelPermissionRow {
+  /** 飞书开放平台权限码（如 im:chat:readonly） */
+  scope: string;
+  /** 权限名称（人读） */
+  label: string;
+  required: boolean;
+  granted: boolean | null;
+  /** 缺失时的兜底表现（弹窗说明用） */
+  fallback: string;
 }
 
 /** 适配器依赖注入:平台密钥(secret 来自通道条目内联 secret 字段,内联裁定——权威口径

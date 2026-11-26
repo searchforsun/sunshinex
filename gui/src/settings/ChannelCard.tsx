@@ -1,4 +1,4 @@
-import { Pencil, PlugZap, Trash2 } from 'lucide-react';
+import { Pencil, PlugZap, ShieldCheck, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { Switch } from './components';
 import { allowLabel, displayNameOf, modeLabel, platformLabel } from './channel-drafts';
@@ -12,7 +12,7 @@ import type { ChannelHealthRowMsg } from '../connection-api';
  * 删除=单击开**确认弹窗**（2026-11-23 用户裁定「删除增加弹窗确认,不是原地二次确认」——
  * 真删除该应用+相关会话记录+数据目录,弹窗文案明示不可恢复）。
  */
-export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onToggle }: {
+export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onToggle, onCheckPermissions }: {
   readonly d: ChannelDraft;
   /** 健康轮询行(状态点数据源;缺行=未连接态) */
   readonly healthRow: ChannelHealthRowMsg | undefined;
@@ -23,6 +23,8 @@ export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onTo
   readonly onTest: () => void;
   readonly onEdit: () => void;
   readonly onToggle: () => void;
+  /** 权限自检（2026-11-25 用户裁定「卡片一个按钮,弹窗说明缺哪些权限/必须/可选/兜底」） */
+  readonly onCheckPermissions: () => void;
 }): JSX.Element {
   return (
     <li className="sx-rc">
@@ -51,6 +53,17 @@ export function ChannelCard({ d, healthRow, busy, onDelete, onTest, onEdit, onTo
             onClick={onTest}
           >
             <PlugZap size={14} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+          {/* 权限自检钮（2026-11-25 用户裁定「卡片一个按钮,弹窗说明」）:裸图标必带 hover 提示 */}
+          <button
+            type="button"
+            className="sx-iconbtn"
+            aria-label={`${t('Check permissions', '检查权限')} ${d.id}`}
+            data-tip={t('Check permissions', '检查权限')}
+            disabled={busy || d.platform !== 'feishu'}
+            onClick={onCheckPermissions}
+          >
+            <ShieldCheck size={14} strokeWidth={1.75} aria-hidden="true" />
           </button>
           <button
             type="button"
