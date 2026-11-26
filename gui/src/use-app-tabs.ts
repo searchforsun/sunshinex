@@ -59,8 +59,8 @@ export function useAppTabs(opts: {
   openLeaderBubble: (m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }) => void;
   /** 跨 Sunx 归因行定位信号(2026-11-26 用户裁定「点击气泡上蓝色 sunx 名字定位到对应发送气泡的
    *  轮次中」):journalId=发送方档,runSeq=发送轮 run 条目 seq——Chat 播种后滚到该轮并闪光 */
-  sunxPeerFocus: { journalId: string; runSeq: number; nonce: number } | null;
-  focusSunxPeer: (f: { journalId: string; runSeq: number }) => void;
+  sunxPeerFocus: { journalId: string; nonce: number; runSeq?: number; text?: string } | null;
+  focusSunxPeer: (f: { journalId: string; runSeq?: number; text?: string }) => void;
   clearSunxPeerFocus: () => void;
   openWebTab: (url: string) => void;
   openBoardTab: () => void;
@@ -167,8 +167,8 @@ export function useAppTabs(opts: {
   const [leaderFocus, setLeaderFocus] = useState<{ member: string; text: string; dir: 'toLeader' | 'fromLeader'; nonce: number } | null>(null);
   const openLeaderBubble = useCallback((m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }): void => { setLeaderFocus({ ...m, nonce: Date.now() }); }, []);
   /** 跨 Sunx 定位信号（2026-11-26）：App 组合 openSunxInstance 后下发——nonce 驱动 Chat 侧一次性消费 */
-  const [sunxPeerFocus, setSunxPeerFocus] = useState<{ journalId: string; runSeq: number; nonce: number } | null>(null);
-  const focusSunxPeer = useCallback((f: { journalId: string; runSeq: number }): void => { setSunxPeerFocus({ ...f, nonce: Date.now() }); }, []);
+  const [sunxPeerFocus, setSunxPeerFocus] = useState<{ journalId: string; nonce: number; runSeq?: number; text?: string } | null>(null);
+  const focusSunxPeer = useCallback((f: { journalId: string; runSeq?: number; text?: string }): void => { setSunxPeerFocus({ ...f, nonce: Date.now() }); }, []);
   /** 一次性消费收口（Chat 侧定位完成/放弃后清信号——切回该会话不重复跳转） */
   const clearSunxPeerFocus = useCallback((): void => { setSunxPeerFocus(null); }, []);
   /** 浏览器工具联动(2026-10-31 用户裁定「浏览器默认直接打开侧栏的浏览器」):agent 走

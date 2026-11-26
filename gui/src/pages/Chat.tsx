@@ -91,7 +91,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onOpenSunx, sunxPeerFocus, onSunxPeerFocusDone, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
+export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onOpenSunx, onOpenSunxBubble, sunxPeerFocus, onSunxPeerFocusDone, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   /** 通道会话信息(2026-11-22 用户裁定系列):journalId 命中绑定档 → 空态平台图标 hero、
@@ -172,7 +172,16 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const chatLastDistRef = useRef(0);
   /** 滚动内容锚镜像(非贴底每拍更新;切回锚式落点数据源,同 scroll-mem 存档) */
   const chatAnchorRef = useRef<{ key: string; off: number } | undefined>(undefined);
-  useChatLocate({ leaderFocus, chatScrollRef, chatStickRef });
+  /** 发送方视角目标气泡定位（2026-11-26 用户裁定「点击可以跳转到指定气泡」）：目标=目标会话里刚投递的
+   *  那条用户气泡（按正文匹配，useMemo 保引用恒定） */
+  const sunxBubbleFocus = useMemo(
+    () => (sunxPeerFocus !== null && sunxPeerFocus !== undefined && typeof sunxPeerFocus.text === 'string' && sunxPeerFocus.text !== ''
+      && journalId !== undefined && journalId !== '' && sunxPeerFocus.journalId === journalId
+      ? { text: sunxPeerFocus.text, nonce: sunxPeerFocus.nonce }
+      : undefined),
+    [sunxPeerFocus, journalId],
+  );
+  useChatLocate({ leaderFocus, chatScrollRef, chatStickRef, sunxBubbleFocus, onSunxBubbleFocusDone: onSunxPeerFocusDone });
   /** G14.85 @ 工作区文件选择:文件清单懒加载(BFS 限深限数,跳噪声目录)+触发态 */
   const [filePal, setFilePal] = useState<{ query: string; from: number } | null>(null);
   const [filePalFiles, setFilePalFiles] = useState<string[]>([]);
@@ -724,6 +733,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         onFork={kindHint === 'sunx' ? undefined : onForkRun} // Sunx fork=域内新线程入口,旧会话级 fork 关闭(2026-11-21)
         onOpenSession={onOpenSession}
         onOpenSunx={onOpenSunx}
+        onOpenSunxBubble={onOpenSunxBubble}
         revealRequest={sunxRevealRequest}
         onRevealDone={onSunxPeerFocusDone}
         onEntryToggleClick={onEntryToggleClick}

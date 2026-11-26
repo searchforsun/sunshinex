@@ -1,4 +1,4 @@
-import { useEffect, type MutableRefObject } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 import { rAFConverge } from '../../ui-util';
 import { zoomScale } from '../../ui-zoom';
 
@@ -6,15 +6,21 @@ import { zoomScale } from '../../ui-zoom';
  *  成员转录 leader 链接定位。命中即撤贴底跟随，锚定+rAF 迭代校正（content-visibility 离屏估高）。
  *  待办卡主名字→用户气泡定位随 2026-11-25「去掉和用户消息的绑定」裁定退役（待办是会话级清单，
  *  不再归属某个用户气泡）。
- *  跨 Sunx 归因定位（2026-11-26）不走本簇：落点单点在 MessageList（revealRequest，与左侧刻度
- *  同路径、无闪光），本簇只保留 leader 定位。
+ *  跨 Sunx 两个方向（2026-11-26）：①接收方点来源行→发送轮落点走 MessageList（revealRequest，与左侧
+ *  刻度同路径、无闪光）；②发送方点投递行目标名→目标会话里刚投递的用户气泡（按正文匹配，本簇
+ *  sunxBubbleFocus，leader 同款 rAF 收敛）。
  */
 export function useChatLocate({
   leaderFocus,
+  sunxBubbleFocus,
+  onSunxBubbleFocusDone,
   chatScrollRef,
   chatStickRef,
 }: {
   leaderFocus: { member: string; text: string; dir: 'toLeader' | 'fromLeader'; nonce: number } | null | undefined;
+  /** 跨 Sunx 投递目标气泡定位（2026-11-26 用户裁定「点击可以跳转到指定气泡」）：正文 needle + nonce */
+  sunxBubbleFocus?: { text: string; nonce: number } | null;
+  onSunxBubbleFocusDone?: () => void;
   chatScrollRef: MutableRefObject<HTMLElement | null>;
   chatStickRef: MutableRefObject<boolean>;
 }): void {
@@ -43,4 +49,50 @@ export function useChatLocate({
       el.scrollTop += d / zoomScale();
     }, 2);
   }, [leaderFocus, chatScrollRef, chatStickRef]);
+
+  /** 跨 Sunx 投递目标气泡定位（2026-11-26）：目标会话里刚投递的那条用户气泡（正文前缀匹配，
+   *  末条优先——同文多投取最新）；未挂载（播种中）时 ≤90 帧有界轮询，命中即滚到位（无闪光，
+   *  与刻度同款 scrollTop+rAFConverge）、消费清信号 */
+  const bubbleHandledRef = useRef(0);
+  useEffect(() => {
+    const f = sunxBubbleFocus;
+    if (f === null || f === undefined || bubbleHandledRef.current === f.nonce) return;
+    const el = chatScrollRef.current;
+    if (el === null) return;
+    const norm = (x: string): string => x.replace(/\s+/g, ' ').trim();
+    const needle = norm(f.text).slice(0, 60);
+    const find = (): HTMLElement | undefined =>
+      needle === ''
+        ? undefined
+        : [...el.querySelectorAll<HTMLElement>('.entry-user[data-entry-key]')]
+            .filter((n) => norm(n.querySelector('.user-md-plain')?.textContent ?? '').includes(needle))
+            .at(-1);
+    const land = (node: HTMLElement): void => {
+      chatStickRef.current = false;
+      el.scrollTop += (node.getBoundingClientRect().top - el.getBoundingClientRect().top) / zoomScale();
+      rAFConverge(el, () => node.getBoundingClientRect().top - el.getBoundingClientRect().top, (d) => {
+        el.scrollTop += d / zoomScale();
+      }, 2);
+    };
+    bubbleHandledRef.current = f.nonce;
+    const hit = find();
+    if (hit !== undefined) {
+      land(hit);
+      onSunxBubbleFocusDone?.();
+      return;
+    }
+    let tries = 0;
+    const seek = (): void => {
+      const n2 = find();
+      if (n2 === undefined) {
+        tries += 1;
+        if (tries < 90) requestAnimationFrame(seek);
+        else onSunxBubbleFocusDone?.();
+        return;
+      }
+      land(n2);
+      onSunxBubbleFocusDone?.();
+    };
+    requestAnimationFrame(seek);
+  }, [sunxBubbleFocus, onSunxBubbleFocusDone, chatScrollRef, chatStickRef]);
 }

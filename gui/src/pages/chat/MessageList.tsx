@@ -79,6 +79,8 @@ export interface MessageListProps {
   /** 跨 Sunx 来源行跳转(2026-11-26):user 气泡来源行点击 → attachSunx 打开该实例并定位发送轮
    *  (runSeq;未配=只读) */
   readonly onOpenSunx?: (journalId: string, runSeq?: number) => void;
+  /** 发送方视角目标气泡跳转（2026-11-26）：send_sunx_messages 行目标名点击 → 目标会话该条气泡 */
+  readonly onOpenSunxBubble?: (journalId: string, text: string) => void;
   /** 跨 Sunx 归因定位请求(2026-11-26「和左侧刻度一样,定位到轮次就可以」):key=k<runSeq> 的条目；
    *  落点复用刻度跳转单点(revealEntry 扩窗 + rAFConverge 收敛,无闪光)；消费后 onRevealDone 清信号 */
   readonly revealRequest?: { key: string; nonce: number } | null;
@@ -269,7 +271,9 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const onSendArg = props.submitText !== undefined ? submitTextStable : undefined;
   // 跨 Sunx 来源行跳转(2026-11-26):同可选收口——未配=来源行只读不跳
   const onOpenSunxStable = useCallback((jid: string, runSeq?: number) => propsRef.current.onOpenSunx?.(jid, runSeq), []);
+  const onOpenSunxBubbleStable = useCallback((jid: string, text: string) => propsRef.current.onOpenSunxBubble?.(jid, text), []);
   const onOpenSunxArg = props.onOpenSunx !== undefined ? onOpenSunxStable : undefined;
+  const onOpenSunxBubbleArg = props.onOpenSunxBubble !== undefined ? onOpenSunxBubbleStable : undefined;
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
   const onOpenTurnStable = useCallback((run: number, path: string) => propsRef.current.onOpenTurn?.(run, path), []);
@@ -306,8 +310,9 @@ export function MessageList(props: MessageListProps): JSX.Element {
       taskAgentOf={taskAgentOfStable}
       teamNameOf={teamNameOfArg}
       teams={props.teams}
+      onOpenSunxBubble={onOpenSunxBubbleArg}
     />
-  ), [conn, sessionId, callIdOfStable, root, onOpenFileArg, onOpenDiffArg, onOpenAgentArg, onOpenTaskArg, props.onOpenTodos, props.onOpenArtifacts, taskNameOfStable, taskAgentOfStable, teamNameOfArg, props.teams]);
+  ), [conn, sessionId, callIdOfStable, root, onOpenFileArg, onOpenDiffArg, onOpenAgentArg, onOpenTaskArg, props.onOpenTodos, props.onOpenArtifacts, taskNameOfStable, taskAgentOfStable, teamNameOfArg, props.teams, onOpenSunxBubbleArg]);
   const renderThinking = useCallback((e2: ChatEntry) => <ThinkingEntryView key={e2.key} entry={e2} />, []);
   const renderAssistant = useCallback((e2: ChatEntry) => <ChatEntryView key={e2.key} entry={e2} onOpenDiff={onEntryOpenDiffStable} onOpenTurn={onOpenTurnArg} onTurnRestore={onTurnRestoreArg} onOpenAgent={onOpenAgentArg} sideChat={sideChat} />, [onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat]);
   const renderFoldEntry = useCallback((e2: ChatEntry) => {

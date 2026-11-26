@@ -116,9 +116,12 @@ export interface ChatProps {
    *  轮次中」):发送方 journalId → App openSunxInstance(attachSunx 直寻址重开) + runSeq 定位该轮;
    *  未配=来源行只读 */
   onOpenSunx?: (journalId: string, runSeq?: number) => void;
+  /** 发送方视角目标气泡跳转（2026-11-26 用户裁定「点击可以跳转到指定气泡」）：target journalId +
+   *  消息正文（App 打开目标会话并定位该条用户气泡） */
+  onOpenSunxBubble?: (journalId: string, text: string) => void;
   /** 跨 Sunx 归因行定位信号（2026-11-26 用户裁定「定位到对应发送气泡的轮次中」）：发送方 journalId
    *  + 轮次锚 runSeq + nonce——本会话命中即滚到该轮并闪光；消费/放弃后 onSunxPeerFocusDone 清信号 */
-  sunxPeerFocus?: { journalId: string; runSeq: number; nonce: number } | null;
+  sunxPeerFocus?: { journalId: string; nonce: number; runSeq?: number; text?: string } | null;
   onSunxPeerFocusDone?: () => void;
   /** 回退(2026-11-05 编辑重发):App 接 rewindSession+页签迁座+换座,编辑重发唯一通道;
    *  未配=编辑卡退回追加发送(辅助对话页签/测试桩)。resend=回退落定后重发的编辑文本 */

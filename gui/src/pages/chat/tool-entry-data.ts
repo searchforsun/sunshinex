@@ -188,14 +188,7 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
     if (flat.length <= 72) return flat;
     return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
   }
-  if (name === 'send_sunx_messages') {
-    // 折叠行目标=消息正文首行(收件人是 journalId,人不读 id;正文才是这一行的语义)
-    const v = input.text;
-    if (typeof v !== 'string' || v === '') return undefined;
-    const flat = (v.split('\n')[0] ?? v).trim();
-    if (flat.length <= 72) return flat;
-    return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
-  }
+  // send_sunx_messages 折叠行目标=目标实例蓝色名（ToolEntry 专门分型按投递回执解析），正文进展开体
   const key =
     name === 'exec'
       ? 'command'

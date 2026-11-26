@@ -631,6 +631,12 @@ function AppShell(): JSX.Element {
     openSunxInstance({ journalId, root: '' });
     if (runSeq !== undefined && runSeq > 0) focusSunxPeer({ journalId, runSeq });
   }, [openSunxInstance, focusSunxPeer]);
+  /** 发送方视角（2026-11-26 用户裁定「发送消息后面跟上目标 sunx 蓝色名字,点击可以跳转到指定气泡」）：
+   *  打开发送目标会话并按正文定位刚投递的那条用户气泡 */
+  const openSunxPeerBubbleStable = useCallback((journalId: string, text: string): void => {
+    openSunxInstance({ journalId, root: '' });
+    focusSunxPeer({ journalId, text });
+  }, [openSunxInstance, focusSunxPeer]);
   /** 菜单包装回调簇收口 use-app-menu(D62 专项 二段五段 自 App.tsx 逐字平迁,行为零变化):菜单头导航/
    *  侧栏入口包装/定时任务层开合/在座直达/新建与合成入口/文件树点开。原「延迟闭包判例」留宿主;
    *  环解(use-app-overlays 早位)后诸输入全数就位,收口成钩——调用置于 useAppLinks 之后
@@ -839,6 +845,7 @@ function AppShell(): JSX.Element {
     sunxPeerFocus,
     clearSunxPeerFocus,
     openSunxPeerStable,
+    openSunxPeerBubbleStable,
     memoryFocus,
     learnedFocus,
     bgFocus,

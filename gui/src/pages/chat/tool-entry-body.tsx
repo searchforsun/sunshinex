@@ -142,6 +142,25 @@ export function ToolEntryBody({
       </div>
     );
     }
+  } else if (toolName === 'send_sunx_messages') {
+    // 跨 Sunx 投递行展开体（2026-11-26 用户裁定「展开就是具体的 sunx 信息」）：目标实例（名称+寻址 id）
+    // + 正文；回执不进体（折叠行已示目标名，投递态在 result 行）
+    const receipt = /message delivered to (.+?) \(([^)\s]+)\)/.exec(fullResult);
+    const toId = receipt?.[2] ?? (typeof input.to === 'string' ? input.to : '');
+    const toName = receipt?.[1] ?? '';
+    const sent = typeof input.text === 'string' ? input.text : '';
+    body = (
+      <div className="tool-md ask-record">
+        <div className="ask-q">
+          {t('Target Sunx', '目标 Sunx')}: {toName !== '' ? `${toName} (${toId})` : toId}
+        </div>
+        {sent !== '' && (
+          <div className="ask-answer kind-answer">
+            <span className="ask-answer-text">{sent}</span>
+          </div>
+        )}
+      </div>
+    );
   } else if (toolName === 'skill') {
     body = (
       <div className="tool-md">

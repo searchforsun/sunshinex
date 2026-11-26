@@ -46,6 +46,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   teamNameOf,
   teams,
   taskAgentOf,
+  onOpenSunxBubble,
 }: {
   entry: ChatEntry;
   conn: Connection;
@@ -71,6 +72,9 @@ export const ToolEntryView = memo(function ToolEntryView({
   teams?: readonly { teamId: string; name: string }[];
   /** 后台任务 id → 子智能体(后台 spawn 回执映射;非子智能体任务=undefined)——办公模式等待行链接转录页 */
   taskAgentOf?: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
+  /** 跨 Sunx 投递行目标名点击(2026-11-26 用户裁定「发送消息后面跟上目标 sunx 蓝色名字,点击可以跳转
+   *  到指定气泡」):journalId=目标实例,text=消息正文——App 打开目标会话并定位该条气泡 */
+  onOpenSunxBubble?: (journalId: string, text: string) => void;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(false);
   /** 办公模式(ui-mode.ts):行不可展开(read 行整行开文件=跳转保留);文件行去 +/- 统计;非跳转行只显
@@ -144,6 +148,12 @@ export const ToolEntryView = memo(function ToolEntryView({
     toolName === 'send_agent_team_message' && typeof input.to === 'string' && input.to !== '' ? input.to : '';
   const messageText =
     toolName === 'send_agent_team_message' && typeof input.text === 'string' ? input.text : '';
+  /** 跨 Sunx 投递行（2026-11-26 用户裁定）：折叠行=动词+目标实例蓝色名（点击跳目标会话该条气泡）；
+   *  目标名从投递回执「message delivered to <name> (<id>)」解析（运行中尚未回执=只显动词） */
+  const sunxSendText = toolName === 'send_sunx_messages' && typeof input.text === 'string' ? input.text : '';
+  const sunxSendReceipt = toolName === 'send_sunx_messages' ? /message delivered to (.+?) \(([^)\s]+)\)/.exec(resultText) : null;
+  const sunxSendName = sunxSendReceipt?.[1] ?? '';
+  const sunxSendId = sunxSendReceipt?.[2] ?? (typeof input.to === 'string' ? input.to : '');
   /** 收件人=主会话 leader:点击开智能体团队定位该队(2026-11-07 用户裁定「发送团队消息两模式都可点」——
    *  成员收件人开其转录页) */
   const messageToLeader = messageTo === 'leader' || messageTo === 'lead'; // 旧档 to='lead' 显示归一 leader(2026-11-08 清残留)
@@ -229,6 +239,7 @@ export const ToolEntryView = memo(function ToolEntryView({
   const hideTargetWhileRunning = executing && (
     toolName === 'spawn' || toolName === 'create_agent_teammate' || toolName === 'create_agent_team'
     || toolName === 'send_agent_team_message'
+    || toolName === 'send_sunx_messages'
     || (toolName === 'create_agent_team_task' && createTaskTitle !== '')
     || toolName === 'skill' || taskOpName !== undefined
   );
@@ -541,6 +552,23 @@ export const ToolEntryView = memo(function ToolEntryView({
           </span>
         ) : (
           <span className="tool-file-base tool-cmd">{messageTo !== '' ? ` ${messageToLabel}` : ''}</span>
+        )
+      ) : !hideTargetWhileRunning && toolName === 'send_sunx_messages' ? (
+        /* 跨 Sunx 投递行：目标实例蓝色名（点击打开目标会话并定位该条气泡；正文进展开体） */
+        sunxSendName !== '' && onOpenSunxBubble !== undefined ? (
+          <span
+            role="button"
+            tabIndex={-1}
+            className="tool-file-base tool-agent-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenSunxBubble(sunxSendId, sunxSendText);
+            }}
+          >
+            {' '}{sunxSendName}
+          </span>
+        ) : (
+          <span className="tool-file-base tool-cmd">{sunxSendName !== '' ? ` ${sunxSendName}` : ''}</span>
         )
       ) : !hideTargetWhileRunning && officeAgentWaits.length > 0 ? (
         <span className="tool-link-list">
