@@ -40,6 +40,10 @@ export type ChatMessage =
 export interface SunxPeerRef {
   id: string;
   name: string;
+  /** 发送方发送时刻的在飞轮次锚（kernel run 条目 seq；2026-11-26 用户裁定「点击气泡上蓝色 sunx
+   *  名字定位到对应发送气泡的轮次中」）——接收方点击归因行时打开发送方会话并滚到该轮；缺席=只能
+   *  打开会话（发送方已空闲/旧档） */
+  runSeq?: number;
 }
 
 /** 用户穿插行（GUI/TUI 提交与等待队列共载形）：text 正文；images 随行图片附件。

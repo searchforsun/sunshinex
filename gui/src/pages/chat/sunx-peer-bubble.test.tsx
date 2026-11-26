@@ -25,13 +25,13 @@ function peerEntry(over: Partial<ChatEntry> = {}): ChatEntry {
  *  对方视角=用户气泡形态，来源行(SunxIcon+实例名)在气泡上方;前缀与回答提示行只属模型面/链面，
  *  显示侧同剥——用户只看到正文 */
 describe('跨 Sunx 消息气泡(来源行)', () => {
-  it('来源行=实例名 + 点击跳转发送方 journalId;正文剥掉前缀与回答提示行', () => {
+  it('来源行=实例名 + 点击跳转发送方 journalId 与发送轮次锚;正文剥掉前缀与回答提示行', () => {
     const onOpenSunx = vi.fn();
-    const { container } = render(<UserEntryView entry={peerEntry()} onOpenSunx={onOpenSunx} />);
+    const { container } = render(<UserEntryView entry={peerEntry({ fromSunx: { ...PEER, runSeq: 12 } })} onOpenSunx={onOpenSunx} />);
     const btn = screen.getByRole('button', { name: /Planner/ });
     expect(btn.getAttribute('data-tip')).toContain('打开该 Sunx');
     fireEvent.click(btn);
-    expect(onOpenSunx).toHaveBeenCalledWith('sunx-jid-aaa');
+    expect(onOpenSunx).toHaveBeenCalledWith('sunx-jid-aaa', 12); // runSeq=定位到发送方该轮
     // 前缀 + 提示行剥显：气泡正文只有原文
     expect(container.textContent).toContain('看板第三列卡住了');
     expect(container.textContent).not.toContain('[fromSunx');

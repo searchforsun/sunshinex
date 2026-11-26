@@ -20,6 +20,8 @@ export interface PeersSessionLike {
   /** 域目录外窥（SessionRuntime.dataDir 同形）——旁车 meta 读面（名称/品行归因）寻址 */
   readonly dataDir: string;
   status(): string;
+  /** 在飞轮次锚（kernel run 条目 seq；空闲=-1——随归因下行,GUI 点击归因行据此定位发送轮） */
+  openRunSeq(): number;
   pendingSnapshot(): ReadonlyArray<unknown>;
   submitExternal(text: string, images?: string[], fromSunx?: SunxPeerRef): { ok: boolean; status?: number };
   steer(text: string, images?: string[], fromSunx?: SunxPeerRef): void;
@@ -45,12 +47,14 @@ function displayName(s: PeersSessionLike | undefined, dataDir: string | undefine
   return 'Sunx';
 }
 
-/** caller 会话归因：journalId 未铸（首轮前）时该会话还发不出对等消息——返回 undefined 即拒绝 */
+/** caller 会话归因：journalId 未铸（首轮前）时该会话还发不出对等消息——返回 undefined 即拒绝。
+ *  runSeq=此刻在飞轮次锚（发送动作所在轮次——接收方点击归因行定位到该轮） */
 function callerRef(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: string): SunxPeerRef | undefined {
   const s = sessions.get(callerId);
   const jid = s?.attachedJournalId;
   if (s === undefined || jid === undefined || jid === '') return undefined;
-  return { id: jid, name: displayName(s, s.dataDir, jid) };
+  const runSeq = s.openRunSeq();
+  return { id: jid, name: displayName(s, s.dataDir, jid), ...(runSeq > 0 ? { runSeq } : {}) };
 }
 
 /**

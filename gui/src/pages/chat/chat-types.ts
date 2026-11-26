@@ -112,9 +112,14 @@ export interface ChatProps {
   onTodoLocate?: (todos: Array<{ text: string; status: string }>, title?: string) => void;
     /** 2026-11-04 fork 横幅导航:「分叉于会话」点击回父会话(App openSession;root 同源) */
   onOpenSession?: (sessionId: string) => void;
-  /** 跨 Sunx 消息来源行跳转(2026-11-26 用户裁定「可点击跳转指定 sunx」):发送方 journalId →
-   *  App openSunxInstance(attachSunx 直寻址重开,与侧栏 SUNX 行/看板卡片同链);未配=来源行只读 */
-  onOpenSunx?: (journalId: string) => void;
+  /** 跨 Sunx 消息来源行跳转(2026-11-26 用户裁定「可点击跳转指定 sunx」+「定位到对应发送气泡的
+   *  轮次中」):发送方 journalId → App openSunxInstance(attachSunx 直寻址重开) + runSeq 定位该轮;
+   *  未配=来源行只读 */
+  onOpenSunx?: (journalId: string, runSeq?: number) => void;
+  /** 跨 Sunx 归因行定位信号（2026-11-26 用户裁定「定位到对应发送气泡的轮次中」）：发送方 journalId
+   *  + 轮次锚 runSeq + nonce——本会话命中即滚到该轮并闪光；消费/放弃后 onSunxPeerFocusDone 清信号 */
+  sunxPeerFocus?: { journalId: string; runSeq: number; nonce: number } | null;
+  onSunxPeerFocusDone?: () => void;
   /** 回退(2026-11-05 编辑重发):App 接 rewindSession+页签迁座+换座,编辑重发唯一通道;
    *  未配=编辑卡退回追加发送(辅助对话页签/测试桩)。resend=回退落定后重发的编辑文本 */
   onRewind?: (req: RewindRequest) => Promise<void>;

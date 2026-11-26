@@ -11,6 +11,7 @@ import { applySeed, initialKernelState } from './entry';
 import type { KernelEntry } from './entry';
 
 const PEER = { id: 'sunx-jid-aaa', name: 'Planner' };
+const PEER_RUN = { id: 'sunx-jid-aaa', name: 'Planner', runSeq: 12 };
 
 test('user 条归因:submit(fromSunx) → 条目携带 + seg 行落档 + 重放回种同字段', () => {
   const events: KernelEvent[] = [];
@@ -32,6 +33,20 @@ test('user 条归因:submit(fromSunx) → 条目携带 + seg 行落档 + 重放�
   assert.deepEqual(replay[0]?.fromSunx, PEER, 'replay 归因不丢');
   const seeded = applySeed(initialKernelState(), replay as ReadonlyArray<KernelEntry & { seq?: number }>);
   assert.deepEqual(seeded.entries[0]?.fromSunx, PEER, 'seed 回种归因不丢');
+});
+
+test('user 条归因:runSeq 轮次锚随档往返（点击归因行定位到发送方该轮）', () => {
+  const events: KernelEvent[] = [];
+  const k = new SessionKernel({ onKernelEvent: (ev) => events.push(ev) });
+  k.submit('[fromSunx: Planner (sunx-jid-aaa)] hi', undefined, PEER_RUN);
+  const entry = k.replay().find((e) => e.kind === 'user');
+  assert.deepEqual(entry?.fromSunx, PEER_RUN, '条目携带 runSeq');
+  const segOpen = events.find((ev) => ev.t === 'seg-open');
+  const rows = kernelEventRows(segOpen!) as SegRowLike[];
+  assert.deepEqual(reduceSegRows(rows)[0]?.fromSunx, PEER_RUN, 'seg 行往返 runSeq 不丢');
+  // 坏值净化：runSeq 非正/非数即弃（归因仍在，退化为只打开会话）
+  const replay = reduceSegRows([{ t: 'seg', kind: 'user', md: 'x', ts: 1, seq: 1, fromSunx: { id: 'a', name: 'n', runSeq: -3 } }]);
+  assert.deepEqual(replay[0]?.fromSunx, { id: 'a', name: 'n' });
 });
 
 test('user 条归因:普通用户提交零字段（旧行为逐字节不变）', () => {

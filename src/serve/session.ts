@@ -1792,6 +1792,12 @@ ${this.sessionCharter ?? ''}` }
     return r;
   }
 
+  /** 在飞轮次锚（kernel run 条目 seq；空闲=-1。2026-11-26 跨 Sunx 定位：发送方发送时刻的轮次，
+   *  随 fromSunx 归因下行——接收方点击归因行打开发送方会话并滚到该轮） */
+  openRunSeq(): number {
+    return this.kernel.openRun();
+  }
+
   /** 中止当前 run：步边界/在途模型调用经 signal 即刻中止（reactor 既有语义），runTask 以
    *  stopReason=interrupted 收束后 finally 清锁。阻塞中的 exit_plan 挂起 executor 同为中断面：
    *  denyPlanPendings 回填（放弃/拒绝）+中止信号,executor 恢复后 run 以 interrupted 收束 */

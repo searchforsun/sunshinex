@@ -176,6 +176,11 @@ export interface AppShellPanesProps {
   sideSinkFor: (sideId: string, parent?: string) => MutableRefObject<ChatSink | null>;
   sideReleased: SideChatsReturn['sideReleased'];
   openSunxInstance: AppLinksReturn['openSunxInstance'];
+  /** 跨 Sunx 归因行定位信号与开签回调（2026-11-26 用户裁定「点击气泡上蓝色 sunx 名字定位到对应
+   *  发送气泡的轮次中」）：openSunxPeer=打开发送方实例+下发轮次锚；Chat 消费后 clear 清信号 */
+  sunxPeerFocus: { journalId: string; runSeq: number; nonce: number } | null;
+  clearSunxPeerFocus: () => void;
+  openSunxPeerStable: (journalId: string, runSeq?: number) => void;
   memoryFocus: AppLinksReturn['memoryFocus'];
   learnedFocus: AppLinksReturn['learnedFocus'];
   bgFocus: AppLinksReturn['bgFocus'];
@@ -196,7 +201,7 @@ export interface AppShellPanesProps {
  *  宿主保留:全部状态/回调装配与非 JSX effects。 */
 export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
   const {
-    openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, openSunxBoardFromMenu, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabLit, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, memoryFocus, learnedFocus, bgFocus, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
+    openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, openSunxBoardFromMenu, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabLit, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, sunxPeerFocus, clearSunxPeerFocus, openSunxPeerStable, memoryFocus, learnedFocus, bgFocus, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
   } = props;
   const activeTab = tabState.tabs.find((t2) => t2.uid === tabState.activeUid) ?? null;
   return (
@@ -353,9 +358,11 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
                       onOpenLearned={openLearnedTab}
                       onFork={onForkStable}
                       onOpenSession={openParentSessionStable}
-                      // 跨 Sunx 来源行点击(2026-11-26 用户裁定「可点击跳转指定 sunx」):journalId 直寻址
-                      // attachSunx 重开(与侧栏 SUNX 行/看板卡片同链);root 由 attach 应答回填
-                      onOpenSunx={(jid) => openSunxInstance({ journalId: jid, root: '' })}
+                      // 跨 Sunx 来源行点击(2026-11-26 用户裁定「可点击跳转指定 sunx」+「点击气泡上蓝色
+                      // sunx 名字定位到对应发送气泡的轮次中」):attachSunx 打开实例 + runSeq 轮次锚定位
+                      onOpenSunx={openSunxPeerStable}
+                      sunxPeerFocus={sunxPeerFocus}
+                      onSunxPeerFocusDone={clearSunxPeerFocus}
                       onOpError={showOpError}
                       onRewind={onRewindStable}
                     />

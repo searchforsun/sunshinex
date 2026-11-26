@@ -792,19 +792,25 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    气泡下方原位,z 提层保不受邻条压盖 */
 .entry.entry-user { content-visibility: visible; } /* 双类提特异性:压缩包里 .entry{cv:auto} 在更晚位置有第二份,单类同特异性按序会输 */
 .entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
-/* 跨 Sunx 来源行(2026-11-26 用户裁定「上面 sunx 图标加名称显示,可点击跳转指定 sunx」):
-   右对齐贴气泡上缘;图标=Sunx 产品小字形(SunxIcon),色档 secondary——tertiary 在 14px 灰阶下
-   与普通消息图标难分辨(用户二轮实测);可点态 hover 提亮(与正文链接同一 affordance) */
-.user-from-sunx { display: flex; justify-content: flex-end; margin: 0 2px 2px 0; }
+/* 跨 Sunx 来源行(2026-11-26 用户裁定「上面 sunx 图标加名称显示」「点击气泡上蓝色 sunx 名字」
+   「参考智能体团队的样式」):与 .agent-msg-head/.agent-msg-from 同款——14px、名称 accent+600、
+   hover 下划线(无底片)、gap 6、图标=Sunx 产品小字形(SunxIcon 14px);右对齐贴气泡上缘 */
+.user-from-sunx { display: flex; align-items: center; justify-content: flex-end; gap: 6px; max-width: 85%; margin: 0 2px 4px 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 .user-from-sunx-btn {
-  display: inline-flex; align-items: center; gap: 5px;
-  padding: 1px 6px 1px 4px; border: none; border-radius: var(--radius-sm);
-  background: transparent; color: var(--fg-secondary);
-  font: calc(11.5px * var(--fz)) var(--font-ui); cursor: default; max-width: 60%;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 0; border: none; background: transparent;
+  color: var(--accent); /* 蓝色 Sunx 名(与成员消息 .agent-msg-from 同档) */
+  font: inherit; font-weight: 600; cursor: default; max-width: 100%;
 }
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 button.user-from-sunx-btn { cursor: pointer; }
-button.user-from-sunx-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+button.user-from-sunx-btn:hover { text-decoration: underline; }
+/* 跨 Sunx 归因定位闪光(2026-11-26:点击蓝色名字打开对方会话并滚到发送轮——目标 run 行短暂高亮) */
+.chat-locate-flash { animation: chat-locate-flash 1.6s var(--ease-enter) 1; border-radius: var(--radius-sm); }
+@keyframes chat-locate-flash {
+  0% { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  100% { background: transparent; }
+}
 /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」根修:.entry 的 content-visibility(auto=paint
    containment) 让每条目自成 stacking context,兄弟按 DOM 序压盖——内部 z-index 出不去,气泡下方
    悬浮动作钮被后续条目整层盖住。hover/focus 时整条提层(flex item 可用 z-index):3>邻条 auto */

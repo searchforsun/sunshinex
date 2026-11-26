@@ -478,6 +478,7 @@ function AppShell(): JSX.Element {
     startSideChat, sideGoals, setSideGoals, upgradeSideChat, sideListing, sideReleased,
     tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, tabCloseActiveStable,
     panelRefreshNonce, openTabInSession, openDiffTab, openTurndiffTab, openAgentTab, leaderFocus, openLeaderBubble, openWebTab,
+    sunxPeerFocus, focusSunxPeer, clearSunxPeerFocus,
     openBoardTab, openTabType, openTabLit, openArtifactsTab, hiddenMenuIds, closeTabInSession, closeDockTab,
     handlePtyAllocated, ptyIdFor, webPoolItems, curSeatRef,
   } = useAppTabs({ connInstance, connRef, sessionRef, openJournalIdRef, backHomeRef, page, isWelcome, openSessionId, openRoot, tabStates, tabState, setTabStates, agentTeamsOn, sideSinksRef, sideParentRef, probe: PROBE });
@@ -623,6 +624,13 @@ function AppShell(): JSX.Element {
     openProjectDirectory, openDirectoryPath, openFileTab, openFileFromTree, openSunxInstance,
     bgFocus, openTaskFocus, setMenuDir,
   } = useAppLinks({ connInstance, connRef, openRoot, openSessionId, openSession, openTabInSession, openBoardTab, setTaskFocus, setMenuClosed, showOpError });
+  /** 跨 Sunx 归因行点击（2026-11-26 用户裁定「点击气泡上蓝色 sunx 名字定位到对应发送气泡的轮次中」）：
+   *  打开发送方实例（attachSunx 直寻址重开）+ 下发该轮定位信号——Chat 播种后滚到对应 run 并闪光； 
+   *  runSeq 缺席（旧档/发送方空闲无锚）= 只打开会话 */
+  const openSunxPeerStable = useCallback((journalId: string, runSeq?: number): void => {
+    openSunxInstance({ journalId, root: '' });
+    if (runSeq !== undefined && runSeq > 0) focusSunxPeer({ journalId, runSeq });
+  }, [openSunxInstance, focusSunxPeer]);
   /** 菜单包装回调簇收口 use-app-menu(D62 专项 二段五段 自 App.tsx 逐字平迁,行为零变化):菜单头导航/
    *  侧栏入口包装/定时任务层开合/在座直达/新建与合成入口/文件树点开。原「延迟闭包判例」留宿主;
    *  环解(use-app-overlays 早位)后诸输入全数就位,收口成钩——调用置于 useAppLinks 之后
@@ -828,6 +836,9 @@ function AppShell(): JSX.Element {
     sideSinkFor,
     sideReleased,
     openSunxInstance,
+    sunxPeerFocus,
+    clearSunxPeerFocus,
+    openSunxPeerStable,
     memoryFocus,
     learnedFocus,
     bgFocus,

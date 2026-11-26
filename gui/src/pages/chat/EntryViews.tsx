@@ -156,10 +156,12 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   const runPrefix = wakePrefix ?? scheduledPrefix ?? restoredPrefix;
   const wakeStart = wake !== undefined || scheduled === true || restored === true;
   if (!streaming) {
-    // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形
+    // G14.31:sealed 行即轮折叠开关——点击折叠/展开其后工具与思考行;chevron 恒渲染、hover 显形。
+    // data-entry-key=跨 Sunx 归因行定位锚(2026-11-26:接收方点击来源行,滚到发送方该轮)
     return (
       <div
         className={`entry entry-run sealed${wakeStart ? ' wake-start' : ''}`}
+        data-entry-key={entry.key}
         aria-label="run summary"
         role={onToggle !== undefined ? 'button' : undefined}
         tabIndex={onToggle !== undefined ? 0 : undefined}
@@ -195,10 +197,12 @@ export const RunEntryView = memo(function RunEntryView({ entry, collapsed, onTog
   }
   const elapsed = entry.ts !== undefined ? Math.max(0, Math.round((Date.now() - entry.ts) / 1000)) : 0;
   // G14.11:状态行只示时长(圆圈/tokens 迁工具行尾)——tokens 参数保留由调用面透传(历史签名)
-  // 运行中也可折叠(2026-11-07 用户裁定):折叠留最后一条工具/思考行与最后一段正文,封段后常规折叠
+  // 运行中也可折叠(2026-11-07 用户裁定):折叠留最后一条工具/思考行与最后一段正文,封段后常规折叠。
+  // data-entry-key 同上（跨 Sunx 归因定位锚）
   return (
     <div
       className={`entry entry-run live${wakeStart ? ' wake-start' : ''}`}
+      data-entry-key={entry.key}
       role={onToggle !== undefined ? 'button' : 'status'}
       aria-label="run status"
       tabIndex={onToggle !== undefined ? 0 : undefined}
@@ -328,8 +332,9 @@ interface UserEntryOpts {
   /** 气泡缩略图点击开查看浮层(2026-10-26 图片功能;未配=缩略图不可点) */
   onOpenImage?: (src: string) => void;
   /** 跨 Sunx 消息来源行点击跳转(2026-11-26):发送方 journalId → attachSunx 打开该实例;
+   *  runSeq=发送方发送轮次锚 → 打开后滚到该轮(用户二轮裁定「定位到对应发送气泡的轮次中」);
    *  未配=归因行只读不跳(测试桩/旁路面免配) */
-  onOpenSunx?: (journalId: string) => void;
+  onOpenSunx?: (journalId: string, runSeq?: number) => void;
 }
 
 /** 跨 Sunx 注入前缀剥显（2026-11-26 用户裁定「前缀加上 fromSunx」「提示添加到这里」）：md 落档/
@@ -566,7 +571,12 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
       {entry.fromSunx !== undefined && (
         <div className="user-from-sunx">
           {onOpenSunx !== undefined ? (
-            <button type="button" className="user-from-sunx-btn" data-tip={`${t('Open this Sunx', '打开该 Sunx')} · ${entry.fromSunx.name}`} onClick={() => onOpenSunx(entry.fromSunx!.id)}>
+            <button
+              type="button"
+              className="user-from-sunx-btn"
+              data-tip={`${t('Open this Sunx at this turn', '打开该 Sunx 并定位到这一轮')} · ${entry.fromSunx.name}`}
+              onClick={() => onOpenSunx(entry.fromSunx!.id, entry.fromSunx!.runSeq)}
+            >
               <SunxIcon size={14} strokeWidth={1.75} aria-hidden="true" />
               <span>{entry.fromSunx.name}</span>
             </button>

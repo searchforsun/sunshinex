@@ -42,7 +42,7 @@ interface FakeSession extends PeersSessionLike {
   queued: Array<{ text: string; from?: SunxPeerRef }>;
 }
 
-function fakeSession(over: Partial<PeersSessionLike> & { jid?: string; name?: string; st?: string }): FakeSession {
+function fakeSession(over: Partial<PeersSessionLike> & { jid?: string; name?: string; st?: string; runSeq?: number }): FakeSession {
   const s: FakeSession = {
     sent: [],
     queued: [],
@@ -52,6 +52,7 @@ function fakeSession(over: Partial<PeersSessionLike> & { jid?: string; name?: st
     root: over.root ?? 'D:/w/x',
     dataDir: '',
     status: () => over.st ?? 'idle',
+    openRunSeq: () => over.runSeq ?? -1,
     pendingSnapshot: () => [],
     submitExternal(text, _images, from) { s.sent.push({ text, ...(from !== undefined ? { from } : {}) }); return { ok: true }; },
     steer(text, _images, from) { s.queued.push({ text, ...(from !== undefined ? { from } : {}) }); },
@@ -86,7 +87,7 @@ test('投递:idle 目标=submitExternal 起轮（用户气泡语义）；前缀 
   seedDomain('peer-a', { title: 'Planner' });
   const target = fakeSession({ jid: 'peer-a', name: 'Planner', st: 'idle' });
   const sessions = new Map<string, PeersSessionLike>();
-  sessions.set('s-caller', fakeSession({ jid: 'caller-jid', name: 'Caller', st: 'running' }));
+  sessions.set('s-caller', fakeSession({ jid: 'caller-jid', name: 'Caller', st: 'running', runSeq: 7 }));
   sessions.set('s-a', target);
 
   const r = deliverSunxPeerMessage(sessions, 's-caller', 'peer-a', '第三列卡住了');
@@ -98,7 +99,7 @@ test('投递:idle 目标=submitExternal 起轮（用户气泡语义）；前缀 
     '[fromSunx: Caller (caller-jid)] 第三列卡住了\n\n(From another Sunx, not from the user. Reply to that Sunx with send_sunx_messages, to="caller-jid".)',
     '前缀格式+正文原样+回答提示行（英文单语——进模型上下文的文案恒英文）',
   );
-  assert.deepEqual(target.sent[0]!.from, { id: 'caller-jid', name: 'Caller' }, '结构化归因随行（GUI 来源行）');
+  assert.deepEqual(target.sent[0]!.from, { id: 'caller-jid', name: 'Caller', runSeq: 7 }, '结构化归因随行（GUI 来源行+发送轮次锚，点击定位该轮）');
 });
 
 test('投递:running 目标=steer 入队（类似用户气泡直接进入排队，轮收束补跑）', () => {

@@ -76,8 +76,9 @@ export interface MessageListProps {
   readonly toggleRun: (key: string) => void;
   /** 编辑卡重发回调(可选,Sunx 2026-11-24 置空收编辑入口:undefined=气泡 Edit 钮不渲染) */
   readonly submitText?: (text: string, images?: string[]) => Promise<void>;
-  /** 跨 Sunx 来源行跳转(2026-11-26):user 气泡来源行点击 → attachSunx 打开该实例(未配=只读) */
-  readonly onOpenSunx?: (journalId: string) => void;
+  /** 跨 Sunx 来源行跳转(2026-11-26):user 气泡来源行点击 → attachSunx 打开该实例并定位发送轮
+   *  (runSeq;未配=只读) */
+  readonly onOpenSunx?: (journalId: string, runSeq?: number) => void;
   readonly rewindOps?: RewindOps;
   readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
@@ -263,7 +264,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
   // 编辑重发面随可选 submitText 缺席收口(2026-11-24 Sunx 编辑入口关闭):undefined=气泡 Edit 钮不渲染
   const onSendArg = props.submitText !== undefined ? submitTextStable : undefined;
   // 跨 Sunx 来源行跳转(2026-11-26):同可选收口——未配=来源行只读不跳
-  const onOpenSunxStable = useCallback((jid: string) => propsRef.current.onOpenSunx?.(jid), []);
+  const onOpenSunxStable = useCallback((jid: string, runSeq?: number) => propsRef.current.onOpenSunx?.(jid, runSeq), []);
   const onOpenSunxArg = props.onOpenSunx !== undefined ? onOpenSunxStable : undefined;
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
