@@ -507,32 +507,12 @@ export function MessageList(props: MessageListProps): JSX.Element {
     }
     return undefined;
   }, [units, running, segEntriesOf]);
-  /** 在途轮 key(末个 run 条目且 streaming;无=undefined):简洁模式「运行中展开=全行可见」的归属判据 */
-  const liveRunKey = useMemo(() => {
-    for (let i = entries.length - 1; i >= 0; i -= 1) {
-      const e = entries[i]!;
-      if (e.kind === 'run') return e.streaming === true ? e.key : undefined;
-    }
-    return undefined;
-  }, [entries]);
-  /** 在途轮内的 seg 块(2026-11-26 用户裁定「运行中打开=显示所有的工具/思考行」):
-   *  这些段在轮展开态默认把折叠体打开(全行可见),轮封口后自动收回折叠头 */
-  const liveRunSegs = useMemo(() => {
-    const out = new Set<string>();
-    if (liveRunKey === undefined) return out;
-    let cur: string | undefined;
-    for (const u of units) {
-      if (u.kind === 'run') cur = u.key;
-      else if (u.kind === 'user') cur = undefined;
-      else if (u.kind === 'seg' && cur === liveRunKey) out.add(u.key);
-    }
-    return out;
-  }, [units, liveRunKey]);
-  /** 折叠轮内露折叠头的段(2026-11-26 两轮裁定):封口轮=最后一个可折叠段当本轮摘要;在途轮
-   *  (折叠运行中)=该轮所有可折叠段都露头(最后正文之外的折叠行走廊)——纯投影,见 transcript-units */
+  /** 折叠轮末段(2026-11-26 用户裁定「折叠:最后一个正文+一条折叠行」,封口/运行中同口径):
+   *  每个折叠轮内最后一个可折叠 seg 块在折叠态露折叠头一行当本轮工作摘要(其余段照旧全隐),
+   *  点击该头=展开整轮——与点轮头同动作。纯投影,见 transcript-units */
   const foldedPeek = useMemo(
-    () => foldedPeekSegs(units, collapsedRuns, (u) => isConciseFoldableSeg(segEntriesOf(u)), liveRunKey),
-    [units, collapsedRuns, segEntriesOf, liveRunKey],
+    () => foldedPeekSegs(units, collapsedRuns, (u) => isConciseFoldableSeg(segEntriesOf(u))),
+    [units, collapsedRuns, segEntriesOf],
   );
 
   const unitIndexByKey = useMemo(() => new Map(units.map((u, i) => [u.key, i])), [units]);
@@ -939,7 +919,6 @@ export function MessageList(props: MessageListProps): JSX.Element {
           seg={segEntries}
           closed={hiddenKeys.has(segEntries[0]!.key)}
           live={u.key === liveSegKey}
-          liveRun={liveRunSegs.has(u.key)}
           peekRunKey={foldedPeek.get(u.key)}
           onExpandRun={toggleRunStable}
           renderTool={renderTool}
@@ -1007,7 +986,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         sideChat={sideChat}
       />
     );
-  }, [hiddenKeys, foldedPeek, liveRunSegs, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, onSendArg, onOpenSunxArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
+  }, [hiddenKeys, foldedPeek, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, onSendArg, onOpenSunxArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
    *  (滚动事件驱动切片),渲染落定后由 landOnUnit 独占实测收敛(返回 true=刻度侧不再另开循环) */

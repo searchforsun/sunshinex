@@ -64,6 +64,7 @@ const sinkRef = { current: null as ChatSink | null };
 /** 2026-11-17 模式派生默认(普通态=办公模式/简洁模式/用量统计关/终端关):本文件断言的是
  *  开发者档转录细节(展开体/折叠行/上下文圆环等),整文件以开发者模式装配,行为回到改造前基线 */
 beforeEach(() => {
+  localStorage.clear(); // 折叠备忘(sunshinex.run-fold.*)随会话持久——清掉防跨测试串态
   applyDeveloperMode(true);
   applyUsageStats(true); // 2026-11-17 缺省改关:本文件断言步数/tokens 面,显式开启
 });
@@ -557,30 +558,35 @@ describe('run 状态行(G11 §1)', () => {
     expect(document.querySelector('.entry-run.sealed')?.textContent).toContain('Worked for 34s');
   });
 
-  it('运行中可折叠(2026-11-07):点 Working 行收起先前工具,末条工具行与在途正文留在外面;再点展开', async () => {
+  it('运行中可折叠(2026-11-26 改口径):点 Working 行收起=只留最后正文+一条折叠行;再点展开=折叠行与阶段正文', async () => {
     mountChat([]);
     await flushed();
     const t0 = Date.now();
     fire({ type: 'model-start', ts: t0 });
     fire({ type: 'tool-call', text: 'read', ts: t0 + 1, payload: { callId: 'c1', input: { path: 'a.ts' } } });
     fire({ type: 'tool-result', text: 'ok', ts: t0 + 2, payload: { callId: 'c1' } });
+    fire({ type: 'token', text: '阶段一。', ts: t0 + 2.5 });
     fire({ type: 'tool-call', text: 'write', ts: t0 + 3, payload: { callId: 'c2', input: { path: 'b.ts' } } });
     fire({ type: 'tool-result', text: 'ok', ts: t0 + 4, payload: { callId: 'c2' } });
     fire({ type: 'token', text: '正在收尾', ts: t0 + 5 });
     const liveRow = document.querySelector<HTMLElement>('.entry-run.live')!;
     expect(liveRow.getAttribute('role')).toBe('button');
     expect(liveRow.getAttribute('aria-expanded')).toBe('true');
-    expect(document.querySelectorAll('.seg-collapse:not(.open)').length).toBe(0);
-    act(() => liveRow.click());
+    // 展开(正常运行显示):折叠行在、阶段正文在
+    const headsOpen = [...document.querySelectorAll('.concise-fold')].map((n) => n.textContent ?? '').join('|');
+    expect(headsOpen).toContain('Read files');
+    expect(document.body.textContent).toContain('阶段一。');
+    act(() => liveRow.click()); // 折叠
     expect(document.querySelector('.entry-run.live')!.getAttribute('aria-expanded')).toBe('false');
-    const closed = [...document.querySelectorAll('.seg-collapse:not(.open)')];
-    const open = [...document.querySelectorAll('.seg-collapse.open')];
-    expect(closed.map((n) => n.textContent ?? '').join('|')).toContain('a.ts'); // 先前工具收起
-    expect(closed.map((n) => n.textContent ?? '').join('|')).not.toContain('b.ts');
-    expect(open.map((n) => n.textContent ?? '').join('|')).toContain('b.ts'); // 末条工具行留外
-    expect(document.body.textContent).toContain('正在收尾'); // 在途正文可见
-    act(() => document.querySelector<HTMLElement>('.entry-run.live')!.click());
+    const peek = [...document.querySelectorAll('.seg-collapse.open > .concise-fold')].map((n) => n.textContent ?? '').join('|');
+    expect(peek).toContain('Read files'); // 只留一条折叠行
+    expect(peek).not.toContain('a.ts');
+    expect(peek).not.toContain('b.ts'); // 工具行全收(不再留末条原生行)
+    expect(document.body.textContent).toContain('正在收尾'); // 最后一段正文留外
+    expect(document.body.textContent).not.toContain('阶段一。'); // 中间正文随折
+    act(() => document.querySelector<HTMLElement>('.entry-run.live')!.click()); // 再展开
     expect(document.querySelectorAll('.seg-collapse:not(.open)').length).toBe(0);
+    expect(document.body.textContent).toContain('阶段一。');
   });
 
   it('运行中折叠后封段:回到常规折叠——末条工具收起,留终答+末段折叠行(2026-11-26 追加裁定)', async () => {
@@ -594,7 +600,9 @@ describe('run 状态行(G11 §1)', () => {
     fire({ type: 'tool-result', text: 'ok', ts: t0 + 4, payload: { callId: 'c2' } });
     fire({ type: 'token', text: '全部完成', ts: t0 + 5 });
     act(() => document.querySelector<HTMLElement>('.entry-run.live')!.click());
-    expect([...document.querySelectorAll('.seg-collapse.open')].map((n) => n.textContent ?? '').join('|')).toContain('b.ts'); // 在途:末条留外
+    // 在途折叠(2026-11-26 改口径):只留最后正文+一条折叠行,不再留末条原生工具行
+    expect([...document.querySelectorAll('.seg-collapse.open > .concise-fold')].map((n) => n.textContent ?? '').join('|')).toContain('Read files');
+    expect(document.body.textContent).not.toContain('b.ts');
     fire({ type: 'done', text: '全部完成', ts: t0 + 6 });
     expect(document.querySelector('.entry-run.sealed')).not.toBeNull();
     // 2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个折叠工具行」:封段折叠=终答+末段折叠头一行

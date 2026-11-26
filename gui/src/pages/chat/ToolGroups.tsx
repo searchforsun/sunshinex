@@ -167,7 +167,6 @@ function segPropsEqual(prev: ToolSegBlockProps, next: ToolSegBlockProps): boolea
     && prev.seg.every((e, i) => e === next.seg[i])
     && prev.closed === next.closed
     && prev.live === next.live
-    && prev.liveRun === next.liveRun
     && prev.peekRunKey === next.peekRunKey
     && prev.onExpandRun === next.onExpandRun
     && prev.renderTool === next.renderTool
@@ -183,12 +182,9 @@ interface ToolSegBlockProps {
    *  该段把段内最后一条并入面工具行钉在折叠体之外常显(运行行本身=进度),折叠头照常在其上
    *  (2026-11-26 追加裁定:折叠行不许因运行中而消失) */
   live?: boolean;
-  /** 在途轮的任一可折叠段(2026-11-26 用户裁定「运行中打开,显示所有的折叠工具思考行」):
-   *  轮展开态默认把折叠体打开=段内工具/思考行全可见;用户点折叠头仍可逐段收起;
-   *  轮封口后(liveRun 退场)自动收回折叠头形态 */
-  liveRun?: boolean;
   /** 折叠轮末段(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
-   *  查看了文件』折叠工具行」):该段在轮折叠态只露折叠头一行(摘要=整段类别动词),段内内容全隐;
+   *  查看了文件』折叠工具行」;运行中折叠同口径——「折叠:最后一个正文+一条折叠行」):
+   *  该段在轮折叠态只露折叠头一行(摘要=整段类别动词),段内内容全隐;
    *  点击=展开整轮(onExpandRun(peekRunKey),与点轮头同动作)。非折叠态/非简洁模式不生效 */
   peekRunKey?: string;
   onExpandRun?: (runKey: string) => void;
@@ -207,7 +203,6 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   seg,
   closed,
   live,
-  liveRun,
   peekRunKey,
   onExpandRun,
   renderTool,
@@ -278,9 +273,9 @@ export const ToolSegBlock = memo(function ToolSegBlock({
    *  body」:运行中头照常常驻(摘要随类别增长,不闪隐),点开=看内层既有聚合行(第二层)。
    *  折叠轮末段(headOnly):轮已折叠=内容全隐,该段只露折叠头一行当本轮工作摘要,点击=展开整轮 */
   const foldable = foldableEarly;
-  /** 展开态:undefined=跟随轮态(在途轮默认开=运行中全行可见,封口轮默认收);布尔=用户手点过 */
-  const [segOpen, setSegOpen] = useState<boolean | undefined>(undefined);
-  const bodyOpen = segOpen ?? (liveRun === true);
+  /** 展开态跨渲染保持(2026-11-26 用户裁定「运行中展开=正常显示折叠行和阶段正文」:
+   *  折叠体默认收着,点折叠头才看段内工具/思考行) */
+  const [segOpen, setSegOpen] = useState(false);
   const segNodes = nodes.map((n) => {
     if (n.type === 'entry') {
       if (n.entry.kind === 'thinking') return renderThinking(n.entry);
@@ -332,11 +327,11 @@ export const ToolSegBlock = memo(function ToolSegBlock({
         // 此前把折叠类挂 seg-inner 多子容器上,grid 行高只作用首行=空占位/相互覆盖根因)
         <div className="concise-wrap">
           <ConciseFold
-            open={bodyOpen}
-            onToggle={() => setSegOpen(!bodyOpen)}
+            open={segOpen}
+            onToggle={() => setSegOpen((v) => !v)}
             summary={conciseSummary(seg)}
           />
-          <div className={`concise-body${bodyOpen ? ' open' : ''}`}>
+          <div className={`concise-body${segOpen ? ' open' : ''}`}>
             <div className="concise-body-inner">{inner}</div>
           </div>
           {pinnedEarly !== undefined && <div className="concise-live">{renderTool(pinnedEarly)}</div>}

@@ -206,22 +206,6 @@ describe('折叠轮末段投影(2026-11-26 折叠时也显示最后一个折叠�
     expect([...peek]).toEqual([['seg:a', 'r1']]);
   });
 
-  it('在途轮折叠(liveRunKey):该轮所有可折叠段都露头(最后正文之外的折叠行走廊)', () => {
-    const units = [
-      span('r1', 'run'),
-      span('seg:a', 'seg'),
-      span('m1', 'assistant'),
-      span('seg:b', 'seg'),
-      span('m2', 'assistant'),
-      span('tail:n', 'seg'), // 轮尾纯旁白段:不是折叠行
-    ];
-    const peek = foldedPeekSegs(units, new Set(['r1']), foldable, 'r1');
-    expect([...peek]).toEqual([['seg:a', 'r1'], ['seg:b', 'r1']]);
-    // 同一数据按封口轮(无 liveRunKey)取:只留最后一个可折叠段
-    const sealed = foldedPeekSegs(units, new Set(['r1']), foldable);
-    expect([...sealed]).toEqual([['seg:b', 'r1']]);
-  });
-
   it('新开场用户条收束上一轮;日分隔/命令行不断轮', () => {
     const units = [
       span('day:d', 'day'),

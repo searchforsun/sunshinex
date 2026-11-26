@@ -74,21 +74,20 @@ describe('collapsedHiddenKeys 折叠区间边界', () => {
   });
 });
 
-describe('collapsedHiddenKeys 运行中折叠(2026-11-07 用户裁定)', () => {
+describe('collapsedHiddenKeys 运行中折叠(2026-11-26 用户裁定改口径)', () => {
   const live = (key: string): ChatEntry => ({ ...e(key, 'run'), streaming: true } as ChatEntry);
   const streamingText = (key: string): ChatEntry => ({ ...e(key, 'assistant'), streaming: true } as ChatEntry);
 
-  it('在途轮折叠:只留最后一条工具/思考行与最后一段正文(含流式终答),其余工具/思考/中间正文隐藏', () => {
+  it('在途轮折叠:只留最后一段正文(含流式终答);工具/思考行全收——由简洁折叠行末段代表', () => {
     const entries = [live('r1'), e('th1', 'thinking'), e('a1', 'assistant'), e('t1', 'tool'), e('t2', 'tool'), e('th2', 'thinking'), e('a2', 'assistant'), e('t3', 'tool'), streamingText('a3')];
     const hidden = collapsedHiddenKeys(entries, new Set(['r1']));
-    expect([...hidden].sort()).toEqual(['a1', 'a2', 't1', 't2', 'th1', 'th2']);
-    expect(hidden.has('t3')).toBe(false); // 最后一条工具行
+    expect([...hidden].sort()).toEqual(['a1', 'a2', 't1', 't2', 't3', 'th1', 'th2']);
     expect(hidden.has('a3')).toBe(false); // 最后一段正文(流式中的终答)
   });
 
-  it('在途轮尚无正文:只留最后一条工具/思考行;思考行也可作末条;未折叠零隐藏', () => {
+  it('在途轮尚无正文:工具/思考行全收(无留外原生行);未折叠零隐藏', () => {
     const entries = [live('r1'), e('t1', 'tool'), e('th1', 'thinking')];
-    expect([...collapsedHiddenKeys(entries, new Set(['r1']))]).toEqual(['t1']);
+    expect([...collapsedHiddenKeys(entries, new Set(['r1']))].sort()).toEqual(['t1', 'th1']);
     expect(collapsedHiddenKeys(entries, new Set()).size).toBe(0);
   });
 
@@ -97,12 +96,13 @@ describe('collapsedHiddenKeys 运行中折叠(2026-11-07 用户裁定)', () => {
     expect([...collapsedHiddenKeys(entries, new Set(['r1']))].sort()).toEqual(['a1', 't1']);
   });
 
-  it('轮内插入不截断在途轮的末条判定;斜杠命令行不算末条工具', () => {
+  it('轮内插入不截断在途轮的正文判定;斜杠命令行不随折叠', () => {
     const cmd = { ...e('cmd', 'tool'), name: '/compact' } as ChatEntry;
-    const entries = [live('r1'), e('t1', 'tool'), e('u-ins', 'user'), e('t2', 'tool'), cmd];
+    const entries = [live('r1'), e('t1', 'tool'), e('u-ins', 'user'), e('a1', 'assistant'), e('t2', 'tool'), cmd];
     const hidden = collapsedHiddenKeys(entries, new Set(['r1']));
     expect(hidden.has('t1')).toBe(true);
-    expect(hidden.has('t2')).toBe(false);
+    expect(hidden.has('t2')).toBe(true);
+    expect(hidden.has('a1')).toBe(false); // 最后一段正文留外
     expect(hidden.has('u-ins')).toBe(false);
     expect(hidden.has('cmd')).toBe(false);
   });
