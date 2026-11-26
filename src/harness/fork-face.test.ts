@@ -152,8 +152,8 @@ test('sunx fork 子面路由 ask 保留:deps.ask 在场 + askedBy 派生 → ask
   }
 });
 
-test('常量契约:SUNX_ORCHESTRATION_TOOLS = 分派/窥视/调度四件(fix round 1 单点;2026-11-20 并入 schedule_*——子代不得给父会话排定时任务;三派生点同源;对偶 SUNX_FACE_TOOLS、不入板面剔除族)', () => {
-  assert.deepEqual([...SUNX_ORCHESTRATION_TOOLS], ['dispatch_task', 'task_status', 'schedule_wakeup', 'schedule_task'], '编排件剔除族单点内容');
+test('常量契约:SUNX_ORCHESTRATION_TOOLS = 分派/窥视/调度/对等消息六件(fix round 1 单点;2026-11-20 并入 schedule_*——子代不得给父会话排定时任务;2026-11-26 并入跨 Sunx 两件——子代不得互聊代发;三派生点同源;对偶 SUNX_FACE_TOOLS、不入板面剔除族)', () => {
+  assert.deepEqual([...SUNX_ORCHESTRATION_TOOLS], ['dispatch_task', 'task_status', 'schedule_wakeup', 'schedule_task', 'list_sunx_peers', 'send_sunx_messages'], '编排件剔除族单点内容');
   for (const n of SUNX_ORCHESTRATION_TOOLS) {
     assert.ok(SUNX_FACE_TOOLS.includes(n), `${n} 应在 SUNX_FACE_TOOLS 白名单（主链准入——白名单=主链有,本清单=子面必无,语义对偶）`);
     assert.equal(FORK_EXCLUDED_TOOLS.includes(n as typeof FORK_EXCLUDED_TOOLS[number]), false, `${n} 不入 FORK_EXCLUDED_TOOLS（板面剔除族契约不混编排件）`);

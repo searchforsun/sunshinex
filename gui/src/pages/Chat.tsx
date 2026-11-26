@@ -56,7 +56,6 @@ import { useQueue } from './chat/use-queue';
 import { useComposerKeys } from './chat/use-composer-keys';
 import { ChatComposerDock } from './chat/chat-composer-dock';
 import { ChatTranscript } from './chat/chat-transcript';
-import { SessionTodoBar } from './chat/SessionTodoBar';
 import { RENDER_WINDOW_MAX } from './chat/MessageList';
 import { usePopOutsideClose } from '../use-pop-outside-close';
 import { useChatNotify } from './chat/use-chat-notify';
@@ -92,7 +91,7 @@ export function ModeIcon({ mode, size = 13 }: { mode: 'read-only' | 'acceptEdits
 
 /** G14.95 slash 面板令牌解析:原语下沉 mention.ts(与 atomicRange 同族单点),原路径再导出保消费方 */
 
-export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
+export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSeeded, onOpenFile, onOpenDiff, onOpenTurnDiff, onOpenAgent, onOpenWeb, onRunInTerminal, onOpenMemory, onOpenLearned, onOpenTask, board, teams, members, onFork, onOpError, onOpenArtifacts, pendingGoal, onPendingGoalDone, root, onRenamed, onSideChat, fixedTitle, kindHint, sideChat, journalId, onTodos, initialInsert, initialInsertContent, onInsertConsumed, onTodoBatches, onOpenTab, agentTeamsOn = true, bgRunning = 0, chatMem, onSessionsMutated, pins, persistPins, menuClosed, onToggleMenu, nav, onRunStart, leaderFocus, onSideAsk, onTodoLocate, onOpenSession, onOpenSunx, onRewind, ptyIdFor, onPtyAllocated, onCloseDockTab }: ChatProps): JSX.Element {
   /** G14.213 滚动位存档键:journal 档案 id(稳定)优先,缺省回落 sessionId(测试桩/旁路面) */
   const archiveKey = journalId !== undefined && journalId !== '' ? journalId : sessionId;
   /** 通道会话信息(2026-11-22 用户裁定系列):journalId 命中绑定档 → 空态平台图标 hero、
@@ -279,15 +278,12 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
 
   /** 派生投影面(批F-4):任务名/待办批次/关联轮次/动态计数——纯投影收敛 use-chat-derived
    *  (P11 T7 起字段单源:工具 input 暂存注入随旁路退役) */
-  const { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoRecent, todoActive, todoTotal, taskDone, taskRunning, computerUseActive } = useChatDerived({
+  const { taskNameOf, taskAgentOf, teamNameOf, todoActive, todoTotal, taskDone, taskRunning, computerUseActive } = useChatDerived({
     chat,
     board,
     teams,
     onTodoBatches,
   });
-  /** 会话顶待办条数据源（2026-11-25「会话上部显示待办」）:末位=最近更新的待办（派生层按
-   *  标题跨轮归并、updatedTs 升序）;显隐由 todoRecent（最近两轮有 todo_write）把闸 */
-  const sessionTodo = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1] : undefined;
   // 2026-10-26 滚动卡点修复:runFooter 投影引用稳定化——此前逐渲染 new Map,组级 memo 比较器恒失配,
   // 轮询/流式重渲染把整个可见窗 600 条全量重建(滚动中撞上=「鼠标失灵」式冻结);浅等复用旧 Map,
   // 配对真变(段收口/封条)才换身份
@@ -669,11 +665,6 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
       />
       ) : null}
 
-      {/* 会话顶部待办条(2026-11-25 用户裁定「会话上部显示待办」+「最近两轮有触发改待办就显示,
-          显示时机不变」):标题+进度+进行项单行,点击开待办页签;最近两轮无 todo_write 或不活跃
-          时整条不渲染(静态槽位恒在,转录取 DOM 索引不漂) */}
-      {active && todoRecent ? <SessionTodoBar batch={sessionTodo} onOpen={() => onOpenTab?.('tasks')} /> : null}
-
       <ChatTranscript
         active={active}
         channelChat={channelInfo.isChannel} // 通道会话空态=平台图标 hero(2026-11-22 用户裁定样式)
@@ -723,6 +714,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         onTurnRestore={onTurnRestore}
         onFork={kindHint === 'sunx' ? undefined : onForkRun} // Sunx fork=域内新线程入口,旧会话级 fork 关闭(2026-11-21)
         onOpenSession={onOpenSession}
+        onOpenSunx={onOpenSunx}
         onEntryToggleClick={onEntryToggleClick}
         sideChat={sideChat}
         sunxName={sunxLabel}

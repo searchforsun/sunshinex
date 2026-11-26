@@ -8,8 +8,9 @@ import type { ModelTier, ReasoningEffort, SessionKind } from '../types';
 import { ModelSwitcher } from '../model/catalog';
 import type { KernelRuntime } from '../session/runtime';
 import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
+import type { SunxPeersSeam } from '../harness/tools/sunx-peer-tools';
 import type { ModelAdapter } from '../model/adapter';
-import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, SessionEvent, TodoItem } from '../types';
+import type { ApprovalDecision, ApprovalRequest, AskUserAnswer, AskUserRequest, SessionEvent, SunxPeerRef, TodoItem } from '../types';
 import { applyBoardEvent, emptyBoard } from '../taskboard/model';
 import { t } from '../i18n';
 import type { TaskBoardState } from '../taskboard/model';
@@ -226,6 +227,10 @@ export interface SessionRuntimeOpts {
    *  daemon lifecycleIo channelSendFor 按 sessionId 注入，assemble() 透传 harness——
    *  send_channel_message 工具由它投递到绑定聊天；缺席=工具不注册（TUI/CLI） */
   channelSend?: { send(text: string): Promise<boolean> };
+  /** 跨 Sunx 对等消息接缝（2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」）：
+   *  daemon lifecycleIo sunxPeersFor 按 sessionId 注入，assemble() 透传 harness——
+   *  list_sunx_peers/send_sunx_messages 由它枚举活实例/投递；缺席=工具不注册（TUI/CLI/子面） */
+  sunxPeers?: SunxPeersSeam;
 }
 
 /** 挂起表条目（P6 §4 下沉,原 daemon-wire 资产）：kind 判别联合；resolve 即回执值（interrupt/reset
@@ -886,6 +891,8 @@ ${this.sessionCharter ?? ''}` }
       // send_channel_message 工具接缝（spec §6;2026-11-23 用户裁定「补上 send_channel_message」）：
       // daemon lifecycleIo channelSendFor 按 sessionId 注入——接缝在场即注册（CLI/TUI 不注入=缺席）
       ...(this.opts.channelSend !== undefined ? { channelSend: this.opts.channelSend } : {}),
+      // 跨 Sunx 对等消息接缝（2026-11-26）：daemon 注入活实例枚举/投递口——在场即注册两件工具
+      ...(this.opts.sunxPeers !== undefined ? { sunxPeers: this.opts.sunxPeers } : {}),
       // todo_write 接缝（todos 字段单点收写）：批准时宿主按 Steps 播种,执行期模型 todo_write 自管维护
       onTodos: (items) => {
         this.todos = items;
@@ -901,8 +908,8 @@ ${this.sessionCharter ?? ''}` }
     rt.harness.steerSource = () => {
       const lines = this.kernel.steerDrain();
       for (const line of lines) {
-        this.kernel.submit(line.text, line.images); // journal user 条（kernel 事件只走落档面,不广播——帧在下）
-        this.broadcastUserEcho(line.text, line.images); // 出队注入即回显气泡(2026-11-23 用户裁定:出队=入对话;入队期只在队列 chips)
+        this.kernel.submit(line.text, line.images, line.fromSunx); // journal user 条（kernel 事件只走落档面,不广播——帧在下）
+        this.broadcastUserEcho(line.text, line.images, line.fromSunx); // 出队注入即回显气泡(2026-11-23 用户裁定:出队=入对话;入队期只在队列 chips)
       }
       return lines;
     };
@@ -911,8 +918,14 @@ ${this.sessionCharter ?? ''}` }
 
   /** user 回显纯帧广播（不经 kernel.pump——泵路回显曾致转录双气泡+journal
    *  双行,G14.2xx 实测;条目本体由 kernel.submit 写面承载,本帧只管 live 视图） */
-  private broadcastUserEcho(text: string, images?: string[]): void {
-    this.emitBypassFrame({ type: 'user', text, ...(images !== undefined && images.length > 0 ? { images } : {}), ts: Date.now() });
+  private broadcastUserEcho(text: string, images?: string[], fromSunx?: SunxPeerRef): void {
+    this.emitBypassFrame({
+      type: 'user',
+      text,
+      ...(images !== undefined && images.length > 0 ? { images } : {}),
+      ...(fromSunx !== undefined ? { payload: { fromSunx } } : {}),
+      ts: Date.now(),
+    });
   }
 
   // ---- 挂起表（P6 §4 下沉）：注册/回执/回填/外窥,daemon 只做寻址与传输 ----
@@ -1486,6 +1499,8 @@ ${this.sessionCharter ?? ''}` }
       schedule?: { note: string; lateMs?: number };
       restored?: { interrupted: ReadonlyArray<RestoredInterrupted>; materials: ReadonlyArray<RestoredMaterial> };
     },
+    /** 跨 Sunx 投递来源（2026-11-26）：进内核 user 条归因（seg 行/replay 全链贯通） */
+    fromSunx?: SunxPeerRef,
   ): SessionSubmitResult {
     if (this.current) return { ok: false, status: 409, error: 'run in progress' };
     if (wake === undefined) {
@@ -1556,7 +1571,7 @@ ${this.sessionCharter ?? ''}` }
       // 打断清单/素材列在通知文正文（人读投影）,显示走普通 run 行（<session-restored> 安静清单不显示）
       this.pumpWakeNotice(buildSessionRestoredNotification(wake.restored.interrupted, wake.restored.materials), { restored: true });
     } else {
-      this.kernel.submit(goal, images);
+      this.kernel.submit(goal, images, fromSunx);
       this.runtimeImpl.harness.context.appendInstructionLine(goal, hasImages ? images : undefined);
     }
     let runOutcome: import('../types').RunOutcome | undefined; // G14.89 finally 续发判停
@@ -1740,12 +1755,12 @@ ${this.sessionCharter ?? ''}` }
           // wake 续发/定时补跑不受队列暂停牵连（背景任务接力与用户队列分立）
           const pending = this.queuePausedFlag ? [] : this.kernel.steerTakePending();
           if (pending.length > 0) {
-            for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text, it.images);
+            for (const it of pending.slice(1)) this.kernel.steerEnqueue(it.text, it.images, it.fromSunx);
             // G14.89 user 回显帧:GUI 运行中入队不本地回显,气泡靠此帧。回显必须走纯帧广播
             // (不经 kernel.pump)——内部续发的 kernel.submit 自身会写 user 段,
             // 泵路回显曾致转录双气泡+journal 双行(G14.2xx 实测)
-            this.broadcastUserEcho(pending[0]!.text, pending[0]!.images);
-            this.submit(pending[0]!.text, pending[0]!.images);
+            this.broadcastUserEcho(pending[0]!.text, pending[0]!.images, pending[0]!.fromSunx);
+            this.submit(pending[0]!.text, pending[0]!.images, undefined, pending[0]!.fromSunx);
           } else {
             // bg-wake 续发（spec §6）：steer 空时问唤醒——有终态登记且空闲即起唤醒轮（合批窗内到点的
             // 在途批也在此收口）；interrupted 不问（上方守卫，保留 pending §10-1）。返回值弃置：
@@ -1771,9 +1786,9 @@ ${this.sessionCharter ?? ''}` }
    *  显示用户的气泡」根修——IM 提交无 GUI 乐观回显，submit 只落档不产帧，GUI 观看该会话时
    *  用户气泡要等重播才现身；本方法提交成功即广播 user 纯帧，GUI live 即显。GUI 自身提交走
    *  submit+本地乐观回显，不得走此方法防双气泡，G14.89 口径）。router IM 入站专用 */
-  submitExternal(goal: string, images?: string[]): SessionSubmitResult {
-    const r = this.submit(goal, images);
-    if (r.ok) this.broadcastUserEcho(goal, images);
+  submitExternal(goal: string, images?: string[], fromSunx?: SunxPeerRef): SessionSubmitResult {
+    const r = this.submit(goal, images, undefined, fromSunx);
+    if (r.ok) this.broadcastUserEcho(goal, images, fromSunx);
     return r;
   }
 
@@ -1809,8 +1824,8 @@ ${this.sessionCharter ?? ''}` }
    *  queue 帧广播经 onKernelEvent 单槽随发。排队期展示=输入框上侧队列 chips（2026-11-23 用户
    *  裁定「在队列中就仍在队列中,队列显示在输入框上侧」）;出队注入(drain)才回显气泡——agent
    *  思考/工具回复已出队即入对话,G14.89 入队不回显口径维持 */
-  steer(text: string, images?: string[]): void {
-    this.kernel.steerEnqueue(text, spillImages(this.root, images)); // 图片落盘点(同 submit 裁定)
+  steer(text: string, images?: string[], fromSunx?: SunxPeerRef): void {
+    this.kernel.steerEnqueue(text, spillImages(this.root, images), fromSunx); // 图片落盘点(同 submit 裁定)
   }
 
   /**
@@ -2014,8 +2029,8 @@ ${this.sessionCharter ?? ''}` }
     }
   }
 
-  private queuedSteer(): Array<{ seq: number; text: string; images?: string[] }> {
-    return this.kernel.steerPendingItems().map(({ seq, text, images }) => ({ seq, text, ...(images !== undefined ? { images } : {}) }));
+  private queuedSteer(): Array<{ seq: number; text: string; images?: string[]; fromSunx?: SunxPeerRef }> {
+    return this.kernel.steerPendingItems().map(({ seq, text, images, fromSunx }) => ({ seq, text, ...(images !== undefined ? { images } : {}), ...(fromSunx !== undefined ? { fromSunx } : {}) }));
   }
 
   /** 撤回排队插话(G10-C1d):按下标撤;越界 false */

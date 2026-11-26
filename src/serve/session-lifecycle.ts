@@ -16,6 +16,7 @@ import { projectsRoot, projectSlug, resolveDataDir, sunxDomainDir, worktreeMainR
 import { findSunxJournalOwner } from './sessions-list-handlers';
 import { validSessionId } from './session-id';
 import type { ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
+import type { SunxPeersSeam } from '../harness/tools/sunx-peer-tools';
 
 /**
  * 会话生命周期域(2026-10-27 技术债轮 自 daemon.ts 外提,D31 骨架域续批,行为零变化):
@@ -48,6 +49,10 @@ export interface SessionLifecycleIo {
   /** 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示」）：按工作区根回列
    *  启用中的分派（daemon 注入 ScheduleEngine root 过滤）——task_status 工具回执附段 */
   readonly schedulesFor?: (root: string) => Array<{ name: string; nextRunAt: number | null }>;
+  /** 跨 Sunx 对等消息接缝工厂（2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」）：
+   *  按 sessionId 产出活实例枚举/投递出口（daemon 会话表+域容器）——create/attach 构造
+   *  SessionRuntime 时按当次 id 取值透传；缺席=两件工具不注册 */
+  readonly sunxPeersFor?: (sessionId: string) => SunxPeersSeam;
 }
 
 /** root 缺省锚字面量单点（GUI 欢迎页非项目会话的缺省锚，serve 侧解析面同源引用） */
@@ -211,6 +216,7 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     ...(domainDir !== undefined ? { dataDir: domainDir } : {}),
     ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
     ...(io.schedulesFor !== undefined ? { schedulesFor: io.schedulesFor } : {}),
+    ...(io.sunxPeersFor !== undefined ? { sunxPeers: io.sunxPeersFor(id) } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);
@@ -504,6 +510,7 @@ export function attachSunxIn(io: SessionLifecycleIo, journalId: string): Result<
     ...(io.scheduleCreate !== undefined ? { scheduleCreate: io.scheduleCreate } : {}),
     ...(io.schedulesFor !== undefined ? { schedulesFor: io.schedulesFor } : {}),
     ...(io.channelSendFor !== undefined ? { channelSend: io.channelSendFor(id) } : {}),
+    ...(io.sunxPeersFor !== undefined ? { sunxPeers: io.sunxPeersFor(id) } : {}),
     mintPid: io.mintPid,
   });
   io.sessions.set(id, session);

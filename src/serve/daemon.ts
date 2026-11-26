@@ -11,6 +11,7 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../session/journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT } from './session-commands';
+import { listLiveSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles, fetchRemoteBranches } from './session-changes';
 import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
@@ -401,6 +402,12 @@ export class GuiDaemon {
       // 按 sessionId 产出通道推送出口——引擎绑定反查投递(未绑定=false,工具报 not_bound)
       channelSendFor: (sessionId) => ({
         send: async (text: string) => this.channelsEngine.sendToSessionChat(sessionId, text),
+      }),
+      // 跨 Sunx 对等消息接缝（2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」；「只投活实例」）:
+      // 按 sessionId 产出枚举/投递出口——daemon 会话表（活实例判据）+ sunx 域容器（名称/品行/活动）
+      sunxPeersFor: (sessionId) => ({
+        list: async () => listLiveSunxPeers(this.sessions, sessionId),
+        send: async (to, text) => deliverSunxPeerMessage(this.sessions, sessionId, to, text),
       }),
       // 定时分派清单接缝（2026-11-25 用户裁定④「定时任务也要在任务状态中显示,显示何时执行」）:
       // ScheduleEngine root 过滤——启用中/未结束的分派随 task_status 回执附段

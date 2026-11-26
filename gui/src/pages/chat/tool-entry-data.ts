@@ -100,6 +100,8 @@ const TOOL_VERBS: Record<string, { en: string; zh: string }> = {
   // 图标都要这个问题,补上」——四件双语名,折叠行不再露原始工具名)
   dispatch_task: { en: 'Dispatch task', zh: '分派任务' }, task_status: { en: 'Task status', zh: '任务状态' },
   schedule_wakeup: { en: 'Schedule wake-up', zh: '定时唤醒' }, schedule_task: { en: 'Schedule task', zh: '定时分派' },
+  // 跨 Sunx 对等消息两件(2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」——折叠行给双语名)
+  list_sunx_peers: { en: 'List Sunx peers', zh: '发现 Sunx' }, send_sunx_messages: { en: 'Message Sunx', zh: '发送 Sunx 消息' },
   create_scheduled_task: { en: 'Create scheduled task', zh: '创建定时任务' }, // daemon 级周期任务(2026-11-21 用户实测「工具没有特殊图标和 i18n」)
 };
 
@@ -186,6 +188,14 @@ export function toolTargetOf(name: string, input: Record<string, unknown>): stri
     if (flat.length <= 72) return flat;
     return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
   }
+  if (name === 'send_sunx_messages') {
+    // 折叠行目标=消息正文首行(收件人是 journalId,人不读 id;正文才是这一行的语义)
+    const v = input.text;
+    if (typeof v !== 'string' || v === '') return undefined;
+    const flat = (v.split('\n')[0] ?? v).trim();
+    if (flat.length <= 72) return flat;
+    return `${flat.slice(0, 48)}…${flat.slice(-20)}`;
+  }
   const key =
     name === 'exec'
       ? 'command'
@@ -259,6 +269,8 @@ const RUNNING_LABELS: Record<string, [string, string]> = {
   task_status: ['Checking task', '正在查看任务'],
   schedule_wakeup: ['Scheduling wake-up', '正在设置定时唤醒'],
   schedule_task: ['Scheduling task', '正在设置定时分派'],
+  list_sunx_peers: ['Listing Sunx peers', '正在发现 Sunx'],
+  send_sunx_messages: ['Messaging Sunx', '正在发送 Sunx 消息'],
 };
 
 /** 单 taskId 工具集合（折叠行/运行态带任务名；task_wait 已单列）：入参均含 taskId 字符串，

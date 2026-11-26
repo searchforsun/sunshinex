@@ -27,8 +27,10 @@ export const FORK_EXCLUDED_TOOLS = [
  *  后者是板面剔除族（内容有常量契约钉测，语义=板操作件），编排件混入即破契约。
  *  落位本叶模块（而非 index.ts 与 SUNX_FACE_TOOLS 同文件）：三派生点皆已引本模块；若落 index.ts
  *  则 subagent.ts 须反向 import './index' 成环（harness index → subagent → index 的 CJS 循环）。
- *  语义对偶：SUNX_FACE_TOOLS=主链准入面，本清单=子面必剔面 */
-export const SUNX_ORCHESTRATION_TOOLS = ['dispatch_task', 'task_status', 'schedule_wakeup', 'schedule_task'] as const;
+ *  语义对偶：SUNX_FACE_TOOLS=主链准入面，本清单=子面必剔面。
+ *  2026-11-26 增跨 Sunx 对等消息两件（list_sunx_peers/send_sunx_messages）——子智能体互聊=绕过
+ *  防子生孙的等价物，同族剔除 */
+export const SUNX_ORCHESTRATION_TOOLS = ['dispatch_task', 'task_status', 'schedule_wakeup', 'schedule_task', 'list_sunx_peers', 'send_sunx_messages'] as const;
 
 /** 目录加载件在子面是死路（2026-11-20 用户问询「load_subagent/load_agent_teams 这个需要吗」）：
  *  两个工具的价值都是「加载 → 再委派/建队」——load_subagent 后要 spawn、load_agent_teams 后要

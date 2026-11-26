@@ -1,4 +1,4 @@
-import type { SessionEvent, SteerLine } from '../types';
+import type { SessionEvent, SteerLine, SunxPeerRef } from '../types';
 import { applyEvent, applySeed, initialKernelState, type KernelEntry, type KernelState, type SessionStats } from './entry';
 
 /** 影子事件判定(单点):板面(task-)/委派(delegation-)与带 subagent 标签的子智能体流。
@@ -21,6 +21,8 @@ export interface SteerItem {
   text: string;
   front: boolean;
   images?: string[];
+  /** 跨 Sunx 投递来源（2026-11-26）：排队期随行——drain 出队时归因不丢（出队气泡同显来源行） */
+  fromSunx?: SunxPeerRef;
 }
 
 /** 内核事件(spec §3.1b 词汇收缩——视图/持久化层只消费这些,token 级遥测不出内核):
@@ -59,9 +61,16 @@ export class SessionKernel {
     this.onKernelEvent = opts?.onKernelEvent;
   }
 
-  /** 提交回显(collector.submit 平移):user 条 `> <goal>`——与 user 事件同路径,事件语义单点 */
-  submit(goal: string, images?: string[]): void {
-    this.pump({ type: 'user', text: goal, ...(images !== undefined && images.length > 0 ? { images } : {}), ts: Date.now() });
+  /** 提交回显(collector.submit 平移):user 条 `> <goal>`——与 user 事件同路径,事件语义单点。
+   *  fromSunx=跨 Sunx 投递来源(2026-11-26):随 payload 进条目,seg 行/replay 全链贯通 */
+  submit(goal: string, images?: string[], fromSunx?: SunxPeerRef): void {
+    this.pump({
+      type: 'user',
+      text: goal,
+      ...(images !== undefined && images.length > 0 ? { images } : {}),
+      ...(fromSunx !== undefined ? { payload: { fromSunx } } : {}),
+      ts: Date.now(),
+    });
   }
 
   /** 事件泵单点:apply 后差分前后态发段级事件——新条目 → seg-open;条目引用变且非开启段 →
@@ -188,12 +197,13 @@ export class SessionKernel {
 
   // ---- 等待队列(P5 内核化,spec §12):变更即发 steer 事件(整列快照),读面不外抛 ----
 
-  /** 入队一条用户穿插行(空白忽略,保持入队序;缺省仅排队——轮收束自动发下一轮;images 随行) */
-  steerEnqueue(text: string, images?: string[]): void {
+  /** 入队一条用户穿插行(空白忽略,保持入队序;缺省仅排队——轮收束自动发下一轮;images 随行;
+   *  fromSunx=跨 Sunx 来源随行——出队气泡/条目归因同源) */
+  steerEnqueue(text: string, images?: string[], fromSunx?: SunxPeerRef): void {
     const t = text.trim();
     if (!t && (images === undefined || images.length === 0)) return;
     const imgs = images !== undefined && images.length > 0 ? images : undefined;
-    this.steerItems = [...this.steerItems, { seq: this.steerItems.length, text: t, front: false, ...(imgs !== undefined ? { images: imgs } : {}) }];
+    this.steerItems = [...this.steerItems, { seq: this.steerItems.length, text: t, front: false, ...(imgs !== undefined ? { images: imgs } : {}), ...(fromSunx !== undefined ? { fromSunx } : {}) }];
     this.emitSteer();
   }
 
@@ -243,7 +253,7 @@ export class SessionKernel {
     if (!this.steerItems.some((x) => x.front)) return [];
     const out = this.steerItems
       .filter((x) => x.front)
-      .map((x) => ({ text: x.text, ...(x.images !== undefined ? { images: x.images } : {}) }));
+      .map((x) => ({ text: x.text, ...(x.images !== undefined ? { images: x.images } : {}), ...(x.fromSunx !== undefined ? { fromSunx: x.fromSunx } : {}) }));
     this.steerItems = this.steerItems.filter((x) => !x.front);
     this.emitSteer();
     return out;

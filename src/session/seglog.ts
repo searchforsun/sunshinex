@@ -1,4 +1,4 @@
-import { sanitizeArtifacts, sanitizeChanges, sanitizeTurn, parseWakeRefs, type KernelEntry, type RunMeta } from './entry';
+import { sanitizeArtifacts, sanitizeChanges, sanitizeTurn, parseSunxPeerRef, parseWakeRefs, type KernelEntry, type RunMeta } from './entry';
 import type { KernelEvent, SteerItem } from './kernel';
 import type { JournalEvent } from './journal';
 import type { ChainAction } from '../types';
@@ -35,7 +35,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
     if (m === undefined) return [];
     return [{ t: 'runmeta', ...(m.steps !== undefined ? { steps: m.steps } : {}), ...(m.runSteps !== undefined ? { runSteps: m.runSteps } : {}), ...(m.tokens !== undefined ? { tokens: m.tokens } : {}), ...(m.cacheTokens !== undefined ? { cacheTokens: m.cacheTokens } : {}), ...(m.turn !== undefined && m.turn.length > 0 ? { turn: m.turn } : {}), ...(m.artifacts !== undefined && m.artifacts.length > 0 ? { artifacts: m.artifacts } : {}) }];
   }
-  if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front, ...(x.images !== undefined ? { images: x.images } : {}) })) }];
+  if (ev.t === 'steer') return [{ t: 'steer', items: ev.items.map((x) => ({ seq: x.seq, text: x.text, front: x.front, ...(x.images !== undefined ? { images: x.images } : {}), ...(x.fromSunx !== undefined ? { fromSunx: x.fromSunx } : {}) })) }];
   if (ev.t === 'stats') return []; // 统计面不落档(P9):非转录,装载自 run meta 重建
   const e = ev.entry;
   if (ev.t === 'seg-open') {
@@ -56,6 +56,7 @@ export function kernelEventRows(ev: KernelEvent): JournalEvent[] {
           ...(e.wake !== undefined ? { wake: e.wake } : {}),
           ...(e.schedule !== undefined ? { schedule: e.schedule } : {}),
           ...(e.restored !== undefined ? { restored: e.restored } : {}),
+          ...(e.fromSunx !== undefined ? { fromSunx: e.fromSunx } : {}),
         },
       ];
     if (e.kind === 'tool' && e.result !== undefined) rows.push({ t: 'seg-update', seq: e.seq, ts: e.ts, result: e.result });
@@ -109,6 +110,8 @@ export interface SegRowLike {
   schedule?: unknown;
   /** 行随恢复唤醒轮标记（2026-11-15 sunx P2 Task 5,R9;行面字段不予信任——严判 true,旧档无此字段=普通 notice） */
   restored?: unknown;
+  /** 行随跨 Sunx 来源（2026-11-26;行面字段不予信任——parseSunxPeerRef 净化,旧档无此字段=普通用户条） */
+  fromSunx?: unknown;
   /** wake-schedule 机制行载荷（同下 id/fireAt/note/taskSpec/firedAt——行面字段不予信任） */
   fireAt?: unknown;
   note?: unknown;
@@ -212,6 +215,8 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
       const images = imagesOf(row.images);
       // wake 唤醒引用净化(bg-wake spec §5.1;行面字段不予信任,旧档无字段回落 undefined=普通 notice)
       const wake = parseWakeRefs(row.wake);
+      // 跨 Sunx 来源净化(2026-11-26;行面字段不予信任,旧档无字段=普通用户条)
+      const fromSunx = parseSunxPeerRef(row.fromSunx);
       entries.push({
         seq,
         ts: num(row.ts) ?? 0,
@@ -224,6 +229,7 @@ export function reduceSegRows(rows: ReadonlyArray<SegRowLike>): KernelEntry[] {
         ...(wake !== undefined ? { wake } : {}),
         ...(row.schedule === true ? { schedule: true as const } : {}),
         ...(row.restored === true ? { restored: true as const } : {}),
+        ...(fromSunx !== undefined ? { fromSunx } : {}),
         ...(kind === 'thinking' && seconds !== undefined ? { seconds } : {}),
       });
       continue;
@@ -280,12 +286,13 @@ export function reduceSteerRows(rows: ReadonlyArray<SegRowLike>): SteerItem[] {
     let seq = 0;
     for (const raw of row.items) {
       if (raw === null || typeof raw !== 'object') continue;
-      const o = raw as { seq?: unknown; text?: unknown; front?: unknown; images?: unknown };
+      const o = raw as { seq?: unknown; text?: unknown; front?: unknown; images?: unknown; fromSunx?: unknown };
       const text = str(o.text);
       const images = imagesOf(o.images);
+      const fromSunx = parseSunxPeerRef(o.fromSunx);
       if (text === undefined || text.trim() === '') continue;
       const s = num(o.seq);
-      next.push({ seq: s !== undefined && s >= 0 ? s : seq, text, front: o.front === true, ...(images !== undefined ? { images } : {}) });
+      next.push({ seq: s !== undefined && s >= 0 ? s : seq, text, front: o.front === true, ...(images !== undefined ? { images } : {}), ...(fromSunx !== undefined ? { fromSunx } : {}) });
       seq += 1;
     }
     items = next;

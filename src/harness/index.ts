@@ -12,6 +12,8 @@ import { makeAgentTeamTaskStopTool, makeTaskStopTool } from './tools/task-stop';
 import { makeAgentTeamTaskWaitTool, makeTaskStatusTool, makeTaskWaitTool } from './tools/task-wait';
 import { makeScheduleWakeupTool, makeScheduleTaskTool } from './tools/schedule-tools';
 import type { ScheduleArmSeam } from './tools/schedule-tools';
+import { makeListSunxPeersTool, makeSendSunxMessagesTool } from './tools/sunx-peer-tools';
+import type { SunxPeersSeam } from './tools/sunx-peer-tools';
 import { makeTaskBoardTools } from './tools/taskboard-tools';
 import { SecurityGuard } from './security/guard';
 import { PolicyEngine } from './security/policy';
@@ -80,6 +82,9 @@ export const SUNX_FACE_TOOLS: readonly string[] = [
   'update_agent_team_task', // assign|depend 两 action 合一(旧 assign/set_dependency 工具名已退役)
   'agent_team_task_stop', 'send_agent_team_message',
   'schedule_wakeup', 'schedule_task',
+  // 跨 Sunx 对等消息两件(2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」):发现活实例/投递消息。
+  // 对等协作属编排动作(不亲做);fork 子面经 SUNX_ORCHESTRATION_TOOLS 剔除(子智能体互聊=绕过防子生孙)
+  'list_sunx_peers', 'send_sunx_messages',
 ];
 
 /** 会话形态装配档案（D74 收敛,2026-11-16）：kind→主链 face 白名单+专属工具注册钩键控映射——
@@ -118,6 +123,10 @@ export interface HarnessOptions {
   channelSend?: {
     send(text: string): Promise<boolean>;
   };
+  /** 跨 Sunx 对等消息接缝（2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」）：
+   *  daemon lifecycleIo sunxPeersFor 按 sessionId 注入（活实例枚举+投递，归因由宿主按 caller 补全）
+   *  ——接缝在场才注册 list_sunx_peers/send_sunx_messages（TUI/CLI/子面零工具面变化） */
+  sunxPeers?: SunxPeersSeam;
   /** 基准根目录；缺省=process.cwd()。指定时为「项目空间模式」，缺省时为「当前目录模式」 */
   root?: string;
   model?: ModelAdapter;
@@ -183,6 +192,8 @@ export class Harness {
   private readonly stableKind?: SessionKind;
   /** 定时调度 arm 缝镜像（同上；缺席=调度两件执行期 NOT_SUPPORTED 确定降级） */
   private readonly scheduleArmOpt?: { arm(rec: { fireAt: number; note: string; taskSpec?: string }): { id: string; replacedId?: string } };
+  /** 跨 Sunx 对等消息缝镜像（2026-11-26；缺席=两件不注册——TUI/CLI/子面零工具面变化） */
+  private readonly sunxPeersOpt?: SunxPeersSeam;
   readonly skills: SkillsFacade;
   /** 团队门面（team 工具接缝；spec 2026-11-04 §3.3）：live 只读视图——每次 resolve 现读两级目录链，
    *  会中新建/停用即时可见（skills 同款惰性纪律，纯构造零副作用） */
@@ -265,6 +276,7 @@ export class Harness {
   constructor(opts: HarnessOptions) {
     const base = opts.root ?? process.cwd();
     this.scheduleArmOpt = opts.schedule;
+    this.sunxPeersOpt = opts.sunxPeers;
     // 持久化域单点（2026-11-15 sunx P3 Task 1 装配单点化）：构造期一次推导，下方全部持久化数据面消费点
     // 同源取本变量；缺席=resolveDataDir(base) 既有推导（零变化）。base 保持工作树共享面锚（sandbox/safePath/
     // perception/worktree），不随注入漂移
@@ -824,6 +836,10 @@ export class Harness {
     const scheduleArm: ScheduleArmSeam | undefined = this.scheduleArmOpt !== undefined ? { arm: this.scheduleArmOpt.arm } : undefined;
     this.tools.register({ ...makeScheduleWakeupTool(scheduleArm), display: { verb: 'SCHEDULE' } });
     this.tools.register({ ...makeScheduleTaskTool(scheduleArm), display: { verb: 'SCHEDULE_TASK' } });
+    // 跨 Sunx 对等消息两件（2026-11-26 用户裁定）：恒注册（白名单精确集合不变量）——接缝缺席
+    // （TUI/CLI 直构）执行期 NOT_SUPPORTED 确定降级（schedule_* 先例）
+    this.tools.register({ ...makeListSunxPeersTool(this.sunxPeersOpt), display: { verb: 'SUNX_PEERS' } });
+    this.tools.register({ ...makeSendSunxMessagesTool(this.sunxPeersOpt), display: { verb: 'SUNX_SEND' } });
   }
 
   /**

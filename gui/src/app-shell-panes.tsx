@@ -353,6 +353,9 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
                       onOpenLearned={openLearnedTab}
                       onFork={onForkStable}
                       onOpenSession={openParentSessionStable}
+                      // 跨 Sunx 来源行点击(2026-11-26 用户裁定「可点击跳转指定 sunx」):journalId 直寻址
+                      // attachSunx 重开(与侧栏 SUNX 行/看板卡片同链);root 由 attach 应答回填
+                      onOpenSunx={(jid) => openSunxInstance({ journalId: jid, root: '' })}
                       onOpError={showOpError}
                       onRewind={onRewindStable}
                     />

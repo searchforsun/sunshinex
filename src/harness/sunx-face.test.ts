@@ -68,6 +68,65 @@ test('sunx kind 装配：注册表含 dispatch/task_status；普通 kind 不含�
   }
 });
 
+test('跨 Sunx 对等消息两件（2026-11-26 用户裁定）：sunx 装配注册 + 标准面零注册 + 接缝缺席 NOT_SUPPORTED 降级', async () => {
+  const tmp = mktmp('sunshinex-sunxface-peers-');
+  let sunx: Harness | undefined;
+  let std: Harness | undefined;
+  try {
+    // 接缝注入档：枚举/投递走宿主口（本测只验注册与动词面，行为归 serve/sunx-peers.test）
+    const sent: Array<{ to: string; text: string }> = [];
+    sunx = new Harness({
+      root: tmp,
+      mode: 'full-access',
+      kind: 'sunx',
+      model: new ScriptedAdapter([]),
+      learnSkills: false,
+      sunxPeers: {
+        list: async () => [{ id: 'peer-1', name: 'Planner', running: false, awaiting: false, root: 'D:/w', updatedAt: 1, charter: '规划者' }],
+        send: async (to, text) => {
+          sent.push({ to, text });
+          return { ok: true, name: 'Planner', queued: false };
+        },
+      },
+    });
+    assert.ok(sunx.tools.has('list_sunx_peers'), 'sunx 装配应注册 list_sunx_peers');
+    assert.ok(sunx.tools.has('send_sunx_messages'), 'sunx 装配应注册 send_sunx_messages');
+    assert.equal(sunx.tools.get('list_sunx_peers')?.display?.verb, 'SUNX_PEERS', '发现动词呈现元数据');
+    assert.equal(sunx.tools.get('send_sunx_messages')?.display?.verb, 'SUNX_SEND', '投递动词呈现元数据');
+    // 回读:发现清单内容原样（名称/品行中文不翻译——用户裁定「内容是什么就是什么」）
+    const listed = await sunx.tools.get('list_sunx_peers')!.executor({});
+    assert.match(String(listed.stdout), /Planner \[idle\] id=peer-1/, '清单行携带名称/状态/寻址 id');
+    assert.match(String(listed.stdout), /charter:\n {4}规划者/, '品行原文随行');
+    const receipt = await sunx.tools.get('send_sunx_messages')!.executor({ to: 'peer-1', text: 'hi' });
+    assert.match(String(receipt.stdout), /message delivered to Planner \(peer-1\) - run started/, '回执=送达回执');
+    assert.deepEqual(sent, [{ to: 'peer-1', text: 'hi' }], '投递走宿主接缝');
+
+    // 标准面零注册（主链 face 基线守护）
+    std = new Harness({ root: tmp, mode: 'full-access', model: new ScriptedAdapter([]), learnSkills: false });
+    assert.equal(std.tools.has('list_sunx_peers'), false, 'standard 装配不得含 list_sunx_peers');
+    assert.equal(std.tools.has('send_sunx_messages'), false, 'standard 装配不得含 send_sunx_messages');
+
+    // 接缝缺席（TUI/CLI 直构）：注册但在执行期确定降级（schedule_* 先例）
+    const bare = new Harness({ root: tmp, mode: 'full-access', kind: 'sunx', model: new ScriptedAdapter([]), learnSkills: false });
+    try {
+      await assert.rejects(
+        async () => { await bare.tools.get('list_sunx_peers')!.executor({}); },
+        (err: unknown) => (err as { code?: string }).code === 'NOT_SUPPORTED',
+        '接缝缺席=NOT_SUPPORTED（面集合不变量不破）',
+      );
+    } finally {
+      bare.team.stopAll();
+      bare.tasks.stopAll();
+    }
+  } finally {
+    sunx?.team.stopAll();
+    sunx?.tasks.stopAll();
+    std?.team.stopAll();
+    std?.tasks.stopAll();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sunx face 白名单精确集合：恰为 SUNX_FACE_TOOLS，derive({only}) 单点产出', () => {
   const tmp = mktmp('sunshinex-sunxface-set-');
   let h: Harness | undefined;

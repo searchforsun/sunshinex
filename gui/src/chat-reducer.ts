@@ -30,6 +30,9 @@ export interface ChatEntry {
   /** 随行图片附件(dataURL):user=气泡附件条;tool=工具结果图片(2026-10-26 插件体系图片通道,
    *  tool-result 事件 payload.images 原位落条——ToolEntry 缩略行数据源) */
   images?: string[];
+  /** user:跨 Sunx 消息来源(2026-11-26;内核条目直映)——气泡上方归因行(SunxIcon+名称+点击跳转
+   *  发送方实例)数据源;display 侧剥 `[fromSunx: …] ` 前缀,归因走本字段渲染 */
+  fromSunx?: { id: string; name: string };
   streaming?: boolean;
   /** thinking 专用：段耗时秒（内核封段计首尾 ts 差） */
   seconds?: number;
@@ -136,6 +139,8 @@ export interface SnapshotTranscriptEntry {
   wake?: WakeRef[];
   /** notice:定时唤醒标记(2026-11-15 sunx P2 Task 3;内核条目原生随档,显示归 run 行前缀) */
   schedule?: boolean;
+  /** user:跨 Sunx 消息来源(2026-11-26;内核条目直序列化——快照/回放同字段) */
+  fromSunx?: { id: string; name: string };
   meta?: {
     seconds?: number;
     steps?: number;
@@ -203,6 +208,7 @@ function mapOne(e: KernelEntry, open: boolean, base: { steps: number; tokens: nu
       streaming: open ? true : undefined, // 键恒在场(消费面 toMatchObject/条件渲染两相宜)
       ...(e.seconds !== undefined ? { seconds: e.seconds } : {}),
       ...(e.images !== undefined && e.images.length > 0 ? { images: e.images } : {}),
+      ...(e.fromSunx !== undefined ? { fromSunx: e.fromSunx } : {}),
       ...(e.callId !== undefined ? { callId: e.callId } : {}),
       ...(e.name !== undefined ? { name: e.name } : {}),
       ...(e.input !== undefined ? { input: e.input } : {}),

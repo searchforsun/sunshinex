@@ -76,6 +76,8 @@ export interface MessageListProps {
   readonly toggleRun: (key: string) => void;
   /** 编辑卡重发回调(可选,Sunx 2026-11-24 置空收编辑入口:undefined=气泡 Edit 钮不渲染) */
   readonly submitText?: (text: string, images?: string[]) => Promise<void>;
+  /** 跨 Sunx 来源行跳转(2026-11-26):user 气泡来源行点击 → attachSunx 打开该实例(未配=只读) */
+  readonly onOpenSunx?: (journalId: string) => void;
   readonly rewindOps?: RewindOps;
   readonly composerEnv?: ComposerEnv;
   readonly runFooterByEntry: ReadonlyMap<string, ChatEntry>;
@@ -260,6 +262,9 @@ export function MessageList(props: MessageListProps): JSX.Element {
   }, []);
   // 编辑重发面随可选 submitText 缺席收口(2026-11-24 Sunx 编辑入口关闭):undefined=气泡 Edit 钮不渲染
   const onSendArg = props.submitText !== undefined ? submitTextStable : undefined;
+  // 跨 Sunx 来源行跳转(2026-11-26):同可选收口——未配=来源行只读不跳
+  const onOpenSunxStable = useCallback((jid: string) => propsRef.current.onOpenSunx?.(jid), []);
+  const onOpenSunxArg = props.onOpenSunx !== undefined ? onOpenSunxStable : undefined;
   const onEntryOpenDiffStable = useCallback((p: string) => propsRef.current.onEntryOpenDiff(p), []);
   const onEntryRestoreStable = useCallback((p: string) => propsRef.current.onEntryRestore(p), []);
   const onOpenTurnStable = useCallback((run: number, path: string) => propsRef.current.onOpenTurn?.(run, path), []);
@@ -308,6 +313,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
           entry={e2}
           insert
           onSend={onSendArg}
+          onOpenSunx={onOpenSunxArg}
           rewindOps={props.rewindOps}
           composerEnv={props.composerEnv}
           onOpenFile={onOpenFileArg}
@@ -337,7 +343,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         onOpenArtifacts={props.onOpenArtifacts}
       />
     );
-  }, [onSendArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, sessionId, root, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts, onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat]);
+  }, [onSendArg, onOpenSunxArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, sessionId, root, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts, onEntryOpenDiffStable, onOpenTurnArg, onTurnRestoreArg, onOpenAgentArg, sideChat]);
   /** 切点回退:cut 落在 run 折叠隐区(Worked 头后的隐藏行)会劈开折叠组——回退到首个非隐藏边界,
    *  折叠组随头完整保留 */
   /** 窗口顶冻结(2026-11-17 用户实测「运行中滚到上面时不时跳到底部」根因①):cut=entries.length-
@@ -922,6 +928,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
           entry={entry}
           insert={insert}
           onSend={onSendArg}
+          onOpenSunx={onOpenSunxArg}
           rewindOps={props.rewindOps}
           composerEnv={props.composerEnv}
           onOpenFile={onOpenFileArg}
@@ -955,7 +962,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         sideChat={sideChat}
       />
     );
-  }, [hiddenKeys, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, onSendArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
+  }, [hiddenKeys, renderTool, renderThinking, renderAssistant, renderFoldEntry, collapsedRuns, onOpenTaskArg, toggleRunStable, sideChat, onSendArg, onOpenSunxArg, props.rewindOps, props.composerEnv, onOpenFileArg, onOpenImage, conn, root, runFooterByEntry, onEntryOpenDiffStable, onEntryRestoreStable, onForkArg, onOpenAgentArg, onOpenSessionArg, onOpenTurnArg, onTurnRestoreArg, sessionId, props.onOpError, onOpenWeb, props.onRunInTerminal, props.onOpenArtifacts]);
   /** 刻度跳到未挂载条目(2026-11-18 刻度全量模型):按全量索引扩挂载窗到覆盖该条(含切点
    *  隐藏行回退同口径);返回是否已覆盖(=可立即落点)。虚拟态:覆盖 ≠ 挂载——先落模型坐标
    *  (滚动事件驱动切片),渲染落定后由 landOnUnit 独占实测收敛(返回 true=刻度侧不再另开循环) */

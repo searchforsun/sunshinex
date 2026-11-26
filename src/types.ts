@@ -34,12 +34,22 @@ export type ChatMessage =
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[]; reasoning?: string }
   | { role: 'tool'; content: string; toolCallId: string };
 
+/** 跨 Sunx 消息来源归属（2026-11-26 用户裁定「send_sunx_messages 前缀加上 fromSunx」）：
+ *  id=发送方 journalId（GUI 归因行点击跳转的寻址键），name=发送方实例名（显示面）。
+ *  随 user 事件 payload 进内核条目 → seg 行 → 快照/replay 全链原样贯通；旧档无此字段=普通用户条 */
+export interface SunxPeerRef {
+  id: string;
+  name: string;
+}
+
 /** 用户穿插行（GUI/TUI 提交与等待队列共载形）：text 正文；images 随行图片附件。
  *  图片一律 dataURL 形态（`data:image/<fmt>;base64,<b64>`，上限 8 张）——自 HTTP 提交面起原样贯穿
- *  转录条目/链 task 行/wire image_url 块，任何一层不再二次转码 */
+ *  转录条目/链 task 行/wire image_url 块，任何一层不再二次转码。
+ *  fromSunx=跨 Sunx 投递来源（排队期随行——drain 出队时归因不丢，出队气泡同显来源行） */
 export interface SteerLine {
   text: string;
   images?: string[];
+  fromSunx?: SunxPeerRef;
 }
 
 /** function calling 的 tools 字段下发形态（注册表 parameters 逐工具映射） */

@@ -1,4 +1,4 @@
-import { artifactKey, type Artifact, type ChangeFile, type SessionEvent, type TurnFileChange } from '../types';
+import { artifactKey, type Artifact, type ChangeFile, type SessionEvent, type SunxPeerRef, type TurnFileChange } from '../types';
 import { LEADER_RECIPIENT } from '../taskboard/leader';
 import { WAKE_NOTICE_TAG, SCHEDULE_WAKE_TAG, SESSION_RESTORED_TAG } from './wake';
 
@@ -45,6 +45,17 @@ export interface WakeRef {
   boardRef?: string;
 }
 
+/** 跨 Sunx 来源净化（user 事件 payload.fromSunx → 条目字段；seg 行读侧同源）：id/name 双非空才收，
+ *  否则 undefined（旧档/坏载荷=普通用户条,渲染面零归因行） */
+export function parseSunxPeerRef(raw: unknown): SunxPeerRef | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === 'string' ? r.id.trim() : '';
+  const name = typeof r.name === 'string' ? r.name.trim() : '';
+  if (id === '' || name === '') return undefined;
+  return { id, name };
+}
+
 /** 唤醒载荷净化（notice 事件 payload.wake → 条目字段）：非法形态整条剔除，全非法返回 undefined */
 export function parseWakeRefs(raw: unknown): WakeRef[] | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined;
@@ -73,6 +84,9 @@ export interface KernelEntry {
   md: string;
   /** user:随行图片附件（dataURL 形态，≤8 张）——快照/seg 行/wire 全链原样承载 */
   images?: string[];
+  /** user:跨 Sunx 消息来源（2026-11-26；send_sunx_messages 投递的 user 轮携带）——seg 行随档、
+   *  快照/replay 原样回放，GUI 归因行（SunxIcon+名称+点击跳转）数据源；旧档无此字段=普通用户条 */
+  fromSunx?: SunxPeerRef;
   /** tool:调用关联面(input 全量随档——折叠/图标/diff 寻址零推导) */
   callId?: string;
   name?: string;
@@ -480,7 +494,8 @@ export function applyEvent(state: KernelState, e: SessionEvent): KernelState {
     case 'user': {
       const sealed = sealSeg(state, e.ts);
       const imgs = e.images;
-      return appendEntry(sealed, { ts: e.ts, kind: 'user', md: e.text ?? '', ...(imgs !== undefined && imgs.length > 0 ? { images: imgs } : {}) });
+      const peer = parseSunxPeerRef(e.payload?.fromSunx);
+      return appendEntry(sealed, { ts: e.ts, kind: 'user', md: e.text ?? '', ...(imgs !== undefined && imgs.length > 0 ? { images: imgs } : {}), ...(peer !== undefined ? { fromSunx: peer } : {}) });
     }
     case 'notice': {
       const sealed = sealSeg(state, e.ts);

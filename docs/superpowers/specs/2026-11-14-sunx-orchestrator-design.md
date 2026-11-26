@@ -466,3 +466,27 @@ parameters:
 - P2 增强：卡内嵌 mini DAG（TaskDag 复用）；P3：跨实例时间线。
 
 数据面零新增：卡片字段全部来自既有面（/sessions 列表 kind 过滤 + 快照委派投影 + pending 计数）。
+
+### 17.4 跨 Sunx 对等消息（2026-11-26 用户裁定：实施；原 §1.3 非目标「sunx-of-sunx」的收窄例外）
+
+对等形态**不是**把另一个 Sunx 当执行体派活（无任务板/无生命周期/无等待），而是「一个 Sunx 给另一个
+Sunx 发一句用户消息」。用户裁定 R1–R6：
+
+- **R1 两工具**：`list_sunx_peers`（发现）+ `send_sunx_messages`（投递）。两者进 `SUNX_FACE_TOOLS`
+  白名单，同时进 `SUNX_ORCHESTRATION_TOOLS` fork 子面剔除族（子智能体互聊=绕过防子生孙）。
+- **R2 只投活实例**：目标必须是 daemon 会话表里在座的运行时（`attachedJournalId` 命中）；未在座=
+  不可达（不自动 attach），错误原样进工具面。发现面同判据——列表即可达面，零漂移。
+- **R3 发送=用户消息语义（直接进入排队）**：对方视角=用户气泡。idle 目标 `submitExternal`（回显帧+
+  起轮）/ running 目标 `steer`（排队，轮收束补跑）；idle→running 受理竞态 409 回退入队。
+  排队行随档携带归因（steer 行 fromSunx），drain 出队气泡归因不丢。
+- **R4 前缀 + 回答口径**：注入正文前缀 `[fromSunx: <name> (<journalId>)]`（模型面/链面来源说明；
+  发送方 journalId 供回信寻址）。回答提示落工具描述（工具使用契约归工具描述，2026-11-24 裁定同源）：
+  收到 fromSunx 消息时用 `send_sunx_messages` 回答 **那个 Sunx**（不是用户）。
+- **R5 发现内容原样**：名称/品性/工作区/活动/运行态直接取域 meta 与旁车（`charterText` 随出），
+  不翻译不强转英文——「内容是什么就是什么」。只暴露元信息，不暴露记忆/台账内容（域隔离红线）。
+- **R6 GUI 归属**：user 事件 `payload.fromSunx` → 内核条目 → seg 行 → 快照/replay 全链贯通；
+  接收方气泡上方渲染来源行（Sunx 图标+实例名，点击 `attachSunx` 跳转发送方实例），正文显示侧剥前缀。
+  Sunx 会话气泡编辑/fork 入口维持关闭（2026-11-24 裁定）。
+
+单进程单机形态不变（不引入 A2A 重协议/多机）；防回路未加硬帽——A↔B 互发属用户明示的对等对话语义，
+连续唤醒上限（§7 草案 10 轮）只约束自动唤醒轮，不约束用户消息与对等消息。

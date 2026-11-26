@@ -792,6 +792,18 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
    气泡下方原位,z 提层保不受邻条压盖 */
 .entry.entry-user { content-visibility: visible; } /* 双类提特异性:压缩包里 .entry{cv:auto} 在更晚位置有第二份,单类同特异性按序会输 */
 .entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
+/* 跨 Sunx 来源行(2026-11-26 用户裁定「上面 sunx 图标加名称显示,可点击跳转指定 sunx」):
+   右对齐贴气泡上缘,图标+实例名 tertiary 档;可点态 hover 提亮(与正文链接同一 affordance) */
+.user-from-sunx { display: flex; justify-content: flex-end; margin: 0 2px 2px 0; }
+.user-from-sunx-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 1px 6px 1px 4px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg-tertiary);
+  font: calc(11.5px * var(--fz)) var(--font-ui); cursor: default; max-width: 60%;
+}
+.user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.user-from-sunx-btn { cursor: pointer; }
+button.user-from-sunx-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 /* 2026-10-26 用户报告「复制/编辑钮存在但显示不出」根修:.entry 的 content-visibility(auto=paint
    containment) 让每条目自成 stacking context,兄弟按 DOM 序压盖——内部 z-index 出不去,气泡下方
    悬浮动作钮被后续条目整层盖住。hover/focus 时整条提层(flex item 可用 z-index):3>邻条 auto */
@@ -2098,17 +2110,6 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .todo-card-head { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; text-align: left; color: var(--fg-secondary); }
 .todo-card-head:hover .todo-card-goal { color: var(--fg); }
 /* 2026-11-04 待办行点击定位闪光:accent 描边 1.8s 自灭(Chat 端 ToolEntry「待办」字样触发) */
-/* 会话顶部待办条(2026-11-25 用户裁定「会话上部显示待办」):顶栏下、转录取上的常驻单行——
-   图标+进度 chip+细进度轨+当前进行项(单行省略);整条可点开待办页签。待办属会话不属气泡,
-   常驻显隐只随清单有无(组件无清单自返 null) */
-.session-todo-bar { flex: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 14px; border: none; border-bottom: 1px solid var(--border); background: transparent; color: var(--fg-secondary); cursor: pointer; text-align: left; font-size: calc(14px * var(--fz)); }
-.session-todo-bar:hover { background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg); }
-.session-todo-icon { flex: none; display: inline-flex; color: var(--fg-icon); }
-.session-todo-title { flex: none; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--fg); }
-.session-todo-count { flex: none; font: calc(14px * var(--fz)) var(--font-mono); font-variant-numeric: tabular-nums; color: var(--fg); }
-.session-todo-track { flex: none; width: 56px; height: 3px; border-radius: 2px; background: color-mix(in srgb, var(--fg) 10%, transparent); overflow: hidden; }
-.session-todo-track i { display: block; height: 100%; background: var(--accent); border-radius: inherit; transition: width var(--dur-basic) var(--ease-enter); }
-.session-todo-current { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg-secondary); }
 .todo-card-goal-link { cursor: pointer; }
 
 .todo-card-goal { flex: 1; min-width: 0; font-size: calc(14px * var(--fz)); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2491,8 +2492,7 @@ html[data-theme='light'] .files-selbar button { color: #1a1c1f; }
 .todo-card-count { flex: none; font: calc(14px * var(--fz)) var(--font-mono); color: var(--fg-tertiary); font-variant-numeric: tabular-nums; }
 
 /* ===== G14.181 用户气泡限高折叠(主对话/子智能体页共用):默认 168px,底部居中悬浮展开钮 ===== */
-.user-bubble-wrap { position: relative; max-width: 85%; margin-left: auto; min-width: 0; }
-.user-bubble-wrap .user-bubble { max-width: none; }
+.user-bubble-wrap { position: relative; max-width: 85%; margin-left: auto; min-width: 0; }.user-bubble-wrap .user-bubble { max-width: none; }
 /* G14.191 浮钮组在气泡外侧右下(主对话复制钮同位语义),不遮内容;折叠态最后一行渐变隐现暗示更多 */
 .child-copy { position: absolute; right: 6px; top: 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; padding: 0 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); } /* G14.202b 气泡外右下,hover 行显 */
 /* 2026-11-16 用户裁定「插入的用户气泡不支持编辑」:转录页用户气泡补编辑钮——与 child-copy 同

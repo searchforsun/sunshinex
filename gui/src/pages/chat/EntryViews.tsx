@@ -28,6 +28,7 @@ import { TurnConfirmDialog } from './rewind-confirm';
 import type { RewindOps } from './chat-types';
 import { hasUnclosedFence, sealPartialImage, streamMdCut } from './stream-md';
 import { isOfficeHiddenNotice, useUiMode } from '../../ui-mode';
+import { SunxIcon } from '../../sunx-icon';
 
 /** 流式尾块节流渲染(2026-11-20 用户实测「输入卡顿又复现」):ms=0 直通(逐批渲染);
  *  ms>0 时值最多每 ms 更新一次。场景:长代码块流式期间,尾块=整个未闭合围栏(streamMdCut
@@ -326,7 +327,15 @@ interface UserEntryOpts {
   composerEnv?: ComposerEnv;
   /** 气泡缩略图点击开查看浮层(2026-10-26 图片功能;未配=缩略图不可点) */
   onOpenImage?: (src: string) => void;
+  /** 跨 Sunx 消息来源行点击跳转(2026-11-26):发送方 journalId → attachSunx 打开该实例;
+   *  未配=归因行只读不跳(测试桩/旁路面免配) */
+  onOpenSunx?: (journalId: string) => void;
 }
+
+/** 跨 Sunx 注入前缀剥显（2026-11-26 用户裁定「前缀加上 fromSunx」）：md 落档/模型面保留前缀
+ *  （链观察即来源说明），气泡显示剥掉——归因走 fromSunx 字段单独渲染（图标+名称行）。
+ *  前缀形=daemon 投递单点 `[fromSunx: <name> (<journalId>)] ` */
+const FROM_SUNX_PREFIX = /^\[fromSunx: [^\]\n]*\] ?/;
 
 /** 用户气泡图片条(2026-10-26 图片功能):文本上方横排缩略图(截图口径——图上文下);
  *  点击开 lightbox(缩放/复制/下载)。空图不渲染 */
@@ -415,11 +424,13 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, conn, root, sideChat }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
-  const displayMd = sideChat === true ? stripSideNote(entry.md) : entry.md;
+  const rawMd = sideChat === true ? stripSideNote(entry.md) : entry.md;
+  // 跨 Sunx 前缀剥显(2026-11-26):来源前缀只属模型面/链面,气泡正文从归属元数据走后单独渲染来源行
+  const displayMd = entry.fromSunx !== undefined ? rawMd.replace(FROM_SUNX_PREFIX, '') : rawMd;
   const [confirm, setConfirm] = useState<{ text: string; images?: string[] } | null>(null);
   const [editHint, setEditHint] = useState('');
   const confirmDialog = confirm !== null && rewindOps !== undefined && (
@@ -546,6 +557,24 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
   }
   return (
     <div className={`entry entry-user${insert === true ? ' entry-user-insert' : ''}`} data-entry-key={entry.key}>
+      {/* 跨 Sunx 来源行(2026-11-26 用户裁定「gui 显示 sunx 的用户气泡,上面 sunx 图标加名称显示,
+          可点击跳转指定 sunx」):气泡仍走用户条形态,来源=图标+实例名;配了 onOpenSunx 即点击
+          attachSunx 打开发送方实例(与侧栏 SUNX 行/看板卡片同链) */}
+      {entry.fromSunx !== undefined && (
+        <div className="user-from-sunx">
+          {onOpenSunx !== undefined ? (
+            <button type="button" className="user-from-sunx-btn" data-tip={`${t('Open this Sunx', '打开该 Sunx')} · ${entry.fromSunx.name}`} onClick={() => onOpenSunx(entry.fromSunx!.id)}>
+              <SunxIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+              <span>{entry.fromSunx.name}</span>
+            </button>
+          ) : (
+            <span className="user-from-sunx-btn" aria-hidden="true">
+              <SunxIcon size={14} strokeWidth={1.75} />
+              <span>{entry.fromSunx.name}</span>
+            </span>
+          )}
+        </div>
+      )}
       {/* 2026-10-26 用户裁定:图片与气泡分离——图片条独立在气泡外(上方右对齐),纯图消息不渲染空气泡 */}
       {entry.images !== undefined && entry.images.length > 0 && (
         <UserImageStrip conn={conn} root={root} images={entry.images} onOpen={onOpenImage} />
