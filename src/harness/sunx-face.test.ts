@@ -127,6 +127,33 @@ test('跨 Sunx 对等消息两件（2026-11-26 用户裁定）：sunx 装配注�
   }
 });
 
+test('createKernelRuntime 透传 sunxPeers/channelSend 接缝（2026-11-26 根修：调用实参对象字面量含展开时 excess-property 检查失效，接缝键曾静默丢弃——新建 sunx 报 NOT_SUPPORTED）', async () => {
+  const tmp = mktmp('sunshinex-sunxface-seam-');
+  let rt: ReturnType<typeof createKernelRuntime> | undefined;
+  try {
+    rt = createKernelRuntime({
+      root: tmp,
+      kind: 'sunx',
+      model: new ScriptedAdapter([]),
+      sunxPeers: {
+        list: async () => [],
+        send: async () => ({ ok: true, name: 'X', queued: false }),
+      },
+      channelSend: { send: async () => true },
+    });
+    // sunx 两件:面在 + 接缝在场(空列=合法空态,非 NOT_SUPPORTED)
+    assert.ok(rt.harness.tools.has('list_sunx_peers'), 'sunx 面应含 list_sunx_peers');
+    const r = await rt.harness.tools.get('list_sunx_peers')!.executor({});
+    assert.match(String(r.stdout), /no other live Sunx instances/, '接缝已透传到 harness（执行不降级）');
+    // channelSend 同根修:通道会话此前也拿不到 send_channel_message
+    assert.ok(rt.harness.tools.has('send_channel_message'), 'channelSend 接缝应透传并注册 send_channel_message');
+  } finally {
+    rt?.harness.team.stopAll();
+    rt?.harness.tasks.stopAll();
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('sunx face 白名单精确集合：恰为 SUNX_FACE_TOOLS，derive({only}) 单点产出', () => {
   const tmp = mktmp('sunshinex-sunxface-set-');
   let h: Harness | undefined;

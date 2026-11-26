@@ -23,6 +23,9 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   dispatch_task: Send, task_status: ClipboardCheck, schedule_wakeup: AlarmClock, schedule_task: CalendarClock,
   create_scheduled_task: Clock, // 定时任务(daemon 级周期任务):简单钟面,与侧栏入口同件
   send_agent_team_message: Send,
+  // 跨 Sunx 对等消息两件(2026-11-26 用户实测「两个新增工具没有添加特定的图标」):发现=雷达
+  // (Radar,与 probe 同族语义=探测可达实例);投递=Send(与 dispatch/团队消息同族)
+  list_sunx_peers: Radar, send_sunx_messages: Send,
   get_task: ClipboardList,
 };
 

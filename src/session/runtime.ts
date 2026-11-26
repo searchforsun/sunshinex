@@ -5,6 +5,7 @@ import type { PermissionMode } from '../harness/security/modes';
 import type { ToolDisplayMeta } from '../harness/tools';
 import { makeCreateScheduledTaskTool } from '../harness/tools/schedule-create-tool';
 import type { ScheduleCreateDefaults, ScheduleCreateSeam } from '../harness/tools/schedule-create-tool';
+import type { SunxPeersSeam } from '../harness/tools/sunx-peer-tools';
 import { LoopDeps, LoopRunResult } from '../loop/engine';
 import type { BackgroundTask } from '../harness/tasks';
 import { DEFAULT_GOAL_TEMPLATE, longTaskTemplate, resolveTemplate } from '../loop/templates';
@@ -65,6 +66,15 @@ export interface KernelRuntimeOpts {
   /** 学习沉淀开关（2026-11-15 sunx P3 Task 2）：与 HarnessOptions.learnSkills 同名同域——sunx 装配
    *  传 false（编排轮不沉淀伪技能，P2 遗留义务清偿）；缺席=既有推导（resolveMemoryConfig）零变化 */
   learnSkills?: boolean;
+  /** send_channel_message 接缝（spec §6;2026-11-23）：与 HarnessOptions.channelSend 同名同域——透传
+   *  buildHarness（接缝在场即注册工具）；缺席=工具不注册（TUI/CLI）。
+   *  2026-11-26 根修：本接缝此前只到 assemble 的调用实参、未进本接口/未转发——对象字面量含展开
+   *  即免 excess-property 检查，静默丢弃（daemon 通道会话因此拿不到工具） */
+  channelSend?: { send(text: string): Promise<boolean> };
+  /** 跨 Sunx 对等消息接缝（2026-11-26 用户裁定「两个工具实现 sunx 之间的聊天」）：与
+   *  HarnessOptions.sunxPeers 同名同域——透传 buildHarness；缺席=两件执行期 NOT_SUPPORTED 降级。
+   *  同 channelSend 的转发根修（首版漏转发致新建 sunx 报 NOT_SUPPORTED） */
+  sunxPeers?: SunxPeersSeam;
 }
 
 /** `RunOutcome` 按全局约束登记在 `src/types.ts`（跨模块共享）；此处按原路径再导出，既有 `./runtime` 导入点无需改动 */
@@ -106,6 +116,10 @@ export function createKernelRuntime(opts: KernelRuntimeOpts): KernelRuntime {
     ...(opts.dataDir !== undefined ? { dataDir: opts.dataDir } : {}),
     // 学习沉淀开关透传（2026-11-15 sunx P3 Task 2）：缺席=既有推导零变化
     ...(opts.learnSkills !== undefined ? { learnSkills: opts.learnSkills } : {}),
+    // 通道推送/跨 Sunx 对等消息接缝透传（2026-11-26 根修：此前对象字面量展开绕过 excess-property
+    // 检查，两键静默丢失——daemon 会话拿不到 send_channel_message / list_sunx_peers / send_sunx_messages）
+    ...(opts.channelSend !== undefined ? { channelSend: opts.channelSend } : {}),
+    ...(opts.sunxPeers !== undefined ? { sunxPeers: opts.sunxPeers } : {}),
   });
   // 定时任务创建工具（2026-11-20）：接缝在场即注册（标准会话全量面/太阳面白名单各自生效），
   // 先于 face 派生——sunx 白名单面按 derive 快照取交集，晚注册不会进白名单面
