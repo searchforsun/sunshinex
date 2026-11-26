@@ -92,7 +92,12 @@ test('投递:idle 目标=submitExternal 起轮（用户气泡语义）；前缀 
   const r = deliverSunxPeerMessage(sessions, 's-caller', 'peer-a', '第三列卡住了');
   assert.deepEqual(r, { ok: true, name: 'Planner', queued: false });
   assert.equal(target.sent.length, 1, 'idle 目标走 submitExternal（回显帧+起轮）');
-  assert.equal(target.sent[0]!.text, '[fromSunx: Caller (caller-jid)] 第三列卡住了', '前缀格式+正文原样');
+  // 注入 md = 来源前缀 + 正文 + 回答提示行（用户二轮裁定「提示添加到这里」：随消息正文进模型面）
+  assert.equal(
+    target.sent[0]!.text,
+    '[fromSunx: Caller (caller-jid)] 第三列卡住了\n\n(From another Sunx, not from the user. Reply to that Sunx with send_sunx_messages, to="caller-jid".)',
+    '前缀格式+正文原样+回答提示行（英文单语——进模型上下文的文案恒英文）',
+  );
   assert.deepEqual(target.sent[0]!.from, { id: 'caller-jid', name: 'Caller' }, '结构化归因随行（GUI 来源行）');
 });
 

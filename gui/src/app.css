@@ -793,12 +793,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .entry.entry-user { content-visibility: visible; } /* 双类提特异性:压缩包里 .entry{cv:auto} 在更晚位置有第二份,单类同特异性按序会输 */
 .entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
 /* 跨 Sunx 来源行(2026-11-26 用户裁定「上面 sunx 图标加名称显示,可点击跳转指定 sunx」):
-   右对齐贴气泡上缘,图标+实例名 tertiary 档;可点态 hover 提亮(与正文链接同一 affordance) */
+   右对齐贴气泡上缘;图标=Sunx 产品小字形(SunxIcon),色档 secondary——tertiary 在 14px 灰阶下
+   与普通消息图标难分辨(用户二轮实测);可点态 hover 提亮(与正文链接同一 affordance) */
 .user-from-sunx { display: flex; justify-content: flex-end; margin: 0 2px 2px 0; }
 .user-from-sunx-btn {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 1px 6px 1px 4px; border: none; border-radius: var(--radius-sm);
-  background: transparent; color: var(--fg-tertiary);
+  background: transparent; color: var(--fg-secondary);
   font: calc(11.5px * var(--fz)) var(--font-ui); cursor: default; max-width: 60%;
 }
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

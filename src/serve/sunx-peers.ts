@@ -100,7 +100,9 @@ export function listLiveSunxPeers(sessions: ReadonlyMap<string, PeersSessionLike
 /** 投递（只投活实例；归因按 caller 会话补全后随 submit/steer 落链）：
  *  - 目标非活/未知 → ok:false（错误原样进工具面）
  *  - 目标=自己 → 拒
- *  - 注入 md 前缀 `[fromSunx: <name> (<id>)]`（用户裁定「前缀加上 fromSunx」）；正文原样 */
+ *  - 注入 md = 来源前缀 + 正文 + 回答提示行（2026-11-26 用户二轮裁定「提示添加到这里」：
+ *    回答提示随消息正文进模型面，不再只靠工具描述；提示行恒英文——进模型上下文的文案恒英文
+ *    单语，2026-09-18 prompt-english-only；GUI 显示侧前缀与提示行同剥，用户只看到正文） */
 export function deliverSunxPeerMessage(
   sessions: ReadonlyMap<string, PeersSessionLike>,
   callerId: string,
@@ -119,7 +121,7 @@ export function deliverSunxPeerMessage(
     return { ok: false, error: `cannot send_sunx_messages to ${to}: not a Sunx session` };
   }
   const name = displayName(target, target.dataDir, to);
-  const body = `[fromSunx: ${from.name} (${from.id})] ${text}`;
+  const body = `[fromSunx: ${from.name} (${from.id})] ${text}\n\n(From another Sunx, not from the user. Reply to that Sunx with send_sunx_messages, to="${from.id}".)`;
   if (target.status() === 'idle') {
     const r = target.submitExternal(body, undefined, from);
     if (r.ok) return { ok: true, name, queued: false };

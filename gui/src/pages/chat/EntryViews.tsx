@@ -332,10 +332,12 @@ interface UserEntryOpts {
   onOpenSunx?: (journalId: string) => void;
 }
 
-/** 跨 Sunx 注入前缀剥显（2026-11-26 用户裁定「前缀加上 fromSunx」）：md 落档/模型面保留前缀
- *  （链观察即来源说明），气泡显示剥掉——归因走 fromSunx 字段单独渲染（图标+名称行）。
- *  前缀形=daemon 投递单点 `[fromSunx: <name> (<journalId>)] ` */
+/** 跨 Sunx 注入前缀剥显（2026-11-26 用户裁定「前缀加上 fromSunx」「提示添加到这里」）：md 落档/
+ *  模型面保留前缀+回答提示行（链观察即来源与回信说明），气泡显示两者同剥——归因走 fromSunx
+ *  字段单独渲染（Sunx 图标+名称行）。形=daemon 投递单点：
+ *  `[fromSunx: <name> (<journalId>)] <text>\n\n(From another Sunx, not from the user. Reply to that Sunx with send_sunx_messages, to="<id>".)` */
 const FROM_SUNX_PREFIX = /^\[fromSunx: [^\]\n]*\] ?/;
+const FROM_SUNX_HINT = /\n+\(From another Sunx, not from the user\. Reply to that Sunx with send_sunx_messages[^)]*\)\s*$/;
 
 /** 用户气泡图片条(2026-10-26 图片功能):文本上方横排缩略图(截图口径——图上文下);
  *  点击开 lightbox(缩放/复制/下载)。空图不渲染 */
@@ -429,8 +431,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
   const rawMd = sideChat === true ? stripSideNote(entry.md) : entry.md;
-  // 跨 Sunx 前缀剥显(2026-11-26):来源前缀只属模型面/链面,气泡正文从归属元数据走后单独渲染来源行
-  const displayMd = entry.fromSunx !== undefined ? rawMd.replace(FROM_SUNX_PREFIX, '') : rawMd;
+  // 跨 Sunx 前缀+回答提示行同剥显(2026-11-26 二轮):二者只属模型面/链面,气泡正文从归属元数据
+  // 走后单独渲染来源行
+  const displayMd = entry.fromSunx !== undefined ? rawMd.replace(FROM_SUNX_PREFIX, '').replace(FROM_SUNX_HINT, '') : rawMd;
   const [confirm, setConfirm] = useState<{ text: string; images?: string[] } | null>(null);
   const [editHint, setEditHint] = useState('');
   const confirmDialog = confirm !== null && rewindOps !== undefined && (

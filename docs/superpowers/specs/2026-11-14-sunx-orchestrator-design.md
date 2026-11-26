@@ -479,9 +479,11 @@ Sunx 发一句用户消息」。用户裁定 R1–R6：
 - **R3 发送=用户消息语义（直接进入排队）**：对方视角=用户气泡。idle 目标 `submitExternal`（回显帧+
   起轮）/ running 目标 `steer`（排队，轮收束补跑）；idle→running 受理竞态 409 回退入队。
   排队行随档携带归因（steer 行 fromSunx），drain 出队气泡归因不丢。
-- **R4 前缀 + 回答口径**：注入正文前缀 `[fromSunx: <name> (<journalId>)]`（模型面/链面来源说明；
-  发送方 journalId 供回信寻址）。回答提示落工具描述（工具使用契约归工具描述，2026-11-24 裁定同源）：
-  收到 fromSunx 消息时用 `send_sunx_messages` 回答 **那个 Sunx**（不是用户）。
+- **R4 前缀 + 回答口径**：注入正文 = 前缀 `[fromSunx: <name> (<journalId>)]` + 正文 + **回答提示行**
+  （用户二轮裁定「提示添加到这里」：提示随消息正文进模型面，不单靠工具描述；提示行恒英文——
+  进模型上下文的文案恒英文单语，2026-09-18 prompt-english-only）：「From another Sunx, not from the
+  user. Reply to that Sunx with send_sunx_messages, to="<journalId>".」——回答的是**那个 Sunx**，
+  不是用户；前缀供回信寻址。GUI 显示侧前缀与提示行同剥，用户只看到正文。
 - **R5 发现内容原样**：名称/品性/工作区/活动/运行态直接取域 meta 与旁车（`charterText` 随出），
   不翻译不强转英文——「内容是什么就是什么」。只暴露元信息，不暴露记忆/台账内容（域隔离红线）。
 - **R6 GUI 归属**：user 事件 `payload.fromSunx` → 内核条目 → seg 行 → 快照/replay 全链贯通；
