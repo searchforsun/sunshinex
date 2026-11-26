@@ -152,10 +152,9 @@ interface LarkUserResponse {
   data?: { user?: { name?: string } };
 }
 
-/** Lark 聊天信息响应体最小形状(GET im/v1/chats/:chat_id:data.name——群聊名;单聊常空,
- *  chat_mode='p2p' 用于单聊判定) */
+/** Lark 聊天信息响应体最小形状(GET im/v1/chats/:chat_id:data.name——群聊名;单聊常空/不支持) */
 interface LarkChatResponse {
-  data?: { name?: string; chat_mode?: string };
+  data?: { name?: string };
 }
 
 /** Lark 群成员响应体最小形状(GET im/v1/chats/:chat_id/members:data.items[].name——单聊回落人名) */
@@ -213,7 +212,7 @@ export class FeishuAdapter implements ChannelAdapter {
           // 标签由飞书侧渲名不受影响;聊天名称缺席由 router 单聊回落发送者姓名）
           const [name, chat] = await Promise.all([
             inbound.userId !== '' ? this.userName(inbound.userId) : Promise.resolve(undefined),
-            this.chatName(inbound.chatId),
+            this.chatName(inbound.chatId, inbound.chatKind), // 形态入参:单聊按成员列表回落人名
           ]);
           const enriched: InboundMessage = { ...inbound, ...(name !== undefined ? { userDisplay: name } : {}), ...(chat !== undefined ? { chatTitle: chat } : {}) };
           sink(enriched);
@@ -356,12 +355,12 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   /** 聊天名称（GET im/v1/chats/:chat_id 的 name;需 im:chat:readonly 域）：群聊=群名（悬浮卡
-   *  聊天名称行,2026-11-24 用户裁定「群聊就是群聊名称」）;单聊群名常空——**成员列表回落**
-   *  （chats/:chat_id/members 同域可取成员姓名,2026-11-25 用户报障「有 im:chat 权限仍拿不到
-   *  单聊名称」根修:不再依赖通讯录读域）。
+   *  聊天名称行,2026-11-24 用户裁定「群聊就是群聊名称」）;单聊群名常空甚至群信息接口直接报错
+   *  ——**按消息 chatKind 回落成员列表**（chats/:chat_id/members 同域可取成员姓名,2026-11-25
+   *  用户报障「有 im:chat 权限仍拿不到单聊名称」根修:不再依赖通讯录读域,也不以群信息成功为前提）。
    *  失败**不缓存**（2026-11-25 同轮根修:失败曾永久缓存→权限后开/版本发布后仍恒 undefined,
    *  直到进程重启才重试）——成功才进 chatCache,失败即摘,下条消息自然重试（每消息至多一次调用） */
-  private chatName(chatId: string): Promise<string | undefined> {
+  private chatName(chatId: string, chatKind: 'direct' | 'group'): Promise<string | undefined> {
     const hit = this.chatCache.get(chatId);
     if (hit !== undefined) return hit;
     const p = (async (): Promise<string | undefined> => {
@@ -370,22 +369,27 @@ export class FeishuAdapter implements ChannelAdapter {
         const resp = (await this.client.request({ method: 'GET', url: `/open-apis/im/v1/chats/${chatId}` })) as LarkChatResponse;
         const name = resp?.data?.name;
         if (typeof name === 'string' && name !== '') return name;
-        // 单聊（chat_mode=p2p）群名为空:成员列表取非机器人成员姓名（同一 im:chat:readonly 权限）
-        if (resp?.data?.chat_mode === 'p2p') {
-          const members = (await this.client.request({
-            method: 'GET',
-            url: `/open-apis/im/v1/chats/${chatId}/members`,
-            params: { member_id_type: 'open_id' },
-          })) as LarkChatMembersResponse;
-          for (const m of members?.data?.items ?? []) {
-            if (typeof m.name === 'string' && m.name !== '') return m.name;
-          }
+      } catch (e) {
+        // 读取失败可诊断（2026-11-25 用户报障「hover 还是显示聊天 id」）:群聊名称需应用开通
+        // 「获取群组信息」(im:chat:readonly)——失败静默降级,但留一行日志供排查（单聊仍走下方
+        // 成员回落,不受此失败影响）
+        (this.deps.log ?? (() => {}))(`feishu chat info 读取失败(${chatId}): ${e instanceof Error ? e.message : String(e)}；群聊名称需应用开通 im:chat:readonly`);
+      }
+      // 单聊名=聊天人名称:群名接口对 p2p 常为空/不支持,按消息形态直接回落成员列表（同一
+      // im:chat:readonly 权限;群聊不回落——成员姓名不是群名,避免张冠李戴）
+      if (chatKind !== 'direct') return undefined;
+      try {
+        const members = (await this.client.request({
+          method: 'GET',
+          url: `/open-apis/im/v1/chats/${chatId}/members`,
+          params: { member_id_type: 'open_id' },
+        })) as LarkChatMembersResponse;
+        for (const m of members?.data?.items ?? []) {
+          if (typeof m.name === 'string' && m.name !== '') return m.name;
         }
         return undefined;
       } catch (e) {
-        // 读取失败可诊断（2026-11-25 用户报障「hover 还是显示聊天 id」）:群聊名称需应用开通
-        // 「获取群组信息」(im:chat:readonly)——失败静默降级仍按 chatId 展示,但留一行日志供排查
-        (this.deps.log ?? (() => {}))(`feishu chat info 读取失败(${chatId}): ${e instanceof Error ? e.message : String(e)}；群聊名称需应用开通 im:chat:readonly`);
+        (this.deps.log ?? (() => {}))(`feishu chat members 读取失败(${chatId}): ${e instanceof Error ? e.message : String(e)}；单聊名称需应用开通 im:chat:readonly`);
         return undefined;
       }
     })().then((name) => {
