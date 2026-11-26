@@ -2095,10 +2095,19 @@ button.user-from-sunx-btn:hover { background-image: linear-gradient(currentColor
 .sx-main .chat .entry { content-visibility: visible; contain-intrinsic-size: none; }
 .entry-thinking .thinking-label { font-variant-numeric: tabular-nums; }
 
+/* 2026-11-26 用户裁定「运行中最后一行转圈和上面太远了,应和其他工具思考行行距一致」:
+   闭合折叠段(随轮折叠,实际高 0)不再吃 .chat 的 flex 行距——旧行为每段白占 8px,
+   运行/末行后被若干空壳逐段顶远;空壳(条目渲染为空,如办公模式隐藏旁白)同样退出流 */
+.chat > .chat-unit:has(> .seg-collapse:not(.open)),
+.chat > .seg-collapse:not(.open),
+.chat > .chat-spacer { margin-top: -8px; }
+.chat > .chat-unit:empty { display: none; }
 /* G14.52 运行状态行:圆圈+步数+tokens 常驻流区末行(轮次完成/停止即隐);
    独立成行左缘对齐其他行(padding 同 .entry),替代「尾参挂最后工具行」的旧形态 */.run-live-line {
   display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px 10px;
+  /* 2026-11-26:「和上面一行按轻行档收紧」——撤 flex 槽位,顶部 6px 与工具/思考行视觉行距同档 */
+  margin-top: -8px;
+  padding: 6px 8px 10px;
   color: var(--fg-tertiary); font-size: calc(14px * var(--fz));
   font-variant-numeric: tabular-nums;
 }
@@ -2537,12 +2546,9 @@ html[data-theme='light'] .files-selbar button:hover { background: color-mix(in s
 /* ===== G14.181 用户气泡限高折叠(主对话/子智能体页共用):默认 168px,底部居中悬浮展开钮 ===== */
 .user-bubble-wrap { position: relative; max-width: 85%; margin-left: auto; min-width: 0; }.user-bubble-wrap .user-bubble { max-width: none; }
 /* G14.191 浮钮组在气泡外侧右下(主对话复制钮同位语义),不遮内容;折叠态最后一行渐变隐现暗示更多 */
-.child-copy { position: absolute; right: 6px; top: 100%; margin-top: 4px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; padding: 0 2px; opacity: 0; transition: opacity var(--dur-basic) var(--ease-enter); } /* G14.202b 气泡外右下,hover 行显 */
-/* 2026-11-16 用户裁定「插入的用户气泡不支持编辑」:转录页用户气泡补编辑钮——与 child-copy 同
-   浮现拍,排在复制钮左侧(.child-edit 右移让位);编辑卡见 AgentTranscriptTab TranscriptUserBubble */
-.child-edit { right: 32px; }
+/* 2026-11-26 用户裁定「子智能体中任务气泡底部要显示时间,和其他气泡一致」「hover 时显示,和复制
+   按钮同一行」:转录页用户气泡不再自建绝对定位钮——时刻+复制统一走主对话 .user-actions 行 */
 .child-user-entry { position: relative; width: 100%; }
-.child-user-entry:hover .child-copy, .child-user-entry:hover .child-edit { opacity: 1; color: var(--fg); }
 .child-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ===== G14.186 侧栏菜单行 hover 统一(用户裁定):同高 28/同侧内缩 4px/同 hover 色 8%/弧度对齐主输入框(composer) ===== */
@@ -4005,9 +4011,8 @@ button:disabled[data-tip]:not([data-tip='']) { pointer-events: auto; }
 .run-footer .sx-tip:hover { color: var(--fg); }
 .entry-user .user-action { color: var(--fg-icon); }
 .entry-user .user-action:hover { color: var(--fg); }
-.child-copy, .child-edit { color: color-mix(in srgb, var(--fg) 85%, transparent); }
 .run-footer .sx-tip { padding: 0; } /* UA 按钮内距(左右 ~6px)把 22px 钮内容区压到 10px,flex 收缩图标——实测 14px 被压回 10 的根因 */
-.run-footer .sx-tip svg, .entry-user .user-action svg, .child-copy svg, .child-edit svg,
+.run-footer .sx-tip svg, .entry-user .user-action svg,
 .code-head .sx-tip svg, .mermaid-actions .sx-tip svg { width: var(--icon-min); height: var(--icon-min); flex: none; }
 /* 代码块/mermaid 头部动作钮与正文回复复制行同档亮度(2026-11-09 用户裁定:原 fg-tertiary 偏浅显小) */
 .code-head .sx-tip, .mermaid-actions .sx-tip { color: var(--fg-icon); }

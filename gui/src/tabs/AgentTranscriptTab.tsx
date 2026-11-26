@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, memo } from 'react';
 import { ArrowDown, Check, Copy } from 'lucide-react';
 import { t } from '../i18n';
-import { chaseScrollBottom, fmtTokens } from '../ui-util';
+import { chaseScrollBottom, fmtTokens, messageTimeMs } from '../ui-util';
 import type { AgentActivity } from './agent-activity';
 import type { TaskBoardState } from '../projection';
 import type { Connection } from '../connection';
 import { ChatEntryView, CollapsibleBubble, ThinkingEntryView, ToolEntryView } from '../pages/Chat';
 import { RunEntryView } from '../pages/chat/EntryViews';
+import { TipButton } from '../pages/chat/RunFooter';
 import { ToolSegBlock } from '../pages/chat/ToolGroups';
 import { useCopyFeedback } from '../use-copy-feedback';
 import { runFooterMapOf, taskNameResolverOf, teamNameResolverOf } from '../pages/chat/use-chat-derived';
@@ -65,29 +66,36 @@ interface AgentTranscriptTabProps {
  *  与主对话 applyChatEvent 走同一 applyEvent 实现）——tool 行 name/input/result 全量在场,与主对话
  *  逐字段同构;旧有损文本滑窗反解析退役（空名帧退化「…」行/孤儿回执病根） */
 
-/** 转录页用户气泡(目标带/轮内插入统一件):折叠气泡+气泡外右下复制钮。只读——编辑能力与入口
- *  一并退役(2026-11-19 用户裁定「插入会话去掉编辑能力和入口,包括智能体团队的 send_message」;
- *  转录页的插入气泡本就是只读上下文回放)。copied/onCopy 沿页级 useCopyFeedback 单点注入,
- *  memo 保流式帧零重渲染 */
-const TranscriptUserBubble = memo(function TranscriptUserBubble({ text, insert, entryKey, copied, onCopy }: {
+/** 转录页用户气泡(目标带/轮内插入统一件):折叠气泡+气泡外右下复制钮+时刻(2026-11-26 用户裁定
+ *  「子智能体中任务气泡底部要显示时间,和其他气泡一致」——轮尾 RunFooter 的时刻同档,复制钮左侧)。
+ *  只读——编辑能力与入口一并退役(2026-11-19 用户裁定「插入会话去掉编辑能力和入口,包括智能体
+ *  团队的 send_message」;转录页的插入气泡本就是只读上下文回放)。copied/onCopy 沿页级
+ *  useCopyFeedback 单点注入,memo 保流式帧零重渲染 */
+const TranscriptUserBubble = memo(function TranscriptUserBubble({ text, insert, entryKey, ts, copied, onCopy }: {
   text: string;
   insert?: boolean;
   entryKey?: string;
+  /** 条目时刻(缺省=无时刻面:开档参数回落的任务文本无条目,不造时间) */
+  ts?: number;
   copied: boolean;
   onCopy: () => void;
 }): JSX.Element {
   return (
     <div className={`entry entry-user child-user-entry${insert ? ' entry-user-insert' : ''}`} data-entry-key={entryKey}>
       <CollapsibleBubble text={text} render={(md) => <div className="child-user-text">{md}</div>} />
-      <button
-        type="button"
-        className="child-copy"
-        aria-label={copied ? t('Copied', '已复制') : t('Copy', '复制')}
-        data-tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
-        onClick={onCopy}
-      >
-        {copied ? <Check size={14} strokeWidth={2} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
-      </button>
+      {/* 时刻+复制同排 hover 浮现(2026-11-26 用户裁定「怎么是常显,不是 hover 时显示?还有和复制按钮
+          在同一行」):直接复用主对话用户气泡的 .user-actions 行(绝对定位挂气泡下沿、hover/focus
+          才显),时刻在前复制钮在后,与主对话逐像素同款 */}
+      <div className="user-actions">
+        {ts !== undefined && <span className="user-time">{messageTimeMs(ts)}</span>}
+        <TipButton
+          className="user-action"
+          tip={copied ? t('Copied', '已复制') : t('Copy', '复制')}
+          label="Copy"
+          icon={copied ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
+          onClick={onCopy}
+        />
+      </div>
     </div>
   );
 });
@@ -210,7 +218,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
         renderAssistant={(e2) => <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />}
         renderEntry={(e2) => {
           if (e2.kind === 'user') {
-            return <TranscriptUserBubble text={e2.md} insert entryKey={e2.key} copied={copied === 'ok'} onCopy={() => copyText(e2.md)} />;
+            return <TranscriptUserBubble text={e2.md} insert entryKey={e2.key} ts={e2.ts} copied={copied === 'ok'} onCopy={() => copyText(e2.md)} />;
           }
           return <ChatEntryView key={e2.key} entry={e2} onOpenAgent={onOpenAgent} onOpenLeader={leaderFrom} onOpenDiff={onOpenDiff !== undefined ? (p) => onOpenDiff('', p) : undefined} />;
         }}
@@ -235,7 +243,7 @@ export function AgentTranscriptTab({ conn, sessionId, activities, board, teams, 
     if (e.kind === 'user') {
       const insert = isMidRunInsert(entries, i);
       nodes.push(
-        <TranscriptUserBubble key={e.key} text={e.md} insert={insert} entryKey={e.key} copied={copied === 'ok'} onCopy={() => copyText(e.md)} />,
+        <TranscriptUserBubble key={e.key} text={e.md} insert={insert} entryKey={e.key} ts={e.ts} copied={copied === 'ok'} onCopy={() => copyText(e.md)} />,
       );
       continue;
     }

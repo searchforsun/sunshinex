@@ -204,6 +204,20 @@ describe('AgentTranscriptTab 任务定位(2026-11-03 用户裁定)', () => {
     unmount();
   });
 
+  it('任务气泡底部显示时刻(2026-11-26 用户裁定「和其他气泡一致」):走主对话 .user-actions 行,hover 才显、与复制同排', () => {
+    let s: AgentActivities = {};
+    s = applyAgentEvent(s, sub('step', 'an', '', { taskBand: 'Task task-a-5555: A' + String.fromCharCode(10) + 'spec a' }));
+    const { container } = render(
+      <AgentTranscriptTab conn={connStub} sessionId="s1" activities={s.an} board={boardStub} task="兜底" />,
+    );
+    const row = container.querySelector('.child-user-entry .user-actions'); // 与主对话用户气泡同件
+    expect(row).not.toBeNull();
+    const time = row!.querySelector('.user-time');
+    expect(time).not.toBeNull();
+    expect((time!.textContent ?? '').length).toBeGreaterThan(0); // 时刻进 hover 行
+    expect(row!.querySelector('.user-action')).not.toBeNull(); // 复制钮同一行
+  });
+
   it('目标气泡未出(任务未开跑)不滚动;任务带流入后命中', () => {
     const scrollSpy = vi.fn();
     (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView = scrollSpy;

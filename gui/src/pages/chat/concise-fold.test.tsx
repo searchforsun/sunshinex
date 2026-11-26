@@ -18,15 +18,14 @@ const none = (): null => null;
 const tool = (key: string, name: string, input: Record<string, unknown>, text = 'ok'): ChatEntry =>
   ({ key, kind: 'tool', name, input, text } as unknown as ChatEntry);
 
-function mount(props: { seg: ChatEntry[]; closed: boolean; live?: boolean; peekRunKey?: string; onExpandRun?: (k: string) => void }): HTMLElement {
+function mount(props: { seg: ChatEntry[]; closed: boolean; live?: boolean; runFolded?: boolean }): HTMLElement {
   const renderTool = (e: ChatEntry) => <ToolEntryView key={e.key} entry={e} conn={conn} sessionId="s" />;
   const r = render(
     <ToolSegBlock
       seg={props.seg}
       closed={props.closed}
       live={props.live}
-      peekRunKey={props.peekRunKey}
-      onExpandRun={props.onExpandRun}
+      runFolded={props.runFolded}
       renderTool={renderTool}
       renderThinking={none}
       renderAssistant={none}
@@ -56,21 +55,18 @@ describe('简洁模式折叠头恒在', () => {
     expect(c.querySelector('.concise-body')!.className).toContain('open');
   });
 
-  it('折叠轮末段(peekRunKey+closed):只露折叠头一行,点击=展开整轮', () => {
-    let expanded: string | undefined;
-    const seg = [tool('a', 'exec', { command: 'kubectl get pods' }), tool('b', 'read', { path: 'a.ts' })];
-    const c = mount({ seg, closed: true, peekRunKey: 'r1', onExpandRun: (k) => { expanded = k; } });
-    expect(c.querySelector('.concise-fold')).not.toBeNull();
-    expect(c.querySelector('.entry-tool')).toBeNull(); // 段内行全隐(只渲头行,无折叠体)
+  it('运行中折叠(runFolded):不加折叠层,末条工具行按本来样子显示(不套汇总头)', () => {
+    const seg = [tool('a', 'exec', { command: 'kubectl get pods' })];
+    const c = mount({ seg, closed: false, live: true, runFolded: true });
+    expect(c.querySelector('.concise-fold')).toBeNull(); // 不强行变折叠行
     expect(c.querySelector('.concise-body')).toBeNull();
-    fireEvent.click(c.querySelector('.concise-fold') as HTMLButtonElement);
-    expect(expanded).toBe('r1');
+    expect(c.querySelector('.entry-tool')).not.toBeNull(); // 直接是工具行本行
   });
 
-  it('peekRunKey 缺省(非折叠轮):折叠段整段仍随轮折叠不可见', () => {
+  it('封口轮折叠(closed,非在途):整段随轮折叠不可见,不露折叠行/工具行', () => {
     const seg = [tool('a', 'exec', { command: 'ls' })];
     const c = mount({ seg, closed: true });
     expect(c.querySelector('.seg-collapse')!.className).not.toContain('open');
-    expect(c.querySelector('.concise-fold')).not.toBeNull(); // 头在折叠壳内(不可见),与既有语义一致
+    expect(c.querySelector('.seg-collapse.open')).toBeNull();
   });
 });

@@ -46,9 +46,10 @@ export function isMidRunInsert(entries: readonly ChatEntry[], from: number): boo
 export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns: ReadonlySet<string>): ReadonlySet<string> {
   const s = new Set<string>();
   let hide = false;
-  /** 运行中折叠(2026-11-26 用户裁定「折叠:最后一个正文+一条折叠行」):在途轮被手动折叠时留在
-   *  外面只有**最后一段正文**(含流式中的终答;无则不留);工具/思考行整段收起,由简洁模式的
-   *  折叠行(末段 head-only)代表本轮工作——末条原生工具行不再例外留外(2026-11-07 旧口径退役) */
+  /** 运行中折叠(2026-11-26 用户裁定「运行中折叠=取最后一个正文和一个工具/思考行,不管这个
+   *  工具/思考行是什么形式」):在途轮被手动折叠时留在外面两条——最后一条工具/思考行(按本来
+   *  样子显示,不套折叠汇总头,见 ToolSegBlock runFolded)与最后一段正文(含流式终答)。
+   *  封段后回到常规折叠(只留终答,不再露工具/折叠行——否则出现「运行完了折叠还显示工具行」) */
   let liveKeep: LiveKeep | null = null;
   /** 段内 sealed assistant 收集:段收口(run 再启/流尽/新开场)时除末条外入 hidden */
   let segAssistants: string[] = [];
@@ -87,6 +88,7 @@ export function collapsedHiddenKeys(entries: readonly ChatEntry[], collapsedRuns
     }
     // 斜杠命令三态行=系统提示行,不受折叠影响(2026-10-31 裁定)
     if (hide && e.kind === 'tool' && typeof e.name === 'string' && e.name.startsWith('/')) continue;
+    if (hide && liveKeep !== null && e.key === liveKeep.work) continue;
     if (hide && (e.kind === 'tool' || e.kind === 'thinking' || isFoldNotice(e))) s.add(e.key);
   }
   closeSeg();
@@ -103,21 +105,26 @@ function liveRunKeyOf(entries: readonly ChatEntry[]): string {
 }
 
 interface LiveKeep {
-  /** 最后一段正文 key(折叠运行中唯一留外的非折叠行) */
+  /** 最后一条工具/思考行 key(折叠运行中留外的那一条,原样呈现) */
+  readonly work?: string;
+  /** 最后一段正文 key */
   readonly assistant?: string;
 }
 
-/** 在途轮(entries[runAt] 为其 run 行)内最后一段正文:扫到下一 run 或新开场用户条止
- *  (轮内插入不截断;斜杠命令三态行不计——它本就不随折叠) */
+/** 在途轮(entries[runAt] 为其 run 行)内最后一条工具/思考行与最后一段正文:扫到下一 run 或新开场
+ *  用户条止(轮内插入不截断;斜杠命令三态行不计——它本就不随折叠) */
 function liveKeepOf(entries: readonly ChatEntry[], runAt: number): LiveKeep {
+  let work: string | undefined;
   let assistant: string | undefined;
   for (let j = runAt + 1; j < entries.length; j += 1) {
     const n = entries[j]!;
     if (n.kind === 'run') break;
     if (n.kind === 'user' && !isMidRunInsert(entries, j)) break;
-    if (n.kind === 'assistant') assistant = n.key;
+    if (n.kind === 'tool' && typeof n.name === 'string' && n.name.startsWith('/')) continue;
+    if (n.kind === 'tool' || n.kind === 'thinking') work = n.key;
+    else if (n.kind === 'assistant') assistant = n.key;
   }
-  return assistant !== undefined ? { assistant } : {};
+  return { ...(work !== undefined ? { work } : {}), ...(assistant !== undefined ? { assistant } : {}) };
 }
 
 /** 2026-10-24 用户裁定「完成后自动折叠工具/思考行」:sealed(封段,streaming 非 true)run key 集

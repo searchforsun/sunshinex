@@ -107,7 +107,9 @@ export function dayUnitSpans(
     if (segStart < 0) return;
     let chars = 0;
     for (let k = segStart; k < end; k += 1) chars += entries[k]!.md.length;
-    // 整段折叠态=只渲染「Worked」头,高度与行数无关;展开态按行+字符估
+    // 折叠态(随轮折叠)整段不可见=实际高 0(2026-11-26:简洁折叠头已收在闭合折叠壳内,不再有
+    // 「Worked」头行)——估 0;旧值 44 会在尾块未挂载时留一条 44px 空洞(运行状态行被顶远);
+    // 展开态按行+字符估
     out.push({
       key: `seg:${entries[segStart]!.key}`,
       kind: 'seg',
@@ -115,7 +117,7 @@ export function dayUnitSpans(
       start: segStart,
       end,
       label: '',
-      est: segHidden ? 44 : estSeg(end - segStart, chars),
+      est: segHidden ? 0 : estSeg(end - segStart, chars),
     });
     segStart = -1;
   };
@@ -142,42 +144,6 @@ export function dayUnitSpans(
     out.push({ key: entry.key, kind, group: groupIndex, start: i, end: i + 1, label: '', entryKind: entry.kind, est: estOfEntry(entry, kind) });
   }
   flushSeg(entries.length);
-  return out;
-}
-
-/** 折叠轮末段投影(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
- *  查看了文件』折叠工具行」;运行中折叠同口径):每个折叠轮内最后一个**可折叠** seg 块 → 该轮
- *  run key。折叠态下该段只露折叠头一行(段内全隐=连最后一个正文之外只剩一条折叠行),点击=展开
- *  整轮;运行中折叠与封口折叠同一条路径(在途轮不再留末条原生工具行,见 collapsedHiddenKeys)。
- *  user 块=轮界(新开场),日分隔/命令行不断轮。foldable 判据由调用面给
- *  (ToolGroups.isConciseFoldableSeg):轮尾常挂只含记忆/技能旁白的隐段,不是折叠行,取它=head
- *  永不出现(2026-11-26 实测根因) */
-export function foldedPeekSegs(
-  units: readonly UnitSpan[],
-  collapsedRuns: ReadonlySet<string>,
-  foldable: (u: UnitSpan) => boolean,
-): Map<string, string> {
-  const out = new Map<string, string>();
-  let runKey: string | undefined;
-  let lastSeg: string | undefined;
-  const flush = (): void => {
-    if (runKey !== undefined && lastSeg !== undefined) out.set(lastSeg, runKey);
-    lastSeg = undefined;
-  };
-  for (const u of units) {
-    if (u.kind === 'run') {
-      flush();
-      runKey = collapsedRuns.has(u.key) ? u.key : undefined;
-      continue;
-    }
-    if (u.kind === 'user') {
-      flush();
-      runKey = undefined;
-      continue;
-    }
-    if (runKey !== undefined && u.kind === 'seg' && foldable(u)) lastSeg = u.key;
-  }
-  flush();
   return out;
 }
 

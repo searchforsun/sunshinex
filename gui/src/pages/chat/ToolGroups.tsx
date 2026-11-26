@@ -167,8 +167,7 @@ function segPropsEqual(prev: ToolSegBlockProps, next: ToolSegBlockProps): boolea
     && prev.seg.every((e, i) => e === next.seg[i])
     && prev.closed === next.closed
     && prev.live === next.live
-    && prev.peekRunKey === next.peekRunKey
-    && prev.onExpandRun === next.onExpandRun
+    && prev.runFolded === next.runFolded
     && prev.renderTool === next.renderTool
     && prev.renderThinking === next.renderThinking
     && prev.renderAssistant === next.renderAssistant
@@ -182,12 +181,10 @@ interface ToolSegBlockProps {
    *  该段把段内最后一条并入面工具行钉在折叠体之外常显(运行行本身=进度),折叠头照常在其上
    *  (2026-11-26 追加裁定:折叠行不许因运行中而消失) */
   live?: boolean;
-  /** 折叠轮末段(2026-11-26 用户裁定「折叠时,也要显示最后一个正文和最后一个『运行了命令,
-   *  查看了文件』折叠工具行」;运行中折叠同口径——「折叠:最后一个正文+一条折叠行」):
-   *  该段在轮折叠态只露折叠头一行(摘要=整段类别动词),段内内容全隐;
-   *  点击=展开整轮(onExpandRun(peekRunKey),与点轮头同动作)。非折叠态/非简洁模式不生效 */
-  peekRunKey?: string;
-  onExpandRun?: (runKey: string) => void;
+  /** 在途轮已被折叠(2026-11-26 用户裁定「运行中折叠=取最后一个正文和一个工具/思考行,不管
+   *  这个工具/思考行是什么形式」):该段不加简洁折叠层——末条工具/思考行按展开态本来的样子
+   *  直接显示(工具行/思考行/逃逸行各是自己),不套「运行了命令 · 查阅了文件」汇总头 */
+  runFolded?: boolean;
   renderTool: (e: ChatEntry) => ReactNode;
   renderThinking: (e: ChatEntry) => ReactNode;
   renderAssistant: (e: ChatEntry) => ReactNode;
@@ -203,8 +200,7 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   seg,
   closed,
   live,
-  peekRunKey,
-  onExpandRun,
+  runFolded,
   renderTool,
   renderThinking,
   renderAssistant,
@@ -214,7 +210,7 @@ export const ToolSegBlock = memo(function ToolSegBlock({
   const concise = useConciseMode();
   const foldableEarly = concise && isConciseFoldableSeg(seg);
   /** 运行末段钉住行:段内最后一条并入面工具行(钉在折叠体之外,body 成员剔除以免双渲) */
-  const pinnedEarly = foldableEarly && live === true && !closed
+  const pinnedEarly = foldableEarly && runFolded !== true && live === true && !closed
     ? [...seg].reverse().find((e) => e.kind === 'tool' && (e.name === undefined || !CONCISE_ESCAPE.has(e.name)))
     : undefined;
   const nodes = buildSegNodes(pinnedEarly === undefined ? seg : seg.filter((e) => e.key !== pinnedEarly.key));
@@ -271,8 +267,9 @@ export const ToolSegBlock = memo(function ToolSegBlock({
    *  查看了文件』折叠行」之根修:2026-11-19 的「运行末段钉末条原生工具行+头暂隐」退役——它把
    *  运行中末段渲染成原生工具行,折叠行消失且随 anyRunning 抖动)。现在任何状态都是「折叠头+
    *  body」:运行中头照常常驻(摘要随类别增长,不闪隐),点开=看内层既有聚合行(第二层)。
-   *  折叠轮末段(headOnly):轮已折叠=内容全隐,该段只露折叠头一行当本轮工作摘要,点击=展开整轮 */
-  const foldable = foldableEarly;
+   *  在途轮已折叠(runFolded):该段不折——末条工具/思考行按本来样子显示(2026-11-26 用户裁定
+   *  「最后一行是运行了命令就显示运行了命令,显示思考中就显示思考中,不强行变成折叠的」) */
+  const foldable = foldableEarly && runFolded !== true;
   /** 展开态跨渲染保持(2026-11-26 用户裁定「运行中展开=正常显示折叠行和阶段正文」:
    *  折叠体默认收着,点折叠头才看段内工具/思考行) */
   const [segOpen, setSegOpen] = useState(false);
@@ -312,14 +309,6 @@ export const ToolSegBlock = memo(function ToolSegBlock({
     );
   });
   const inner = <div className="seg-inner">{segNodes}</div>;
-  if (foldable && closed && peekRunKey !== undefined) {
-    // 折叠轮末段只露折叠头一行(段内条目全部随轮折叠,头行点击=展开整轮)
-    return (
-      <div className="seg-collapse open">
-        <ConciseFold open={false} onToggle={() => onExpandRun?.(peekRunKey)} summary={conciseSummary(seg)} />
-      </div>
-    );
-  }
   return (
     <div className={`seg-collapse${closed ? '' : ' open'}`}>
       {foldable ? (
