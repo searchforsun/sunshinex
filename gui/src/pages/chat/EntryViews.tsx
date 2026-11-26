@@ -591,15 +591,16 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
             <button
               type="button"
               className="user-from-sunx-btn"
-              data-tip={`${t('Open this Sunx at this turn', '打开该 Sunx 并定位到这一轮')} · ${entry.fromSunx.name}`}
               onClick={() => onOpenSunx(entry.fromSunx!.id, entry.fromSunx!.runSeq)}
             >
-              <SunxIcon size={14} strokeWidth={1.75} aria-hidden="true" />
+              {/* 图标=黑白色（2026-11-26 用户裁定「图标不应该是蓝色的，就是黑白色」）：跟随前景
+                  主题色，名称仍为蓝色链接档 */}
+              <SunxIcon size={14} strokeWidth={1.75} className="user-from-sunx-icon" aria-hidden="true" />
               <span>{entry.fromSunx.name}</span>
             </button>
           ) : (
             <span className="user-from-sunx-btn" aria-hidden="true">
-              <SunxIcon size={14} strokeWidth={1.75} />
+              <SunxIcon size={14} strokeWidth={1.75} className="user-from-sunx-icon" />
               <span>{entry.fromSunx.name}</span>
             </span>
           )}

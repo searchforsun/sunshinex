@@ -808,7 +808,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .entry-user:hover .user-actions, .entry-user:focus-within .user-actions { opacity: 1; }
 /* 跨 Sunx 来源行(2026-11-26 用户裁定「上面 sunx 图标加名称显示」「点击气泡上蓝色 sunx 名字」
    「参考智能体团队的样式」):与 .agent-msg-head/.agent-msg-from 同款——14px、名称 accent+600、
-   hover 下划线(无底片)、gap 6、图标=Sunx 产品小字形(SunxIcon 14px);右对齐贴气泡上缘 */
+   hover 下划线(无底片)、gap 6、图标=Sunx 产品小字形(SunxIcon 14px,黑白色——见 .user-from-sunx-icon);
+   右对齐贴气泡上缘;不挂 data-tip（2026-11-26 用户裁定「不要显示 hover 信息」） */
 .user-from-sunx { display: flex; align-items: center; justify-content: flex-end; gap: 6px; max-width: 85%; margin: 0 2px 4px 0; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 .user-from-sunx-btn {
   display: inline-flex; align-items: center; gap: 6px;
@@ -817,6 +818,8 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font: inherit; font-weight: 600; cursor: default; max-width: 100%;
 }
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 图标黑白色（2026-11-26 用户裁定）：跟随前景主题色，不随名称的 accent 走 */
+.user-from-sunx-icon { color: var(--fg); flex: none; }
 /* 通道群聊来源章（2026-11-25 用户裁定「参考智能体团队,气泡上侧飞书图标+用户名称,不用蓝色,
    不可跳转,hover 显示飞书 id」）:布局同 Sunx 来源行（复用 .user-from-sunx* 类）,名称用次要色
    非强调色——纯归因信息不可点;id 走 data-tip 悬浮 */

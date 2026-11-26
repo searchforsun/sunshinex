@@ -29,7 +29,9 @@ describe('跨 Sunx 消息气泡(来源行)', () => {
     const onOpenSunx = vi.fn();
     const { container } = render(<UserEntryView entry={peerEntry({ fromSunx: { ...PEER, runSeq: 12 } })} onOpenSunx={onOpenSunx} />);
     const btn = screen.getByRole('button', { name: /Planner/ });
-    expect(btn.getAttribute('data-tip')).toContain('打开该 Sunx');
+    // 无 hover 提示(2026-11-26 用户裁定「不要显示 hover 信息」);图标黑白色类随行
+    expect(btn.getAttribute('data-tip')).toBeNull();
+    expect(btn.querySelector('.user-from-sunx-icon')).not.toBeNull();
     fireEvent.click(btn);
     expect(onOpenSunx).toHaveBeenCalledWith('sunx-jid-aaa', 12); // runSeq=定位到发送方该轮
     // 前缀 + 提示行剥显：气泡正文只有原文
