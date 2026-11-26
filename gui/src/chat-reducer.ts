@@ -31,8 +31,9 @@ export interface ChatEntry {
    *  tool-result 事件 payload.images 原位落条——ToolEntry 缩略行数据源) */
   images?: string[];
   /** user:跨 Sunx 消息来源(2026-11-26;内核条目直映)——气泡上方归因行(SunxIcon+名称+点击跳转
-   *  发送方实例)数据源;display 侧剥 `[fromSunx: …] ` 前缀,归因走本字段渲染 */
-  fromSunx?: { id: string; name: string };
+   *  发送方实例)数据源;display 侧剥 `[fromSunx: …] ` 前缀,归因走本字段渲染。runSeq=发送方轮次锚
+   *  (点击归因行定位到发送方会话的该轮;缺席=只打开会话) */
+  fromSunx?: { id: string; name: string; runSeq?: number };
   streaming?: boolean;
   /** thinking 专用：段耗时秒（内核封段计首尾 ts 差） */
   seconds?: number;
@@ -139,8 +140,8 @@ export interface SnapshotTranscriptEntry {
   wake?: WakeRef[];
   /** notice:定时唤醒标记(2026-11-15 sunx P2 Task 3;内核条目原生随档,显示归 run 行前缀) */
   schedule?: boolean;
-  /** user:跨 Sunx 消息来源(2026-11-26;内核条目直序列化——快照/回放同字段) */
-  fromSunx?: { id: string; name: string };
+  /** user:跨 Sunx 消息来源(2026-11-26;内核条目直序列化——快照/回放同字段;runSeq=发送方轮次锚) */
+  fromSunx?: { id: string; name: string; runSeq?: number };
   meta?: {
     seconds?: number;
     steps?: number;
@@ -178,10 +179,11 @@ const mapCache = new WeakMap<KernelState, {
 let seedGenCounter = 0;
 
 /** G14.90/G14.106 显示过滤:P10 起裁定单点在内核(isQuietNotice),TUI/GUI 同源——本模块只消费 */
-/** 沉淀类系统通知延后到轮尾(2026-11-19 用户复裁定「系统提示显示到正文中导致正文被截断,这个
- *  系统提示要放到最后,复制思考行之下」):`[memory] saved|updated: …` / `[skills] learned|updated: …`
- *  是收口旁路产物,夹在正文/工具行之间会把阅读流切断——mapEntries 内缓冲,遇下一条 user/run
- *  边界(即本轮结束处)再落列,渲染位置=本轮最后一条正文/工具行之后(复制行之下);链与日志不动 */
+/** 记忆/技能收口旁路通知（`[memory] saved|updated: …` / `[skills] learned|updated: …`）。
+ *  显示位置规则（2026-11-25 用户裁定「不要一直拖到尾部,就原地显示;流式输出最终正文不要隔断
+ *  而已」——取代 2026-11-19「轮尾统一落列」）:只在与正文流相邻时暂存——通知落在正文流末尾
+ *  （下一工具行/轮边界前），正文不夹断;其余位置（工具行走廊里 mem/skill 工具旁产生）**原地**落列，
+ *  与生成位置一致。链与日志不动 */
 function isAmbientSinkNotice(md: string): boolean {
   return /^\[(?:memory|skills)\]\s*(?:saved|updated|learned)\b/.test(md);
 }
@@ -259,17 +261,25 @@ function mapEntries(k: KernelState, runBases: Record<number, { steps: number; to
   let pendingWake: WakeRef[] | undefined;
   let pendingSchedule: true | undefined;
   let pendingRestored: true | undefined;
-  /** 沉淀系统通知缓冲(2026-11-19):轮尾统一落列,不夹正文 */
+  /** 沉淀系统通知缓冲(2026-11-19 起):**只**在贴着正文流时暂存——正文不夹断、通知落到文流末尾;
+   *  其余位置(工具行/思考行旁产生的记忆·技能收口)原地落列(2026-11-25 用户裁定「不要一直拖到
+   *  尾部,就原地显示;流式输出最终正文不要隔断而已」) */
   let pendingSink: ChatEntry[] = [];
   for (let i = 0; i < k.entries.length; i += 1) {
     const e = k.entries[i]!;
     if (e.kind === 'notice' && isAmbientSinkNotice(e.md)) {
-      // 沉淀系统通知延后到轮尾(2026-11-19 用户复裁定):缓冲,遇 user/run 边界或末尾再落列
+      const prevEntry = k.entries[i - 1];
+      const inTextFlow = (prevEntry !== undefined && (prevEntry.kind === 'assistant' || prevEntry.kind === 'thinking')) || pendingSink.length > 0;
+      if (!inTextFlow) {
+        // 原地:不在正文流中(前一条是工具/通知/边界/无)——直接落列,与生成位置一致
+        out.push(mapOne(e, false, runBases[e.seq]));
+        continue;
+      }
       pendingSink.push(mapOne(e, false, runBases[e.seq]));
       continue;
     }
-    // 轮边界:把上一轮缓冲的沉淀通知落在本条之前(=上一轮最后一条之后,复制/思考行之下)
-    if (pendingSink.length > 0 && (e.kind === 'user' || e.kind === 'run')) {
+    // 文流结束(遇工具行)或轮边界:把缓冲的沉淀通知落在本条之前(=正文流最后一段之后)
+    if (pendingSink.length > 0 && (e.kind === 'user' || e.kind === 'run' || e.kind === 'tool')) {
       for (const v of pendingSink) out.push(v);
       pendingSink = [];
     }

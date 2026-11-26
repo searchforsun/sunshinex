@@ -821,6 +821,36 @@ describe('沉淀系统通知延后到轮尾', () => {
     expect(list[list.length - 1]).toBe('N:[memory] saved: flink-checkpoint-tune');
   });
 
+  it('工具行旁生成的记忆/技能收口原地落列(2026-11-25 用户裁定「不要拖到尾部,原地显示」)', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('tool-call', 'memory_write', { callId: 'm1', input: {} }),
+      ev('tool-result', 'saved', { callId: 'm1', ok: true }),
+      ev('notice', '[memory] saved: flink-checkpoint-tune', { source: 'memory' }),
+      ev('token', '正文结论'),
+      ev('done', '正文结论'),
+    ]);
+    const list = s.entries.map((e) => (e.kind === 'assistant' ? `A:${e.md}` : e.kind === 'notice' ? 'N' : e.kind));
+    const nAt = list.indexOf('N');
+    const aAt = list.indexOf('A:正文结论');
+    expect(nAt).toBeGreaterThan(-1);
+    expect(nAt).toBeLessThan(aAt); // 通知在正文之前(生成位置),不再拖到末尾
+  });
+
+  it('正文流内的收口仍不夹断正文:落到文流末(下一工具前),不在两段之间', () => {
+    const s = fold([
+      ev('model-start'),
+      ev('token', '第一段'),
+      ev('notice', '[skills] learned: fast-check', { source: 'skills' }),
+      ev('token', '第二段'),
+      ev('tool-call', 'read', { callId: 'r1', input: { path: 'a.ts' } }),
+      ev('tool-result', 'ok', { callId: 'r1', ok: true }),
+    ]);
+    const list = s.entries.map((e) => (e.kind === 'assistant' ? `A:${e.md}` : e.kind === 'notice' ? 'N' : e.kind));
+    expect(list.indexOf('N')).toBeGreaterThan(list.lastIndexOf('A:第二段') === -1 ? list.indexOf('A:第一段') : list.lastIndexOf('A:第二段'));
+    expect(list.indexOf('N')).toBeLessThan(list.indexOf('tool'));
+  });
+
   it('下一条 user/run 边界前落列(不串到下一轮)', () => {
     const s = fold([
       ev('model-start'),

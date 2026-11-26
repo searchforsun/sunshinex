@@ -174,8 +174,6 @@ export function useChatDerived(deps: ChatDerivedDeps): {
   taskAgentOf: (id: string) => { name: string; prompt?: string; kind?: 'exec' } | undefined;
   teamNameOf: (ref: string) => string;
   todoBatches: TodoBatch[];
-  /** 会话顶待办条显示闸:最近两个 run 内有 todo_write 才 true（用户裁定「最近两轮有触发改待办就显示」） */
-  todoRecent: boolean;
   todoActive: number;
   /** 待办总数(2026-11-11 用户裁定「顶栏数量=完整数量」:末批 items 总数,不随完成收缩) */
   todoTotal: number;
@@ -218,24 +216,6 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     return mergeTodoBatches(raw);
   }, [chat.structureVersion, chat.seedGen]);
 
-  /** 会话顶待办条显示闸（用户裁定「顶部还是最近两轮有触发改待办就显示,显示时机不变」）:
-   *  最近一批待办更新落在**最近两个 run** 内才显示——老待办不再常驻顶部;轮次口径=转录 run 条
-   *  的序位（视图条目无 seq,取最后两个 run 的数组起点作闸）。 */
-  const todoRecent = useMemo<boolean>(() => {
-    const entries = chat.entries;
-    let lastRunIdx = -1;
-    let secondLastRunIdx = -1;
-    for (let i = 0; i < entries.length; i += 1) {
-      if (entries[i]!.kind === 'run') {
-        secondLastRunIdx = lastRunIdx;
-        lastRunIdx = i;
-      }
-    }
-    if (lastRunIdx < 0) return false;
-    const gate = secondLastRunIdx >= 0 ? secondLastRunIdx : lastRunIdx;
-    return entries.slice(gate).some((e) => e.kind === 'tool' && e.name === 'todo_write');
-  }, [chat.structureVersion, chat.seedGen]);
-
   /** 顶栏动态计数:待办=末批未完成条目;任务板=pending+running */
   const todoActive = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.filter((x) => x.status !== 'completed').length : 0;
   const todoTotal = todoBatches.length > 0 ? todoBatches[todoBatches.length - 1]!.items.length : 0;
@@ -265,7 +245,7 @@ export function useChatDerived(deps: ChatDerivedDeps): {
     onTodoBatches?.(todoBatches);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batchSig]);
-  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoRecent, todoActive, todoTotal, taskActive, taskTotal, taskDone, taskRunning, computerUseActive };
+  return { taskNameOf, taskAgentOf, teamNameOf, todoBatches, todoActive, todoTotal, taskActive, taskTotal, taskDone, taskRunning, computerUseActive };
 }
 
 /** §6 末条投影:各 run 段的末条 assistant 挂操作条。注意 run 条目在该段活动之前(reducer

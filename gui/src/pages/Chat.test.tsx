@@ -1868,35 +1868,6 @@ describe('G14.177 顶栏动态计数按钮', () => {
     expect(third.container.querySelector('.chat-dyn-btn')?.className).toContain('dyn-done');
   });
 
-  it('会话顶待办条(2026-11-25):最近两轮有 todo_write 才渲染——标题+进度在条上,点击开待办页签;隔两轮未动即隐', async () => {
-    const onOpenTab = vi.fn();
-    // 轮1 含 todo_write → 最近一轮即命中,条在场
-    const recent = [
-      { seq: 1, kind: 'run', md: '', meta: {} },
-      { seq: 2, kind: 'tool', md: '', name: 'todo_write', input: { title: 'Offline flink', todos: [{ text: 'a', status: 'completed' }, { text: 'b', status: 'in_progress' }] }, result: { text: 'ok', ok: true } },
-    ] as never;
-    const first = render(<Chat conn={connOf(recent, 'running')} sessionId="s1" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
-    await flushed();
-    const bar = document.querySelector('.session-todo-bar');
-    expect(bar).not.toBeNull();
-    expect(bar!.textContent).toContain('Offline flink'); // 标题(2026-11-25「给待办一个标题参数」)
-    expect(bar!.textContent).toContain('1/2');
-    fireEvent.click(bar!);
-    expect(onOpenTab).toHaveBeenCalledWith('tasks');
-    first.unmount();
-    // todo 在轮1,之后又有轮2/轮3(无 todo_write)→ 超出「最近两轮」即隐
-    const stale = [
-      { seq: 1, kind: 'run', md: '', meta: {} },
-      { seq: 2, kind: 'tool', md: '', name: 'todo_write', input: { title: 'Offline flink', todos: [{ text: 'a', status: 'in_progress' }] }, result: { text: 'ok', ok: true } },
-      { seq: 3, kind: 'run', md: '', meta: {} },
-      { seq: 4, kind: 'run', md: '', meta: {} },
-    ] as never;
-    const second = render(<Chat conn={connOf(stale, 'running')} sessionId="s2" connState="open" onBack={() => {}} sinkRef={sinkRef} onOpenTab={onOpenTab} />);
-    await flushed();
-    expect(second.container.querySelector('.session-todo-bar')).toBeNull();
-    second.unmount();
-  });
-
   it('2026-11-11 改版:轮收尾快照持久(idle 显「完成 2 待办」,点击开待办页签);中断轮标「中断」;0 不显示', async () => {
     const onOpenTab = vi.fn();
     const seeds = [
