@@ -57,11 +57,13 @@ interface GroupChatPageProps {
   onError: (message: string) => void;
   searchOpen: boolean;
   onSearchClose: () => void;
+  /** 群聊顶栏查询入口（⋯ 右侧，避开顶栏覆盖窗控簇的点击区） */
+  onToggleSearch?: () => void;
 }
 
 export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   useLanguage();
-  const { conn, groupId, onClose, onOpenMember, onOpenSession, onError, searchOpen, onSearchClose } = props;
+  const { conn, groupId, onClose, onOpenMember, onOpenSession, onError, searchOpen, onSearchClose, onToggleSearch } = props;
   const [detail, setDetail] = useState<SunxGroupDetail | null>(null);
   const [messages, setMessages] = useState<SunxRoomMessage[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -485,6 +487,16 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           <button type="button" className="sx-iconbtn chat-more" aria-label="group menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
             <MoreHorizontal size={16} strokeWidth={1.75} />
           </button>
+          <button
+            type="button"
+            className="sx-iconbtn"
+            aria-label="search group messages"
+            aria-expanded={searchOpen}
+            data-tip={t('Search group messages', '查询群消息')}
+            onClick={onToggleSearch}
+          >
+            <Search size={16} strokeWidth={1.75} />
+          </button>
           {menuOpen && (
             <div className="sx-menu-pop chat-more-pop" role="menu">
               <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNewSunxOpen(true); }}>
@@ -840,7 +852,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               onChange={(e) => setSearchQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }}
             />
-            <button type="button" className="sx-iconbtn" aria-label="search group messages" disabled={searchBusy} onClick={() => { void runSearch(); }}>
+            <button type="button" className="sx-iconbtn" aria-label="run search" disabled={searchBusy} onClick={() => { void runSearch(); }}>
               <Search size={14} strokeWidth={1.75} />
             </button>
           </div>

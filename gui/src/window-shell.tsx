@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Minus, PanelRight, Search, Square, X } from 'lucide-react';
+import { Copy, Minus, PanelRight, Square, X } from 'lucide-react';
 import { t } from './i18n';
 
 /** 桌面壳窗控面（D62 批B，2026-11-08 自 App.tsx 外提——逐字平移零行为变化）：壳判定/窗控桥/窗控簇/程序化拖拽 */
@@ -22,34 +22,19 @@ export function WindowControls({
   showSideToggle,
   onToggleRightSidebar,
   groupChat,
-  groupSearchOpen,
-  onToggleGroupSearch,
 }: {
   showSideToggle: boolean;
   onToggleRightSidebar: () => void;
-  /** 群聊页：群聊页没有右侧页签栏，[|] 原位置换查询图标（2026-11-26 群组规格） */
+  /** 群聊页：无右侧页签栏，[|] 位不渲染；查询入口在群聊顶栏（⋯ 右侧），
+   *  避开顶栏覆盖窗控簇导致的点击不可达。 */
   groupChat?: boolean;
-  groupSearchOpen?: boolean;
-  onToggleGroupSearch?: () => void;
 }): JSX.Element {
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
-  // [|] 仅对话页显示；群聊页换成群消息查询图标（无页签栏）
   return (
     <div className="sx-wincontrols">
-      {groupChat === true ? (
-        <button
-          type="button"
-          className={`sx-winbtn${groupSearchOpen === true ? ' active' : ''}`}
-          aria-label="search group messages"
-          aria-expanded={groupSearchOpen === true}
-          data-tip={t('Search group messages', '查询群消息')}
-          onClick={onToggleGroupSearch}
-        >
-          <Search size={14} strokeWidth={1.75} />
-        </button>
-      ) : showSideToggle && (
+      {groupChat === true ? null : showSideToggle && (
         <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
           <PanelRight size={14} strokeWidth={1.75} />
         </button>

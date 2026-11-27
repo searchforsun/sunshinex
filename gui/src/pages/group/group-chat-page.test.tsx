@@ -114,8 +114,11 @@ describe('GroupChatPage', () => {
 
   it('查询侧栏复用项目右栏 sx-sidebar/sx-resizer（可拖宽，--sb-w 落宽）', async () => {
     const conn = makeConn();
-    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen onSearchClose={vi.fn()} />);
+    const onToggleSearch = vi.fn();
+    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen onSearchClose={vi.fn()} onToggleSearch={onToggleSearch} />);
     await screen.findByText('研发群');
+    fireEvent.click(screen.getByRole('button', { name: 'search group messages' }));
+    expect(onToggleSearch).toHaveBeenCalledTimes(1);
     const aside = container.querySelector('aside.sx-sidebar.sx-group-search');
     expect(aside).not.toBeNull();
     expect((aside as HTMLElement).style.getPropertyValue('--sb-w')).toBe('420px');

@@ -469,6 +469,7 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
               onError={showOpError}
               searchOpen={groupSearchOpen}
               onSearchClose={() => setGroupSearchOpen(false)}
+              onToggleSearch={() => setGroupSearchOpen((v) => !v)}
             />
           )}
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
@@ -617,8 +618,6 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
         showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain}
         onToggleRightSidebar={toggleRightSidebarStable}
         groupChat={groupChatVisible}
-        groupSearchOpen={groupSearchOpen}
-        onToggleGroupSearch={() => setGroupSearchOpen((v) => !v)}
       />
     </div>
     </DirOpenerContext.Provider>
