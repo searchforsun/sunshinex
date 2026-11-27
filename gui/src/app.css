@@ -788,12 +788,16 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 /* 编辑卡高亮层:mdlink 文件芯片放行指针事件(点击开文件;芯片 mousedown preventDefault 保
  * 编辑焦点)——高亮层整体 none,与 hn-ref 同手法 */
 .sx-composer-highlight .hn-mdlink { pointer-events: auto; }
-/* 复制钮 hover 浮现:绝对定位挂气泡下沿——不占布局高度(原 flex 占位即用户消息"下边距大"的根因) */.entry-user .user-actions {
+/* 复制钮 hover 浮现:绝对定位挂气泡下沿——不占布局高度(原 flex 占位即用户消息"下边距大"的根因) */
+.entry-user .user-actions {
   position: absolute;
   /* 2026-10-26 七轮:回到气泡下方(用户裁定「应该显示在气泡下面」;六轮收进盒内压住了气泡文字);
     遮挡由 .entry-user:hover 提层(z-index:3)解决——hover 态整条浮在后续条目之上,按钮随层可见 */
   top: calc(100% - 2px);
-  right: 0;
+  /* 2026-11-27 用户裁定「右侧气泡 hover 复制行右缘与气泡对齐(全局:普通会话/团队成员/子智能体)」:
+    right 跟 .entry 横向 padding(4px 8px 的 8px)同值——气泡贴 content box,行贴 padding box,
+    0 会让行右缘探出气泡右缘 8px */
+  right: 8px;
   display: flex;
   gap: 4px;
   opacity: 0;
@@ -823,7 +827,10 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
 .entry-user.entry-user-left { align-items: flex-start; }
 .entry-user.entry-user-left .user-bubble-wrap { margin-left: 0; margin-right: auto; }
 .entry-user.entry-user-left .user-from-sunx { justify-content: flex-start; margin: 0 0 4px 2px; }
-.entry-user.entry-user-left .user-actions { right: auto; left: 0; }
+/* 2026-11-27 用户裁定「群聊左气泡复制行:复制钮放左侧贴气泡左缘,时间在复制钮右侧」:
+   left 跟 .entry 横向 padding 同值(8px,气泡贴 content box);row-reverse 把 DOM [时间,复制]
+   翻成视觉 [复制,时间](左气泡无编辑钮,onSend 不传,翻序零副作用) */
+.entry-user.entry-user-left .user-actions { right: auto; left: 8px; flex-direction: row-reverse; }
 .entry-user.entry-user-left .user-img-strip { justify-content: flex-start; }
 /* 通道群聊来源章（2026-11-25 用户裁定「气泡上侧平台图标+用户名称,不蓝色不可跳转;hover 显示
    用户 id,右侧复制按钮」）:名称常显次要色;悬停弹小面板（popover 自带顶部 6px 内距=鼠标从名称
