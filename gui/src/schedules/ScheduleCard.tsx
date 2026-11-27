@@ -2,6 +2,7 @@ import { Clock3, Folder, History, MessageSquare, MoreHorizontal, Pencil, Play, T
 import { t } from '../i18n';
 import { pathBasename } from '../ui-util';
 import { SunxIcon } from '../sunx-icon';
+import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
 import { whenOf, whenSummary } from './cycle';
 import type { ScheduleJobView, ScheduleTargetKind } from '../connection';
 
@@ -44,18 +45,18 @@ function countdown(ms: number): string {
 }
 
 /** 目标类型/显示名（2026-11-21 用户裁定「外侧卡片展示三种类型」）：旧任务 target 缺席=项目 */
-function targetOf(job: ScheduleJobView): { kind: ScheduleTargetKind; label: string; type: { en: string; zh: string } } {
+function targetOf(job: ScheduleJobView): { kind: ScheduleTargetKind; label: string } {
   const kind: ScheduleTargetKind = job.target === 'sunx' || job.target === 'channel' ? job.target : 'project';
   if (kind === 'sunx') {
-    return { kind, label: job.targetLabel ?? t('Sunx session', 'Sunx 会话'), type: { en: 'SUNX', zh: 'SUNX' } };
+    return { kind, label: job.targetLabel ?? t('Sunx session', 'Sunx 会话') };
   }
   if (kind === 'channel') {
     const fallback = [job.targetChannelId, job.targetChatId].filter((x) => x !== undefined && x !== '').join(' · ');
-    return { kind, label: job.targetLabel ?? (fallback !== '' ? fallback : t('Channel', '通道')), type: { en: 'Channel', zh: '通道' } };
+    return { kind, label: job.targetLabel ?? (fallback !== '' ? fallback : t('Channel', '通道')) };
   }
   const base = job.root === 'default' ? '' : pathBasename(job.root);
   const label = job.targetLabel ?? (base === '' || base === 'default' || base.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : base);
-  return { kind, label, type: { en: 'Project', zh: '项目' } };
+  return { kind, label };
 }
 
 export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
@@ -123,21 +124,25 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
           </div>
         )}
       </div>
-      {/* 目标类型行（2026-11-21 用户裁定三种落点可见）：项目/SUNX/通道 + 目标名。
-          独立一行——与名称同挤首行会把任务名截断 */}
+      {/* 目标行（2026-11-21 用户裁定）：图标 = 类型（项目文件夹/Sunx 冠标/通道平台图标如飞书）+ 目标名。
+          独立一行，无边框无底色（用户裁定「不要 hover 背景」），与时钟图标同 x/同大小。 */}
       <div className="sx-schedule-target-row">
         <span
           className={`sx-schedule-target-chip is-${target.kind}`}
-          data-tip={`${t(target.type.en, target.type.zh)} · ${target.label}`}
+          data-tip={target.label}
         >
           {target.kind === 'project' ? (
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
           ) : target.kind === 'sunx' ? (
             <SunxIcon size={14} strokeWidth={1.75} />
           ) : (
-            <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+            (() => {
+              // 通道行：图标 = 该通道配置的平台（飞书→羽毛等）；配置不可得时退中性图标。
+              // label 快照里存的是「平台名 · 聊天名」，平台名在前——按已知平台表反查图标。
+              const Icon = CHANNEL_PLATFORMS.find((p) => target.label.startsWith(t(p.en, p.zh)))?.Icon;
+              return Icon !== undefined ? <Icon size={14} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />;
+            })()
           )}
-          <span className="sx-schedule-target-type">{t(target.type.en, target.type.zh)}</span>
           <span className="sx-schedule-target-label">{target.label}</span>
         </span>
       </div>

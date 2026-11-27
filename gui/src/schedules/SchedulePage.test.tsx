@@ -394,9 +394,11 @@ describe('SchedulePage 列表', () => {
     ]);
     const { container } = render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
     await screen.findByText('SUNX 任务');
-    const chips = Array.from(container.querySelectorAll('.sx-schedule-card .sx-schedule-target-chip')).map((e) => e.textContent ?? '');
-    expect(chips.some((t) => /项目|Project/.test(t) && t.includes('默认工作区'))).toBe(true);
-    expect(chips.some((t) => t.includes('SUNX') && t.includes('运维助手'))).toBe(true);
-    expect(chips.some((t) => /通道|Channel/.test(t) && t.includes('飞书 · 项目群'))).toBe(true);
+    // 2026-11-21 用户裁定「去掉项目这个名字」：chip 只剩目标名；SUNX 行前有冠标 svg
+    const chips = Array.from(container.querySelectorAll('.sx-schedule-card .sx-schedule-target-chip'));
+    expect(chips.map((e) => e.textContent ?? '').some((t) => t.includes('默认工作区'))).toBe(true);
+    expect(chips.map((e) => e.textContent ?? '').some((t) => t.includes('运维助手'))).toBe(true);
+    expect(chips.map((e) => e.textContent ?? '').some((t) => t.includes('飞书 · 项目群'))).toBe(true);
+    expect(document.querySelector('.sx-schedule-target-chip.is-sunx svg')).not.toBeNull();
   });
 });

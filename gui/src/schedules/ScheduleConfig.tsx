@@ -371,8 +371,8 @@ interface TargetOpt {
   readonly id: string;
   readonly title: string;
   readonly sub?: string;
-  /** 平台图标（通道行；2026-11-21 用户裁定「每个通道名称前显示对应图标」） */
-  readonly icon?: LucideIcon;
+  /** 行前图标（通道=平台图标如飞书；SUNX=冠标；2026-11-21 用户裁定） */
+  readonly icon?: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> | LucideIcon;
 }
 
 /** 目标选择弹层（SUNX 会话 / 通道聊天）：筛选 + 列表，无新增/浏览入口（用户裁定只选已有） */
@@ -491,12 +491,12 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     conn.sunxSessions().then(
       (rows) => {
         if (!alive) return;
-        // 2026-11-21 用户裁定：不做自己的 sunx 过滤（列表照 daemon 应答直出）
+        // 2026-11-21 用户裁定：不做自己的 sunx 过滤（列表照 daemon 应答直出）；每行前挂 Sunx 图标
         setSunxRows(
           rows.map((r) => ({
             id: r.id,
             title: r.title ?? r.firstUser ?? t('New session', '新会话'),
-            sub: r.liveSessionId !== undefined ? t('Open', '已在座') : undefined,
+            icon: SunxIcon,
           })),
         );
       },
@@ -881,11 +881,16 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
                       setTargetOpen((v) => !v);
                     }}
                   >
-                    {target === 'sunx' ? (
-                      <SunxIcon size={16} strokeWidth={1.75} className="sx-schedule-target-mark" />
-                    ) : (
-                      <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
-                    )}
+                    {/* 选中后 pill 图标跟目标走（2026-11-21 用户裁定「选中后显示对应通道图标」）：
+                        SUNX=冠标；通道=所选聊天的平台图标（飞书→羽毛…），未选=中性图标 */}
+                    {(() => {
+                      if (target === 'sunx') {
+                        return <SunxIcon size={16} strokeWidth={1.75} className="sx-schedule-target-mark" />;
+                      }
+                      const pickedRow = (chanRows ?? []).find((r) => r.id === `${chanId}:${chatId}`);
+                      const Icon = pickedRow?.icon;
+                      return Icon !== undefined ? <Icon size={16} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={16} strokeWidth={1.75} aria-hidden="true" />;
+                    })()}
                     <span className="pill-label">
                       {target === 'sunx'
                         ? sunxLabel !== ''
