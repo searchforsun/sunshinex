@@ -2,7 +2,7 @@ import { Clock3, Folder, History, MessageSquare, MoreHorizontal, Pencil, Play, T
 import { t } from '../i18n';
 import { pathBasename } from '../ui-util';
 import { SunxIcon } from '../sunx-icon';
-import { CHANNEL_PLATFORMS, platformMeta } from '../sidebar/use-menu-channels';
+import { platformMeta } from '../sidebar/use-menu-channels';
 import { whenOf, whenSummary } from './cycle';
 import type { ScheduleJobView, ScheduleTargetKind } from '../connection';
 
@@ -137,11 +137,8 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
             <SunxIcon size={16} strokeWidth={1.75} />
           ) : (
             (() => {
-              // 通道行：图标 = 该通道平台（快照 targetPlatform 权威；旧任务无快照按 label 前缀反查）。
-              const Icon =
-                job.targetPlatform !== undefined
-                  ? platformMeta(job.targetPlatform).Icon
-                  : CHANNEL_PLATFORMS.find((p) => target.label.startsWith(t(p.en, p.zh)))?.Icon;
+              // 通道行：图标 = 快照平台（targetPlatform）；旧任务无快照不兼容，退中性图标。
+              const Icon = job.targetPlatform !== undefined ? platformMeta(job.targetPlatform).Icon : undefined;
               return Icon !== undefined ? <Icon size={16} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={16} strokeWidth={1.75} aria-hidden="true" />;
             })()
           )}

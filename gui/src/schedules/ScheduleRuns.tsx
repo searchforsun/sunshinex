@@ -3,7 +3,7 @@ import { ExternalLink, Folder, MessageSquare } from 'lucide-react';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
 import { SunxIcon } from '../sunx-icon';
-import { CHANNEL_PLATFORMS, platformMeta } from '../sidebar/use-menu-channels';
+import { platformMeta } from '../sidebar/use-menu-channels';
 import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView, ScheduleRunTrigger, ScheduleTargetKind } from '../connection';
 
 /**
@@ -136,11 +136,8 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
                       <SunxIcon size={16} strokeWidth={1.75} />
                     ) : (
                       (() => {
-                        // 通道图标=平台（run.targetPlatform 权威；旧记录按 label 前缀反查）
-                        const Icon =
-                          run.targetPlatform !== undefined
-                            ? platformMeta(run.targetPlatform).Icon
-                            : CHANNEL_PLATFORMS.find((p) => targetOf(run).label.startsWith(t(p.en, p.zh)))?.Icon;
+                        // 通道图标=快照平台（targetPlatform）；旧记录无快照不兼容，退中性图标。
+                        const Icon = run.targetPlatform !== undefined ? platformMeta(run.targetPlatform).Icon : undefined;
                         return Icon !== undefined ? <Icon size={16} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={16} strokeWidth={1.75} aria-hidden="true" />;
                       })()
                     )}
