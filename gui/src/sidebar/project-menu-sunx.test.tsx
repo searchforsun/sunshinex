@@ -70,11 +70,30 @@ describe('SunxSection(侧栏 SUNX 过滤组;2026-11-15 平铺改版)', () => {
     expect(screen.queryByText('alpha')).toBeNull();
     expect(screen.queryByText('sunshinex-default')).toBeNull();
     expect(container.querySelector('.sx-sunx-ws')).toBeNull(); // 旧分节头类名零残留
-    // 行布局与最近会话同款:同一 recent-list 容器 + SessionRow;Sunx 徽标退役
-    expect(container.querySelectorAll('.recent-list .session-row').length).toBe(2);
+    // 行布局与通道/项目组同款:workspace 组行 + 组内 session-list/SessionRow;Sunx 徽标退役
+    expect(container.querySelectorAll('.session-list .session-row').length).toBe(2);
     expect(container.querySelectorAll('.sx-sunx-badge').length).toBe(0);
     expect(screen.getByText('sunx 会话 j1')).toBeDefined();
     expect(screen.getByText('sunx 会话 j2')).toBeDefined();
+  });
+
+  it('群组行=通道组同构（2026-11-26 样式重做）：workspace-item/row、16px 群图标、> 贴群名右侧、动作簇在行尾', () => {
+    const { container } = renderSection([sunxRow('j1', 'D:/w/alpha', 'alpha', { groupId: 'grp_a' })], {
+      groups: [{ id: 'grp_a', name: '研发群' }],
+      onOpenGroupChat: () => undefined,
+      onNewSunxInGroup: () => undefined,
+    });
+    const item = container.querySelector('.workspace-item')!;
+    expect(item.querySelector('.workspace-row')).not.toBeNull();
+    const head = item.querySelector('.workspace-row > .workspace-toggle.sx-sunx-group-head')!;
+    expect(head.querySelector('.sx-ws-folder svg')?.getAttribute('width')).toBe('16'); // 与项目/通道组图标同尺寸
+    expect(head.querySelector('.ws-slug.sx-ws-name')?.textContent).toBe('研发群');
+    const last = head.lastElementChild as HTMLElement; // > 在群名右侧（名称不定长，箭头贴名）
+    expect(last.classList.contains('sx-side-chev')).toBe(true);
+    expect(item.querySelector('.workspace-row > .ws-row-actions [aria-label="open group chat"]')).not.toBeNull();
+    expect(item.querySelector('.workspace-row > .ws-row-actions [aria-label="new sunx in group"]')).not.toBeNull();
+    // 群内会话仍在标准 session-list 中（与项目/通道组行同件）
+    expect(item.querySelector('.sx-collapse .session-list .session-row')).not.toBeNull();
   });
 
   it('条目点击=既有 attach 链(onAttach(root, journalId, updatedAt))', () => {
@@ -124,14 +143,14 @@ describe('归档行滤除(分组面)', () => {
     ]);
     expect(screen.queryByText('sunx 会话 j2')).toBeNull(); // 归档行不出行
     expect(screen.getByText('sunx 会话 j1')).toBeDefined();
-    expect(container.querySelectorAll('.recent-list .session-row').length).toBe(1);
+    expect(container.querySelectorAll('.session-list .session-row').length).toBe(1);
     const count = container.querySelector('.sx-sunx-count');
     expect(count?.textContent).toBe('1'); // 计数 chip 滤后口径
   });
   it('全组已归档=空态行「暂无Sunx」(行集仍有数据,归档层取数不断供)', () => {
     const { container } = renderSection([sunxRow('j2', 'D:/w/alpha', 'alpha', { archived: true })]);
     expect(screen.getByText('暂无Sunx')).toBeDefined();
-    expect(container.querySelectorAll('.recent-list .session-row').length).toBe(0);
+    expect(container.querySelectorAll('.session-list .session-row').length).toBe(0);
     const count = container.querySelector('.sx-sunx-count');
     expect(count?.textContent).toBe('0');
   });

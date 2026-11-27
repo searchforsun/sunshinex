@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, MessagesSquare } from 'lucide-react';
+import { Folder, FolderPlus, MessagesSquare } from 'lucide-react';
 import { SunxMark } from '../sunx-icon';
 import type { DirPickerResp, SunxTemplateEntry } from '../connection';
 import type { SunxGroupRow } from '../connection-types';
@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
 import { WelcomeProjectPop } from './welcome-project-pop';
+import { NewGroupDialog } from './NewGroupDialog';
 import { useWelcomeWorkspaces } from './use-welcome-workspaces';
 import { usePopOutsideClose } from '../use-pop-outside-close';
 
@@ -93,14 +94,13 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   /** 模板清单(创建模式):空数组=无模板态(选择器隐藏);templateId=下拉当前选中(空串=未选) */
   const [templates, setTemplates] = useState<SunxTemplateEntry[]>([]);
   const [templateId, setTemplateId] = useState('');
-  /** 群组字段（2026-11-26 群组规格 §6.3）：groups=清单；groupId=选中；pop=下拉；query=筛选 */
+  /** 群组字段（2026-11-26 群组规格 §6.3）：groups=清单；groupId=选中；pop=下拉；query=筛选；
+   *  新建群组改为项目选择弹层同款的「新建群组…」行 → NewGroupDialog（2026-11-26 样式重做） */
   const [groups, setGroups] = useState<SunxGroupRow[]>([]);
   const [groupId, setGroupId] = useState('');
   const [groupPop, setGroupPop] = useState(false);
   const [groupQuery, setGroupQuery] = useState('');
-  const [newGroupName, setNewGroupName] = useState('');
-  const [groupError, setGroupError] = useState('');
-  const [groupBusy, setGroupBusy] = useState(false);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   /** 编辑模式品性预填(GET /session/:id/charter;失败=加载失败态,保存禁用+错误行可见——
    *  2026-11-16 技术债补审 I2:原失败静默置 loaded=true,用户保存吃裸 400 无前置提示) */
   const [charterLoaded, setCharterLoaded] = useState(false);
@@ -138,9 +138,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setGroupId(isEdit ? (edit?.groupId ?? '') : (props.defaultGroupId ?? 'grp_default'));
     setGroupPop(false);
     setGroupQuery('');
-    setNewGroupName('');
-    setGroupError('');
-    setGroupBusy(false);
+    setGroupDialogOpen(false);
   }, [open]);
 
   /** 群列表惰拉（创建/编辑群字段）：失败=默认群兜底，不阻塞提交 */
@@ -220,6 +218,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
 
   /** 下拉弹层点外收(弹层面+.sx-sunx-ws-bar 锚外 mousedown) */
   usePopOutsideClose(projOpen, '.proj-pop', '.sx-sunx-ws-bar', () => setProjOpen(false));
+  usePopOutsideClose(groupPop, '.proj-pop', '.sx-sunx-ws-bar', () => setGroupPop(false));
 
   if (!open) return null;
 
@@ -304,25 +303,6 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   const selectedGroup = groups.find((g) => g.id === groupId);
   const groupLabel = selectedGroup?.name ?? (groupId === 'grp_default' ? t('Default group', '默认群组') : groupId);
   const filteredGroups = groups.filter((g) => g.name.toLowerCase().includes(groupQuery.trim().toLowerCase()));
-  const createGroupInline = (): void => {
-    const n = newGroupName.trim();
-    if (n === '' || groupBusy || conn.createSunxGroup === undefined) return;
-    setGroupBusy(true);
-    setGroupError('');
-    conn.createSunxGroup(n).then(
-      (r) => {
-        setGroupBusy(false);
-        setGroups((prev) => [...prev.filter((g) => g.id !== r.group.id), { id: r.group.id, name: r.group.name }]);
-        setGroupId(r.group.id);
-        setNewGroupName('');
-        setGroupPop(false);
-      },
-      (err: unknown) => {
-        setGroupBusy(false);
-        setGroupError(errText(err));
-      },
-    );
-  };
 
   const submit = isEdit ? submitEdit : submitCreate;
 
@@ -394,49 +374,54 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
                 type="button"
                 className="choose-project-bar sx-sunx-ws-bar"
                 aria-label={t('Choose group', '选择群组')}
-                onClick={() => { setGroupQuery(''); setGroupPop((v) => !v); }}
+                onClick={() => { setGroupQuery(''); setProjOpen(false); setGroupPop((v) => !v); }}
               >
                 <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
                 <span className="wc-pill-label">{groupLabel}</span>
               </button>
               {groupPop && (
-                <div className="sx-menu-pop sx-group-picker" role="menu" aria-label={t('Choose group', '选择群组')}>
-                  <input
-                    className="sx-group-palette-filter"
-                    autoFocus
-                    value={groupQuery}
-                    placeholder={t('Filter groups', '筛选群组')}
-                    onChange={(e) => setGroupQuery(e.target.value)}
-                  />
-                  <div className="sx-group-picker-list">
+                <div className="proj-pop" role="menu" aria-label={t('Choose group', '选择群组')}>
+                  {/* 与项目选择弹层同构（2026-11-26 样式重做）：筛选行/行滚动区/底部新建入口 */}
+                  <div className="branch-pop-filter">
+                    <input
+                      autoFocus
+                      value={groupQuery}
+                      aria-label={t('Filter groups', '筛选群组')}
+                      placeholder={t('Filter groups…', '筛选群组…')}
+                      onChange={(e) => setGroupQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== 'Enter') return;
+                        e.preventDefault();
+                        const first = filteredGroups[0];
+                        if (first !== undefined) { setGroupId(first.id); setGroupPop(false); }
+                      }}
+                    />
+                  </div>
+                  <div className="proj-rows-scroll">
                     {filteredGroups.map((g) => (
                       <button
                         key={g.id}
                         type="button"
                         role="menuitem"
-                        className={`sx-menuitem${g.id === groupId ? ' current' : ''}`}
+                        className={`sx-menuitem${g.id === groupId ? ' active' : ''}`}
                         onClick={() => { setGroupId(g.id); setGroupPop(false); }}
                       >
                         <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
                         {g.name}
                       </button>
                     ))}
-                    {filteredGroups.length === 0 && <div className="sx-group-palette-empty">{t('No groups', '暂无群组')}</div>}
                   </div>
+                  {filteredGroups.length === 0 && <div className="proj-empty">{t('No matching group', '无匹配群组')}</div>}
                   {conn.createSunxGroup !== undefined && (
-                    <div className="sx-group-picker-new">
-                      <input
-                        value={newGroupName}
-                        placeholder={t('New group name', '新群组名称')}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); createGroupInline(); } }}
-                      />
-                      <button type="button" disabled={groupBusy || newGroupName.trim() === ''} onClick={createGroupInline}>
-                        {t('Create', '创建')}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="sx-menuitem proj-browse"
+                      onClick={() => { setGroupPop(false); setGroupDialogOpen(true); }}
+                    >
+                      <FolderPlus size={14} strokeWidth={1.75} aria-hidden="true" /> {t('New group…', '新建群组…')}
+                    </button>
                   )}
-                  {groupError !== '' && <div className="sx-group-error">{groupError}</div>}
                 </div>
               )}
             </div>
@@ -464,6 +449,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
               aria-label={t('Choose working directory', '选择工作目录')}
               onClick={() => {
                 setProjQuery('');
+                setGroupPop(false);
                 setProjOpen((v) => !v);
               }}
             >
@@ -530,6 +516,19 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
                 : t('Create', '创建')}
           </button>
         </footer>
+        {groupDialogOpen && (
+          <NewGroupDialog
+            open
+            conn={conn}
+            onClose={() => setGroupDialogOpen(false)}
+            onCreated={(g) => {
+              setGroupDialogOpen(false);
+              setGroups((prev) => [...prev.filter((x) => x.id !== g.id), { id: g.id, name: g.name }]);
+              setGroupId(g.id);
+              window.dispatchEvent(new CustomEvent('sunx-groups-changed'));
+            }}
+          />
+        )}
       </div>
     </div>,
     document.body,

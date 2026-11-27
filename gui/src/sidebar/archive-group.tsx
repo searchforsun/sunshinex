@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { ArchiveRestore, CircleHelp, Folder, Trash2 } from 'lucide-react';
+import { ArchiveRestore, CircleHelp, Folder, MessagesSquare, Trash2 } from 'lucide-react';
 import { t, useLanguage } from '../i18n';
 import { pathBasename, relTime } from '../ui-util';
 import { RECENT_VISIBLE_DEFAULT, RECENT_VISIBLE_STEP, rowRunning, useConfirmOutsideCancel } from './project-menu-util';
@@ -20,6 +20,8 @@ export interface ArchivedRow {
   kind?: string;
   /** 来源展示名(2026-11-22 通道归档专域):通道行=应用名(免 domainSlug 长名);缺席=pathBasename(root) */
   rootLabel?: string;
+  /** 所属群组名（2026-11-26 用户裁定「归档的要显示所属群组」）：仅 Sunx 归档域注入 */
+  groupLabel?: string;
   /** daemon 运行标注(运行中可归档,2026-11-07):仅 running 运行时才带 */
   liveSessionId?: string;
   awaiting?: boolean;
@@ -86,6 +88,17 @@ export const ArchiveSection = memo(function ArchiveSection(props: ArchiveSection
               <span className="sx-archive-time">{relTime(r.updatedAt)}</span>
             </span>
             <span className="sx-archive-slug-row">
+              {/* 归档 Sunx 先示所属群组（2026-11-26 用户裁定「归档的要显示所属群组」），
+                  再示来源工作区；两段同用归档第二行弱色，动作簇仍钉右缘 */}
+              {r.groupLabel !== undefined && (
+                <>
+                  <span className="sx-archive-group">
+                    <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+                    <span className="sx-archive-slug">{r.groupLabel}</span>
+                  </span>
+                  <span aria-hidden="true">·</span>
+                </>
+              )}
               <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
               <span className="sx-archive-slug">{r.rootLabel ?? pathBasename(r.root)}</span>
               {/* 动作钮常驻第二行右缘(2026-10-21 用户裁定:非 hover 显隐) */}

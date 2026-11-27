@@ -642,10 +642,16 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  呈现层只用 updatedAt;rootLabel=来源展示名,通道=应用名,免 domainSlug 长名) */
   const archiveRows = useMemo(() => {
     if (archiveScope === 'sunx') {
-      return (sunxRows ?? []).filter((r) => r.archived === true).map((r) => ({
-        id: r.id, slug: '', root: r.root ?? '', ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.updatedAt,
-        kind: 'sunx' as const, ...(r.liveSessionId !== undefined ? { liveSessionId: r.liveSessionId } : {}), ...(r.awaiting === true ? { awaiting: true as const } : {}),
-      }));
+      const groupNames = new Map((sunxGroups ?? []).map((g) => [g.id, g.name]));
+      return (sunxRows ?? []).filter((r) => r.archived === true).map((r) => {
+        const gid = r.groupId !== undefined && r.groupId !== '' ? r.groupId : 'grp_default';
+        const groupLabel = groupNames.get(gid) ?? (gid === 'grp_default' ? t('Default group', '默认群组') : gid);
+        return {
+          id: r.id, slug: '', root: r.root ?? '', ...(r.title !== undefined ? { title: r.title } : {}), updatedAt: r.updatedAt, archivedAt: r.updatedAt,
+          kind: 'sunx' as const, groupLabel,
+          ...(r.liveSessionId !== undefined ? { liveSessionId: r.liveSessionId } : {}), ...(r.awaiting === true ? { awaiting: true as const } : {}),
+        };
+      });
     }
     if (archiveScope === 'channel') {
       return (channelRows ?? []).filter((r) => r.archived === true).map((r) => ({
@@ -655,7 +661,7 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
       }));
     }
     return archivedRows; // projects 区原样(/sessions/archived 聚合)
-  }, [archiveScope, sunxRows, channelRows, archivedRows]);
+  }, [archiveScope, sunxRows, channelRows, archivedRows, sunxGroups]);
   /** journal → daemon 运行标注(置顶组非当前会话的运行/待确认态数据源;最近会话为运行中会话的超集) */
   const liveJournals = useMemo(() => {
     const m = new Map<string, { liveSessionId: string; awaiting: boolean }>();

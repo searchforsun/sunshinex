@@ -185,34 +185,43 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
       </div>
       <div className={`sx-collapse sx-collapse-sunx${open ? ' open' : ''}`}>
         {rows !== null && (
-        <ul className="sx-sunx-groups" aria-label="sunx sessions">
+        <ul className="workspace-list sx-groups" aria-label="sunx sessions">
         {groupViews.map((g) => {
           const groupOpen = !collapsed.has(g.id);
           return (
-            <li className="sx-sunx-group" key={g.id}>
-              <div
-                className={`sx-sunx-group-head${activeSunxGroupId === g.id ? ' active' : ''}`}
-                role="button"
-                aria-expanded={groupOpen}
-                tabIndex={0}
-                onClick={() => toggleGroup(g.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    toggleGroup(g.id);
-                  }
-                }}
-              >
-                <ChevronRight size={14} strokeWidth={2} className={`sx-side-chev${groupOpen ? ' open' : ''}`} aria-hidden="true" />
-                <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" className="sx-sunx-group-icon" />
-                <span className="sx-sunx-group-name">{g.name}</span>
-                <span className="sx-sunx-count">{g.members.length}</span>
-                <span className="sx-side-head-actions">
+            <li className="workspace-item" key={g.id} style={{ position: 'relative' }}>
+              <div className="workspace-row" style={{ display: 'flex', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className={`workspace-toggle sx-group-head sx-sunx-group-head${activeSunxGroupId === g.id ? ' active' : ''}`}
+                  aria-expanded={groupOpen}
+                  onClick={() => toggleGroup(g.id)}
+                >
+                  {/* 群组图标占项目文件夹位（2026-11-26 用户裁定「群组名称左侧加上群组图标」「和其他分图标对齐」）:
+                      16px 与项目/通道组同尺寸，群名与项目名同左缘 */}
+                  <span className="sx-ws-folder" aria-hidden="true">
+                    <MessagesSquare size={16} strokeWidth={1.75} />
+                  </span>
+                  <span className="ws-slug sx-ws-name">{g.name}</span>
+                  {/* 展开指示贴群名右侧（2026-11-26 用户裁定「> 放在群组名称右侧，参考通道的显示」）:
+                      与通道组头同款 hover 显形、随开合旋转 */}
+                  <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${groupOpen ? ' open' : ''}`} />
+                </button>
+                {/* 行尾动作簇与通道组同款：计数 + 进入群聊 + 本群新建 Sunx（hover 显形） */}
+                <span className="ws-row-actions">
+                  <button
+                    type="button"
+                    className="ws-count sx-count"
+                    aria-label={`${t('Members', '成员数')} ${g.members.length}`}
+                    onClick={() => toggleGroup(g.id)}
+                  >
+                    {g.members.length}
+                  </button>
                   {onOpenGroupChat !== undefined && (
                     <button
                       type="button"
-                      className="sx-iconbtn"
                       aria-label="open group chat"
+                      className="sx-iconbtn"
                       data-tip={t('Open group chat', '进入群聊')}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => { e.stopPropagation(); onOpenGroupChat(g.id); }}
@@ -223,8 +232,8 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                   {onNewSunxInGroup !== undefined && (
                     <button
                       type="button"
-                      className="sx-iconbtn"
                       aria-label="new sunx in group"
+                      className="sx-iconbtn"
                       data-tip={t('New Sunx in this group', '在本群新建 Sunx')}
                       onMouseDown={(e) => e.stopPropagation()}
                       onClick={(e) => { e.stopPropagation(); onNewSunxInGroup(g.id); }}
@@ -234,8 +243,8 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                   )}
                 </span>
               </div>
-              {groupOpen && (
-                <ul className="recent-list sx-sunx-group-rows" aria-label={`sunx group ${g.name}`}>
+              <div className={`sx-collapse${groupOpen ? ' open' : ''}`}>
+                <ul className="session-list" aria-label={`sunx group ${g.name}`}>
                   {g.members.length === 0 && <li className="no-sessions">{t('No Sunx yet', '暂无Sunx')}</li>}
                   {g.members.map((sr) => {
                     const active =
@@ -265,7 +274,7 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                     );
                   })}
                 </ul>
-              )}
+              </div>
             </li>
           );
         })}

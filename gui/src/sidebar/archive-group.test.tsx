@@ -103,6 +103,21 @@ describe('ArchiveSection 归档会话层(侧栏整替面)', () => {
     expect(document.querySelectorAll('.sx-archive-item .sx-session-dot').length).toBe(0);
   });
 
+  it('Sunx 归档行显示所属群组（2026-11-26 用户裁定「归档的要显示所属群组」）', () => {
+    render(
+      <ArchiveSection
+        rows={[{ id: 'a1', slug: '', root: 'D:/w/p1', title: '已归档 Sunx', updatedAt: 2, archivedAt: 20, kind: 'sunx', groupLabel: '研发群' }]}
+        scope="sunx"
+        busy={false}
+        onOpenSession={() => {}}
+        onUnarchive={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    expect(screen.getByText('研发群')).toBeDefined();
+    expect(screen.getByText('p1')).toBeDefined(); // 群组+来源工作区两段都在
+  });
+
   it('kind 徽标透传(sunx P2 Task 7):sunx 归档行标题旁徽标;无 kind 行零徽标', () => {
     render(
       <ArchiveSection

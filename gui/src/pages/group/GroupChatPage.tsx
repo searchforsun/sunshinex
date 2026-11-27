@@ -5,7 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Copy, MoreHorizontal, Plus, Search, Send, Users, X } from 'lucide-react';
+import { ChevronDown, Copy, MessagesSquare, MoreHorizontal, Plus, Search, Send, Users, X } from 'lucide-react';
 import type { Connection } from '../../connection';
 import type {
   SunxGroupDetail, SunxGroupMemberRow, SunxGroupSearchHit, SunxRoomDelivery, SunxRoomMessage, SunxRoomTarget,
@@ -18,6 +18,7 @@ import { MarkdownCached, mdComponentsPlain } from '../Chat';
 import { baseModelName } from '../chat/EntryViews';
 import { NewSunxDialog } from '../../welcome/NewSunxDialog';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
+import { ComposerCard } from '../../composer/ComposerCard';
 import { MAX_IMAGES, loadImages } from '../../images';
 import { sessionModeLabel } from '../../composer/mode-menu';
 
@@ -103,12 +104,15 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [models, setModels] = useState<Array<{ id: string; model: string }>>([]);
   const [model, setModel] = useState('');
   const [mode, setMode] = useState<'' | 'read-only' | 'acceptEdits' | 'full-access'>('');
+  /** 模型/权限 pill 弹层（2026-11-26 样式重做：复用 composer-pill + pill-pop，不再自绘 select） */
+  const [settingsPop, setSettingsPop] = useState<'model' | 'mode' | null>(null);
   /** 群内 ask 卡（2026-11-27）：与成员会话同一 pending；选择态按 pid 收 */
   const [askPicks, setAskPicks] = useState<Record<string, AskPick>>({});
 
   const cursorRef = useRef(0);
   const messagesRef = useRef<SunxRoomMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const nodeBySeq = useRef(new Map<number, HTMLDivElement>());
   const atBottomRef = useRef(true);
@@ -357,6 +361,11 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     return list.slice(0, 24);
   }, [input, supported]);
   const showCommandPalette = input.trim().startsWith('/') && !input.includes(' ');
+  /** 底栏 pill 文案（空串=跟随成员；模型名按聊天同款短名收敛） */
+  const modelLabel = model === ''
+    ? t('Follow members', '跟随成员')
+    : (models.find((m) => m.id === model)?.model || baseModelName(model));
+  const modeLabel = mode === '' ? t('Follow members', '跟随成员') : sessionModeLabel(mode);
 
   /** 群页 ask 卡：来源成员 + 与成员会话同一 pid（回答走 /ask/:pid/reply，两边同步） */
   const askItems = useMemo<Array<{ pid: string; req: GuiAskReq; member: SunxGroupMemberRow }>>(
@@ -430,15 +439,22 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   }, []);
 
   return (
-    <div className="sx-group-page" aria-label={t('Group chat', '群聊')}>
+    <div className={`sx-group-page${searchOpen ? ' searching' : ''}`} aria-label={t('Group chat', '群聊')}>
       <div className="sx-group-main">
-        <header className="sx-group-topbar">
-          <div className="sx-group-title">{detail?.group.name ?? t('Group', '群组')}</div>
-          <button type="button" className="sx-winbtn sx-group-menu-btn" aria-label="group menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
+        <header className="chat-topbar sx-group-topbar" data-drag-band>
+          {/* 群名行复用会话顶栏（2026-11-26 用户裁定）：群图标占会话文件夹位、群名走 .chat-title、
+              ⋯ 走 chat-more 右贴（不再自绘 170px 让位顶栏） */}
+          <span className="chat-title">
+            <span className="sx-ws-folder" aria-hidden="true">
+              <MessagesSquare size={16} strokeWidth={1.75} />
+            </span>
+            <span className="chat-title-text">{detail?.group.name ?? t('Group', '群组')}</span>
+          </span>
+          <button type="button" className="sx-iconbtn chat-more" aria-label="group menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
             <MoreHorizontal size={16} strokeWidth={1.75} />
           </button>
           {menuOpen && (
-            <div className="sx-menu-pop sx-group-menu" role="menu">
+            <div className="sx-menu-pop chat-more-pop" role="menu">
               <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNewSunxOpen(true); }}>
                 <SunxIcon size={14} /> {t('New Sunx', '新建 SUNX')}
               </button>
@@ -498,7 +514,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 
         <div className="sx-group-composer">
           {askItems.length > 0 && (
-            <div className="sx-group-asks">
+            <div className="ask-dock sx-group-asks">
               {askItems.map((item) => {
                 const pick = askPicks[item.pid] ?? { labels: [], custom: '' };
                 return (
@@ -509,7 +525,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                       <span>{item.member.name}</span>
                     </div>
                     <AskCard req={item.req} pick={pick} onPick={(patch) => setAskPick(item.pid, patch)} />
-                    <div className="sx-group-ask-actions">
+                    <div className="ask-actions">
                       <button type="button" onClick={() => { void answerAsk(item.pid, { type: 'dismissed' }); }}>{t('Skip', '跳过')}</button>
                       <button type="button" className="primary" disabled={!pickAnswered(pick)} onClick={() => submitAsk(item)}>{t('Submit', '提交')}</button>
                     </div>
@@ -518,117 +534,181 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               })}
             </div>
           )}
-          {replyTo !== null && (
-            <div className="sx-group-quote-chip">
-              <span>{t('Replying', '回复')}: {replyTo.preview}</span>
-              <button type="button" aria-label="cancel reply" onClick={() => setReplyTo(null)}><X size={14} /></button>
-            </div>
-          )}
-          {error !== '' && <div className="sx-group-error" role="alert">{error}</div>}
-          {images.length > 0 && (
-            <div className="sx-group-images">
-              {images.map((src, i) => (
-                <div className="sx-group-image" key={`${i}-${src.slice(0, 24)}`}>
-                  <img src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} />
-                  <button type="button" aria-label="remove image" onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}><X size={14} /></button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="sx-group-settings">
-            <label>
-              <span>{t('Model', '模型')}</span>
-              <select value={model} disabled={models.length === 0} onChange={(e) => setModel(e.target.value)}>
-                <option value="">{t('Follow members', '跟随成员')}</option>
-                {models.map((m) => <option key={m.id} value={m.id}>{m.model !== '' ? m.model : baseModelName(m.id)}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>{t('Permission', '权限')}</span>
-              <select value={mode} onChange={(e) => setMode(e.target.value as typeof mode)}>
-                <option value="">{t('Follow members', '跟随成员')}</option>
-                <option value="read-only">{sessionModeLabel('read-only')}</option>
-                <option value="acceptEdits">{sessionModeLabel('acceptEdits')}</option>
-                <option value="full-access">{sessionModeLabel('full-access')}</option>
-              </select>
-            </label>
-          </div>
-          <div className="sx-group-composer-row">
-            <button type="button" className="sx-group-iconbtn" aria-label="add attachment" onClick={() => setPlusOpen((v) => !v)}><Plus size={16} /></button>
-            <button type="button" className="sx-group-iconbtn" aria-label="mention member" onClick={() => { setMentionFrom(null); setMentionQuery(''); setMentionOpen((v) => !v); }}><span className="sx-group-at">@</span></button>
-            <textarea
-              className="sx-group-input"
-              value={input}
-              placeholder={t('Message the group…', '发消息到群聊…')}
-              rows={2}
-              onChange={(e) => {
-                const v = e.target.value;
-                setInput(v);
-                const caret = e.target.selectionStart ?? v.length;
-                const m = /(^|\s)@([^\s@]*)$/.exec(v.slice(0, caret));
-                if (m !== null) {
-                  setMentionOpen(true);
-                  setMentionQuery(m[2] ?? '');
-                  setMentionFrom(caret - (m[2]?.length ?? 0) - 1);
-                } else {
-                  setMentionOpen(false);
-                  setMentionFrom(null);
-                }
-              }}
-              onPaste={(e) => {
-                const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'));
-                if (files.length > 0) {
-                  e.preventDefault();
-                  void addImages(files);
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  void send();
-                }
-              }}
-            />
-            <button type="button" className="sx-group-send" aria-label="send" disabled={sending || (input.trim() === '' && images.length === 0)} onClick={() => { void send(); }}>
-              <Send size={16} strokeWidth={2} />
-            </button>
-          </div>
-          {plusOpen && (
-            <ComposerPlusPanel
-              conn={conn}
-              excludeCommands={SUNX_EXCLUDED_COMMANDS}
-              onInsert={(text) => {
-                setInput((v) => `${v}${v === '' || v.endsWith(' ') ? '' : ' '}${text}`);
-                setPlusOpen(false);
-              }}
-              onAttachImages={(files) => { void addImages(files); setPlusOpen(false); }}
-            />
-          )}
-          {mentionOpen && (
-            <div className="sx-menu-pop sx-group-palette" role="menu">
-              <input className="sx-group-palette-filter" autoFocus value={mentionQuery} placeholder={t('Filter members', '筛选成员')} onChange={(e) => setMentionQuery(e.target.value)} />
-              <button type="button" role="menuitem" className="sx-menuitem" onClick={addAll}><span className="sx-group-at">@</span>{t('All members', '全体成员')}</button>
-              {mentionCandidates.map((m) => (
-                <button key={m.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => addMention(m)}>
-                  <SunxIcon size={14} /> {m.name}
-                  <span className="sx-group-muted">
-                    {m.awaiting === true ? t('awaiting input', '等待回答') : m.running ? t('running', '运行中') : m.live ? t('idle', '空闲') : t('not open', '未打开')}
-                  </span>
+          {/* 输入卡复用会话/欢迎页同一份 ComposerCard（2026-11-26 用户裁定「群组输入框样式不使用
+              项目已有的输入框样式？」）：卡面/图片条/自增高/脚底 pills 全走 .sx-composer；群组只
+              提供 @/命令/图片/模型/权限这些数据与动作。引用条与错误条走卡内 belowInput。 */}
+          <ComposerCard
+            className="composer"
+            label={t('Message the group…', '发消息到群聊…')}
+            inputRef={inputRef}
+            value={input}
+            placeholder={t('Message the group…', '发消息到群聊…')}
+            rows={1}
+            images={images}
+            onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+            onPasteFiles={(files) => { void addImages(files); }}
+            onChange={(v) => {
+              setInput(v);
+              const caret = inputRef.current?.selectionStart ?? v.length;
+              const m = /(^|\s)@([^\s@]*)$/.exec(v.slice(0, caret));
+              if (m !== null) {
+                setMentionOpen(true);
+                setMentionQuery(m[2] ?? '');
+                setMentionFrom(caret - (m[2]?.length ?? 0) - 1);
+              } else {
+                setMentionOpen(false);
+                setMentionFrom(null);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            belowInput={
+              <>
+                {replyTo !== null && (
+                  <div className="sx-group-reply">
+                    <span className="sx-group-reply-label">{t('Replying', '回复')}: {replyTo.preview}</span>
+                    <button type="button" className="sx-iconbtn" aria-label="cancel reply" onClick={() => setReplyTo(null)}><X size={14} /></button>
+                  </div>
+                )}
+                {error !== '' && <div className="sx-img-hint warn" role="alert">{error}</div>}
+              </>
+            }
+            footLeft={
+              <div className="composer-pills">
+                <button
+                  type="button"
+                  className="composer-pill composer-plus-btn"
+                  aria-label="add attachment"
+                  data-tip={t('Add', '添加')}
+                  onClick={() => { setMentionOpen(false); setSettingsPop(null); setPlusOpen((v) => !v); }}
+                >
+                  <Plus size={16} strokeWidth={1.75} />
                 </button>
-              ))}
-              {mentionCandidates.length === 0 && <div className="sx-group-palette-empty">{t('No members', '暂无成员')}</div>}
-            </div>
-          )}
-          {showCommandPalette && commandCandidates.length > 0 && (
-            <div className="sx-menu-pop sx-group-palette" role="menu">
-              {commandCandidates.map((cmd) => (
-                <button key={cmd} type="button" role="menuitem" className="sx-menuitem" onClick={() => addCommand(cmd)}>
-                  <span>{cmd}</span>
-                  {DESTRUCTIVE.has(cmd) && <span className="sx-group-badge">{t('single', '仅单个')}</span>}
+                <button
+                  type="button"
+                  className="composer-pill"
+                  aria-label="mention member"
+                  data-tip={t('Mention member', '提及成员')}
+                  onClick={() => { setPlusOpen(false); setSettingsPop(null); setMentionFrom(null); setMentionQuery(''); setMentionOpen((v) => !v); }}
+                >
+                  <span className="sx-group-at">@</span>
                 </button>
-              ))}
-            </div>
-          )}
+                <span className="pill-anchor">
+                  <button
+                    type="button"
+                    className="composer-pill mode-pill"
+                    aria-label={t('Model', '模型')}
+                    aria-expanded={settingsPop === 'model'}
+                    onClick={() => { setPlusOpen(false); setMentionOpen(false); setSettingsPop((v) => (v === 'model' ? null : 'model')); }}
+                  >
+                    <span className="sx-group-muted">{t('Model', '模型')}</span>
+                    <span className="pill-label">{modelLabel}</span>
+                    <ChevronDown size={12} strokeWidth={2} className="pill-chevron" />
+                  </button>
+                  {settingsPop === 'model' && (
+                    <div className="sx-menu-pop pill-pop" role="menu">
+                      <button type="button" role="menuitem" className={`sx-menuitem${model === '' ? ' current' : ''}`} onClick={() => { setModel(''); setSettingsPop(null); }}>
+                        {t('Follow members', '跟随成员')}
+                      </button>
+                      {models.map((m) => (
+                        <button key={m.id} type="button" role="menuitem" className={`sx-menuitem${model === m.id ? ' current' : ''}`} onClick={() => { setModel(m.id); setSettingsPop(null); }}>
+                          {m.model !== '' ? m.model : baseModelName(m.id)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
+                <span className="pill-anchor">
+                  <button
+                    type="button"
+                    className="composer-pill mode-pill"
+                    aria-label={t('Permission', '权限')}
+                    aria-expanded={settingsPop === 'mode'}
+                    onClick={() => { setPlusOpen(false); setMentionOpen(false); setSettingsPop((v) => (v === 'mode' ? null : 'mode')); }}
+                  >
+                    <span className="sx-group-muted">{t('Permission', '权限')}</span>
+                    <span className="pill-label">{modeLabel}</span>
+                    <ChevronDown size={12} strokeWidth={2} className="pill-chevron" />
+                  </button>
+                  {settingsPop === 'mode' && (
+                    <div className="sx-menu-pop pill-pop" role="menu">
+                      <button type="button" role="menuitem" className={`sx-menuitem${mode === '' ? ' current' : ''}`} onClick={() => { setMode(''); setSettingsPop(null); }}>
+                        {t('Follow members', '跟随成员')}
+                      </button>
+                      {(['read-only', 'acceptEdits', 'full-access'] as const).map((m) => (
+                        <button key={m} type="button" role="menuitem" className={`sx-menuitem${mode === m ? ' current' : ''}`} onClick={() => { setMode(m); setSettingsPop(null); }}>
+                          {sessionModeLabel(m)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
+              </div>
+            }
+            footRight={
+              <button type="button" className="send" aria-label="send" disabled={sending || (input.trim() === '' && images.length === 0)} onClick={() => { void send(); }}>
+                <Send size={16} strokeWidth={2} />
+              </button>
+            }
+            overlays={
+              <>
+                {plusOpen && (
+                  <ComposerPlusPanel
+                    conn={conn}
+                    excludeCommands={SUNX_EXCLUDED_COMMANDS}
+                    onInsert={(text) => {
+                      setInput((v) => `${v}${v === '' || v.endsWith(' ') ? '' : ' '}${text}`);
+                      setPlusOpen(false);
+                    }}
+                    onAttachImages={(files) => { void addImages(files); setPlusOpen(false); }}
+                  />
+                )}
+                {mentionOpen && (
+                  <div className="proj-pop sx-group-palette" role="menu">
+                    <div className="branch-pop-filter">
+                      <input
+                        autoFocus
+                        value={mentionQuery}
+                        aria-label={t('Filter members', '筛选成员')}
+                        placeholder={t('Filter members…', '筛选成员…')}
+                        onChange={(e) => setMentionQuery(e.target.value)}
+                      />
+                    </div>
+                    <div className="proj-rows-scroll">
+                      <button type="button" role="menuitem" className="sx-menuitem" onClick={addAll}>
+                        <span className="sx-group-at">@</span>{t('All members', '全体成员')}
+                      </button>
+                      {mentionCandidates.map((m) => (
+                        <button key={m.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => addMention(m)}>
+                          <SunxIcon size={14} /> {m.name}
+                          <span className="sx-group-muted">
+                            {m.awaiting === true ? t('awaiting input', '等待回答') : m.running ? t('running', '运行中') : m.live ? t('idle', '空闲') : t('not open', '未打开')}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                    {mentionCandidates.length === 0 && <div className="proj-empty">{t('No members', '暂无成员')}</div>}
+                  </div>
+                )}
+                {showCommandPalette && commandCandidates.length > 0 && (
+                  <div className="proj-pop sx-group-palette" role="menu">
+                    <div className="proj-rows-scroll">
+                      {commandCandidates.map((cmd) => (
+                        <button key={cmd} type="button" role="menuitem" className="sx-menuitem" onClick={() => addCommand(cmd)}>
+                          <span>{cmd}</span>
+                          {DESTRUCTIVE.has(cmd) && <span className="sx-group-badge">{t('single', '仅单个')}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            }
+          />
         </div>
       </div>
 
@@ -637,14 +717,14 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           <div className="sx-group-search-head">
             <Search size={16} strokeWidth={1.75} />
             <span>{t('Search', '查询')}</span>
-            <button type="button" className="sx-group-iconbtn" aria-label="close search" onClick={onSearchClose}><X size={14} /></button>
+            <button type="button" className="sx-iconbtn" aria-label="close search" onClick={onSearchClose}><X size={14} /></button>
           </div>
           <div className="sx-group-search-bar">
             <input ref={searchInputRef} value={searchQ} placeholder={t('Search messages', '查询群消息')} onChange={(e) => setSearchQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }} />
             <button type="button" disabled={searchBusy} onClick={() => { void runSearch(); }}>{t('Search', '查询')}</button>
           </div>
           <div className="sx-group-search-results">
-            {searchHits.length === 0 && <div className="sx-group-palette-empty">{searchQ.trim() === '' ? t('Type to search', '输入关键词查询') : t('No matches', '无匹配消息')}</div>}
+            {searchHits.length === 0 && <div className="proj-empty">{searchQ.trim() === '' ? t('Type to search', '输入关键词查询') : t('No matches', '无匹配消息')}</div>}
             {searchHits.map((h) => (
               <button
                 key={h.id}
@@ -667,7 +747,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           <div className="modal-body sx-group-members" role="dialog" aria-label={t('Members', '群成员')} onClick={(e) => e.stopPropagation()}>
             <div className="sx-group-members-head">
               <span>{t('Members', '群成员')} · {members.length}</span>
-              <button type="button" className="sx-group-iconbtn" aria-label="close" onClick={() => setMembersOpen(false)}><X size={14} /></button>
+              <button type="button" className="sx-iconbtn" aria-label="close" onClick={() => setMembersOpen(false)}><X size={14} /></button>
             </div>
             <div className="sx-group-members-list">
               {members.map((m) => (
@@ -679,7 +759,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   <span className="sx-group-muted">{m.runs !== undefined ? `runs ${m.runs}` : ''}{m.steps !== undefined ? ` · steps ${m.steps}` : ''}</span>
                 </button>
               ))}
-              {members.length === 0 && <div className="sx-group-palette-empty">{t('No Sunx yet', '暂无 Sunx')}</div>}
+              {members.length === 0 && <div className="proj-empty">{t('No Sunx yet', '暂无 Sunx')}</div>}
             </div>
           </div>
         </div>,
@@ -688,10 +768,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 
       {nameOpen && createPortal(
         <div className="modal-overlay" onClick={() => setNameOpen(false)}>
-          <div className="modal-body sx-group-name-dialog" role="dialog" aria-label={t('Rename group', '编辑群名')} onClick={(e) => e.stopPropagation()}>
-            <div className="sx-group-members-head"><span>{t('Rename group', '编辑群名')}</span></div>
-            <input className="sx-group-name-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }} autoFocus />
-            <div className="sx-group-dialog-actions">
+          <div className="modal-body rename-dialog" role="dialog" aria-label={t('Rename group', '编辑群名')} onClick={(e) => e.stopPropagation()}>
+            <div className="dirpicker-head">{t('Rename group', '编辑群名')}</div>
+            <input className="chat-title-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }} autoFocus />
+            <div className="dirpicker-foot">
               <button type="button" onClick={() => setNameOpen(false)}>{t('Cancel', '取消')}</button>
               <button type="button" className="primary" onClick={() => { void rename(); }}>{t('Save', '保存')}</button>
             </div>
@@ -858,7 +938,7 @@ function DeliveryPop(props: { message: SunxRoomMessage; onClose: () => void; onO
                 {d.queued === true && <span className="sx-group-muted">{t('queued', '已排队')}</span>}
               </button>
             ))}
-            {received.length === 0 && <div className="sx-group-palette-empty">—</div>}
+            {received.length === 0 && <div className="proj-empty">—</div>}
           </div>
         </div>
         <div className="sx-group-delivery-col">
@@ -876,7 +956,7 @@ function DeliveryPop(props: { message: SunxRoomMessage; onClose: () => void; onO
                 <span className="sx-group-muted" data-tip={d.error ?? ''}>{d.error ?? t('failed', '失败')}</span>
               </div>
             ))}
-            {not.length === 0 && <div className="sx-group-palette-empty">—</div>}
+            {not.length === 0 && <div className="proj-empty">—</div>}
           </div>
         </div>
       </div>
