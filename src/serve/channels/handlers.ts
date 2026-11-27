@@ -123,7 +123,9 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   obj['channels'] = listRaw.filter((item) => (item as { id?: unknown } | null)?.['id'] !== id);
   writeJsonAtomic(target, JSON.stringify(obj, null, 2) + '\n');
   afterWrite?.(loadChannels().value); // daemon 注入:applyConfigs(teardown 该通道适配器)+config-changed
-  // ② 绑定解绑+在座释放（active=用户正在看,不释放;非 active 尽力释放,snapshot/pty 不再被旧座引用）
+  // ② 绑定解绑+在座释放（**含 active**：数据目录随后要真删，留着活座=幽灵运行时——GUI 页签态
+  // 保存会把已删域目录重建（2026-11-27 用户报障「已删除通道元数据还在」实测：域下只剩
+  // gui/sessions/*.json）;GUI 凭 removedSessionIds 回欢迎页,不留死会话）
   // 被清会话 id 收集（GUI 据此 SESSION_DELETED_EVENT 回欢迎页+卸页签池）——**绑定座直收是根修**
   // （2026-11-25 用户报障「删除通道后没有回到普通对话的欢迎页」）：rootOverride 指到工作区的
   // 活会话 dataDir 在通道容器外,③ 的 dataDir 前缀扫描收不进,GUI 收不到事件不回欢迎页;
@@ -132,10 +134,24 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   const pushRemoved = (sid: string): void => {
     if (!removedSessionIds.includes(sid)) removedSessionIds.push(sid);
   };
+  /** 域目录真删的公共段：①先收**域内全部活座**（绑定/解绑/active 都可能）——数据要删，运行时
+   *  必须释放，否则它（及 GUI 对它的页签态保存）会把域目录重建出 gui/sessions 残留；②冷档
+   *  journal id 一并进 removedSessionIds；③递归删域。 */
+  const purgeDomain = (domainDir: string): void => {
+    for (const [sid, sess] of io.sessions.entries()) {
+      const dd = sess.dataDir;
+      if (dd === undefined) continue;
+      if (dd !== domainDir && !dd.startsWith(domainDir + path.sep)) continue;
+      pushRemoved(sid);
+      io.releaseSession(sid);
+    }
+    for (const jr of listSessions(path.join(domainDir, 'data'))) pushRemoved(jr.id);
+    fs.rmSync(domainDir, { recursive: true, force: true });
+  };
   const prefix = `${id}:`;
   for (const b of io.bindings.all()) {
     if (!b.key.startsWith(prefix)) continue;
-    if (io.activeSessionId() !== b.sessionId) io.releaseSession(b.sessionId);
+    io.releaseSession(b.sessionId);
     pushRemoved(b.sessionId);
     if (b.journalId !== undefined) pushRemoved(b.journalId);
     io.bindings.remove(b.key);
@@ -147,17 +163,7 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
   try {
     for (const ent of fs.readdirSync(container, { withFileTypes: true })) {
       if (!ent.isDirectory() || !ent.name.startsWith(domainPrefix)) continue;
-      // 被清域内的会话 runtime id 收集（2026-11-25 用户报障「删除后回来直接掉欢迎页+404」）:
-      // GUI 据此卸载该会话页签池+正开着的会话 deliberate 回欢迎页(复用 SESSION_DELETED_EVENT
-      // 与 2026-11-04「删除当前会话回欢迎页」既有裁定)——registry 在座面(channelMeta.chatId)
-      // 双源并集(冷档 journal 反查 + 在座 dataDir 前缀)
-      for (const [, sess] of io.sessions.entries()) {
-        if (sess.dataDir !== undefined && sess.dataDir.startsWith(path.join(container, ent.name)) && !removedSessionIds.includes(sess.id)) removedSessionIds.push(sess.id);
-      }
-      for (const jr of listSessions(path.join(container, ent.name, 'data'))) {
-        if (!removedSessionIds.includes(jr.id)) removedSessionIds.push(jr.id);
-      }
-      fs.rmSync(path.join(container, ent.name), { recursive: true, force: true });
+      purgeDomain(path.join(container, ent.name));
       removedDomains += 1;
     }
   } catch {
@@ -169,8 +175,9 @@ export function handleChannelsDelete(io: ChannelsHandlerIo, res: http.ServerResp
     const sunxRoot = sunxContainerDir();
     for (const ent of fs.readdirSync(sunxRoot, { withFileTypes: true })) {
       if (!ent.isDirectory()) continue;
-      if (readSessionMeta(path.join(sunxRoot, ent.name, 'data'), ent.name).channel !== id) continue;
-      fs.rmSync(path.join(sunxRoot, ent.name), { recursive: true, force: true });
+      const domainDir = path.join(sunxRoot, ent.name);
+      if (readSessionMeta(path.join(domainDir, 'data'), ent.name).channel !== id) continue;
+      purgeDomain(domainDir);
       removedDomains += 1;
     }
   } catch {

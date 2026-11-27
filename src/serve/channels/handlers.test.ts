@@ -270,6 +270,44 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
     }
   });
 
+  test('删除时 active 座也释放 + 域内未绑定活座一并释放收 id（2026-11-27 用户报障「已删除通道元数据还在,域下只剩 gui/sessions」:活座会被 GUI 页签态保存把域目录写回来）', () => {
+    const dir = tmpdir('sunshinex-ch-del-');
+    const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
+    const container = path.join(dir, 'channels');
+    process.env.SUNSHINEX_CHANNELS_DIR = container;
+    try {
+      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({ version: 1, channels: [
+          { id: 'del2', platform: 'feishu', enabled: true, root: 'auto', mode: 'read-only', allow: { kind: 'all' } },
+        ] }),
+        'utf8',
+      );
+      const domain = path.join(container, 'im-del2-oc-a');
+      fs.mkdirSync(path.join(domain, 'data', 'sessions'), { recursive: true });
+      fs.writeFileSync(path.join(domain, 'data', 'sessions', 'j-del2.jsonl'), '{"t":"header"}\n', 'utf8');
+      const store = makeStore(dir);
+      store.upsert({ key: 'del2:c1', sessionId: 'sun-act', journalId: 'j-del2', updatedAt: 1 });
+      const sessions = new Map<string, SessionRuntime>();
+      sessions.set('sun-act', { status: () => 'idle', dataDir: path.join(domain, 'data') } as unknown as SessionRuntime);
+      // 未绑定活座（/new 旧座等）：绑定表里没有,只在注册表——旧实现只扫不释放/不收
+      sessions.set('sun-ghost', { status: () => 'idle', dataDir: path.join(domain, 'data') } as unknown as SessionRuntime);
+      const { io, replies, released } = stubIo({ bindings: store, sessions, activeSessionId: () => 'sun-act' });
+      handleChannelsDelete(io, {} as http.ServerResponse, 'del2');
+      assert.equal(replies[0]!.status, 200);
+      const removed = (replies[0]!.body as { removedSessionIds: string[] }).removedSessionIds;
+      assert.ok(released.includes('sun-act'), 'active 座不得因"用户正看"豁免——数据目录将真删');
+      assert.ok(released.includes('sun-ghost'), '域内未绑定活座释放');
+      assert.ok(removed.includes('sun-act') && removed.includes('sun-ghost') && removed.includes('j-del2'), 'GUI 事件源 id 收齐');
+      assert.ok(!fs.existsSync(domain), '域目录真删');
+    } finally {
+      if (prevCh === undefined) delete process.env.SUNSHINEX_CHANNELS_DIR;
+      else process.env.SUNSHINEX_CHANNELS_DIR = prevCh;
+    }
+  });
+
   test('rootOverride 工作区会话(dataDir 在容器外)+journalId 双列也进 removedSessionIds（2026-11-25「删除后没回欢迎页」根修）', () => {
     const dir = tmpdir('sunshinex-ch-del-');
     const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
