@@ -21,8 +21,10 @@ type ModeMenuRow = { separator: true } | { m: SessionMode; label: string; desc: 
  *  此前两份逐字复制且 plan 图标已漂移[欢迎页 ListTodo 与 pill ModeIcon 的 NotebookPen 同屏不一致]）：
  *  plan 置顶（阶段三 plan-arm 接通正式开放）+分组线+三权限档；图标+双行（名称+解释）；disabled 行置灰
  *  不可选（data-tip=即将可用）。选中派发经 onPick 回调，弹层关闭归调用方（两面关闭时机语义不同）。
- *  allowPlan=false（2026-11-20 定时任务配置）只显三权限档——定时触发无人值守，plan 会挂确认。 */
-export function ModeMenu({ mode, ariaLabel, onPick, allowPlan = true }: { mode: SessionMode; ariaLabel: string; onPick: (m: SessionMode) => void; allowPlan?: boolean }): JSX.Element {
+ *  allowPlan=false（2026-11-20 定时任务配置）只显三权限档——定时触发无人值守，plan 会挂确认。
+ *  leading（2026-11-27 群聊裁定「权限弹层把主对话的搬过来」）：群聊「跟随成员」档复用同一弹层
+ *  皮肤——置顶插一行富行（图标+名称+说明），active/onPick 由调用方注入；不传=主对话行为零变化。 */
+export function ModeMenu({ mode, ariaLabel, onPick, allowPlan = true, leading }: { mode: SessionMode | null; ariaLabel: string; onPick: (m: SessionMode) => void; allowPlan?: boolean; leading?: { label: string; desc: string; icon: JSX.Element; active: boolean; onPick: () => void } }): JSX.Element {
   const modeRows: ModeMenuRow[] = [
     ...(allowPlan
       ? ([
@@ -36,6 +38,23 @@ export function ModeMenu({ mode, ariaLabel, onPick, allowPlan = true }: { mode: 
   ];
   return (
     <div className="sx-menu-pop pill-pop mode-pop" role="menu" aria-label={ariaLabel}>
+      {leading !== undefined && (
+        <>
+          <button
+            type="button"
+            role="menuitem"
+            className={`mode-item${leading.active ? ' active' : ''}`}
+            onClick={leading.onPick}
+          >
+            <span className="mode-item-icon">{leading.icon}</span>
+            <span className="mode-item-body">
+              <span className="mode-item-name">{leading.label}</span>
+              <span className="mode-item-desc">{leading.desc}</span>
+            </span>
+          </button>
+          <div className="mode-pop-sep" aria-hidden="true" />
+        </>
+      )}
       {modeRows.map((row, idx) => (
         <div key={'separator' in row ? `sep-${idx}` : row.m} className="mode-pop-group">
           {'separator' in row ? (

@@ -27,7 +27,12 @@ const PEER: SunxRoomMessage = {
 function makeConn(): Connection {
   const messages = [HUMAN, PEER];
   return {
-    commands: vi.fn(async () => ({ commands: [], descriptions: {}, supported: ['/status', '/delete'] })),
+    // 「/」面板（主对话同件）：命令清单+supported 面（群控制命令经 merged 并入仍需在清单内才显示）
+    commands: vi.fn(async () => ({
+      commands: ['/status', '/compact', '/context', '/memory', '/delete', '/plan', '/stop', '/clear', '/continue'],
+      descriptions: {},
+      supported: ['/status', '/compact', '/context', '/memory', '/delete', '/plan', '/stop', '/clear', '/continue'],
+    })),
     models: vi.fn(async () => ({ choices: [{ id: 'm1', model: 'm1' }] })),
     sunxGroupDetail: vi.fn(async () => ({
       group: { id: 'grp_x', name: '研发群' },
@@ -71,14 +76,16 @@ describe('GroupChatPage', () => {
     expect(onOpenMember).toHaveBeenCalledWith('jid_a');
   });
 
-  it('composer 发送：正文+显式 @ 成员 → sunxGroupSend（无文件/上下文/终端入口）', async () => {
+  it('composer 发送：@ 面板选成员（@ 按钮已退役）→ sunxGroupSend（无文件/上下文/终端入口）', async () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
-    const input = screen.getByPlaceholderText('发消息到群聊…') as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: '给 A 的消息' } });
-    fireEvent.click(screen.getByRole('button', { name: 'mention member' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: /A/ }));
+    expect(screen.queryByRole('button', { name: 'mention member' })).toBeNull(); // @ 按钮退役（2026-11-27 二轮裁定）
+    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '@' } }); // 输入 @ 触发成员面板
+    fireEvent.click((await screen.findAllByRole('menuitem', { name: /A/ }))[0]);
+    expect(input.value).toBe('@A '); // 选中即插 token
+    fireEvent.change(input, { target: { value: '@A 给 A 的消息' } });
     fireEvent.click(screen.getByRole('button', { name: 'send' }));
     await waitFor(() => expect(conn.sunxGroupSend).toHaveBeenCalled());
     const [gid, body] = (conn.sunxGroupSend as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { text: string; mentions?: string[] }];
@@ -88,6 +95,42 @@ describe('GroupChatPage', () => {
     expect(screen.getByRole('button', { name: 'add attachment' })).toBeDefined(); // + 保留（图片/命令等；文件区不渲染）
     expect(screen.queryByRole('button', { name: 'toggle terminal dock' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'toggle side panel' })).toBeNull();
+    // 输入区提示行（2026-11-27 二轮裁定）
+    expect(document.querySelector('.sx-group-hint')?.textContent).toContain('@全体成员');
+  });
+
+  it('输入框 @ 成员渲染成 chip（图标+名字，主对话高亮层同手法）；纯文本不挂层', async () => {
+    const conn = makeConn();
+    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '没有令牌的普通文本' } });
+    expect(container.querySelector('.sx-composer-highlight')).toBeNull(); // 无令牌=原生显字
+    fireEvent.change(input, { target: { value: '@A 你好' } });
+    const chip = container.querySelector('.sx-composer-highlight .hn-file');
+    expect(chip).not.toBeNull();
+    expect(chip?.querySelector('.hn-file-ico')).not.toBeNull(); // 图标落 @ 位
+    expect(chip?.textContent).toBe('@A'); // 显形=原文宽度（@ 透明保字宽）
+    fireEvent.change(input, { target: { value: '@不存在的人' } });
+    expect(container.querySelector('.sx-composer-highlight')).toBeNull(); // 非成员名不 chip
+  });
+
+  it('「/」面板=主对话命令面板同件：命令/技能分组+双语说明，群控制命令并入、/plan 排除', async () => {
+    const conn = makeConn();
+    render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '/s' } });
+    expect(await screen.findByRole('listbox', { name: '命令面板' })).toBeDefined();
+    const stop = await screen.findByRole('option', { name: /\/stop/ });
+    expect(stop.textContent).toContain('暂停对应 Sunx 执行'); // 命令带双语说明（主对话同表）
+    expect(await screen.findByRole('option', { name: /\/status/ })).toBeDefined();
+    fireEvent.change(input, { target: { value: '/' } });
+    expect(screen.queryByRole('option', { name: /\/plan/ })).toBeNull(); // /plan 排除
+    expect(await screen.findByRole('option', { name: /\/clear/ })).toBeDefined();
+    // 点选落令牌
+    fireEvent.click(screen.getByRole('option', { name: /\/clear/ }));
+    expect(input.value).toBe('/clear ');
   });
 
   it('消息面完全复用会话件：主人右用户气泡 / Sunx 左用户气泡（来源行+发送给）/ @ chip / 时间复制 / chat-dock', async () => {
@@ -148,16 +191,21 @@ describe('GroupChatPage', () => {
     expect(container.querySelector('aside.sx-group-sunx-panel')).toBeNull();
   });
 
-  it('⋯ 紧贴群名右侧；群主菜单无「群成员」项；编辑群名弹窗左侧群图标', async () => {
+  it('⋯ 紧贴群名右侧；菜单「编辑群名」带群图标；无「群成员」项；编辑群名弹窗左侧群图标', async () => {
     const conn = makeConn();
     const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
     const title = container.querySelector('.sx-group-topbar .chat-title')!;
     const more = screen.getByRole('button', { name: 'group menu' });
     expect(title.nextElementSibling?.contains(more)).toBe(true); // ⋯ 紧跟群名（非右贴）
+    // Sunx 面板/查询两钮在固定簇（fixed 视口定位，CSS 侧落位）
+    expect(container.querySelector('.sx-group-topbar-right [aria-label="sunx panel"]')).not.toBeNull();
+    expect(container.querySelector('.sx-group-topbar-right [aria-label="search group messages"]')).not.toBeNull();
     fireEvent.click(more);
     expect(screen.queryByRole('menuitem', { name: /群成员/ })).toBeNull(); // 群成员按钮/弹窗退役
-    fireEvent.click(screen.getByRole('menuitem', { name: '编辑群名' }));
+    const renameItem = screen.getByRole('menuitem', { name: /编辑群名/ });
+    expect(renameItem.querySelector('svg')).not.toBeNull(); // 菜单项左侧群图标（2026-11-27 二轮裁定）
+    fireEvent.click(renameItem);
     const dialog = await screen.findByRole('dialog', { name: '编辑群名' });
     expect(dialog.querySelector('.sx-group-rename-row .sx-ws-folder svg')).not.toBeNull();
   });
@@ -172,15 +220,17 @@ describe('GroupChatPage', () => {
     await waitFor(() => expect(container.querySelector('aside.sx-group-sunx-panel')).toBeNull());
   });
 
-  it('群聊专用控制命令 /stop /clear /continue 并入命令面板（目标仍由 @ 选择）', async () => {
+  it('群聊空态：群图标+群名+@ 用法+群命令行（2026-11-27 二轮裁定）', async () => {
     const conn = makeConn();
+    (conn.sunxGroupMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ group: { id: 'grp_x', name: '研发群' }, messages: [], cursor: 0, hasMore: false });
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
-    await screen.findByText('研发群');
-    const input = screen.getByPlaceholderText('发消息到群聊…') as HTMLTextAreaElement;
-    fireEvent.change(input, { target: { value: '/stop' } });
-    for (const name of ['/stop', '/clear', '/continue']) {
-      expect(await screen.findByRole('menuitem', { name })).toBeDefined();
-    }
+    expect((await screen.findAllByText('研发群')).length).toBeGreaterThanOrEqual(1); // 顶栏群名+空态群名
+    expect(document.querySelector('.chat-empty .sx-group-empty-ico')).not.toBeNull(); // 第一行群图标
+    expect(document.querySelector('.chat-empty .chat-empty-title')?.textContent).toBe('研发群'); // 第二行群名
+    const cmds = document.querySelector('.sx-group-empty-cmds')?.textContent ?? '';
+    expect(cmds).toContain('/stop');
+    expect(cmds).toContain('/clear');
+    expect(cmds).toContain('/continue');
   });
 
   it('成员 ask 卡在群页弹出：来自 A；选项提交走 replyAsk（同一 pid），提交后撤卡', async () => {

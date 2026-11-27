@@ -4826,8 +4826,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* ===== 定时任务执行记录表(scheduled-tasks Task 9,spec §9.5):状态点复用 .tb-status-dot,
    失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链(无按钮边框) ===== */
 /* 记录列表面=产物卡同色（亮色 fg 4% / 暗色 bubble-user），不另加边框 */
-.sx-schedule-records { background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-lg); padding: 2px 18px 6px; overflow-x: auto; }
+/* 横向滚动条收在圆角容器内(2026-11-21 用户实测「纵向滚动条注意左右两侧弧度,避免超出区域」):
+   滚动改落内层 .sx-schedule-table-scroll(自身圆角裁切),原生条贴齐弧度不再探出卡外 */
+.sx-schedule-records { background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-lg); padding: 2px 18px 6px; overflow: hidden; }
 [data-theme='dark'] .sx-schedule-records { background: var(--bubble-user); }
+.sx-schedule-table-scroll { overflow-x: auto; border-radius: calc(var(--radius-lg) - 4px); }
+.sx-schedule-table-scroll::-webkit-scrollbar { height: 8px; }
+.sx-schedule-table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.sx-schedule-table-scroll::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+.sx-schedule-table-scroll::-webkit-scrollbar-track { background: transparent; }
 /* 记录表字号随系统(2026-11-21 用户裁定):不低于 14px,同页根 --sx-font */
 .sx-schedule-table { width: 100%; border-collapse: collapse; font-size: var(--sx-font); }
 .sx-schedule-table th { padding: 11px 10px 9px; text-align: left; font-weight: 500; color: var(--fg-tertiary); font-size: var(--sx-font); border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -4885,6 +4892,8 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 [data-theme='light'] .sx-schedules-content > .sx-schedule-error { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 .sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: var(--sx-font); }
 .sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: var(--sx-font); }
+/* 通知改上部居中 toast（2026-11-21 用户裁定「可以在上部中间触发 toast 提示,普通 info 提示」） */
+.sx-schedule-toast { top: 56px; bottom: auto; }
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */
