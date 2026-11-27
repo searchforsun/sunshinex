@@ -4567,7 +4567,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 表单控件=项目无边框软底语言（2026-11-21 用户裁定「新建 Sunx 弹窗也违反不要边框线 hover」）：
    surface-soft 填充、零边框，focus 只留光标不再变边框；直接子代限定，避免渗进工作目录弹层
    的筛选输入（此前 proj-pop input 被这条规则套上了 1px 边框） */
-.sx-sunx-field > input, .sx-sunx-field > select, .sx-sunx-field > textarea { background: var(--surface-soft); color: var(--fg); border: none; border-radius: var(--radius-md); padding: 4px 8px; font: calc(14px * var(--fz)) var(--font-mono); }
+.sx-sunx-field > input, .sx-sunx-field > select, .sx-sunx-field > textarea { background: var(--surface-soft); color: var(--fg); border: none; border-radius: var(--radius-md); padding: 6px 10px; font: calc(14px * var(--fz)) var(--font-mono); }
+/* input/select 行高与下方选择条（.sx-sunx-ws-bar 6px/10px）同档（2026-11-27 用户裁定
+   「姓名的行高度和下面对齐」——旧 4px/8px 比群组/工作目录行矮 4px 不一致） */
 .sx-sunx-field > input:focus-visible, .sx-sunx-field > select:focus-visible, .sx-sunx-field > textarea:focus-visible { border: none; outline: none; }
 .sx-sunx-field textarea { resize: vertical; min-height: 140px; line-height: 1.5; }
 /* 工作目录选择条(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):choose-project-bar 同款
@@ -4771,6 +4773,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-target-chip svg { flex: none; }
 /* 卡片目标行独立成行（2026-11-21）：与名称同挤首行会把任务名截断。
    用户复裁定：不要 chip 的灰底（像 hover 态）；图标与左缘时钟图标同 x/同大小同线宽 */
+/* 执行记录目标格=图标+名称一行（2026-11-21 用户裁定，不再类型 chip+名字两行） */
+.sx-schedule-target-inline { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; color: var(--fg-secondary); }
+.sx-schedule-target-inline svg { flex: none; color: var(--fg-tertiary); }
+.sx-schedule-target-inline-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-schedule-target-row { display: flex; min-width: 0; }
 .sx-schedule-target-row .sx-schedule-target-chip { max-width: 100%; padding: 0; border-radius: 0; background: transparent; }
 /* 截止时间：调度行右端（自绘月历 + 右侧时/分滚轮；不用原生日期/时间控件）
@@ -5046,12 +5052,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-shell:not(.sx-desktop) .sx-group-page.searching .sx-group-topbar,
 .sx-shell.sx-desktop .sx-group-page.paneled .sx-group-topbar,
 .sx-shell:not(.sx-desktop) .sx-group-page.paneled .sx-group-topbar { padding-right: 12px; }
-/* 顶栏（2026-11-27 用户裁定）：⋯ 紧贴群名右侧；原 ⋯ 位放 Sunx 面板入口，查询钮在其右 */
+/* 顶栏（2026-11-27 二轮裁定）：⋯ 紧贴群名右侧；Sunx 面板/查询两钮固定窗控「—」左侧
+   （fixed 视口定位，面板开合不随动）；菜单锚 ⋯ 下方左对齐。 */
 .sx-group-more-wrap { flex: none; }
 .sx-group-more-pop { top: calc(100% + 4px); left: 0; right: auto; }
-.sx-group-topbar-right { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: none; }
-/* Sunx 面板=群聊右栏（复用 SunxBoardTab/SUNX 总览卡面；groupId 过滤=群隔离） */
-.sx-group-sunx-panel { width: var(--sb-w, 360px); min-width: 280px; padding-top: var(--toolbar-h); }
+.sx-group-topbar-right { position: fixed; top: 7px; right: 98px; z-index: 62; display: inline-flex; align-items: center; gap: 8px; flex: none; }
+.sx-shell:not(.sx-desktop) .sx-group-page .sx-group-topbar-right { right: 12px; } /* web 群页无窗控簇，贴右缘 */
+/* Sunx 面板=群聊右栏（复用 SunxBoardTab/SUNX 总览卡面；groupId 过滤=群隔离）。
+   边界对齐普通会话右栏（2026-11-27 二轮裁定「参考普通会话侧栏」）：左缘 1px 边界线。 */
+.sx-group-sunx-panel { width: var(--sb-w, 360px); min-width: 280px; padding-top: var(--toolbar-h); border-left: 1px solid var(--border); background: var(--surface); }
 .sx-group-sunx-panel .sx-side-head { flex: none; }
 .sx-group-sunx-panel .insight-tab { flex: 1; min-height: 0; padding: 8px 6px; }
 .sx-group-sunx-panel .sx-sunxboard-grid { grid-template-columns: 1fr; padding: 2px 6px 4px; }
@@ -5059,6 +5068,16 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 编辑群名（2026-11-27 用户裁定）：输入框左侧群图标，与侧栏群行同件同尺寸 */
 .sx-group-rename-row { display: flex; align-items: center; gap: 8px; }
 .sx-group-rename-row .chat-title-input { flex: 1; min-width: 0; }
+/* 输入区提示行（2026-11-27 二轮裁定）：@ 用法说明，主对话灰色提示同语言；命令令牌 mono accent */
+.sx-group-hint { flex: none; padding: 6px 4px 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
+.sx-group-hint-tok { color: var(--accent); font-family: var(--font-mono); white-space: nowrap; }
+.sx-group-empty-cmds { margin-top: 2px; }
+/* 群聊空态大图标（主对话 Sunx 欢迎面同构图） */
+.sx-group-empty-ico { color: var(--fg-tertiary); margin-bottom: 10px; }
+/* 输入框 @ 成员 chip（2026-11-27 二轮裁定「渲染成 chip 图标+名字」）：完全复用主对话
+   file 芯片手法——原文 @ 透明保字宽、图标绝对定位落 @ 位（.sx-composer-highlight 域既有规则）；
+   @全体成员 分色 warn。 */
+.sx-composer-highlight .hn-file.sx-group-token-all { color: var(--warn); }
 /* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距 */
 .sx-group-main > .chat.sx-group-chat { padding-bottom: calc(var(--thread-gutter) + 132px); }
 .sx-group-msg { position: relative; }
@@ -5075,11 +5094,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* ask 卡：沿用会话 .ask-dock / .ask-actions，只补群来源行 */
 .sx-group-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sx-group-ask-source { display: flex; align-items: center; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); padding: 0 2px; min-width: 0; }
-.sx-group-at { font-size: calc(14px * var(--fz)); font-weight: 600; line-height: 1; }
 .sx-group-muted { color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-group-badge { display: inline-flex; align-items: center; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); padding: 0 4px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg-secondary); }
-/* 查询侧栏 = 会话右栏 sx-sidebar 宽度变量 + sx-resizer；只补窗控让位与搜索行内距 */
-.sx-group-search { width: var(--sb-w, 420px); padding-top: var(--toolbar-h); }
+/* 查询侧栏 = 会话右栏 sx-sidebar 宽度变量 + sx-resizer；只补窗控让位与搜索行内距；
+   左缘边界对齐普通会话右栏（2026-11-27 二轮裁定） */
+.sx-group-search { width: var(--sb-w, 420px); padding-top: var(--toolbar-h); border-left: 1px solid var(--border); background: var(--surface); }
 .sx-group-search .sx-side-head { flex: none; }
 .sx-group-search-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 8px; }
 .sx-group-search-bar .sx-setting-input { flex: 1; min-width: 0; width: auto; font-family: var(--font-ui); }

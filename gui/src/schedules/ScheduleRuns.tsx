@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Folder, MessageSquare } from 'lucide-react';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
+import { SunxIcon } from '../sunx-icon';
+import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
 import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView, ScheduleRunTrigger, ScheduleTargetKind } from '../connection';
 
 /**
@@ -125,10 +127,21 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
               <tr key={run.id}>
                 <td>{t(triggerLabel(run.trigger).en, triggerLabel(run.trigger).zh)}</td>
                 <td>
-                  <span className={`sx-schedule-target-chip is-${targetOf(run).kind}`}>{targetOf(run).type}</span>
-                  {targetOf(run).kind !== 'project' && targetOf(run).label !== '' && (
-                    <div className="sx-schedule-note">{targetOf(run).label}</div>
-                  )}
+                  {/* 目标 = 图标 + 名称一行（2026-11-21 用户裁定，不再「类型 chip + 名字两行」） */}
+                  <span className="sx-schedule-target-inline">
+                    {targetOf(run).kind === 'project' ? (
+                      <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                    ) : targetOf(run).kind === 'sunx' ? (
+                      <SunxIcon size={14} strokeWidth={1.75} />
+                    ) : (
+                      (() => {
+                        // 通道按 label 前缀反查平台图标（label 快照=「平台名 · 聊天名」）
+                        const Icon = CHANNEL_PLATFORMS.find((p) => targetOf(run).label.startsWith(t(p.en, p.zh)))?.Icon;
+                        return Icon !== undefined ? <Icon size={14} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />;
+                      })()
+                    )}
+                    <span className="sx-schedule-target-inline-label">{targetOf(run).label !== '' ? targetOf(run).label : pathBasename(run.root)}</span>
+                  </span>
                 </td>
                 <td className="num">{timeLabel(run.scheduledAt)}</td>
                 <td className="num">{timeLabel(run.startedAt)}</td>

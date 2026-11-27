@@ -402,6 +402,9 @@ describe('ScheduleConfig 上下三段', () => {
       { id: 'sj1', title: '运维助手', updatedAt: 1, file: '/d/sj1.jsonl' },
       { id: 'sj2', title: '代码审查', updatedAt: 2, file: '/d/sj2.jsonl' },
     ]);
+    (conn as unknown as Record<string, unknown>).sunxGroups = vi.fn(async () => [
+      { id: 'grp_default', name: '默认群组' },
+    ]);
     (conn as unknown as Record<string, unknown>).sunxSessions = sunxSessions;
     render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
     await screen.findByText(bi('Title', '标题'));
@@ -410,14 +413,14 @@ describe('ScheduleConfig 上下三段', () => {
     await waitFor(() => expect(sunxSessions).toHaveBeenCalled());
     fireEvent.click(await screen.findByRole('button', { name: bi('Sunx session', 'Sunx 会话') }));
     fireEvent.change(screen.getByLabelText(bi('Filter Sunx sessions…', '筛选 Sunx 会话…')), { target: { value: '运维' } });
-    fireEvent.click(await screen.findByText('运维助手'));
+    fireEvent.click(await screen.findByText('默认群组 · 运维助手'));
     expect(screen.getByRole('button', { name: bi('Sunx session', 'Sunx 会话') }).textContent).toContain('运维助手');
     fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
     await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
     const body = createSchedule.mock.calls[0]![0];
     expect(body.target).toBe('sunx');
     expect(body.targetJournalId).toBe('sj1');
-    expect(body.targetLabel).toBe('运维助手');
+    expect(body.targetLabel).toBe('默认群组 · 运维助手');
   });
 
   it('指令落点 通道：切页签→筛选选绑定聊天→保存带 channelId/chatId/label（2026-11-21）', async () => {

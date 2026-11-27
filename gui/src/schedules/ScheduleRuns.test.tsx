@@ -209,9 +209,12 @@ describe('ScheduleRuns', () => {
     ]);
     const onOpenSession = vi.fn();
     render(<ScheduleRuns conn={conn} job={job} onOpenSession={onOpenSession} />);
-    expect(await screen.findByText('SUNX')).toBeDefined();
-    expect(screen.getByText('运维助手')).toBeDefined();
+    // 2026-11-21 用户裁定：目标=图标+名称一行（不再 SUNX chip + 名字两行）
+    expect(await screen.findByText('运维助手')).toBeDefined();
     expect(screen.getByText('飞书 · 项目群')).toBeDefined();
+    const rows = Array.from(document.querySelectorAll('.sx-schedule-target-inline'));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.querySelector('svg') !== null)).toBe(true);
     fireEvent.click(screen.getAllByRole('button', { name: /Open session|打开会话/ })[0]!);
     expect(onOpenSession).toHaveBeenCalledWith('jsx', 'D:/sunx-domain', 'sunx');
   });

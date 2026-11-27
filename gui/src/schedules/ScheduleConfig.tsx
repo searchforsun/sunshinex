@@ -488,16 +488,26 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
       return;
     }
     let alive = true;
-    conn.sunxSessions().then(
-      (rows) => {
+    Promise.all([
+      conn.sunxSessions(),
+      typeof conn.sunxGroups === 'function' ? conn.sunxGroups().catch(() => []) : Promise.resolve([]),
+    ]).then(
+      ([rows, groups]) => {
         if (!alive) return;
-        // 2026-11-21 用户裁定：不做自己的 sunx 过滤（列表照 daemon 应答直出）；每行前挂 Sunx 图标
+        // 2026-11-21 用户裁定：不做自己的 sunx 过滤；每行前挂 Sunx 图标；
+        // 名称=「群组名 · 会话名」（groupId 经 /sunx/groups 反查群名，侧栏归档区同口径）
+        const groupNames = new Map((groups as Array<{ id: string; name: string }>).map((g) => [g.id, g.name]));
         setSunxRows(
-          rows.map((r) => ({
-            id: r.id,
-            title: r.title ?? r.firstUser ?? t('New session', '新会话'),
-            icon: SunxIcon,
-          })),
+          rows.map((r) => {
+            const name = r.title ?? r.firstUser ?? t('New session', '新会话');
+            const gid = (r as { groupId?: string }).groupId ?? 'grp_default';
+            const group = groupNames.get(gid) ?? (gid === 'grp_default' ? t('Default group', '默认群组') : gid);
+            return {
+              id: r.id,
+              title: `${group} · ${name}`,
+              icon: SunxIcon,
+            };
+          }),
         );
       },
       () => {
