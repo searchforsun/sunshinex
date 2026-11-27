@@ -818,6 +818,13 @@ html, body { overflow: hidden; } /* G14.74:应用=固定视口,页面级滚动�
   font: inherit; font-weight: 600; cursor: default; max-width: 100%;
 }
 .user-from-sunx-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 群聊 Sunx 消息=会话用户气泡左对齐变体（2026-11-27 用户裁定「sunx 气泡完全使用当前项目样式」）:
+   气泡/来源行/动作行/图片条全部沿用 .entry-user 用户气泡件，仅把对齐从右翻到左——不另造气泡。 */
+.entry-user.entry-user-left { align-items: flex-start; }
+.entry-user.entry-user-left .user-bubble-wrap { margin-left: 0; margin-right: auto; }
+.entry-user.entry-user-left .user-from-sunx { justify-content: flex-start; margin: 0 0 4px 2px; }
+.entry-user.entry-user-left .user-actions { right: auto; left: 0; }
+.entry-user.entry-user-left .user-img-strip { justify-content: flex-start; }
 /* 通道群聊来源章（2026-11-25 用户裁定「气泡上侧平台图标+用户名称,不蓝色不可跳转;hover 显示
    用户 id,右侧复制按钮」）:名称常显次要色;悬停弹小面板（popover 自带顶部 6px 内距=鼠标从名称
    移入面板不断悬停）内含 id 与复制钮 */
@@ -5025,111 +5032,58 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-editor-modal-fields textarea.sx-charter-area:focus { outline: none; }
 .sx-editor-modal-fields textarea.sx-charter-area::placeholder { color: var(--fg-tertiary); }
 
-/* ===== Sunx 群聊页（2026-11-26 群组规格 §7）:主区覆盖层/气泡/环形饼图/两栏回执/查询侧栏 ===== */
+/* ===== Sunx 群聊页（2026-11-27 用户裁定「摒弃所有飞书样式，完全使用当前项目样式」）=====
+   消息面 = 会话 .chat + UserEntryView 用户气泡（主人右 / Sunx 左变体）；
+   输入面 = 会话 .chat-dock + ComposerCard；查询侧栏 = 会话 .sx-sidebar + .sx-resizer + .sx-search-*。
+   本段只保留群聊独有的布局槽（顶栏窗控让位 / 引用行 / 送达列表 / ask 来源行 / 查询栏内距），
+   不再定义任何气泡、卡片、输入框或搜索皮肤的替代实现。 */
 .sx-group-page { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; min-width: 0; }
-.sx-group-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-/* 群聊顶栏 = 会话顶栏同款（2026-11-26 样式重做）：chat-topbar/chat-title/chat-more；
-   仅补窗控簇让位（桌面 4×26+3×2=110，right 8；web 仅查询钮 26+2+8）——不再自绘顶栏/居中 ⋯ */
+.sx-group-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .sx-shell.sx-desktop .sx-group-page .sx-group-topbar { padding-right: 126px; }
 .sx-shell:not(.sx-desktop) .sx-group-page .sx-group-topbar { padding-right: 44px; }
 /* 查询侧栏展开时主列右缘已在窗控簇左侧：顶栏不再让位窗控，⋯ 贴主列右缘 */
 .sx-shell.sx-desktop .sx-group-page.searching .sx-group-topbar,
 .sx-shell:not(.sx-desktop) .sx-group-page.searching .sx-group-topbar { padding-right: 12px; }
-.sx-group-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
-.sx-group-empty { margin: auto; padding: 40px 20px; text-align: center; color: var(--fg-tertiary); font-size: 13px; line-height: 1.7; }
-.sx-group-empty-title { color: var(--fg-secondary); font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-.sx-group-older { align-self: center; border: none; background: transparent; color: var(--fg-tertiary); font-size: 12px; cursor: pointer; padding: 2px 8px; }
-.sx-group-older:hover { color: var(--fg-secondary); }
-.sx-group-row { display: flex; flex-direction: column; max-width: 78%; min-width: 0; }
-.sx-group-row.left { align-self: flex-start; align-items: flex-start; }
-.sx-group-row.right { align-self: flex-end; align-items: flex-end; }
-.sx-group-row.active > .sx-group-bubble, .sx-group-row.active > .sx-group-right-wrap > .sx-group-human { outline: 1px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 2px; }
-.sx-group-sender { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); padding: 0 2px 4px; min-width: 0; flex-wrap: wrap; }
-.sx-group-name-btn { display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; color: var(--accent); font-size: 12.5px; font-weight: 600; padding: 0; cursor: pointer; }
-.sx-group-name-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
-.sx-group-name-btn.static { color: var(--fg-secondary); cursor: default; }
-.sx-group-muted { color: var(--fg-tertiary); font-size: 11.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-group-badge { display: inline-flex; align-items: center; font-size: 10px; line-height: 15px; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg-secondary); }
-.sx-group-bubble { position: relative; box-sizing: border-box; width: 100%; max-height: 480px; overflow: hidden; padding: 10px 12px 24px; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); background: color-mix(in srgb, var(--fg) 4.5%, var(--surface)); color: var(--fg); }
-.sx-group-bubble.expanded { max-height: none; }
-.sx-group-quote { display: block; width: 100%; box-sizing: border-box; text-align: left; border: none; background: transparent; color: var(--fg-tertiary); font-size: 12px; line-height: 1.6; padding: 0 0 6px; margin-bottom: 6px; border-bottom: 1px solid var(--border-subtle); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.sx-group-quote:hover { color: var(--fg-secondary); }
-.sx-group-cmd-badge { display: inline-block; font: 10.5px var(--font-mono); color: var(--fg-tertiary); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-bottom: 4px; }
-.sx-group-command-text { white-space: pre-wrap; word-break: break-word; font: 12.5px/1.55 var(--font-mono); color: var(--fg-secondary); margin: 0; }
-.sx-group-md { font-size: 14px; line-height: 1.58; color: var(--fg); word-break: break-word; }
-.sx-group-md > :first-child { margin-top: 0; }
-.sx-group-md > :last-child { margin-bottom: 0; }
-.sx-group-md p { margin: 0 0 6px; }
-.sx-group-md pre { max-width: 100%; overflow-x: auto; }
-.sx-group-expand { position: absolute; left: 0; right: 0; bottom: 0; border: none; background: linear-gradient(to top, var(--surface) 55%, transparent); color: var(--accent); font-size: 12px; padding: 18px 8px 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 2px; }
-.sx-group-foot { display: flex; align-items: center; gap: 8px; padding: 3px 2px 0; color: var(--fg-tertiary); font-size: 11px; }
-.sx-group-foot button { border: none; background: transparent; color: inherit; cursor: pointer; padding: 0; display: inline-flex; align-items: center; }
-.sx-group-foot button:hover { color: var(--fg-secondary); }
-.sx-group-right-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; width: 100%; }
-.sx-group-human { position: relative; box-sizing: border-box; max-width: 100%; padding: 10px 12px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--fg); }
-.sx-group-human-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.55; }
-.sx-group-mentions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-.sx-group-html .sx-group-chip, .sx-group-chip { border: none; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); border-radius: 4px; padding: 1px 5px; font-size: 12px; cursor: default; display: inline-flex; align-items: center; gap: 2px; vertical-align: middle; }
-.sx-group-human-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 5px; color: var(--fg-tertiary); font-size: 11px; }
-.sx-group-receipt-btn { border: none; background: transparent; padding: 0; display: inline-flex; cursor: pointer; color: var(--accent); }
-.sx-group-ring.done { color: var(--ok); }
-.sx-group-ring.failed { color: var(--err); }
-.sx-group-ring.pending { color: var(--accent); }
-.sx-group-row-actions { opacity: 0; transition: opacity .12s; }
-.sx-group-row:hover .sx-group-row-actions { opacity: 1; }
-.sx-group-row-actions button { border: none; background: transparent; color: var(--fg-icon, var(--fg)); font-size: 11px; cursor: pointer; padding: 1px 3px; }
-.sx-group-delivery { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 30; width: 420px; max-width: min(90vw, 420px); background: var(--surface-raised, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,.35); padding: 8px; }
-.sx-group-delivery-head { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--fg-secondary); padding: 0 2px 6px; }
-.sx-group-delivery-head button { border: none; background: transparent; color: var(--fg-tertiary); cursor: pointer; display: flex; }
-.sx-group-delivery-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sx-group-delivery-col { min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 4px; }
-.sx-group-delivery-title { font-size: 11.5px; color: var(--fg-tertiary); padding: 2px 4px 4px; }
-.sx-group-delivery-scroll { height: 220px; overflow-y: auto; }
-.sx-group-delivery-row { display: flex; align-items: center; gap: 5px; width: 100%; border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; text-align: left; padding: 3px 4px; border-radius: 4px; }
-button.sx-group-delivery-row { cursor: pointer; }
-button.sx-group-delivery-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); }
-.sx-group-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--fg-tertiary); }
-.sx-group-dot.ok { background: var(--ok); }
-.sx-group-dot.pending { background: var(--accent); }
-.sx-group-dot.failed { background: var(--err); }
-/* 群聊输入区 = ComposerCard 同款卡面（2026-11-26 样式重做）：外层只做限宽/贴底，
-   卡面/图片条/自增高/脚底 pills 全部走 .sx-composer 既有规则；引用条走卡内 belowInput */
-.sx-group-composer { flex: none; position: relative; padding: 0 0 var(--thread-gutter); }
-.sx-group-composer > .sx-composer { width: min(calc(100% - 32px), calc(var(--chat-max) + 2px)); margin: 0 auto; }
-.sx-group-composer .composer-pill .pill-label { max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
-.sx-group-reply { display: flex; align-items: center; gap: 4px; margin: 4px 2px 0; padding: 3px 6px; border-radius: var(--radius-sm); background: var(--surface-soft); color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
-.sx-group-reply-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* @/命令面板复用项目选择弹层（proj-pop/branch-pop-filter/proj-rows-scroll），只改锚位满卡宽 */
-.sx-group-palette { left: 0; right: 0; width: auto; }
-.sx-group-human-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.sx-group-human-images img { max-width: min(260px, 100%); max-height: 220px; border-radius: 6px; border: 1px solid var(--border-subtle); object-fit: contain; display: block; }
-/* ask 卡沿用会话 dock 的 .ask-dock/.ask-actions（2026-11-26 样式重做）：此处只限群聊列宽/滚动 */
-.sx-group-asks { width: min(calc(100% - 32px), calc(var(--chat-max) + 2px)); margin: 0 auto 8px; max-height: 46vh; overflow-y: auto; }
+/* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距 */
+.sx-group-main > .chat.sx-group-chat { padding-bottom: calc(var(--thread-gutter) + 132px); }
+.sx-group-msg { position: relative; }
+/* 引用行：会话气泡内的次级行；点击跳回原气泡 */
+.sx-group-quote-line { display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 0 6px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
+.sx-group-quote-line.clickable { cursor: pointer; }
+.sx-group-quote-line.clickable:hover { color: var(--fg-secondary); }
+.sx-group-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 输入卡内引用条：复用 composer-pill 皮肤，只做横向排布 */
+.sx-group-reply { display: flex; align-items: center; gap: 4px; margin: 4px 2px 0; }
+.sx-group-reply .composer-pill { flex: 1; min-width: 0; }
+.sx-group-reply .pill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-group-dock .sx-group-palette { left: 0; right: 0; width: auto; }
+/* 送达回执：入口走会话 user-action，弹层走项目 sx-menu-pop + sx-search-row，只补锚位/两栏布局 */
+.sx-group-receipt { top: auto; right: 0; bottom: calc(100% + 6px); width: min(520px, 90vw); max-height: 340px; overflow: auto; z-index: 30; }
+.sx-group-receipt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 4px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+.sx-group-receipt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sx-group-receipt-col { min-width: 0; }
+.sx-group-receipt-list { max-height: 240px; overflow-y: auto; }
+.sx-group-receipt .sx-search-row { width: 100%; text-align: left; }
+/* ask 卡：沿用会话 .ask-dock / .ask-actions，只补群来源行 */
 .sx-group-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sx-group-ask-source { display: flex; align-items: center; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); padding: 0 2px; min-width: 0; }
 .sx-group-at { font-size: calc(14px * var(--fz)); font-weight: 600; line-height: 1; }
-.sx-group-search { flex: none; width: 320px; max-width: 42vw; border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; background: var(--surface); padding-top: var(--toolbar-h); }
-.sx-group-search-head { flex: none; display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--fg); }
-.sx-group-search-head button { margin-left: auto; }
-.sx-group-search-bar { flex: none; display: flex; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--border-subtle); }
-.sx-group-search-bar input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--fg); font-size: 12.5px; padding: 4px 6px; outline: none; }
-.sx-group-search-bar button { flex: none; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--fg-secondary); font-size: 12px; padding: 3px 8px; cursor: pointer; }
-.sx-group-search-bar button:disabled { opacity: .5; }
-.sx-group-search-results { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; }
-.sx-group-search-hit { display: block; width: 100%; box-sizing: border-box; text-align: left; border: none; background: transparent; border-radius: 4px; padding: 6px; cursor: pointer; }
-.sx-group-search-hit:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.sx-group-search-hit.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.sx-group-search-meta { display: block; font-size: 11px; color: var(--fg-tertiary); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sx-group-search-text { display: block; font-size: 12.5px; line-height: 1.5; color: var(--fg-secondary); word-break: break-word; }
-.sx-group-search-text mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: var(--fg); border-radius: 2px; }
+.sx-group-muted { color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-group-badge { display: inline-flex; align-items: center; font-size: calc(14px * var(--fz)); line-height: calc(18px * var(--fz)); padding: 0 4px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg-secondary); }
+/* 查询侧栏 = 会话右栏 sx-sidebar 宽度变量 + sx-resizer；只补窗控让位与搜索行内距 */
+.sx-group-search { width: var(--sb-w, 420px); padding-top: var(--toolbar-h); }
+.sx-group-search .sx-side-head { flex: none; }
+.sx-group-search-bar { flex: none; display: flex; align-items: center; gap: 6px; padding: 0 8px 8px; }
+.sx-group-search-bar .sx-setting-input { flex: 1; min-width: 0; width: auto; font-family: var(--font-ui); }
+.sx-group-search .sx-search-modal-list { padding: 0 6px 8px; }
+/* 群成员弹窗（既有 modal + 搜索行皮肤；群聊独有仅列表高度） */
 .sx-group-members { width: 520px; max-width: 92vw; max-height: 70vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
-.sx-group-members-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; }
+.sx-group-members-head { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: calc(14px * var(--fz)); font-weight: 600; }
 .sx-group-members-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; }
-.sx-group-member-row { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; border: none; background: transparent; color: var(--fg-secondary); font-size: 12.5px; padding: 7px 8px; border-radius: 4px; cursor: pointer; min-width: 0; }
+.sx-group-member-row { display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; border: none; background: transparent; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); padding: 7px 8px; border-radius: var(--radius-sm); cursor: pointer; min-width: 0; }
 .sx-group-member-row:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
 .sx-group-member-name { color: var(--accent); font-weight: 600; flex: none; }
-.sx-group-member-root { color: var(--fg-tertiary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.sx-group-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 120; background: var(--surface-raised, var(--surface)); border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--fg); font-size: 12.5px; padding: 6px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.sx-group-member-root { color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 
 /* ===== SUNX 群树（2026-11-26 群组规格 §6.1；2026-11-26 样式重做）=====
    群组行不再是自建群树，改为「通道」组行同构：workspace-item/workspace-row/workspace-toggle

@@ -395,7 +395,7 @@ function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | nu
  *  气泡内正文限高+纵向滚动条,气泡底部居中 V;展开=完整高度、滚动条消失,底部 ^ 收回;复制归各页自有动作行。
  *  量测走 useLayoutEffect+ResizeObserver:队友消息/子智能体任务带首帧常在 flex 未定宽时
  *  scrollHeight 偏小(一次 useEffect 钉死不折),布局收敛后须再量 */
-export function CollapsibleBubble({ text, render }: { text: string; render: (md: string) => ReactNode }): JSX.Element {
+export function CollapsibleBubble({ text, render, maxHeight = BUBBLE_MAX_HEIGHT }: { text: string; render: (md: string) => ReactNode; /** 群聊 Sunx 消息沿用同件但放高到 480（缺省=会话用户气泡 168） */ maxHeight?: number }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [clamped, setClamped] = useState(false);
   const innerRef = useRef<HTMLDivElement | null>(null);
@@ -404,15 +404,15 @@ export function CollapsibleBubble({ text, render }: { text: string; render: (md:
     if (el === null) return;
     // scrollHeight=内容全高(与 max-height/overflow 无关)——超过阈值才出浮钮
     const measure = (): void => {
-      setClamped(el.scrollHeight > BUBBLE_MAX_HEIGHT + 8);
+      setClamped(el.scrollHeight > maxHeight + 8);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [text]);
+  }, [text, maxHeight]);
   const limited = clamped && !open;
-  useClampMotion(innerRef, open, BUBBLE_MAX_HEIGHT, 'maxHeight', clamped);
+  useClampMotion(innerRef, open, maxHeight, 'maxHeight', clamped);
   return (
     <div className="user-bubble-wrap">
       <div className={`user-bubble${open ? ' user-bubble-open' : ''}`}>
@@ -486,7 +486,7 @@ function ChannelFromBadge({ from, userId, platform }: { from: string; userId?: s
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform, renderBody, sourceSuffix, actionsExtra, alignLeft, bubbleMaxHeight }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string; /** 群聊页复用：正文渲染替代（主人纯文+@chip / Sunx md+@chip） */ renderBody?: (md: string) => ReactNode; /** 群聊页复用：来源行后缀（发送给 群主/成员） */ sourceSuffix?: ReactNode; /** 群聊页复用：气泡动作行附加（送达回执/回复） */ actionsExtra?: ReactNode; /** 群聊页复用：左对齐（Sunx 消息；缺省右对齐=会话用户气泡原样） */ alignLeft?: boolean; /** 群聊页复用：气泡限高（Sunx=480；缺省=用户气泡 168） */ bubbleMaxHeight?: number } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
@@ -623,7 +623,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
     );
   }
   return (
-    <div className={`entry entry-user${insert === true ? ' entry-user-insert' : ''}`} data-entry-key={entry.key}>
+    <div className={`entry entry-user${insert === true ? ' entry-user-insert' : ''}${alignLeft === true ? ' entry-user-left' : ''}`} data-entry-key={entry.key}>
       {/* 跨 Sunx 来源行(2026-11-26 用户裁定「gui 显示 sunx 的用户气泡,上面 sunx 图标加名称显示,
           可点击跳转指定 sunx」):气泡仍走用户条形态,来源=图标+实例名;配了 onOpenSunx 即点击
           attachSunx 打开发送方实例(与侧栏 SUNX 行/看板卡片同链) */}
@@ -645,6 +645,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
               <span>{entry.fromSunx.name}</span>
             </span>
           )}
+          {sourceSuffix}
         </div>
       )}
       {/* 通道群聊来源章（2026-11-25 用户裁定「气泡上侧飞书图标+用户名称,不蓝色不可跳转;hover
@@ -657,7 +658,9 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
       {displayMd.trim() !== '' && (
         <CollapsibleBubble
           text={displayMd}
+          {...(bubbleMaxHeight !== undefined ? { maxHeight: bubbleMaxHeight } : {})}
           render={(md) => (
+            renderBody !== undefined ? renderBody(md) : (
             /* 2026-11-04 用户裁定:用户气泡不做任何 md 格式化渲染(标题/加粗/代码块/表格/链接
                一律原文)——仅 @文件 /命令 ⟦引用⟧ 特殊 token 走 chip 高亮(renderMentionSpans,
                与输入框高亮同口径);换行经 pre-wrap 保真。2026-11-04 裁定续:发送期展开落档的
@@ -669,6 +672,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
                 )}
               </div>
             ) : null
+            )
           )}
         />
       )}
@@ -681,6 +685,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           icon={copied === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
           onClick={copy}
         />
+        {actionsExtra}
         {/* 编辑入口裁剪(2026-11-06 用户裁定 P2 + 2026-11-19 用户裁定「我自己发的插入消息也不支持编辑」):
             辅助会话正文与轮内插入档用户气泡均不给编辑——插入=运行中追加的历史,重发会打乱轮序;
             可编辑面只剩常规(非插入)用户气泡 */}

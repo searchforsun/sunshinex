@@ -1,26 +1,37 @@
 /**
- * Sunx 群聊页（2026-11-26 群组规格 §7）：主区覆盖层、无右侧页签栏、顶栏群名+⋯、环形饼图回执、
- * 左侧气泡（上方发送行/单卡片 480px/首行引用/展开全部）、右侧群主气泡、@/命令/引用 composer、
- * 查询侧栏与群成员弹窗。房间数据靠 seq 游标轮询；发送后立即拉一次。
+ * Sunx 群聊页（2026-11-26 群组规格 §7；2026-11-27 样式重做）：主区覆盖层、无右侧页签栏。
+ * 消息面完全复用会话件——主人=UserEntryView 用户气泡右对齐，Sunx=同一件左对齐变体
+ * （来源行/发送给/时间/复制/回复/送达动作全走会话样式）；输入面=chat-dock + ComposerCard；
+ * 查询侧栏=sx-sidebar + sx-resizer + sx-search-*（可拖宽）。房间数据靠 seq 游标轮询。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Copy, MessagesSquare, MoreHorizontal, Plus, Search, Send, Users, X } from 'lucide-react';
+import {
+  AlertCircle, ArrowUp, CheckCheck, ChevronDown, Clock, Copy, CornerUpLeft, MessagesSquare, MoreHorizontal, Search, Users, X,
+} from 'lucide-react';
 import type { Connection } from '../../connection';
 import type {
-  SunxGroupDetail, SunxGroupMemberRow, SunxGroupSearchHit, SunxRoomDelivery, SunxRoomMessage, SunxRoomTarget,
+  SunxGroupDetail, SunxGroupMemberRow, SunxGroupSearchHit, SunxRoomDelivery, SunxRoomMessage, SunxRoomPeerRef, SunxRoomTarget,
 } from '../../connection-types';
 import type { GuiAskReq } from '../../connection-types';
+import type { ChatEntry } from '../../chat-reducer';
 import { AskCard, pickAnswered, type AskPick } from '../chat/PendingCards';
 import { t, useLanguage } from '../../i18n';
 import { SunxIcon } from '../../sunx-icon';
-import { MarkdownCached, mdComponentsPlain } from '../Chat';
-import { baseModelName } from '../chat/EntryViews';
+import { MarkdownCached, mdComponentsPlain, ModeIcon } from '../Chat';
+import { UserEntryView, baseModelName } from '../chat/EntryViews';
+import { TipButton } from '../chat/RunFooter';
+import { ImageLightbox } from '../../ImageLightbox';
 import { NewSunxDialog } from '../../welcome/NewSunxDialog';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { ComposerCard } from '../../composer/ComposerCard';
+import { PlusAddIcon } from '../../sidebar/project-menu-util';
 import { MAX_IMAGES, loadImages } from '../../images';
 import { sessionModeLabel } from '../../composer/mode-menu';
+import { MIN_TAB_WIDTH } from '../../tabs/tab-state';
+import { MAIN_MIN_WIDTH } from '../../thread-width';
+import { zoomScale } from '../../ui-zoom';
 
 const GROUPS_CHANGED_EVENT = 'sunx-groups-changed';
 const DESTRUCTIVE = new Set(['/delete', '/skills-rm', '/memory-rm', '/memory-gc']);
@@ -35,24 +46,6 @@ function firstLine(text: string): string {
 function fmtTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-}
-
-function highlight(text: string, q: string): Array<{ text: string; hit: boolean }> {
-  const needle = q.trim();
-  if (needle === '') return [{ text, hit: false }];
-  const lower = text.toLowerCase();
-  const n = needle.toLowerCase();
-  const out: Array<{ text: string; hit: boolean }> = [];
-  let i = 0;
-  for (;;) {
-    const at = lower.indexOf(n, i);
-    if (at < 0) break;
-    if (at > i) out.push({ text: text.slice(i, at), hit: false });
-    out.push({ text: text.slice(at, at + needle.length), hit: true });
-    i = at + needle.length;
-  }
-  if (i < text.length) out.push({ text: text.slice(i), hit: false });
-  return out;
 }
 
 interface GroupChatPageProps {
@@ -91,10 +84,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [nameDraft, setNameDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   const [searchQ, setSearchQ] = useState('');
   const [searchHits, setSearchHits] = useState<SunxGroupSearchHit[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
+  /** 查询侧栏宽度=项目右栏同款可拖宽件（2026-11-27 用户裁定「查询侧栏，动态调整宽度」） */
+  const [searchWidth, setSearchWidth] = useState(420);
   const [activeSeq, setActiveSeq] = useState<number | null>(null);
   /** 「+」面板（2026-11-27 用户裁定「+ 中去掉文件，其他都可以」）：ComposerPlusPanel 无 session/root
    *  → 文件区天然不渲染；图片附件/命令/技能/子智能体/团队保留 */
@@ -114,6 +109,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const searchRef = useRef<HTMLElement | null>(null);
   const nodeBySeq = useRef(new Map<number, HTMLDivElement>());
   const atBottomRef = useRef(true);
 
@@ -282,6 +278,31 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     }
   }, [conn, groupId, onError, searchQ]);
 
+  /** 查询侧栏拖宽（2026-11-27 用户裁定「查询侧栏，动态调整宽度」）：复用 .sx-resizer 命中件与
+   *  会话右栏同款拖拽语义（向左拖变宽/直写 --sb-w/松手落 React 态，最小 296、预留主栏最小宽） */
+  const startSearchResize = useCallback((e: ReactMouseEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    const el = e.currentTarget;
+    el.classList.add('active');
+    const startX = e.clientX;
+    const startWidth = searchWidth;
+    const cap = (): number => window.innerWidth / zoomScale() - MAIN_MIN_WIDTH;
+    let next = startWidth;
+    const onMove = (ev: MouseEvent): void => {
+      next = Math.max(MIN_TAB_WIDTH, Math.min(cap(), startWidth + (startX - ev.clientX) / zoomScale()));
+      searchRef.current?.style.setProperty('--sb-w', `${next}px`);
+    };
+    const stop = (): void => {
+      el.classList.remove('active');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', stop);
+      searchRef.current?.style.removeProperty('--sb-w');
+      setSearchWidth(next);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', stop);
+  }, [searchWidth]);
+
   const send = useCallback(async (): Promise<void> => {
     const text = input;
     if ((text.trim() === '' && images.length === 0) || sending) return;
@@ -366,6 +387,17 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     ? t('Follow members', '跟随成员')
     : (models.find((m) => m.id === model)?.model || baseModelName(model));
   const modeLabel = mode === '' ? t('Follow members', '跟随成员') : sessionModeLabel(mode);
+  /** 群消息 → 会话 ChatEntry（2026-11-27 样式重做）：主人/成员都走 UserEntryView 用户气泡；
+   *  成员来源由 fromSunx 归因行承载（与跨 Sunx 消息同一件），正文/回执/回复走扩展槽。 */
+  const entryOf = useCallback((m: SunxRoomMessage): ChatEntry => ({
+    key: m.id,
+    kind: 'user',
+    md: m.text,
+    ts: m.ts,
+    ...(m.images !== undefined && m.images.length > 0 ? { images: m.images } : {}),
+    ...(m.kind === 'peer' ? { fromSunx: { id: m.from.id, name: m.from.name } } : {}),
+  }), []);
+  const messageById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
 
   /** 群页 ask 卡：来源成员 + 与成员会话同一 pid（回答走 /ask/:pid/reply，两边同步） */
   const askItems = useMemo<Array<{ pid: string; req: GuiAskReq; member: SunxGroupMemberRow }>>(
@@ -471,74 +503,136 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           )}
         </header>
 
-        <div className="sx-group-scroll" ref={scrollRef} onScroll={onScroll}>
-          {loading && <div className="sx-group-empty">{t('Loading…', '加载中…')}</div>}
-          {!loading && messages.length === 0 && (
-            <div className="sx-group-empty">
-              <div className="sx-group-empty-title">{detail?.group.name ?? t('Group', '群组')}</div>
-              <div>{t('Type @ to pick members; @all dispatches to everyone.', '输入 @ 选择成员，@全体成员 分发给全员')}</div>
+        <div className="chat sx-group-chat" ref={scrollRef} onScroll={onScroll}>
+          {loading && (
+            <div className="chat-empty">
+              <div className="chat-empty-hint">{t('Loading…', '加载中…')}</div>
             </div>
           )}
-          {hasMore && <button type="button" className="sx-group-older" onClick={() => { void loadOlder(); }}>{t('Load earlier', '加载更早')}</button>}
-          {messages.map((m) => m.kind === 'human' ? (
-            <RightBubble
-              key={m.id}
-              message={m}
-              quoteSeq={m.replyTo !== undefined ? messages.find((x) => x.id === m.replyTo)?.seq : undefined}
-              expanded={expanded}
-              onToggleExpand={(id) => setExpanded((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; })}
-              onReceipt={() => openReceipt(m)}
-              receiptOpen={receipt?.id === m.id}
-              onCloseReceipt={() => setReceipt(null)}
-              onOpenMember={onOpenMember}
-              onReply={(x) => setReplyTo({ id: x.id, preview: firstLine(x.replyPreview?.text ?? x.text) })}
-              onReveal={(seq) => { void revealSeq(seq); }}
-              activeSeq={activeSeq}
-              nodeRef={(el) => { if (el !== null) nodeBySeq.current.set(m.seq, el); else nodeBySeq.current.delete(m.seq); }}
-            />
-          ) : (
-            <LeftBubble
-              key={m.id}
-              message={m}
-              quoteSeq={m.replyTo !== undefined ? messages.find((x) => x.id === m.replyTo)?.seq : undefined}
-              expanded={expanded.has(m.id)}
-              onToggleExpand={() => setExpanded((prev) => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; })}
-              onOpenMember={onOpenMember}
-              onReveal={(seq) => { void revealSeq(seq); }}
-              onReply={() => setReplyTo({ id: m.id, preview: firstLine(m.text) })}
-              active={activeSeq === m.seq}
-              nodeRef={(el) => { if (el !== null) nodeBySeq.current.set(m.seq, el); else nodeBySeq.current.delete(m.seq); }}
-            />
-          ))}
-        </div>
-
-        <div className="sx-group-composer">
-          {askItems.length > 0 && (
-            <div className="ask-dock sx-group-asks">
-              {askItems.map((item) => {
-                const pick = askPicks[item.pid] ?? { labels: [], custom: '' };
-                return (
-                  <div className="sx-group-ask" key={item.pid}>
-                    <div className="sx-group-ask-source">
-                      <span>{t('From', '来自')}</span>
-                      <SunxIcon size={14} strokeWidth={1.75} />
-                      <span>{item.member.name}</span>
-                    </div>
-                    <AskCard req={item.req} pick={pick} onPick={(patch) => setAskPick(item.pid, patch)} />
-                    <div className="ask-actions">
-                      <button type="button" onClick={() => { void answerAsk(item.pid, { type: 'dismissed' }); }}>{t('Skip', '跳过')}</button>
-                      <button type="button" className="primary" disabled={!pickAnswered(pick)} onClick={() => submitAsk(item)}>{t('Submit', '提交')}</button>
+          {!loading && messages.length === 0 && (
+            <div className="chat-empty">
+              <div className="chat-empty-title">{detail?.group.name ?? t('Group', '群组')}</div>
+              <div className="chat-empty-hint">{t('Type @ to pick members; @all dispatches to everyone.', '输入 @ 选择成员，@全体成员 分发给全员')}</div>
+            </div>
+          )}
+          {hasMore && (
+            <button type="button" className="chat-earlier" onClick={() => { void loadOlder(); }}>
+              {t('Load earlier', '加载更早')}
+            </button>
+          )}
+          {messages.map((m) => {
+            const quoted = m.replyTo !== undefined ? messageById.get(m.replyTo) : undefined;
+            const quote = m.replyPreview;
+            const okCount = (m.deliveries ?? []).filter((d) => d.ok).length;
+            const targetCount = (m.targets ?? []).length;
+            const pending = targetCount - (m.deliveries ?? []).length;
+            const failed = (m.deliveries ?? []).some((d) => !d.ok);
+            const receiptIcon = pending > 0
+              ? <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
+              : failed
+                ? <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
+                : <CheckCheck size={14} strokeWidth={1.75} aria-hidden="true" />;
+            const quoteNode = quote !== undefined ? (
+              <GroupQuoteLine
+                text={quote.text}
+                mentions={quoted?.mentions}
+                mentionAll={quoted?.mentionAll === true}
+                onOpen={quoted?.seq !== undefined ? () => { void revealSeq(quoted.seq); } : undefined}
+              />
+            ) : null;
+            const body = m.kind === 'peer'
+              ? (md: string) => (
+                <>
+                  {quoteNode}
+                  <div className="entry-md">
+                    <div className="entry-md-body">
+                      <MarkdownCached md={md} components={mdComponentsPlain} />
                     </div>
                   </div>
-                );
-              })}
+                </>
+              )
+              : (md: string) => (
+                <div className="user-md-plain">
+                  {quoteNode}
+                  <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} />
+                </div>
+              );
+            return (
+              <div
+                key={m.id}
+                className={`chat-unit sx-group-msg${activeSeq === m.seq ? ' jump-hl' : ''}`}
+                data-seq={m.seq}
+                ref={(el) => { if (el !== null) nodeBySeq.current.set(m.seq, el); else nodeBySeq.current.delete(m.seq); }}
+              >
+                <UserEntryView
+                  entry={entryOf(m)}
+                  conn={conn}
+                  alignLeft={m.kind === 'peer'}
+                  {...(m.kind === 'peer' ? { bubbleMaxHeight: 480 } : {})}
+                  onOpenImage={setLightbox}
+                  onOpenSunx={(journalId) => onOpenMember(journalId)}
+                  renderBody={body}
+                  sourceSuffix={m.kind === 'peer' && m.to !== undefined ? (
+                    <GroupTarget target={m.to} onOpenMember={onOpenMember} />
+                  ) : undefined}
+                  actionsExtra={
+                    <>
+                      <TipButton
+                        className="user-action"
+                        tip={t('Reply', '回复')}
+                        label="reply message"
+                        icon={<CornerUpLeft size={14} strokeWidth={1.75} aria-hidden="true" />}
+                        onClick={() => setReplyTo({ id: m.id, preview: firstLine(m.text) })}
+                      />
+                      {m.kind === 'human' && targetCount > 0 && (
+                        <TipButton
+                          className="user-action"
+                          tip={`${okCount}/${targetCount} ${t('delivered', '已送达')}`}
+                          label="delivery receipt"
+                          icon={receiptIcon}
+                          onClick={() => openReceipt(m)}
+                        />
+                      )}
+                    </>
+                  }
+                />
+                {receipt?.id === m.id && (
+                  <GroupReceipt message={m} onClose={() => setReceipt(null)} onOpenMember={onOpenMember} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 群聊输入区 = 会话 chat-dock 同款（2026-11-27 用户裁定「输入框样式和动态宽度」):
+            卡面/浮层/脚底 pills/发送钮全走会话件，宽度随主列与查询侧栏动态收放。 */}
+        <div className="chat-dock sx-group-dock">
+          <div className="chat-dock-fade" aria-hidden="true" />
+          {askItems.length > 0 && (
+            <div className="ask-dock">
+              <div className="ask-scroll">
+                {askItems.map((item) => {
+                  const pick = askPicks[item.pid] ?? { labels: [], custom: '' };
+                  return (
+                    <div className="sx-group-ask" key={item.pid}>
+                      <div className="sx-group-ask-source">
+                        <span>{t('From', '来自')}</span>
+                        <SunxIcon size={14} strokeWidth={1.75} />
+                        <span>{item.member.name}</span>
+                      </div>
+                      <AskCard req={item.req} pick={pick} onPick={(patch) => setAskPick(item.pid, patch)} />
+                      <div className="ask-actions">
+                        <button type="button" onClick={() => { void answerAsk(item.pid, { type: 'dismissed' }); }}>{t('Skip', '跳过')}</button>
+                        <button type="button" className="primary" disabled={!pickAnswered(pick)} onClick={() => submitAsk(item)}>{t('Submit', '提交')}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
-          {/* 输入卡复用会话/欢迎页同一份 ComposerCard（2026-11-26 用户裁定「群组输入框样式不使用
-              项目已有的输入框样式？」）：卡面/图片条/自增高/脚底 pills 全走 .sx-composer；群组只
-              提供 @/命令/图片/模型/权限这些数据与动作。引用条与错误条走卡内 belowInput。 */}
           <ComposerCard
-            className="composer"
+            className="chat-composer"
             label={t('Message the group…', '发消息到群聊…')}
             inputRef={inputRef}
             value={input}
@@ -550,11 +644,11 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
             onChange={(v) => {
               setInput(v);
               const caret = inputRef.current?.selectionStart ?? v.length;
-              const m = /(^|\s)@([^\s@]*)$/.exec(v.slice(0, caret));
-              if (m !== null) {
+              const match = /(^|\s)@([^\s@]*)$/.exec(v.slice(0, caret));
+              if (match !== null) {
                 setMentionOpen(true);
-                setMentionQuery(m[2] ?? '');
-                setMentionFrom(caret - (m[2]?.length ?? 0) - 1);
+                setMentionQuery(match[2] ?? '');
+                setMentionFrom(caret - (match[2]?.length ?? 0) - 1);
               } else {
                 setMentionOpen(false);
                 setMentionFrom(null);
@@ -570,7 +664,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               <>
                 {replyTo !== null && (
                   <div className="sx-group-reply">
-                    <span className="sx-group-reply-label">{t('Replying', '回复')}: {replyTo.preview}</span>
+                    <span className="composer-pill">
+                      <CornerUpLeft size={14} strokeWidth={1.75} aria-hidden="true" />
+                      <span className="pill-label">{replyTo.preview}</span>
+                    </span>
                     <button type="button" className="sx-iconbtn" aria-label="cancel reply" onClick={() => setReplyTo(null)}><X size={14} /></button>
                   </div>
                 )}
@@ -586,7 +683,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   data-tip={t('Add', '添加')}
                   onClick={() => { setMentionOpen(false); setSettingsPop(null); setPlusOpen((v) => !v); }}
                 >
-                  <Plus size={16} strokeWidth={1.75} />
+                  <PlusAddIcon size={16} />
                 </button>
                 <button
                   type="button"
@@ -600,17 +697,46 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 <span className="pill-anchor">
                   <button
                     type="button"
-                    className="composer-pill mode-pill"
+                    className={`composer-pill${mode === 'full-access' ? ' mode-pill-warn' : ''}`}
+                    aria-label={t('Permission', '权限')}
+                    aria-expanded={settingsPop === 'mode'}
+                    data-tip={modeLabel}
+                    onClick={() => { setPlusOpen(false); setMentionOpen(false); setSettingsPop((v) => (v === 'mode' ? null : 'mode')); }}
+                  >
+                    {mode === '' ? <Users size={14} strokeWidth={1.75} aria-hidden="true" /> : <ModeIcon mode={mode} />}
+                    <span className="pill-label">{modeLabel}</span>
+                    <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" className="pill-chevron" />
+                  </button>
+                  {settingsPop === 'mode' && (
+                    <div className="sx-menu-pop pill-pop" role="menu">
+                      <button type="button" role="menuitem" className={`sx-menuitem${mode === '' ? ' current' : ''}`} onClick={() => { setMode(''); setSettingsPop(null); }}>
+                        {t('Follow members', '跟随成员')}
+                      </button>
+                      {(['read-only', 'acceptEdits', 'full-access'] as const).map((v) => (
+                        <button key={v} type="button" role="menuitem" className={`sx-menuitem${mode === v ? ' current' : ''}`} onClick={() => { setMode(v); setSettingsPop(null); }}>
+                          {sessionModeLabel(v)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </span>
+              </div>
+            }
+            footRight={
+              <div className="composer-pills composer-pills-right">
+                <span className="pill-anchor">
+                  <button
+                    type="button"
+                    className="composer-pill model-pill"
                     aria-label={t('Model', '模型')}
                     aria-expanded={settingsPop === 'model'}
                     onClick={() => { setPlusOpen(false); setMentionOpen(false); setSettingsPop((v) => (v === 'model' ? null : 'model')); }}
                   >
-                    <span className="sx-group-muted">{t('Model', '模型')}</span>
                     <span className="pill-label">{modelLabel}</span>
-                    <ChevronDown size={12} strokeWidth={2} className="pill-chevron" />
+                    <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" className="pill-chevron" />
                   </button>
                   {settingsPop === 'model' && (
-                    <div className="sx-menu-pop pill-pop" role="menu">
+                    <div className="sx-menu-pop pill-pop pill-pop-right" role="menu">
                       <button type="button" role="menuitem" className={`sx-menuitem${model === '' ? ' current' : ''}`} onClick={() => { setModel(''); setSettingsPop(null); }}>
                         {t('Follow members', '跟随成员')}
                       </button>
@@ -622,37 +748,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                     </div>
                   )}
                 </span>
-                <span className="pill-anchor">
-                  <button
-                    type="button"
-                    className="composer-pill mode-pill"
-                    aria-label={t('Permission', '权限')}
-                    aria-expanded={settingsPop === 'mode'}
-                    onClick={() => { setPlusOpen(false); setMentionOpen(false); setSettingsPop((v) => (v === 'mode' ? null : 'mode')); }}
-                  >
-                    <span className="sx-group-muted">{t('Permission', '权限')}</span>
-                    <span className="pill-label">{modeLabel}</span>
-                    <ChevronDown size={12} strokeWidth={2} className="pill-chevron" />
-                  </button>
-                  {settingsPop === 'mode' && (
-                    <div className="sx-menu-pop pill-pop" role="menu">
-                      <button type="button" role="menuitem" className={`sx-menuitem${mode === '' ? ' current' : ''}`} onClick={() => { setMode(''); setSettingsPop(null); }}>
-                        {t('Follow members', '跟随成员')}
-                      </button>
-                      {(['read-only', 'acceptEdits', 'full-access'] as const).map((m) => (
-                        <button key={m} type="button" role="menuitem" className={`sx-menuitem${mode === m ? ' current' : ''}`} onClick={() => { setMode(m); setSettingsPop(null); }}>
-                          {sessionModeLabel(m)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </span>
+                <button type="button" className="send tip-right" aria-label="send" data-tip={`${t('Send', '发送')} · Enter`} disabled={sending || (input.trim() === '' && images.length === 0)} onClick={() => { void send(); }}>
+                  <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+                </button>
               </div>
-            }
-            footRight={
-              <button type="button" className="send" aria-label="send" disabled={sending || (input.trim() === '' && images.length === 0)} onClick={() => { void send(); }}>
-                <Send size={16} strokeWidth={2} />
-              </button>
             }
             overlays={
               <>
@@ -682,11 +781,11 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                       <button type="button" role="menuitem" className="sx-menuitem" onClick={addAll}>
                         <span className="sx-group-at">@</span>{t('All members', '全体成员')}
                       </button>
-                      {mentionCandidates.map((m) => (
-                        <button key={m.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => addMention(m)}>
-                          <SunxIcon size={14} /> {m.name}
+                      {mentionCandidates.map((member) => (
+                        <button key={member.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => addMention(member)}>
+                          <SunxIcon size={14} /> {member.name}
                           <span className="sx-group-muted">
-                            {m.awaiting === true ? t('awaiting input', '等待回答') : m.running ? t('running', '运行中') : m.live ? t('idle', '空闲') : t('not open', '未打开')}
+                            {member.awaiting === true ? t('awaiting input', '等待回答') : member.running ? t('running', '运行中') : member.live ? t('idle', '空闲') : t('not open', '未打开')}
                           </span>
                         </button>
                       ))}
@@ -713,29 +812,54 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       </div>
 
       {searchOpen && (
-        <aside className="sx-group-search" aria-label={t('Search group messages', '查询群消息')}>
-          <div className="sx-group-search-head">
-            <Search size={16} strokeWidth={1.75} />
+        <aside
+          ref={searchRef}
+          className="sx-sidebar sx-group-search"
+          style={{ '--sb-w': `${searchWidth}px` } as CSSProperties}
+          aria-label={t('Search group messages', '查询群消息')}
+        >
+          <div
+            className="sx-resizer"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('Resize search panel', '调整查询侧栏宽度')}
+            data-tip={t('Drag to resize', '拖动调整宽度')}
+            onMouseDown={startSearchResize}
+          />
+          <div className="sx-side-head sx-side-head-row">
             <span>{t('Search', '查询')}</span>
             <button type="button" className="sx-iconbtn" aria-label="close search" onClick={onSearchClose}><X size={14} /></button>
           </div>
           <div className="sx-group-search-bar">
-            <input ref={searchInputRef} value={searchQ} placeholder={t('Search messages', '查询群消息')} onChange={(e) => setSearchQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }} />
-            <button type="button" disabled={searchBusy} onClick={() => { void runSearch(); }}>{t('Search', '查询')}</button>
+            <input
+              ref={searchInputRef}
+              className="sx-setting-input"
+              value={searchQ}
+              aria-label={t('Search messages', '查询群消息')}
+              placeholder={t('Search messages', '查询群消息')}
+              onChange={(e) => setSearchQ(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }}
+            />
+            <button type="button" className="sx-iconbtn" aria-label="search group messages" disabled={searchBusy} onClick={() => { void runSearch(); }}>
+              <Search size={14} strokeWidth={1.75} />
+            </button>
           </div>
-          <div className="sx-group-search-results">
-            {searchHits.length === 0 && <div className="proj-empty">{searchQ.trim() === '' ? t('Type to search', '输入关键词查询') : t('No matches', '无匹配消息')}</div>}
+          <div className="sx-search-modal-list">
+            {searchHits.length === 0 && (
+              <div className="sx-search-empty">
+                {searchQ.trim() === '' ? t('Type to search', '输入关键词查询') : t('No matches', '无匹配消息')}
+              </div>
+            )}
             {searchHits.map((h) => (
               <button
                 key={h.id}
                 type="button"
-                className={`sx-group-search-hit${activeSeq === h.seq ? ' active' : ''}`}
+                className={`sx-search-row${activeSeq === h.seq ? ' sx-kbd-active' : ''}`}
                 onClick={() => { void revealSeq(h.seq); }}
               >
-                <span className="sx-group-search-meta">{h.from.kind === 'group' ? t('Owner', '群主') : h.from.name} · {fmtTime(h.ts)}</span>
-                <span className="sx-group-search-text">
-                  {highlight(h.text, searchQ).map((part, i) => part.hit ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>)}
-                </span>
+                {h.from.kind === 'group' ? <MessagesSquare size={14} strokeWidth={1.75} /> : <SunxIcon size={14} />}
+                <span className="sx-search-label">{h.text}</span>
+                <span className="sx-search-meta">{h.from.kind === 'group' ? t('Owner', '群主') : h.from.name} · {fmtTime(h.ts)}</span>
               </button>
             ))}
           </div>
@@ -794,243 +918,147 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         />
       )}
 
-      {copied && <div className="sx-group-toast">{t('Copied', '已复制')}</div>}
+      {lightbox !== undefined && <ImageLightbox src={lightbox} onClose={() => setLightbox(undefined)} />}
+      {copied && <div className="sx-toast" role="status">{t('Copied', '已复制')}</div>}
     </div>
   );
 }
 
-function renderMentionText(text: string, all: boolean, mentions: SunxRoomTarget[]): JSX.Element[] {
-  const memberTokens = new Set(mentions.map((x) => `@${x.name}`));
-  const tokens = [...(all ? ['@全体成员'] : []), ...memberTokens].sort((a, b) => b.length - a.length);
-  if (tokens.length === 0) return [<span key="all">{text}</span>];
-  const esc = tokens.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const re = new RegExp(`(${esc.join('|')})`, 'g');
-  return text
-    .split(re)
-    .filter((part) => part !== '')
-    .map((part, i) => (tokens.includes(part)
-      ? (
-        <span key={i} className="sx-group-chip">
-          {memberTokens.has(part) && <SunxIcon size={14} strokeWidth={1.75} />}
-          {part}
-        </span>
-      )
-      : <span key={i}>{part}</span>));
-}
-
-/** 右侧群主气泡：@ 内联 chips + 环形饼图回执（全部完成圆内 √）+ 两栏弹窗。 */
-function RightBubble(props: {
-  message: SunxRoomMessage;
-  quoteSeq?: number;
-  expanded: Set<string>;
-  onToggleExpand: (id: string) => void;
-  onReceipt: () => void;
-  receiptOpen: boolean;
-  onCloseReceipt: () => void;
-  onOpenMember: (jid: string) => void;
-  onReply: (m: SunxRoomMessage) => void;
-  onReveal: (seq: number) => void;
-  activeSeq: number | null;
-  nodeRef: (el: HTMLDivElement | null) => void;
+/** 群消息 @ 成员/全体 chip（2026-11-27 样式重做）：复用项目既有 .hn/.hn-ref 芯片，
+ *  不再自绘飞书蓝色 chip；成员=SunxIcon+accent，全体=Users+warn（.hn-team 既有分色）。 */
+function GroupMentions({ text, mentions = [], mentionAll = false }: {
+  text: string;
+  mentions?: SunxRoomTarget[];
+  mentionAll?: boolean;
 }): JSX.Element {
-  const { message: m, quoteSeq, receiptOpen, onCloseReceipt, onOpenMember, onReply, onReveal, activeSeq, nodeRef } = props;
-  const targets = m.targets ?? [];
-  const deliveries = m.deliveries ?? [];
-  const okCount = deliveries.filter((d) => d.ok).length;
-  const pending = targets.length - deliveries.length;
+  const memberTokens = new Set(mentions.map((m) => `@${m.name}`));
+  const tokens = [...(mentionAll ? ['@全体成员'] : []), ...memberTokens].sort((a, b) => b.length - a.length);
+  if (tokens.length === 0) return <>{text}</>;
+  const escaped = tokens.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'g');
   return (
-    <div className={`sx-group-row right${activeSeq === m.seq ? ' active' : ''}`} ref={nodeRef}>
-      <div className="sx-group-right-wrap">
-        <div className="sx-group-human" onDoubleClick={() => onReply(m)}>
-          {m.replyPreview !== undefined && (
-            <button
-              type="button"
-              className="sx-group-quote"
-              onClick={() => { if (quoteSeq !== undefined) onReveal(quoteSeq); }}
-              data-tip={t('Jump to quoted message', '跳到引用气泡')}
-            >
-              {m.replyPreview.text}
-            </button>
-          )}
-          <div className="sx-group-human-text">{renderMentionText(m.text, m.mentionAll === true, m.mentions ?? [])}</div>
-          {(m.images ?? []).length > 0 && (
-            <div className="sx-group-human-images">
-              {(m.images ?? []).map((src, i) => (
-                <img key={`${i}-${src.slice(0, 24)}`} src={src} alt={`${t('Attached image', '附件图片')} ${i + 1}`} />
-              ))}
-            </div>
-          )}
-          <div className="sx-group-human-foot">
-            <span>{fmtTime(m.ts)}</span>
-            {targets.length > 0 && (
-              <button type="button" className="sx-group-receipt-btn" aria-label="delivery receipt" data-tip={`${okCount}/${targets.length} ${t('delivered', '已送达')}`} onClick={(e) => { e.stopPropagation(); props.onReceipt(); }}>
-                <ReceiptRing ok={okCount} total={targets.length} pending={pending} />
-              </button>
-            )}
-          </div>
-          {receiptOpen && (
-            <DeliveryPop
-              message={m}
-              onClose={onCloseReceipt}
-              onOpenMember={onOpenMember}
-              onReveal={onReveal}
-            />
-          )}
-        </div>
-        <div className="sx-group-row-actions">
-          <button type="button" aria-label="reply" onClick={() => onReply(m)}>{t('Reply', '回复')}</button>
-        </div>
-      </div>
-    </div>
+    <>
+      {text.split(re).filter((part) => part !== '').map((part, i) => (
+        tokens.includes(part) ? (
+          <span key={i} className={`hn hn-ref ${part === '@全体成员' ? 'hn-team' : 'hn-agent'}`}>
+            <span className="hn-ref-ico" aria-hidden="true">
+              {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
+            </span>
+            {part}
+          </span>
+        ) : <Fragment key={i}>{part}</Fragment>
+      ))}
+    </>
   );
 }
 
-/** 环形饼图：成功占比；全成=实心圆+√。 */
-function ReceiptRing({ ok, total, pending }: { ok: number; total: number; pending: number }): JSX.Element {
-  const r = 7;
-  const c = 2 * Math.PI * r;
-  const pct = total === 0 ? 0 : Math.min(1, ok / total);
-  if (total > 0 && ok === total) {
-    return (
-      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="sx-group-ring done">
-        <circle cx="9" cy="9" r="8" fill="currentColor" />
-        <path d="M5.2 9.2l2.4 2.4 5-5.2" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    );
-  }
-  return (
-    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className={`sx-group-ring${pending > 0 ? ' pending' : ''}${ok === 0 && total > 0 ? ' failed' : ''}`}>
-      <circle cx="9" cy="9" r={r} fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="3" />
-      <circle cx="9" cy="9" r={r} fill="none" stroke="currentColor" strokeWidth="3" strokeDasharray={`${c * pct} ${c}`} transform="rotate(-90 9 9)" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-/** 两栏回执：左已接收/右未接收，各自固定高度滚动；点成员名开对应 Sunx。 */
-function DeliveryPop(props: { message: SunxRoomMessage; onClose: () => void; onOpenMember: (jid: string) => void; onReveal: (seq: number) => void }): JSX.Element {
-  const { message: m, onClose, onOpenMember } = props;
-  const targets = m.targets ?? [];
-  const deliveries = m.deliveries ?? [];
-  const byTo = new Map(deliveries.map((d) => [d.to, d]));
-  const received: Array<{ t: SunxRoomTarget; d: SunxRoomDelivery }> = [];
-  const pending: SunxRoomTarget[] = [];
-  const failed: Array<{ t: SunxRoomTarget; d: SunxRoomDelivery }> = [];
-  for (const t of targets) {
-    const d = byTo.get(t.id);
-    if (d === undefined) pending.push(t);
-    else if (d.ok) received.push({ t, d });
-    else failed.push({ t, d });
-  }
-  const not = [...pending, ...failed];
-  return (
-    <div className="sx-group-delivery" role="dialog" aria-label="delivery receipt" onClick={(e) => e.stopPropagation()}>
-      <div className="sx-group-delivery-head">
-        <span>{received.length}/{targets.length} {t('delivered', '已送达')}</span>
-        <button type="button" aria-label="close" onClick={onClose}><X size={14} /></button>
-      </div>
-      <div className="sx-group-delivery-cols">
-        <div className="sx-group-delivery-col">
-          <div className="sx-group-delivery-title">{t('Received', '已接收')} · {received.length}</div>
-          <div className="sx-group-delivery-scroll">
-            {received.map(({ t: target, d }) => (
-              <button key={target.id} type="button" className="sx-group-delivery-row" onClick={() => onOpenMember(target.id)}>
-                <span className="sx-group-dot ok" /> {target.name}
-                {d.queued === true && <span className="sx-group-muted">{t('queued', '已排队')}</span>}
-              </button>
-            ))}
-            {received.length === 0 && <div className="proj-empty">—</div>}
-          </div>
-        </div>
-        <div className="sx-group-delivery-col">
-          <div className="sx-group-delivery-title">{t('Not received', '未接收')} · {not.length}</div>
-          <div className="sx-group-delivery-scroll">
-            {pending.map((target) => (
-              <div key={target.id} className="sx-group-delivery-row">
-                <span className="sx-group-dot pending" /> {target.name}
-                <span className="sx-group-muted">{t('sending', '发送中')}</span>
-              </div>
-            ))}
-            {failed.map(({ t: target, d }) => (
-              <div key={target.id} className="sx-group-delivery-row">
-                <span className="sx-group-dot failed" /> {target.name}
-                <span className="sx-group-muted" data-tip={d.error ?? ''}>{d.error ?? t('failed', '失败')}</span>
-              </div>
-            ))}
-            {not.length === 0 && <div className="proj-empty">—</div>}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 左侧成员气泡：发送行在气泡上方；单卡片 480px；第一行引用（单行、无发送者）点击滚到目标。 */
-function LeftBubble(props: {
-  message: SunxRoomMessage;
-  quoteSeq?: number;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onOpenMember: (jid: string) => void;
-  onReveal: (seq: number) => void;
-  onReply: () => void;
-  active: boolean;
-  nodeRef: (el: HTMLDivElement | null) => void;
+/** 引用行：复用用户气泡的既有次级文字/项目图标件；可点则跳到原气泡。 */
+function GroupQuoteLine({ text, mentions, mentionAll, onOpen }: {
+  text: string;
+  mentions?: SunxRoomTarget[];
+  mentionAll?: boolean;
+  onOpen?: () => void;
 }): JSX.Element {
-  const { message: m, quoteSeq, expanded, onToggleExpand, onOpenMember, onReveal, onReply, active, nodeRef } = props;
-  const quote = m.replyPreview;
-  const isCommand = m.kind === 'command';
-  const long = m.text.length > 600 || m.text.split('\n').length > 8;
   return (
-    <div className={`sx-group-row left${active ? ' active' : ''}`} ref={nodeRef}>
-      <div className="sx-group-sender">
-        <button type="button" className="sx-group-name-btn" onClick={() => onOpenMember(m.from.id)}>
-          <SunxIcon size={14} /> {m.from.name}
+    <div
+      className={`sx-group-quote-line${onOpen !== undefined ? ' clickable' : ''}`}
+      role={onOpen !== undefined ? 'button' : undefined}
+      tabIndex={onOpen !== undefined ? 0 : undefined}
+      data-tip={onOpen !== undefined ? t('Jump to quoted message', '跳到引用气泡') : undefined}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (onOpen === undefined) return;
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
+      }}
+    >
+      <CornerUpLeft size={14} strokeWidth={1.75} aria-hidden="true" />
+      <span className="sx-group-quote-text">
+        <GroupMentions text={text} mentions={mentions} mentionAll={mentionAll} />
+      </span>
+    </div>
+  );
+}
+
+/** 成员消息来源行的「发送给」后缀：目标=群主用既有 SUNX badge，目标=成员用既有 Sunx 名称件。 */
+function GroupTarget({ target, onOpenMember }: {
+  target: SunxRoomPeerRef;
+  onOpenMember: (journalId: string) => void;
+}): JSX.Element {
+  const isGroup = target.kind === 'group' || target.id.startsWith('grp_');
+  return (
+    <>
+      <span>{t('to', '发送给')}</span>
+      {isGroup ? (
+        <span className="sx-sunx-badge">{t('Owner', '群主')}</span>
+      ) : (
+        <button type="button" className="user-from-sunx-btn" onClick={() => onOpenMember(target.id)}>
+          <SunxIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+          <span>{target.name}</span>
         </button>
-        {m.to !== undefined && (
-          <>
-            <span className="sx-group-muted">{t('to', '发送给')}</span>
-            {m.to.kind === 'group' ? (
-              <span className="sx-group-name-btn static"><SunxIcon size={14} /> {t('Owner', '群主')}<span className="sx-group-badge">{t('owner', '群主')}</span></span>
-            ) : (
-              <button type="button" className="sx-group-name-btn" onClick={() => onOpenMember(m.to!.id)}>
-                <SunxIcon size={14} /> {m.to.name}
+      )}
+    </>
+  );
+}
+
+/** 送达回执：不再用飞书环形饼图/色点；入口=会话 user-action + 项目 TipButton，
+ *  弹层=既有 .sx-menu-pop + .sx-search-sec/.sx-search-row 列表。 */
+function GroupReceipt({ message, onClose, onOpenMember }: {
+  message: SunxRoomMessage;
+  onClose: () => void;
+  onOpenMember: (journalId: string) => void;
+}): JSX.Element {
+  const targets = message.targets ?? [];
+  const deliveries = message.deliveries ?? [];
+  const byTo = new Map(deliveries.map((d) => [d.to, d]));
+  const received: Array<{ target: SunxRoomTarget; delivery: SunxRoomDelivery }> = [];
+  const pending: SunxRoomTarget[] = [];
+  const failed: Array<{ target: SunxRoomTarget; delivery: SunxRoomDelivery }> = [];
+  for (const target of targets) {
+    const delivery = byTo.get(target.id);
+    if (delivery === undefined) pending.push(target);
+    else if (delivery.ok) received.push({ target, delivery });
+    else failed.push({ target, delivery });
+  }
+  return (
+    <div className="sx-menu-pop sx-group-receipt" role="dialog" aria-label="delivery receipt" onClick={(e) => e.stopPropagation()}>
+      <div className="sx-group-receipt-head">
+        <span>{received.length}/{targets.length} {t('delivered', '已送达')}</span>
+        <button type="button" className="sx-iconbtn" aria-label="close receipt" onClick={onClose}><X size={14} /></button>
+      </div>
+      <div className="sx-group-receipt-cols">
+        <div className="sx-group-receipt-col">
+          <div className="sx-search-sec">{t('Received', '已接收')} · {received.length}</div>
+          <div className="sx-group-receipt-list">
+            {received.map(({ target, delivery }) => (
+              <button key={target.id} type="button" className="sx-search-row" onClick={() => onOpenMember(target.id)}>
+                <SunxIcon size={14} />
+                <span className="sx-search-label">{target.name}</span>
+                <span className="sx-search-meta">{delivery.queued === true ? t('queued', '已排队') : ''}</span>
               </button>
-            )}
-          </>
-        )}
-      </div>
-      <div className={`sx-group-bubble${expanded ? ' expanded' : ''}`}>
-        {quote !== undefined && (
-          <button
-            type="button"
-            className="sx-group-quote"
-            onClick={() => { if (quoteSeq !== undefined) onReveal(quoteSeq); }}
-            data-tip={t('Jump to quoted message', '跳到引用气泡')}
-          >
-            {quote.text}
-          </button>
-        )}
-        {isCommand && <div className="sx-group-cmd-badge">{m.command}</div>}
-        {isCommand ? (
-          <pre className="sx-group-command-text">{m.text}</pre>
-        ) : (
-          <div className="sx-group-md"><MarkdownCached md={m.text} components={mdComponentsPlain} /></div>
-        )}
-        {long && !expanded && (
-          <button type="button" className="sx-group-expand" onClick={onToggleExpand}>
-            <ChevronDown size={14} /> {t('Expand all', '展开全部')}
-          </button>
-        )}
-        {long && expanded && (
-          <button type="button" className="sx-group-expand" onClick={onToggleExpand}>
-            {t('Collapse', '收起')}
-          </button>
-        )}
-      </div>
-      <div className="sx-group-foot">
-        <span>{fmtTime(m.ts)}</span>
-        <button type="button" aria-label="copy" onClick={() => { void navigator.clipboard?.writeText(m.text); }}><Copy size={14} /></button>
-        <button type="button" aria-label="reply" onClick={onReply}>{t('Reply', '回复')}</button>
+            ))}
+            {received.length === 0 && <div className="sx-search-empty">—</div>}
+          </div>
+        </div>
+        <div className="sx-group-receipt-col">
+          <div className="sx-search-sec">{t('Not received', '未接收')} · {pending.length + failed.length}</div>
+          <div className="sx-group-receipt-list">
+            {pending.map((target) => (
+              <div key={target.id} className="sx-search-row">
+                <SunxIcon size={14} />
+                <span className="sx-search-label">{target.name}</span>
+                <span className="sx-search-meta">{t('sending', '发送中')}</span>
+              </div>
+            ))}
+            {failed.map(({ target, delivery }) => (
+              <div key={target.id} className="sx-search-row">
+                <SunxIcon size={14} />
+                <span className="sx-search-label">{target.name}</span>
+                <span className="sx-search-meta" data-tip={delivery.error ?? ''}>{delivery.error ?? t('failed', '失败')}</span>
+              </div>
+            ))}
+            {pending.length + failed.length === 0 && <div className="sx-search-empty">—</div>}
+          </div>
+        </div>
       </div>
     </div>
   );
