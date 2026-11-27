@@ -92,6 +92,10 @@ describe('SunxSection(侧栏 SUNX 过滤组;2026-11-15 平铺改版)', () => {
     expect(last.classList.contains('sx-side-chev')).toBe(true);
     expect(item.querySelector('.workspace-row > .ws-row-actions [aria-label="open group chat"]')).not.toBeNull();
     expect(item.querySelector('.workspace-row > .ws-row-actions [aria-label="new sunx in group"]')).not.toBeNull();
+    // 2026-11-27 用户裁定「两个图标调换，最右侧群图标恒打开」：新建 Sunx 在左，进入群聊在最右
+    const actionLabels = [...item.querySelectorAll('.workspace-row > .ws-row-actions button')].map((b) => b.getAttribute('aria-label'));
+    expect(actionLabels[actionLabels.length - 2]).toBe('new sunx in group');
+    expect(actionLabels[actionLabels.length - 1]).toBe('open group chat');
     // 群内会话仍在标准 session-list 中（与项目/通道组行同件）
     expect(item.querySelector('.sx-collapse .session-list .session-row')).not.toBeNull();
   });
@@ -103,17 +107,10 @@ describe('SunxSection(侧栏 SUNX 过滤组;2026-11-15 平铺改版)', () => {
     expect(onAttach).toHaveBeenCalledWith('D:/w/alpha', 'j9', FIXED_TS);
   });
 
-  it('组头看板钮:接线(onOpenBoard)时渲染,data-tip 双语无原生 title,点击上抛;未接线不渲染', () => {
-    const onOpenBoard = vi.fn();
-    const wired = renderSection([sunxRow('j1', 'D:/w/alpha', 'alpha')], { onOpenBoard });
-    const btn = screen.getByRole('button', { name: 'sunx board' });
-    expect(btn.getAttribute('data-tip')).toBe('Sunx 看板');
-    expect(btn.querySelector('title')).toBeNull(); // data-tip 禁原生 title(铁律)
-    fireEvent.click(btn);
-    expect(onOpenBoard).toHaveBeenCalledTimes(1);
-    wired.unmount();
-    renderSection([sunxRow('j1', 'D:/w/alpha', 'alpha')]); // 未接线:钮不渲染(guard)
+  it('组头看板入口退役（2026-11-27 用户裁定「Sunx 面板群隔离，去掉其他任何地方入口」）：无 sunx board 钮', () => {
+    const { container } = renderSection([sunxRow('j1', 'D:/w/alpha', 'alpha')]);
     expect(screen.queryByRole('button', { name: 'sunx board' })).toBeNull();
+    expect(container.querySelector('.sx-side-head-actions [aria-label="sunx board"]')).toBeNull();
   });
 
   it('排序钮 tooltip 走 i18n(2026-11-20 用户实测「排序不是 i18n」):data-tip=Sunx 排序,aria-label 留英文测试钩子', () => {

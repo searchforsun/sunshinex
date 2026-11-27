@@ -496,8 +496,9 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
     id: 'sunxboard',
     // SUNX 总览页(2026-11-15 sunx P2 Task 8,spec §17.3):应用级单例(不绑会话——数据自拉
     // 全量 sunx 实例,欢迎页座同渲染),group 归 tools(与终端/浏览器同族=非会话绑定面);
-    // 常量键判重+singleton 双保险(重开=聚焦既有)。入口:侧栏 SUNX 组头/RECENTS 头看板钮
-    // (Task 7 留的 onOpenSunxBoard 缝,App 接线即生效)+「+」菜单
+    // 常量键判重+singleton 双保险(重开=聚焦既有)。入口只保留群聊顶栏 Sunx 面板(2026-11-27
+    // 用户裁定「群隔离,去掉其他任何地方入口」):「+」菜单隐藏,侧栏/菜单/搜索入口全退役;
+    // 注册表条目保留=存量页签照常渲染。
     group: 'tools',
     title: () => t('Sunx board', 'Sunx 看板'),
     resolveKey: () => '',

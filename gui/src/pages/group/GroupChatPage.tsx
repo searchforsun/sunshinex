@@ -8,7 +8,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowUp, ChevronDown, Copy, CornerUpLeft, MessagesSquare, MoreHorizontal, Search, Users, X,
+  ArrowUp, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, Search, Users, X,
 } from 'lucide-react';
 import type { Connection } from '../../connection';
 import type {
@@ -23,6 +23,7 @@ import { MarkdownCached, mdComponentsPlain, ModeIcon } from '../Chat';
 import { UserEntryView, baseModelName } from '../chat/EntryViews';
 import { ImageLightbox } from '../../ImageLightbox';
 import { NewSunxDialog } from '../../welcome/NewSunxDialog';
+import { SunxBoardTab } from '../../tabs/SunxBoardTab';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
 import { ComposerCard } from '../../composer/ComposerCard';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
@@ -77,7 +78,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionFrom, setMentionFrom] = useState<number | null>(null);
-  const [membersOpen, setMembersOpen] = useState(false);
+  /** Sunx 面板（2026-11-27 用户裁定「群隔离，只保留群聊顶栏这一个入口」）：右侧栏复用
+   *  SunxBoardTab（groupId 过滤=本群成员），与查询侧栏互斥。 */
+  const [sunxPanelOpen, setSunxPanelOpen] = useState(false);
   const [newSunxOpen, setNewSunxOpen] = useState(false);
   const [nameOpen, setNameOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -208,6 +211,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 
   useEffect(() => {
     if (!searchOpen) return;
+    setSunxPanelOpen(false); // 查询侧栏与 Sunx 面板共用右缘，查询打开即收面板
     window.setTimeout(() => searchInputRef.current?.focus(), 30);
   }, [searchOpen]);
 
@@ -471,46 +475,60 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   }, []);
 
   return (
-    <div className={`sx-group-page${searchOpen ? ' searching' : ''}`} aria-label={t('Group chat', '群聊')}>
+    <div className={`sx-group-page${searchOpen ? ' searching' : ''}${sunxPanelOpen ? ' paneled' : ''}`} aria-label={t('Group chat', '群聊')}>
       <div className="sx-group-main">
         <header className="chat-topbar sx-group-topbar" data-drag-band>
-          {/* 群名行复用会话顶栏（2026-11-26 用户裁定）：群图标占会话文件夹位、群名走 .chat-title、
-              ⋯ 走 chat-more 右贴（不再自绘 170px 让位顶栏） */}
+          {/* 顶栏（2026-11-27 用户裁定）：群图标+群名，⋯ 紧贴群名右侧；原 ⋯ 右贴位让给
+              Sunx 面板入口（面板群隔离，全应用唯一入口），查询钮仍在其右。 */}
           <span className="chat-title">
             <span className="sx-ws-folder" aria-hidden="true">
               <MessagesSquare size={16} strokeWidth={1.75} />
             </span>
             <span className="chat-title-text">{detail?.group.name ?? t('Group', '群组')}</span>
           </span>
-          <button type="button" className="sx-iconbtn chat-more" aria-label="group menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
-            <MoreHorizontal size={16} strokeWidth={1.75} />
-          </button>
-          <button
-            type="button"
-            className="sx-iconbtn"
-            aria-label="search group messages"
-            aria-expanded={searchOpen}
-            data-tip={t('Search group messages', '查询群消息')}
-            onClick={onToggleSearch}
-          >
-            <Search size={16} strokeWidth={1.75} />
-          </button>
-          {menuOpen && (
-            <div className="sx-menu-pop chat-more-pop" role="menu">
-              <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNewSunxOpen(true); }}>
-                <SunxIcon size={14} /> {t('New Sunx', '新建 SUNX')}
-              </button>
-              <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNameDraft(detail?.group.name ?? ''); setNameOpen(true); }}>
-                {t('Rename group', '编辑群名')}
-              </button>
-              <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); copy(groupId); }}>
-                <Copy size={14} /> {t('Copy owner ID', '复制群主 ID')}
-              </button>
-              <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setMembersOpen(true); }}>
-                <Users size={14} /> {t('Members', '群成员')}
-              </button>
-            </div>
-          )}
+          <span className="pill-anchor sx-group-more-wrap">
+            <button type="button" className="sx-iconbtn sx-group-more-btn" aria-label="group menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
+              <MoreHorizontal size={16} strokeWidth={1.75} />
+            </button>
+            {menuOpen && (
+              <div className="sx-menu-pop sx-group-more-pop" role="menu">
+                <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNewSunxOpen(true); }}>
+                  <SunxIcon size={14} /> {t('New Sunx', '新建 SUNX')}
+                </button>
+                <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNameDraft(detail?.group.name ?? ''); setNameOpen(true); }}>
+                  {t('Rename group', '编辑群名')}
+                </button>
+                <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); copy(groupId); }}>
+                  <Copy size={14} /> {t('Copy owner ID', '复制群主 ID')}
+                </button>
+              </div>
+            )}
+          </span>
+          <div className="sx-group-topbar-right">
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="sunx panel"
+              aria-expanded={sunxPanelOpen}
+              data-tip={t('Sunx panel', 'SUNX 面板')}
+              onClick={() => {
+                if (!sunxPanelOpen && searchOpen) onSearchClose();
+                setSunxPanelOpen((v) => !v);
+              }}
+            >
+              <KanbanSquare size={16} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              className="sx-iconbtn"
+              aria-label="search group messages"
+              aria-expanded={searchOpen}
+              data-tip={t('Search group messages', '查询群消息')}
+              onClick={onToggleSearch}
+            >
+              <Search size={16} strokeWidth={1.75} />
+            </button>
+          </div>
         </header>
 
         <div className="chat sx-group-chat" ref={scrollRef} onScroll={onScroll}>
@@ -792,6 +810,25 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         </div>
       </div>
 
+      {/* Sunx 面板（2026-11-27 用户裁定）：右侧栏复用 SUNX 总览页（SunxBoardTab），按本群
+          过滤=群隔离；全应用唯一入口就是群聊顶栏面板钮。与查询侧栏互斥。 */}
+      {sunxPanelOpen && (
+        <aside className="sx-sidebar sx-group-sunx-panel" aria-label={t('Sunx panel', 'SUNX 面板')}>
+          <div className="sx-side-head sx-side-head-row">
+            <span>{t('Sunx', 'SUNX')}</span>
+            <button type="button" className="sx-iconbtn" aria-label="close sunx panel" onClick={() => setSunxPanelOpen(false)}><X size={14} /></button>
+          </div>
+          <SunxBoardTab
+            conn={conn}
+            groupId={groupId}
+            onOpenInstance={(target) => {
+              if (target.journalId !== undefined) onOpenMember(target.journalId);
+              else if (target.sessionId !== undefined) onOpenSession(target.sessionId, target.root);
+            }}
+          />
+        </aside>
+      )}
+
       {searchOpen && (
         <aside
           ref={searchRef}
@@ -847,35 +884,17 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         </aside>
       )}
 
-      {membersOpen && createPortal(
-        <div className="modal-overlay" onClick={() => setMembersOpen(false)}>
-          <div className="modal-body sx-group-members" role="dialog" aria-label={t('Members', '群成员')} onClick={(e) => e.stopPropagation()}>
-            <div className="sx-group-members-head">
-              <span>{t('Members', '群成员')} · {members.length}</span>
-              <button type="button" className="sx-iconbtn" aria-label="close" onClick={() => setMembersOpen(false)}><X size={14} /></button>
-            </div>
-            <div className="sx-group-members-list">
-              {members.map((m) => (
-                <button key={m.id} type="button" className="sx-group-member-row" onClick={() => onOpenMember(m.id)}>
-                  <SunxIcon size={16} />
-                  <span className="sx-group-member-name">{m.name}</span>
-                  <span className="sx-group-muted">{m.awaiting === true ? t('awaiting input', '等待回答') : m.running ? t('running', '运行中') : m.live ? t('idle', '空闲') : t('not open', '未打开')}</span>
-                  <span className="sx-group-member-root">{m.root}</span>
-                  <span className="sx-group-muted">{m.runs !== undefined ? `runs ${m.runs}` : ''}{m.steps !== undefined ? ` · steps ${m.steps}` : ''}</span>
-                </button>
-              ))}
-              {members.length === 0 && <div className="proj-empty">{t('No Sunx yet', '暂无 Sunx')}</div>}
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
-
       {nameOpen && createPortal(
         <div className="modal-overlay" onClick={() => setNameOpen(false)}>
           <div className="modal-body rename-dialog" role="dialog" aria-label={t('Rename group', '编辑群名')} onClick={(e) => e.stopPropagation()}>
             <div className="dirpicker-head">{t('Rename group', '编辑群名')}</div>
-            <input className="chat-title-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }} autoFocus />
+            {/* 编辑群名（2026-11-27 用户裁定「左侧增加群图标」）：群图标与侧栏群行同件同尺寸 */}
+            <div className="sx-group-rename-row">
+              <span className="sx-ws-folder" aria-hidden="true">
+                <MessagesSquare size={16} strokeWidth={1.75} />
+              </span>
+              <input className="chat-title-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }} autoFocus />
+            </div>
             <div className="dirpicker-foot">
               <button type="button" onClick={() => setNameOpen(false)}>{t('Cancel', '取消')}</button>
               <button type="button" className="primary" onClick={() => { void rename(); }}>{t('Save', '保存')}</button>

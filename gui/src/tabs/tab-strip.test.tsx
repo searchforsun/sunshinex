@@ -128,7 +128,7 @@ describe('TabStrip(spec §1 标签条)', () => {
     // 点显示更多:常驻四项仍固定在前,其余八项按原序补在其后,末行文案转「收起」
     fireEvent.click(screen.getByRole('menuitem', { name: 'Show more' }));
     const expanded = screen.getAllByRole('menuitem').map((el) => el.textContent);
-    expect(expanded).toEqual(['Artifacts', 'Todos', 'Side chat', 'Browser', 'Review', 'Plans', 'Agent teams', 'Background tasks', 'Memory', 'Learned skills', 'Terminal', 'Sunx board', 'Show less']);
+    expect(expanded).toEqual(['Artifacts', 'Todos', 'Side chat', 'Browser', 'Review', 'Plans', 'Agent teams', 'Background tasks', 'Memory', 'Learned skills', 'Terminal', 'Show less']);
   });
 
   it('+ 在滚区内跟末签;宽裕不钉 is-pinned', () => {

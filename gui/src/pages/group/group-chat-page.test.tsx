@@ -44,6 +44,12 @@ function makeConn(): Connection {
     renameSunxGroup: vi.fn(async () => ({ ok: true as const, group: { id: 'grp_x', name: '研发群' } })),
     createSunxGroup: vi.fn(async () => ({ ok: true as const, group: { id: 'grp_y', name: '新群' } })),
     setSessionGroup: vi.fn(async () => ({ ok: true as const, groupId: 'grp_x' })),
+    // Sunx 面板（群隔离）：本群未归档行上卡，外群/归档行滤除
+    sunxSessions: vi.fn(async () => [
+      { id: 'jid_a', file: 'jid_a.jsonl', title: '本群甲', kind: 'sunx', root: 'D:/w', groupId: 'grp_x', updatedAt: 2 },
+      { id: 'jid_z', file: 'jid_z.jsonl', title: '外群乙', kind: 'sunx', root: 'D:/z', groupId: 'grp_y', updatedAt: 1 },
+      { id: 'jid_arch', file: 'jid_arch.jsonl', title: '归档丙', kind: 'sunx', root: 'D:/w', groupId: 'grp_x', archived: true, updatedAt: 1 },
+    ]),
   } as unknown as Connection;
 }
 
@@ -127,6 +133,43 @@ describe('GroupChatPage', () => {
     expect((aside as HTMLElement).style.getPropertyValue('--sb-w')).toBe('420px');
     expect(aside!.querySelector('.sx-resizer')).not.toBeNull();
     expect(aside!.querySelector('.sx-setting-input')).not.toBeNull();
+  });
+
+  it('Sunx 面板=群隔离：顶栏入口开右栏，只列本群未归档 Sunx；关闭钮收栏', async () => {
+    const conn = makeConn();
+    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    fireEvent.click(screen.getByRole('button', { name: 'sunx panel' }));
+    await waitFor(() => expect(container.querySelector('aside.sx-group-sunx-panel')).not.toBeNull());
+    expect(await screen.findByText('本群甲', {}, { timeout: 3000 })).toBeDefined();
+    expect(screen.queryByText('外群乙')).toBeNull(); // 群隔离
+    expect(screen.queryByText('归档丙')).toBeNull(); // 归档不上主面板
+    fireEvent.click(screen.getByRole('button', { name: 'close sunx panel' }));
+    expect(container.querySelector('aside.sx-group-sunx-panel')).toBeNull();
+  });
+
+  it('⋯ 紧贴群名右侧；群主菜单无「群成员」项；编辑群名弹窗左侧群图标', async () => {
+    const conn = makeConn();
+    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const title = container.querySelector('.sx-group-topbar .chat-title')!;
+    const more = screen.getByRole('button', { name: 'group menu' });
+    expect(title.nextElementSibling?.contains(more)).toBe(true); // ⋯ 紧跟群名（非右贴）
+    fireEvent.click(more);
+    expect(screen.queryByRole('menuitem', { name: /群成员/ })).toBeNull(); // 群成员按钮/弹窗退役
+    fireEvent.click(screen.getByRole('menuitem', { name: '编辑群名' }));
+    const dialog = await screen.findByRole('dialog', { name: '编辑群名' });
+    expect(dialog.querySelector('.sx-group-rename-row .sx-ws-folder svg')).not.toBeNull();
+  });
+
+  it('查询侧栏打开即收 Sunx 面板（右缘单栏）', async () => {
+    const conn = makeConn();
+    const { container, rerender } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    fireEvent.click(screen.getByRole('button', { name: 'sunx panel' }));
+    await waitFor(() => expect(container.querySelector('aside.sx-group-sunx-panel')).not.toBeNull());
+    rerender(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen onSearchClose={vi.fn()} />);
+    await waitFor(() => expect(container.querySelector('aside.sx-group-sunx-panel')).toBeNull());
   });
 
   it('群聊专用控制命令 /stop /clear /continue 并入命令面板（目标仍由 @ 选择）', async () => {

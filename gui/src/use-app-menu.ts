@@ -48,7 +48,6 @@ export function useAppMenu(opts: {
   toggleMenuStable: () => void;
   menuNav: { canBack: ReturnType<typeof useNavHistory>['navControls']['canBack']; canForward: ReturnType<typeof useNavHistory>['navControls']['canForward']; back: () => void; forward: () => void };
   openSessionFromMenu: (sessionId: string, root: string, journalId?: string, kind?: string) => void;
-  openSunxBoardFromMenu: () => void;
   closeDirViewStable: () => void;
   openSettingsFromMenu: () => void;
   openSettingsPaneStable: (pane: string, row?: string) => void;
@@ -63,7 +62,7 @@ export function useAppMenu(opts: {
   openProjectDirectoryStable: (root: string) => void;
   openFileFromTreeStable: (filePath: string, root: string) => void;
 } {
-  const { page, isWelcome, openSessionId, tabState, sidebarFloating, menuClosed, setMenuClosed, closeMenuDrawer, navControls, recordNav, openSession, openTabInSession, presetCompose, setSchedulesMain, setScheduleFocus, settingsOpen, openSettings, setSettingsPane, setTabStates, liveSeatRef, setMenuDir, openProjectDirectory, openFileFromTree, setPage } = opts;
+  const { page, isWelcome, openSessionId, tabState, sidebarFloating, menuClosed, setMenuClosed, closeMenuDrawer, navControls, recordNav, openSession, presetCompose, setSchedulesMain, setScheduleFocus, settingsOpen, openSettings, setSettingsPane, setTabStates, liveSeatRef, setMenuDir, openProjectDirectory, openFileFromTree, setPage } = opts;
 
   const toggleMenuStable = useStableCallback((): void => {
     const opening = menuClosed;
@@ -84,7 +83,6 @@ export function useAppMenu(opts: {
   /** kind 透传(2026-11-17 用户实测「加载会话时的占位是普通欢迎页」):侧栏 attach 链带回的会话形态
    *  在此曾丢失(只转 3 参)——Sunx 会话加载期落普通欢迎面;补齐第 5 参 */
   const openSessionFromMenu = useStableCallback((sessionId: string, root: string, journalId?: string, kind?: string): void => { closeMenuDrawer(); openSession(sessionId, root, journalId, false, kind); });
-  const openSunxBoardFromMenu = useStableCallback((): void => { closeMenuDrawer(); setSchedulesMain(false); openTabInSession('sunxboard', {}); }); // sunx P2 Task 8:Task 7 留的 guard 缝,页签已注册即生效;终审:层在时点看板=退层开页签(不能在层后开)
   const closeDirViewStable = useStableCallback((): void => setMenuDir(null));
   const openSettingsFromMenu = useStableCallback((): void => { closeMenuDrawer(); openSettings(); });
   /** 设置面板/行直达(2026-11-21 全局搜索):开设置覆盖层并落指定面板;row=行锚(SettingsShell 滚动) */
@@ -150,7 +148,7 @@ export function useAppMenu(opts: {
   });
 
   return {
-    toggleMenuStable, menuNav, openSessionFromMenu, openSunxBoardFromMenu, closeDirViewStable,
+    toggleMenuStable, menuNav, openSessionFromMenu, closeDirViewStable,
     openSettingsFromMenu, openSettingsPaneStable, openSchedulesFromMenu, openScheduleFromSearchStable,
     closeSchedulesStable, createScheduleInChatStable, openLiveSeatStable, newChatFromMenu,
     composeInFromMenu, collapseMenuStable, openProjectDirectoryStable, openFileFromTreeStable,

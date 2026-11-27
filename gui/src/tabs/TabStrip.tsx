@@ -52,7 +52,7 @@ interface TabStripProps {
 /** 「+」菜单原序(2026-11-17 用户裁定「顺序不要动」):content → session → tools 拍平渲染,
  *  不分节但保持既有菜单顺序——常驻四项即该序中的待办/产物/辅助对话/浏览器 */
 const GROUP_ORDER: readonly ('content' | 'session' | 'tools')[] = ['content', 'session', 'tools'];
-/** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory', 'turndiff']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断;turndiff 被动入口只留轮尾改动条/工具行(2026-11-11 用户裁定「去掉本轮入口」:单文件 diff 落具体页签,无公共裸开面)
+/** G14.159 不入「+」菜单的标签类型(类型仍注册:目录树/工具行照常开 file 标签,既有标签照常渲染) */const MENU_HIDDEN = new Set(['file', 'context', 'agent', 'directory', 'turndiff', 'sunxboard']); // directory 已退役(2026-10-29 用户裁定「目录和页签都去掉」):不再入「+」菜单;注册表条目保留=存量页签/file 移交链不断;turndiff 被动入口只留轮尾改动条/工具行(2026-11-11 用户裁定「去掉本轮入口」:单文件 diff 落具体页签,无公共裸开面);sunxboard 入口收敛到群聊顶栏 Sunx 面板(2026-11-27 用户裁定「群隔离,去掉其他任何地方入口」),存量页签照常渲染
 
 /** 常驻四项(2026-11-17 用户裁定「待办,产物,浏览器,辅助对话 这四个常驻」) */
 const RESIDENT_MENU: ReadonlySet<string> = new Set(['tasks', 'artifacts', 'web', 'sidechat']);

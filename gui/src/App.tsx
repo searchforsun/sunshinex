@@ -105,10 +105,11 @@ function AppShell(): JSX.Element {
 
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
-  /** 群聊页（2026-11-26 群组规格）：单层覆盖，groupId=null 关闭；打开新会话时自动关闭 */
+  /** 群聊页（2026-11-26 群组规格）：单层覆盖，groupId=null 关闭；打开新会话时自动关闭。
+   *  2026-11-27 用户裁定：打开动作恒定（再点不再 toggle 关闭，无主动退出钮）。 */
   const [groupChatId, setGroupChatId] = useState<string | null>(null);
   const openSunxGroupChat = useCallback((groupId: string): void => {
-    setGroupChatId((cur) => (cur === groupId ? null : groupId));
+    setGroupChatId(groupId);
   }, []);
   const closeSunxGroupChat = useCallback((): void => { setGroupChatId(null); }, []);
   /** 2026-10-27 欢迎页全局草稿:座判定按页面不按 openSessionId——进欢迎页(新对话)不清会话,残留侧栏即此根因 */
@@ -663,7 +664,7 @@ function AppShell(): JSX.Element {
    *  环解(use-app-overlays 早位)后诸输入全数就位,收口成钩——调用置于 useAppLinks 之后
    *  (openProjectDirectory/openFileFromTree/setMenuDir 供参),消费面(searchActions/panes)全在其后 */
   const {
-    toggleMenuStable, menuNav, openSessionFromMenu, openSunxBoardFromMenu, closeDirViewStable,
+    toggleMenuStable, menuNav, openSessionFromMenu, closeDirViewStable,
     openSettingsFromMenu, openSettingsPaneStable, openSchedulesFromMenu, openScheduleFromSearchStable,
     closeSchedulesStable, createScheduleInChatStable, openLiveSeatStable, newChatFromMenu,
     composeInFromMenu, collapseMenuStable, openProjectDirectoryStable, openFileFromTreeStable,
@@ -704,9 +705,8 @@ function AppShell(): JSX.Element {
       { id: 'tab-learned', en: 'Open learned skills', zh: '打开学习技能', run: () => openLearnedTab() },
       { id: 'tab-artifacts', en: 'Open artifacts', zh: '打开产物', run: openArtifactsTab },
       { id: 'tab-board', en: 'Open task board', zh: '打开任务板', run: openBoardTab },
-      { id: 'tab-sunxboard', en: 'Sunx board', zh: 'Sunx 看板', run: openSunxBoardFromMenu },
     ],
-    [newChatFromMenu, openSchedulesFromMenu, openSettingsFromMenu, openSettingsPaneStable, toggleRightSidebarStable, clearCacheNow, openTabType, openMemoryTab, openLearnedTab, openArtifactsTab, openBoardTab, openSunxBoardFromMenu],
+    [newChatFromMenu, openSchedulesFromMenu, openSettingsFromMenu, openSettingsPaneStable, toggleRightSidebarStable, clearCacheNow, openTabType, openMemoryTab, openLearnedTab, openArtifactsTab, openBoardTab],
   );
 
   /** 面板开合平滑(2026-11-18 用户裁定「应用的侧栏、菜单栏,下栏,展开和关闭要平滑效果」):
@@ -776,7 +776,6 @@ function AppShell(): JSX.Element {
     openSessionFromMenu,
     openLiveSeatStable,
     openProjectDirectoryStable,
-    openSunxBoardFromMenu,
     menuDir,
     closeDirViewStable,
     openFileFromTreeStable,

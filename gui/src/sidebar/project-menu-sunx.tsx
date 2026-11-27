@@ -6,7 +6,7 @@
 import { memo, useMemo, useState } from 'react';
 import type { SessionRow, SunxGroupRow } from '../connection';
 import { t, useLanguage } from '../i18n';
-import { Archive, ChevronRight, FolderPlus, KanbanSquare, MessagesSquare } from 'lucide-react';
+import { Archive, ChevronRight, FolderPlus, MessagesSquare } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { SessionRow as SessionRowView, SortPop, useConfirmOutsideCancel } from './project-menu-util';
 
@@ -41,7 +41,6 @@ interface SunxSectionProps {
   readonly busy: boolean;
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
   readonly onArchiveRow: (id: string, archived: boolean) => void;
-  readonly onOpenBoard?: () => void;
   readonly onNewGroup?: () => void;
   readonly onNewSunxInGroup?: (groupId: string) => void;
   readonly onOpenGroupChat?: (groupId: string) => void;
@@ -60,7 +59,7 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
   useLanguage();
   const {
     rows, groups = null, activeSessionId, runningIds, journalOfSession, isUnseen, busy,
-    onAttach, onArchiveRow, onOpenBoard, onNewGroup, onNewSunxInGroup, onOpenGroupChat, activeSunxGroupId, onOpenArchive,
+    onAttach, onArchiveRow, onNewGroup, onNewSunxInGroup, onOpenGroupChat, activeSunxGroupId, onOpenArchive,
   } = props;
   const [sortMode, setSortMode] = useState<'updated' | 'name'>('updated');
   const [sortOpen, setSortOpen] = useState(false);
@@ -131,18 +130,6 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
         <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${open ? ' open' : ''}`} />
         <span className="sx-side-head-actions">
           {visibleRows !== null && <span className="sx-sunx-count" aria-label="sunx count">{total}</span>}
-          {onOpenBoard !== undefined && (
-            <button
-              type="button"
-              className="sx-iconbtn"
-              aria-label="sunx board"
-              data-tip={t('Sunx board', 'Sunx 看板')}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => { e.stopPropagation(); onOpenBoard(); }}
-            >
-              <KanbanSquare size={14} strokeWidth={1.75} />
-            </button>
-          )}
           <SortPop
             open={sortOpen}
             ariaLabel={t('Sort Sunx', 'Sunx 排序')}
@@ -207,7 +194,8 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                       与通道组头同款 hover 显形、随开合旋转 */}
                   <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${groupOpen ? ' open' : ''}`} />
                 </button>
-                {/* 行尾动作簇与通道组同款：计数 + 进入群聊 + 本群新建 Sunx（hover 显形） */}
+                {/* 行尾动作簇与通道组同款：计数 + 本群新建 Sunx + 进入群聊（hover 显形）。
+                    2026-11-27 用户裁定：两图标对调，最右侧群图标=永远打开群聊（不再 toggle 关闭）。 */}
                 <span className="ws-row-actions">
                   <button
                     type="button"
@@ -217,18 +205,6 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                   >
                     {g.members.length}
                   </button>
-                  {onOpenGroupChat !== undefined && (
-                    <button
-                      type="button"
-                      aria-label="open group chat"
-                      className="sx-iconbtn"
-                      data-tip={t('Open group chat', '进入群聊')}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => { e.stopPropagation(); onOpenGroupChat(g.id); }}
-                    >
-                      <MessagesSquare size={14} strokeWidth={1.75} />
-                    </button>
-                  )}
                   {onNewSunxInGroup !== undefined && (
                     <button
                       type="button"
@@ -239,6 +215,18 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                       onClick={(e) => { e.stopPropagation(); onNewSunxInGroup(g.id); }}
                     >
                       <SunxIcon size={14} strokeWidth={1.75} />
+                    </button>
+                  )}
+                  {onOpenGroupChat !== undefined && (
+                    <button
+                      type="button"
+                      aria-label="open group chat"
+                      className="sx-iconbtn"
+                      data-tip={t('Open group chat', '进入群聊')}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); onOpenGroupChat(g.id); }}
+                    >
+                      <MessagesSquare size={14} strokeWidth={1.75} />
                     </button>
                   )}
                 </span>

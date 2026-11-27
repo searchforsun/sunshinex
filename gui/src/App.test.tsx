@@ -663,36 +663,6 @@ describe('路由骨架:welcome | chat(Chat 页挂载)', () => {
     unmount();
   });
 
-  it('SUNX 看板钮 → sunxboard 单例页签(sunx P2 Task 8:Task 7 guard 缝接线生效;欢迎页座应用级渲染)', async () => {
-    const { unmount } = mount();
-    // RECENTS 头看板钮(App onOpenSunxBoard 接线;SunxSection 组空整块不显→本钮唯一):
-    // 点击=程序化开 sunxboard 页签+展开右栏(G14.38 开签即展开)
-    fireEvent.click((await screen.findAllByRole('button', { name: 'sunx board' }))[0]); // 常驻后 RECENTS 头+组头双钮同名
-    await waitFor(() => expect(document.querySelector('.sx-tab[data-type="sunxboard"]')).not.toBeNull());
-    // 应用级页签(不绑会话):欢迎页座渲染内容=空态文案(非「会话开始后可用」占位)——
-    // P3 Task 3 数据源改向:sunxSessions 桩空列→空卡网格(不再走 workspaces/sessionsOf)
-    await waitFor(() => expect(screen.getByText(/No Sunx instances yet|还没有 Sunx 实例/)).toBeDefined(), { timeout: 3000 });
-    // 单例判重:重开=聚焦既有不重复
-    fireEvent.click((screen.getAllByRole('button', { name: 'sunx board' }))[0]);
-    expect(document.querySelectorAll('.sx-tab[data-type="sunxboard"]')).toHaveLength(1);
-    unmount();
-  });
-
-  it('总览页卡片点击=attachSunx 链(P3 Task 3:journalId 寻址重开,不再 newSession(root)+attach)', async () => {
-    const { conn, unmount } = mount();
-    // 域枚举桩:一 live sunx 行(kind 恒 sunx,行携 root)
-    conn.sunxSessionsRows = [
-      { id: 'sx-j9', file: 'sx-j9.jsonl', updatedAt: 1_000, title: '卡片体', kind: 'sunx', root: '/w/root-a', liveSessionId: 'sx1' },
-    ];
-    fireEvent.click((await screen.findAllByRole('button', { name: 'sunx board' }))[0]);
-    await waitFor(() => expect(screen.getByText('卡片体')).toBeDefined(), { timeout: 3000 });
-    expect(conn.sunxSessionsCalls).toBeGreaterThanOrEqual(1);
-    fireEvent.click(screen.getByText('卡片体'));
-    // attachSunx 链:journalId 直寻址重开(旧 newSession(root)+attach 两步退役)
-    await waitFor(() => expect(conn.attachSunxCalls).toEqual(['sx-j9']));
-    unmount();
-  });
-
   it('两会话先后打开投影独立:key 隔离——s1 交互→back→s2 打开无 s1 条目,再交互各自 :id', async () => {
     const { conn, unmount } = mount();
     openConn(conn);

@@ -119,6 +119,9 @@ export interface ChatProps {
   /** 发送方视角目标气泡跳转（2026-11-26 用户裁定「点击可以跳转到指定气泡」）：target journalId +
    *  消息正文（App 打开目标会话并定位该条用户气泡） */
   onOpenSunxBubble?: (journalId: string, text: string) => void;
+  /** Sunx 会话顶栏群入口（2026-11-27 用户裁定「sunx 内部顶部最右侧放置群图标，点击进入群聊」）：
+   *  顶栏按当前 journal/session 解析所属群 id 后上抛；App 开群聊覆盖层。 */
+  onOpenGroupChat?: (groupId: string) => void;
   /** 跨 Sunx 归因行定位信号（2026-11-26 用户裁定「定位到对应发送气泡的轮次中」）：发送方 journalId
    *  + 轮次锚 runSeq + nonce——本会话命中即滚到该轮并闪光；消费/放弃后 onSunxPeerFocusDone 清信号 */
   sunxPeerFocus?: { journalId: string; nonce: number; runSeq?: number; text?: string } | null;

@@ -110,6 +110,20 @@ describe('SunxBoardTab(SUNX 总览页 sunx P2 Task 8;P3 Task 3 数据源改向)'
     expect(calls.snapshotArgs).toHaveLength(1); // 仅 live 行拉快照
   });
 
+  it('groupId 群隔离（2026-11-27）：只列本群未归档行，外群/归档不上面板', async () => {
+    const { conn } = stubConn({
+      sunxRows: [
+        sunxRow('j1', { groupId: 'grp_x' }),
+        sunxRow('j2', { groupId: 'grp_y' }),
+        sunxRow('j3', { groupId: 'grp_x', archived: true }),
+      ],
+    });
+    render(<SunxBoardTab conn={conn} groupId="grp_x" />);
+    await waitFor(() => expect(screen.getByText('Sunx j1')).toBeDefined(), { timeout: 2000 });
+    expect(screen.queryByText('Sunx j2')).toBeNull();
+    expect(screen.queryByText('Sunx j3')).toBeNull();
+  });
+
   it('卡片网格+聚合条:行过滤降级防线、按工作区分节(R10)、进行中/完成/等待确认计数;快照 bumpSeq:false 只读', async () => {
     const { conn, calls } = alphaJ1();
     render(<SunxBoardTab conn={conn} />);

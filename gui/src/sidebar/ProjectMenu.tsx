@@ -149,9 +149,6 @@ interface ProjectMenuProps {
   readonly onComposeIn: (root: string) => void;
   /** 组头目录钮(2026-10-23 用户裁定):开当前会话/项目第一会话的目录页签(宿主解析会话+开页签) */
   readonly onOpenDirectory: (root: string) => void;
-  /** SUNX 组头看板钮(sunx P2 Task 7 留开合点,可选 guard):宿主开 Sunx 总览页——Task 8 注册
-   *  'sunxboard' 页签后 App 传 openTab 接线;未配时钮不渲染(不产死钮) */
-  readonly onOpenSunxBoard?: () => void;
   /** 群聊页（2026-11-26 群组规格）：当前打开的群（群行高亮）+ 群行「进入群聊」入口 */
   readonly activeSunxGroupId?: string;
   readonly onOpenSunxGroupChat?: (groupId: string) => void;
@@ -910,7 +907,6 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           busy={busy}
           onAttach={attachSunxFromRow}
           onArchiveRow={archiveRow}
-          onOpenBoard={props.onOpenSunxBoard}
           onNewGroup={() => setNewGroupOpen(true)}
           onNewSunxInGroup={openNewSunxDialog}
           onOpenGroupChat={props.onOpenSunxGroupChat}

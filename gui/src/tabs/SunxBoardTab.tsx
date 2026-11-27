@@ -31,14 +31,21 @@ interface SunxBoardTabProps {
   readonly refreshNonce?: number;
   /** 进实例/建会话成功上抛(journalId=attachSunx 直寻址重开;sessionId=新建裸 openSession;App 注入) */
   readonly onOpenInstance?: (target: { journalId?: string; sessionId?: string; root: string }) => void;
+  /** 群隔离（2026-11-27 用户裁定）：群聊右栏面板只列本群成员；缺省=全局（存量页签）。 */
+  readonly groupId?: string;
 }
 
 /** 全量拉取编排:GET /sunx/sessions 单点→live 行双拉(任务账本 sessionTasks+快照 bumpSeq:false)
  *  →卡片;账本/快照任一失败该行降级(null)——不击穿整页。账本=后台任务页签同源(2026-11-16
- *  用户实测「数据不对」根修:委派投影缺后台任务终态,计数恒 0),快照出团队板任务+挂起段 */
-async function loadBoard(conn: Connection): Promise<{ cards: SunxCard[] }> {
+ *  用户实测「数据不对」根修:委派投影缺后台任务终态,计数恒 0),快照出团队板任务+挂起段。
+ *  groupId 在场=群隔离视图：只留该群、且只留未归档成员。 */
+async function loadBoard(conn: Connection, groupId?: string): Promise<{ cards: SunxCard[] }> {
+  if (typeof conn.sunxSessions !== 'function') return { cards: [] };
   const list = await conn.sunxSessions().catch(() => [] as SessionRow[]); // 拉取失败按空清单降级(空态呈现,不炸整页)
-  const rows = list.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' })); // 分节键=工作区根(wsName 显示走 root basename)
+  const scoped = groupId === undefined
+    ? list
+    : list.filter((x) => (x.groupId !== undefined && x.groupId !== '' ? x.groupId : 'grp_default') === groupId && x.archived !== true);
+  const rows = scoped.map((x) => ({ ...x, root: x.root ?? '', slug: x.root ?? '' })); // 分节键=工作区根(wsName 显示走 root basename)
   const snaps = new Map<string, SunxSnapSlice>();
   await Promise.all(
     rows
@@ -60,7 +67,7 @@ async function loadBoard(conn: Connection): Promise<{ cards: SunxCard[] }> {
   return { cards: assembleSunxCards(rows, (liveId) => snaps.get(liveId) ?? null) };
 }
 
-export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTabProps): JSX.Element {
+export function SunxBoardTab({ conn, refreshNonce, onOpenInstance, groupId }: SunxBoardTabProps): JSX.Element {
   const [cards, setCards] = useState<SunxCard[] | null>(null);
   const [error, setError] = useState('');
   const [fetching, setFetching] = useState(true);
@@ -70,7 +77,7 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
   useEffect(() => {
     let alive = true;
     setFetching(true);
-    withMinSpin(loadBoard(conn)).then(
+    withMinSpin(loadBoard(conn, groupId)).then(
       (r) => {
         if (alive) {
           setCards(r.cards);
@@ -88,7 +95,7 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
     return () => {
       alive = false;
     };
-  }, [conn, tick, refreshNonce]);
+  }, [conn, tick, refreshNonce, groupId]);
   const agg = aggregateSunxCards(cards ?? []);
   const sections = sunxSectionsOf(cards ?? []);
   return (
@@ -215,6 +222,7 @@ export function SunxBoardTab({ conn, refreshNonce, onOpenInstance }: SunxBoardTa
           open
           onClose={() => setDialogOpen(false)}
           conn={conn}
+          {...(groupId !== undefined ? { defaultGroupId: groupId } : {})}
           onOpenSession={(sessionId, root) => onOpenInstance?.({ sessionId, root })} // 新建=canonical,裸 openSession
         />
       )}

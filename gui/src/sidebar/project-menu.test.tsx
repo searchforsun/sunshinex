@@ -481,15 +481,7 @@ describe('ProjectMenu SUNX 过滤组(sunx P2 Task 7;P3 Task 3 数据源改向;20
     await waitFor(() => expect(open).toHaveBeenCalledWith('sx-live-sx-j1', 'D:/w/p1', 'sx-j1', 'sunx')); // journalId 随行 + 形态 kind
   });
 
-  it('组头看板钮:接线 onOpenSunxBoard 渲染+点击上抛;未接线不渲染(guard)', async () => {
-    const onOpenSunxBoard = vi.fn();
-    const first = renderMenu(makeSunxConn(), { onOpenSunxBoard });
-    const btn = (await first.findAllByRole('button', { name: 'sunx board' }))[0]; // 常驻后 RECENTS 头+组头双钮同名
-    expect(btn.getAttribute('data-tip')).toBe('Sunx board'); // 测试环境钉 en(本文件不钉 zh)
-    expect(btn.querySelector('title')).toBeNull(); // data-tip 禁原生 title(铁律)
-    fireEvent.click(btn);
-    expect(onOpenSunxBoard).toHaveBeenCalledTimes(1);
-    first.unmount();
+  it('SUNX 组头看板入口退役（2026-11-27）：不再渲染 sunx board 钮（面板收敛到群聊顶栏）', async () => {
     const second = renderMenu(makeSunxConn());
     await second.findByText('SUNX');
     expect(second.queryByRole('button', { name: 'sunx board' })).toBeNull();

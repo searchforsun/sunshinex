@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff, UsersRound } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, ChevronDown, Code2, Copy, GitCompare, Hourglass, ListTodo, MailOpen, MessagesSquare, MoreHorizontal, NotebookPen, PanelLeft, PenLine, Pin, PinOff, UsersRound } from 'lucide-react';
 import { icons as vscodeIcons } from '@iconify-json/vscode-icons';
 import { t } from '../../i18n';
 import { editorIconCached, editorIconPut, OPEN_DEFAULT_KEY } from '../../ui-util';
@@ -137,12 +137,15 @@ interface ChatTopbarProps {
   readonly nav?: NavControls;
   /** 2026-10-27 电脑控制指示:控制类 computer-use 工具条在跑(use-chat-derived 派生)——顶栏会话名行右亮「正在控制」边框徽标 */
   readonly computerUseActive?: boolean;
+  /** Sunx 会话顶栏群入口（2026-11-27 用户裁定「sunx 内部顶部最右侧，[|] 左侧放置群图标，
+   *  点击进入群聊」）：App 开群聊覆盖层；未配=不渲染。群 id 由本组件按行反查。 */
+  readonly onOpenGroupChat?: (groupId: string) => void;
 }
 
 /** 2026-11-25 输入根治轮:memo——宿主 Chat 的草稿 state 每键重渲整棵树,顶栏 props(值 +
  *  App/会话 hook 的稳定回调)与打字无关,memo 让按键帧整段跳过重渲 */
 export const ChatTopbar = memo(function ChatTopbar(props: ChatTopbarProps): JSX.Element {
-  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, channelChatId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal } = props;
+  const { fixedTitle, titleEditing, titleDraft, setTitleDraft, commitTitle, setTitleEditing, displayTitle, sessionKind, onAdoptTitle, sessionId, channelChatId, blocks, computerUseActive, conn, onOpenTab, onOpError, archived, onArchive, journalId, root, onSessionsMutated, pins: pinsList, persistPins, menuClosed, onToggleMenu, nav, changesTotal, onOpenGroupChat } = props;
   /** 「编辑 Sunx」双模式弹窗编辑态(2026-11-15 用户裁定「复用创建弹窗,禁用工作区」;portal 自挂,
    *  挂载点随 header 尾。原 CharterDialog 退役——功能并入 NewSunxDialog 编辑模式) */
   const [charterOpen, setCharterOpen] = useState(false);
@@ -292,6 +295,26 @@ export const ChatTopbar = memo(function ChatTopbar(props: ChatTopbarProps): JSX.
     }
     void conn.saveAppSeen(seen).then(onSessionsMutated, onSessionsMutated);
   };
+  /** Sunx 所属群反查（2026-11-27 用户裁定「sunx 内部顶部最右侧放置群图标，点击进入群聊」）：
+   *  /sunx/sessions 行按 journalId（静态档）或 liveSessionId（活动会话）命中；旧 daemon/失败
+   *  不渲染入口，不产死钮。 */
+  const [sessionGroupId, setSessionGroupId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (onOpenGroupChat === undefined || sessionKind !== SESSION_KIND_SUNX || typeof conn.sunxSessions !== 'function') {
+      setSessionGroupId(undefined);
+      return;
+    }
+    let alive = true;
+    conn.sunxSessions().then(
+      (rows) => {
+        if (!alive) return;
+        const hit = rows.find((r) => (journalId !== undefined && journalId !== '' && r.id === journalId) || r.liveSessionId === sessionId);
+        setSessionGroupId(hit?.groupId);
+      },
+      () => { if (alive) setSessionGroupId(undefined); },
+    );
+    return () => { alive = false; };
+  }, [conn, journalId, onOpenGroupChat, sessionId, sessionKind]);
   // sunx 会话:置顶/归档会话两件退役(2026-11-15 用户实测裁定「置顶和编辑会话不是已经去掉了吗」
   // ——Sunx 归档与会话归档彻底分开,唯一归档入口=侧栏 SUNX 组头归档层);standard 三件原样;
   // 通道会话:置顶退役(2026-11-22 用户裁定「三个点操作下拉行去掉置顶」——归档走通道组头专域)
@@ -505,6 +528,19 @@ export const ChatTopbar = memo(function ChatTopbar(props: ChatTopbarProps): JSX.
             <GitCompare size={14} strokeWidth={1.75} aria-hidden="true" />
             <span className="sx-change-add">+{changesTotal.add}</span>
             <span className="sx-change-del">−{changesTotal.del}</span>
+          </button>
+        )}
+        {/* Sunx 会话群入口（2026-11-27 用户裁定）：贴窗控簇左，点击进入所属群聊；群不存在/
+            旧 daemon 不渲染（sessionGroupId 反查失败=无钮） */}
+        {isSunx && sessionGroupId !== undefined && onOpenGroupChat !== undefined && (
+          <button
+            type="button"
+            className="sx-iconbtn chat-group-open"
+            aria-label="open group chat"
+            data-tip={t('Open group chat', '进入群聊')}
+            onClick={() => onOpenGroupChat(sessionGroupId)}
+          >
+            <MessagesSquare size={16} strokeWidth={1.75} />
           </button>
         )}
         {menu !== null && fixedTitle !== '' && (
