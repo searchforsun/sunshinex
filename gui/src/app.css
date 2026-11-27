@@ -5057,16 +5057,6 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-reply .composer-pill { flex: 1; min-width: 0; }
 .sx-group-reply .pill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-group-dock .sx-group-palette { left: 0; right: 0; width: auto; }
-/* 送达回执：入口走会话 user-action，弹层走项目 sx-menu-pop + sx-search-row，只补锚位/两栏布局 */
-.sx-group-receipt { top: auto; right: 0; bottom: calc(100% + 6px); width: min(520px, 90vw); max-height: 340px; overflow: auto; z-index: 30; }
-/* 气泡内送达状态（气泡下方只留时间/复制）：项目 composer-pill 皮肤，右对齐贴正文尾 */
-.sx-group-receipt-inline { display: flex; width: max-content; margin: 6px 0 0 auto; padding: 2px 8px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
-.sx-group-receipt-inline:hover { color: var(--fg); }
-.sx-group-receipt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 4px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
-.sx-group-receipt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.sx-group-receipt-col { min-width: 0; }
-.sx-group-receipt-list { max-height: 240px; overflow-y: auto; }
-.sx-group-receipt .sx-search-row { width: 100%; text-align: left; }
 /* ask 卡：沿用会话 .ask-dock / .ask-actions，只补群来源行 */
 .sx-group-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sx-group-ask-source { display: flex; align-items: center; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); padding: 0 2px; min-width: 0; }

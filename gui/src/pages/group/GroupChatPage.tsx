@@ -8,11 +8,11 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  AlertCircle, ArrowUp, CheckCheck, ChevronDown, Clock, Copy, CornerUpLeft, MessagesSquare, MoreHorizontal, Search, Users, X,
+  ArrowUp, ChevronDown, Copy, CornerUpLeft, MessagesSquare, MoreHorizontal, Search, Users, X,
 } from 'lucide-react';
 import type { Connection } from '../../connection';
 import type {
-  SunxGroupDetail, SunxGroupMemberRow, SunxGroupSearchHit, SunxRoomDelivery, SunxRoomMessage, SunxRoomPeerRef, SunxRoomTarget,
+  SunxGroupDetail, SunxGroupMemberRow, SunxGroupSearchHit, SunxRoomMessage, SunxRoomPeerRef, SunxRoomTarget,
 } from '../../connection-types';
 import type { GuiAskReq } from '../../connection-types';
 import type { ChatEntry } from '../../chat-reducer';
@@ -74,7 +74,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionFrom, setMentionFrom] = useState<number | null>(null);
-  const [receipt, setReceipt] = useState<SunxRoomMessage | null>(null);
   const [membersOpen, setMembersOpen] = useState(false);
   const [newSunxOpen, setNewSunxOpen] = useState(false);
   const [nameOpen, setNameOpen] = useState(false);
@@ -463,10 +462,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     setInput(`${cmd} `);
   }, []);
 
-  const openReceipt = useCallback((m: SunxRoomMessage): void => {
-    setReceipt((v) => (v?.id === m.id ? null : m));
-  }, []);
-
   return (
     <div className={`sx-group-page${searchOpen ? ' searching' : ''}`} aria-label={t('Group chat', '群聊')}>
       <div className="sx-group-main">
@@ -553,9 +548,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 <div className="user-md-plain">
                   {quoteNode}
                   <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} />
-                  {(m.targets ?? []).length > 0 && (
-                    <GroupReceiptStatus message={m} onOpen={() => openReceipt(m)} />
-                  )}
                 </div>
               );
             return (
@@ -577,9 +569,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                     <GroupTarget target={m.to} onOpenMember={onOpenMember} />
                   ) : undefined}
                 />
-                {receipt?.id === m.id && (
-                  <GroupReceipt message={m} onClose={() => setReceipt(null)} onOpenMember={onOpenMember} />
-                )}
               </div>
             );
           })}
@@ -978,99 +967,5 @@ function GroupTarget({ target, onOpenMember }: {
         </button>
       )}
     </>
-  );
-}
-
-/** 送达状态放在气泡内（2026-11-27 用户裁定「气泡下方只有时间和复制」）：图标+已送达 n/m，
- *  点击打开原项目式送达列表；气泡下方不再出现回执/回复等额外按钮。 */
-function GroupReceiptStatus({ message, onOpen }: {
-  message: SunxRoomMessage;
-  onOpen: () => void;
-}): JSX.Element {
-  const targets = message.targets ?? [];
-  const deliveries = message.deliveries ?? [];
-  const ok = deliveries.filter((d) => d.ok).length;
-  const pending = targets.length - deliveries.length;
-  const failed = deliveries.some((d) => !d.ok);
-  const icon = pending > 0
-    ? <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
-    : failed
-      ? <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
-      : <CheckCheck size={14} strokeWidth={1.75} aria-hidden="true" />;
-  return (
-    <button
-      type="button"
-      className="composer-pill sx-group-receipt-inline"
-      aria-label="delivery receipt"
-      data-tip={`${ok}/${targets.length} ${t('delivered', '已送达')}`}
-      onClick={onOpen}
-    >
-      {icon}
-      <span className="pill-label">{ok}/{targets.length} {t('delivered', '已送达')}</span>
-    </button>
-  );
-}
-
-/** 送达回执：不再用飞书环形饼图/色点；入口=会话 user-action + 项目 TipButton，
- *  弹层=既有 .sx-menu-pop + .sx-search-sec/.sx-search-row 列表。 */
-function GroupReceipt({ message, onClose, onOpenMember }: {
-  message: SunxRoomMessage;
-  onClose: () => void;
-  onOpenMember: (journalId: string) => void;
-}): JSX.Element {
-  const targets = message.targets ?? [];
-  const deliveries = message.deliveries ?? [];
-  const byTo = new Map(deliveries.map((d) => [d.to, d]));
-  const received: Array<{ target: SunxRoomTarget; delivery: SunxRoomDelivery }> = [];
-  const pending: SunxRoomTarget[] = [];
-  const failed: Array<{ target: SunxRoomTarget; delivery: SunxRoomDelivery }> = [];
-  for (const target of targets) {
-    const delivery = byTo.get(target.id);
-    if (delivery === undefined) pending.push(target);
-    else if (delivery.ok) received.push({ target, delivery });
-    else failed.push({ target, delivery });
-  }
-  return (
-    <div className="sx-menu-pop sx-group-receipt" role="dialog" aria-label="delivery receipt" onClick={(e) => e.stopPropagation()}>
-      <div className="sx-group-receipt-head">
-        <span>{received.length}/{targets.length} {t('delivered', '已送达')}</span>
-        <button type="button" className="sx-iconbtn" aria-label="close receipt" onClick={onClose}><X size={14} /></button>
-      </div>
-      <div className="sx-group-receipt-cols">
-        <div className="sx-group-receipt-col">
-          <div className="sx-search-sec">{t('Received', '已接收')} · {received.length}</div>
-          <div className="sx-group-receipt-list">
-            {received.map(({ target, delivery }) => (
-              <button key={target.id} type="button" className="sx-search-row" onClick={() => onOpenMember(target.id)}>
-                <SunxIcon size={14} />
-                <span className="sx-search-label">{target.name}</span>
-                <span className="sx-search-meta">{delivery.queued === true ? t('queued', '已排队') : ''}</span>
-              </button>
-            ))}
-            {received.length === 0 && <div className="sx-search-empty">—</div>}
-          </div>
-        </div>
-        <div className="sx-group-receipt-col">
-          <div className="sx-search-sec">{t('Not received', '未接收')} · {pending.length + failed.length}</div>
-          <div className="sx-group-receipt-list">
-            {pending.map((target) => (
-              <div key={target.id} className="sx-search-row">
-                <SunxIcon size={14} />
-                <span className="sx-search-label">{target.name}</span>
-                <span className="sx-search-meta">{t('sending', '发送中')}</span>
-              </div>
-            ))}
-            {failed.map(({ target, delivery }) => (
-              <div key={target.id} className="sx-search-row">
-                <SunxIcon size={14} />
-                <span className="sx-search-label">{target.name}</span>
-                <span className="sx-search-meta" data-tip={delivery.error ?? ''}>{delivery.error ?? t('failed', '失败')}</span>
-              </div>
-            ))}
-            {pending.length + failed.length === 0 && <div className="sx-search-empty">—</div>}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
