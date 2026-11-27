@@ -412,11 +412,6 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
               {error}
             </p>
           )}
-          {notice !== '' && (
-            <div className="sx-toast sx-schedule-toast" role="status">
-              {notice}
-            </div>
-          )}
           {view.kind === 'list' &&
             (loadFailed && jobs === null ? null : jobs === null ? (
               <p className="sx-schedule-empty">{t('Loading…', '加载中…')}</p>
@@ -476,6 +471,11 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
           )}
         </div>
       </div>
+      {notice !== '' && (
+        <div className="sx-toast sx-schedule-toast" role="status">
+          {notice}
+        </div>
+      )}
     </div>
   );
 }

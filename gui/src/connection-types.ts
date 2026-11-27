@@ -808,8 +808,10 @@ export interface ScheduleTargetFields {
   target?: ScheduleTargetKind;
   targetLabel?: string;
   targetJournalId?: string;
+  targetGroupId?: string;
   targetChannelId?: string;
   targetChatId?: string;
+  targetPlatform?: string;
 }
 
 /** 单次运行行（对齐 daemon ScheduleRunView）：sessionId/journalId 可跳转会话，seconds=时长 */
@@ -827,6 +829,7 @@ export interface ScheduleRunView {
   seconds?: number;
   target?: ScheduleTargetKind;
   targetLabel?: string;
+  targetPlatform?: string;
 }
 
 /** GET /schedules 任务行（对齐 daemon ScheduleJobView）：nextRunAt=null 表示已结束/无后续；

@@ -214,6 +214,7 @@ export class ScheduleExecutor {
         root: target.root !== '' ? target.root : fallbackRoot,
         target: kind,
         ...(job.targetLabel !== undefined ? { targetLabel: job.targetLabel } : {}),
+        ...(job.targetPlatform !== undefined ? { targetPlatform: job.targetPlatform } : {}),
       });
     } catch {
       /* 落盘失败由 store 内兜底；run 契约不抛 */
@@ -324,6 +325,7 @@ export class ScheduleExecutor {
       error,
       ...(target !== undefined ? { target } : {}),
       ...(targetLabel !== undefined ? { targetLabel } : {}),
+      ...(target === 'channel' && job.targetPlatform !== undefined ? { targetPlatform: job.targetPlatform } : {}),
     };
     try {
       this.store.addRun(job.id, run);

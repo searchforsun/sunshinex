@@ -371,6 +371,10 @@ interface TargetOpt {
   readonly id: string;
   readonly title: string;
   readonly sub?: string;
+  /** SUNX 行：目标会话 groupId（保存快照消费） */
+  readonly groupId?: string;
+  /** 通道行：平台标识（保存快照消费） */
+  readonly platform?: string;
   /** 行前图标（通道=平台图标如飞书；SUNX=冠标；2026-11-21 用户裁定） */
   readonly icon?: React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }> | LucideIcon;
 }
@@ -449,6 +453,8 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
   const [chanId, setChanId] = useState(job?.target === 'channel' ? (job.targetChannelId ?? '') : '');
   const [chatId, setChatId] = useState(job?.target === 'channel' ? (job.targetChatId ?? '') : '');
   const [chanLabel, setChanLabel] = useState(job?.target === 'channel' ? (job.targetLabel ?? '') : '');
+  const [chanPlatform, setChanPlatform] = useState(job?.targetPlatform ?? '');
+  const [sunxGroupId, setSunxGroupId] = useState(job?.targetGroupId ?? '');
   const [targetOpen, setTargetOpen] = useState(false);
   const [targetQuery, setTargetQuery] = useState('');
   const [sunxRows, setSunxRows] = useState<TargetOpt[] | null>(null);
@@ -506,6 +512,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
               id: r.id,
               title: `${group} · ${name}`,
               icon: SunxIcon,
+              groupId: gid,
             };
           }),
         );
@@ -556,6 +563,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
                 id: b.key,
                 title: `${cfgRow.name ?? t(pm.en, pm.zh)} · ${chatTitle}`,
                 icon: pm.Icon,
+                platform: cfgRow.platform,
               };
             })
             .filter((x): x is TargetOpt => x !== null),
@@ -644,11 +652,11 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     }
     setBusy(true);
     setError('');
-    const targetFields: Pick<ScheduleDraft, 'target' | 'targetLabel' | 'targetJournalId' | 'targetChannelId' | 'targetChatId'> =
+    const targetFields: Pick<ScheduleDraft, 'target' | 'targetLabel' | 'targetJournalId' | 'targetGroupId' | 'targetChannelId' | 'targetChatId' | 'targetPlatform'> =
       target === 'sunx'
-        ? { target: 'sunx', targetJournalId: sunxJid, ...(sunxLabel !== '' ? { targetLabel: sunxLabel } : {}) }
+        ? { target: 'sunx', targetJournalId: sunxJid, ...(sunxLabel !== '' ? { targetLabel: sunxLabel } : {}), ...(sunxGroupId !== '' ? { targetGroupId: sunxGroupId } : {}) }
         : target === 'channel'
-          ? { target: 'channel', targetChannelId: chanId, targetChatId: chatId, ...(chanLabel !== '' ? { targetLabel: chanLabel } : {}) }
+          ? { target: 'channel', targetChannelId: chanId, targetChatId: chatId, ...(chanLabel !== '' ? { targetLabel: chanLabel } : {}), ...(chanPlatform !== '' ? { targetPlatform: chanPlatform } : {}) }
           : { target: 'project', targetLabel: wsLabel };
     const body: ScheduleDraft = {
       name: name.trim(),
@@ -931,6 +939,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
                           const row = (sunxRows ?? []).find((r) => r.id === id);
                           setSunxJid(id);
                           setSunxLabel(row?.title ?? id);
+                          setSunxGroupId(row?.groupId ?? '');
                         } else {
                           const row = (chanRows ?? []).find((r) => r.id === id);
                           const i = id.indexOf(':');
@@ -940,6 +949,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
                             setChanId(cid);
                             setChatId(chat);
                             setChanLabel(row.title);
+                            setChanPlatform(row.platform ?? '');
                           }
                         }
                         setTargetOpen(false);

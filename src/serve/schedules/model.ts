@@ -13,13 +13,17 @@ export type ScheduleTargetKind = 'project' | 'sunx' | 'channel';
 /** 目标选择字段（job/draft 共用；执行只认 id，label 是展示快照） */
 export interface ScheduleTargetFields {
   target?: ScheduleTargetKind;
-  /** 显示名快照：项目=工作区名 / SUNX=会话标题 / 通道=应用·聊天名（卡片/记录展示，执行不依赖） */
+  /** 显示名快照：项目=工作区名 / SUNX=群组名·会话名 / 通道=应用·聊天名（卡片/记录展示，执行不依赖） */
   targetLabel?: string;
   /** SUNX 目标：目标会话 journal id */
   targetJournalId?: string;
+  /** SUNX 目标所属群组 id（2026-11-21：卡片按此反查群名显示「群组名 · 会话名」） */
+  targetGroupId?: string;
   /** 通道目标：通道配置 id + 聊天 id（binding key 两段） */
   targetChannelId?: string;
   targetChatId?: string;
+  /** 通道目标平台（2026-11-21：卡片/记录按此显示平台图标，如飞书羽毛） */
+  targetPlatform?: string;
 }
 
 export interface Recurrence {
@@ -44,9 +48,10 @@ export interface RunRecord {
   root: string;
   error?: string;
   seconds?: number;
-  /** 本轮落点类型/显示名（2026-11-21）：执行记录列表展示目标用 */
+  /** 本轮落点类型/显示名/平台（2026-11-21）：执行记录列表展示目标用 */
   target?: ScheduleTargetKind;
   targetLabel?: string;
+  targetPlatform?: string;
 }
 
 export interface ScheduleJob extends ScheduleTargetFields {
@@ -173,8 +178,10 @@ export function validateDraft(raw: unknown, now: number): { ok: true; value: Sch
   const targetLabelRaw = cleanId(raw.targetLabel, 200);
   const targetLabel = targetLabelRaw === '' ? undefined : targetLabelRaw;
   const targetJournalId = cleanId(raw.targetJournalId, 200);
+  const targetGroupId = cleanId(raw.targetGroupId, 100);
   const targetChannelId = cleanId(raw.targetChannelId, 200);
   const targetChatId = cleanId(raw.targetChatId, 400);
+  const targetPlatform = cleanId(raw.targetPlatform, 40);
   if (target === 'sunx' && targetJournalId === '') return { ok: false, error: 'targetJournalId required for sunx target' };
   if (target === 'channel' && (targetChannelId === '' || targetChatId === '')) {
     return { ok: false, error: 'targetChannelId and targetChatId required for channel target' };
@@ -200,8 +207,8 @@ export function validateDraft(raw: unknown, now: number): { ok: true; value: Sch
       ...(until !== undefined ? { until } : {}),
       target,
       ...(targetLabel !== undefined ? { targetLabel } : {}),
-      ...(target === 'sunx' ? { targetJournalId } : {}),
-      ...(target === 'channel' ? { targetChannelId, targetChatId } : {}),
+      ...(target === 'sunx' ? { targetJournalId, ...(targetGroupId !== '' ? { targetGroupId } : {}) } : {}),
+      ...(target === 'channel' ? { targetChannelId, targetChatId, ...(targetPlatform !== '' ? { targetPlatform } : {}) } : {}),
     },
   };
 }

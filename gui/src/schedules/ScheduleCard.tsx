@@ -2,7 +2,7 @@ import { Clock3, Folder, History, MessageSquare, MoreHorizontal, Pencil, Play, T
 import { t } from '../i18n';
 import { pathBasename } from '../ui-util';
 import { SunxIcon } from '../sunx-icon';
-import { CHANNEL_PLATFORMS } from '../sidebar/use-menu-channels';
+import { CHANNEL_PLATFORMS, platformMeta } from '../sidebar/use-menu-channels';
 import { whenOf, whenSummary } from './cycle';
 import type { ScheduleJobView, ScheduleTargetKind } from '../connection';
 
@@ -132,15 +132,17 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
           data-tip={target.label}
         >
           {target.kind === 'project' ? (
-            <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+            <Folder size={16} strokeWidth={1.75} aria-hidden="true" />
           ) : target.kind === 'sunx' ? (
             <SunxIcon size={16} strokeWidth={1.75} />
           ) : (
             (() => {
-              // 通道行：图标 = 该通道配置的平台（飞书→羽毛等）；配置不可得时退中性图标。
-              // label 快照里存的是「平台名 · 聊天名」，平台名在前——按已知平台表反查图标。
-              const Icon = CHANNEL_PLATFORMS.find((p) => target.label.startsWith(t(p.en, p.zh)))?.Icon;
-              return Icon !== undefined ? <Icon size={14} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />;
+              // 通道行：图标 = 该通道平台（快照 targetPlatform 权威；旧任务无快照按 label 前缀反查）。
+              const Icon =
+                job.targetPlatform !== undefined
+                  ? platformMeta(job.targetPlatform).Icon
+                  : CHANNEL_PLATFORMS.find((p) => target.label.startsWith(t(p.en, p.zh)))?.Icon;
+              return Icon !== undefined ? <Icon size={16} strokeWidth={1.75} aria-hidden="true" /> : <MessageSquare size={16} strokeWidth={1.75} aria-hidden="true" />;
             })()
           )}
           <span className="sx-schedule-target-label">{target.label}</span>
