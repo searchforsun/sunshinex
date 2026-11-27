@@ -580,7 +580,9 @@ export const ChatTopbar = memo(function ChatTopbar(props: ChatTopbarProps): JSX.
     {charterOpen && (
       <NewSunxDialog
         open
-        edit={{ sessionId, name: displayTitle, root }}
+        /* 群组随行（2026-11-28 四轮裁定「编辑 Sunx 也要有固定的群组」）：会话所属群反查值
+           （sessionGroupId,群入口钮同源）进编辑档,弹窗禁用态展示 */
+        edit={{ sessionId, name: displayTitle, root, ...(sessionGroupId !== undefined ? { groupId: sessionGroupId } : {}) }}
         conn={conn}
         onClose={() => setCharterOpen(false)}
         onEdited={onAdoptTitle} // 改名乐观上屏+侧栏联动(dialog 自管 renameSession 落盘,通道不重发)

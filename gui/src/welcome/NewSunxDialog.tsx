@@ -369,6 +369,16 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
         {(!isEdit || edit?.groupId !== undefined) && (
           <div className="sx-sunx-field">
             <span>{t('Group', '群组')}</span>
+            {isEdit ? (
+              /* 编辑模式=固定群组（2026-11-28 四轮裁定「编辑 Sunx 怎么没有固定的群组」）：
+                 禁用态展示所属群名（与工作目录禁用行同款,域归属语义不可在此改） */
+              <div className="sx-sunx-ws-anchor">
+                <button type="button" className="choose-project-bar sx-sunx-ws-bar" aria-label={t('Group', '群组')} disabled>
+                  <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+                  <span className="wc-pill-label">{groupLabel}</span>
+                </button>
+              </div>
+            ) : (
             <div className="sx-sunx-ws-anchor">
               <button
                 type="button"
@@ -425,6 +435,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
         {/* 工作目录(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):choose-project-bar 同款

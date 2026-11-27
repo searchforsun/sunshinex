@@ -51,6 +51,7 @@ export function ComposerPlusPanel({
   onAttachImages,
   excludeCommands,
   extraCommands,
+  atHint,
 }: {
   conn: PlusPanelConn;
   /** 在场 = 会话内:文件区可浏览(tree);欢迎页不传 → 文件区不渲染 */
@@ -65,6 +66,8 @@ export function ComposerPlusPanel({
   /** 群聊专用命令（/stop /clear /continue）：daemon /commands 不列，由调用面补入面板；
    *  描述继续走 cmdDescOf 内置双语表。 */
   extraCommands?: readonly string[];
+  /** 脚行 @ 提示文案（2026-11-28 群聊裁定「@文件 换成 @群成员」）：缺省=添加文件 */
+  atHint?: string;
 }): JSX.Element {
   const [cmds, setCmds] = useState<Array<{ name: string; desc: string }> | null>(null);
   const [skills, setSkills] = useState<Array<{ id: string; desc: string }> | null>(null);
@@ -364,9 +367,9 @@ export function ComposerPlusPanel({
         </>
       )}
       </div>
-      {/* 快捷键提示脚行(2026-11-03 用户裁定):钉底恒显——@ 添加文件 / 选择命令或技能 / $ # 引用 / Ctrl+V 粘贴图片 */}
+      {/* 快捷键提示脚行(2026-11-03 用户裁定):钉底恒显——@ 添加文件(atHint 可换,群聊=群成员) / 选择命令或技能 / $ # 引用 / Ctrl+V 粘贴图片 */}
       <div className="sx-plus-foot">
-        <span className="sx-plus-hint"><kbd>@</kbd>{t('Add file', '添加文件')}</span>
+        <span className="sx-plus-hint"><kbd>@</kbd>{atHint ?? t('Add file', '添加文件')}</span>
         <span className="sx-plus-hint"><kbd>/</kbd>{t('Pick command or skill', '选择命令或技能')}</span>
         <span className="sx-plus-hint"><kbd>$</kbd>{t('Sub-agents', '子智能体')}</span>
         <span className="sx-plus-hint"><kbd>#</kbd>{t('Agent teams', '智能体团队')}</span>

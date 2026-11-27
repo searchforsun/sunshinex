@@ -3040,7 +3040,7 @@ input.sx-setting-input { width: 100%; }
    主列顶栏无条件 150px 白占=窄主栏标题被挤进剩余窄条而右侧看似空着;浮窗抽屉态(抽屉关=主列
    裸露;抽屉开=该区被抽屉盖住本不可用)与停靠折叠态(32px 骨架兜不住 ~150px 簇)照旧预留 */
 .sx-shell.sx-desktop.sx-sidebar-float .chat-topbar,
-.sx-shell.sx-desktop.sx-sidebar-collapsed .chat-topbar { padding-right: 150px; }
+.sx-shell.sx-desktop.sx-sidebar-collapsed .chat-topbar { padding-right: 122px; } /* 2026-11-28 四轮裁定「sunx 进入群聊图标要和 [|] 挨着」:150→122,贴窗控簇左缘 */
 /* dragrail 104/148 安全边与 topbar-drag margin-left:24 均为位图错位让路(2026-10-25/24 案)——
    JS 拖拽下 rail z1 低于一切钮簇(z50/z90),钮优先天然成立,安全边收回纯设计间距 */
 .sx-shell.sx-desktop .sx-dragrail { position: fixed; top: 0; height: 40px; left: calc(var(--menu-occ, 0px) + 12px); right: calc(12px + var(--sidebar-w, 0px)); z-index: 1; }
@@ -5085,14 +5085,13 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-sunx-panel .insight-tab { flex: 1; min-height: 0; padding: 8px 6px; }
 .sx-group-sunx-panel .sx-sunxboard-grid { grid-template-columns: 1fr; padding: 2px 6px 4px; }
 .sx-group-sunx-panel .sx-sunxboard-card { max-width: none; }
-/* 编辑群名（2026-11-27 用户裁定）：输入框左侧群图标，与侧栏群行同件同尺寸 */
-.sx-group-rename-row { display: flex; align-items: center; gap: 8px; }
-.sx-group-rename-row .chat-title-input { flex: 1; min-width: 0; }
-/* 输入区提示行（2026-11-28 三轮起移入 composer 卡 belowInput 槽,主对话 imgHint 同位——
-   卡外不再占行,composer 卡贴底与主对话对齐）；命令令牌 mono accent */
-.sx-group-hint { padding: 6px 2px 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); }
-.sx-group-hint-tok { color: var(--accent); font-family: var(--font-mono); white-space: nowrap; }
-.sx-group-empty-cmds { margin-top: 2px; }
+/* 编辑群名（2026-11-28 四轮裁定「和编辑会话名一致,不要前缀图标」）：裸输入框全宽 */
+.rename-dialog .chat-title-input { width: 100%; }
+/* 群聊跳转高亮（2026-11-28 四轮裁定「只高亮气泡部分,3 秒」）：单元行不上底色,只染气泡体 */
+.sx-group-msg.jump-hl { background: transparent !important; }
+.sx-group-msg.jump-hl .user-bubble { background: color-mix(in srgb, var(--accent) 14%, var(--bubble-user)) !important; }
+/* 输入区提示行退役（2026-11-28 四轮裁定「占位常驻为 使用 @ 选择成员…」）：说明随占位,
+   sx-group-hint/sx-group-empty-cmds/sx-group-hint-tok 三件随退役 */
 /* 群聊空态大图标（主对话 Sunx 欢迎面同构图） */
 .sx-group-empty-ico { color: var(--fg-tertiary); margin-bottom: 10px; }
 /* 输入框 @ 成员 chip（2026-11-27 二轮「渲染成 chip」+ 2026-11-28 三轮「图标加大,不挤名称,
@@ -5104,11 +5103,14 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    inline-flex 中线对齐+左右 3px 缝,accent 单色（成员/全体同件,不再 .hn-team warn） */
 .sx-group-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; margin: 0 3px; color: var(--accent); background: none; padding: 0; }
 .sx-group-mention-ico { display: inline-flex; align-items: center; justify-content: center; }
-/* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距 */
-.sx-group-main > .chat.sx-group-chat { padding-bottom: calc(var(--thread-gutter) + 132px); }
+/* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距（2026-11-28 四轮裁定「气泡距离输入框
+   要增加一定距离」132→176px） */
+.sx-group-main > .chat.sx-group-chat { padding-bottom: calc(var(--thread-gutter) + 176px); }
 .sx-group-msg { position: relative; }
-/* 引用行：会话气泡内的次级行；点击跳回原气泡 */
-.sx-group-quote-line { display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 0 6px; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
+/* 引用行：会话气泡内的次级行；点击跳回原气泡。
+   2026-11-28 四轮裁定「顶部一行常驻 1 行,特殊灰色标记,不进入滚动条」：sticky 钉在限高滚动区
+   顶沿（气泡底色垫底盖住滚过的正文,1 行 ellipsis 原有）,「跳到引用气泡」tip 随组件退役 */
+.sx-group-quote-line { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 0 6px; padding: 2px 0; background: var(--bubble-user); color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
 .sx-group-quote-line.clickable { cursor: pointer; }
 .sx-group-quote-line.clickable:hover { color: var(--fg-secondary); }
 .sx-group-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

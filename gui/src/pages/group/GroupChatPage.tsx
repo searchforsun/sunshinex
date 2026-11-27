@@ -8,7 +8,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowDown, ArrowUp, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, Search, Users, X,
+  ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, Search, Users, X,
 } from 'lucide-react';
 import type { Connection } from '../../connection';
 import type {
@@ -94,7 +94,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [nameOpen, setNameOpen] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  /** 复制群主 ID 原地回执（2026-11-28 四轮裁定）：Copy→Check 1.2s,替代底部 sx-toast */
+  const [ownerCopied, setOwnerCopied] = useState(false);
   const [lightbox, setLightbox] = useState<string | undefined>(undefined);
   const [searchQ, setSearchQ] = useState('');
   const [searchHits, setSearchHits] = useState<SunxGroupSearchHit[]>([]);
@@ -297,13 +298,17 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     }
   }, [conn, groupId, hasMore]);
 
-  /** 按 seq 定位；不在已加载窗口时先向前拉一页（搜索/引用跳转共用） */
+  /** 按 seq 定位；不在已加载窗口时先向前拉一页（搜索/引用跳转共用）。
+   *  2026-11-28 四轮裁定：高亮只染气泡（CSS 作用域收窄）+ 3 秒自灭（timerRef 单点,连跳先清）。 */
+  const jumpTimerRef = useRef<number | undefined>(undefined);
   const revealSeq = useCallback(async (seq: number): Promise<void> => {
     const go = (): void => {
       const node = nodeBySeq.current.get(seq);
       if (node === undefined) return;
       node.scrollIntoView({ block: 'center', behavior: 'auto' });
       setActiveSeq(seq);
+      window.clearTimeout(jumpTimerRef.current);
+      jumpTimerRef.current = window.setTimeout(() => setActiveSeq((cur) => (cur === seq ? null : cur)), 3000);
     };
     if (messagesRef.current.some((m) => m.seq === seq)) {
       go();
@@ -424,13 +429,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       setSending(false);
     }
   }, [conn, groupId, effort, images, input, mentionAll, mentions, mode, model, onError, poll, refEntries, replyTo, sending, supported]);
-
-  const copy = useCallback((text: string): void => {
-    void navigator.clipboard?.writeText(text).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    }, () => undefined);
-  }, []);
 
   const rename = useCallback(async (): Promise<void> => {
     const name = nameDraft.trim();
@@ -676,8 +674,17 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); setNameDraft(detail?.group.name ?? ''); setNameOpen(true); }}>
                   <MessagesSquare size={14} strokeWidth={1.75} /> {t('Rename group', '编辑群名')}
                 </button>
-                <button type="button" role="menuitem" className="sx-menuitem" onClick={() => { setMenuOpen(false); copy(groupId); }}>
-                  <Copy size={14} /> {t('Copy owner ID', '复制群主 ID')}
+                {/* 复制群主 ID（2026-11-28 四轮裁定「不要下方 toast,和项目风格一样,前缀图标原地显√」）：
+                    点击复制,前缀图标 Copy→Check 原地回执 1.2s */}
+                <button type="button" role="menuitem" className="sx-menuitem" onClick={() => {
+                  setMenuOpen(false);
+                  const p = navigator.clipboard?.writeText(groupId);
+                  if (p !== undefined) p.then(() => {
+                    setOwnerCopied(true);
+                    window.setTimeout(() => setOwnerCopied(false), 1200);
+                  }, () => undefined);
+                }}>
+                  {ownerCopied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} />} {t('Copy owner ID', '复制群主 ID')}
                 </button>
               </div>
             )}
@@ -717,13 +724,11 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           )}
           {!loading && messages.length === 0 && (
             <div className="chat-empty">
-              {/* 空态（2026-11-27 用户裁定「群聊图标 + 第二行群名 + 群命令」）：主对话 Sunx
-                  欢迎面同构图——大图标/群名/说明行，第三行带群控制命令。 */}
+              {/* 空态（2026-11-28 四轮裁定「第一行群聊图标,第二行 给 {群名} 群成员分派任务,其他都去掉」）：
+                  两行构图,@ 用法与群命令说明移居输入框占位 */}
               <MessagesSquare size={44} strokeWidth={1.5} aria-hidden="true" className="sx-group-empty-ico" />
-              <div className="chat-empty-title">{detail?.group.name ?? t('Group', '群组')}</div>
-              <div className="chat-empty-hint">{t('Type @ to pick members; @all dispatches to everyone.', '输入 @ 选择成员，@全体成员 分发给全员')}</div>
-              <div className="chat-empty-hint sx-group-empty-cmds">
-                <span className="sx-group-hint-tok">/stop</span> {t('pause', '暂停')} · <span className="sx-group-hint-tok">/clear</span> {t('clear queue', '清排队')} · <span className="sx-group-hint-tok">/continue</span> {t('resume', '继续')}
+              <div className="chat-empty-title">
+                {t('Assign tasks to members of {group}', '给 {group} 群成员分派任务').replace('{group}', detail?.group.name ?? t('Group', '群组'))}
               </div>
             </div>
           )}
@@ -827,10 +832,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           )}
           <ComposerCard
             className="chat-composer"
-            label={t('Assign tasks to members…', '给全体成员派任务…')}
+            label={t('Use @ to pick members; @all dispatches to everyone.', '使用 @ 选择成员，@全体成员 进行分派')}
             inputRef={inputRef}
             value={input}
-            placeholder={t('Assign tasks to members…', '给全体成员派任务…')}
+            placeholder={t('Use @ to pick members; @all dispatches to everyone.', '使用 @ 选择成员，@全体成员 进行分派')}
             rows={1}
             images={images}
             onRemoveImage={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
@@ -903,11 +908,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   </div>
                 )}
                 {error !== '' && <div className="sx-img-hint warn" role="alert">{error}</div>}
-                {/* 输入区提示行（2026-11-27 二轮裁定）：@ 用法说明——2026-11-28 三轮起移入卡内
-                    belowInput 槽（主对话 imgHint 同位），卡外不再占行,composer 贴底与主对话对齐 */}
-                <div className="sx-group-hint">
-                  <span>输入 </span><span className="sx-group-hint-tok">@</span><span> 选择成员，</span><span className="sx-group-hint-tok">@全体成员</span><span> 分发给全员</span>
-                </div>
+                {/* @ 用法说明改由占位常驻（2026-11-28 四轮裁定「占位常驻为 使用 @ 选择成员…」）,
+                    卡内提示行退役 */}
               </>
             }
             footLeft={
@@ -1001,6 +1003,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                     conn={conn}
                     excludeCommands={SUNX_EXCLUDED_COMMANDS}
                     extraCommands={SUNX_GROUP_COMMANDS}
+                    atHint={t('Group members', '群成员')}
                     onInsert={(text) => {
                       setInput((v) => `${v}${v === '' || v.endsWith(' ') ? '' : ' '}${text}`);
                       setPlusOpen(false);
@@ -1147,13 +1150,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         <div className="modal-overlay" onClick={() => setNameOpen(false)}>
           <div className="modal-body rename-dialog" role="dialog" aria-label={t('Rename group', '编辑群名')} onClick={(e) => e.stopPropagation()}>
             <div className="dirpicker-head">{t('Rename group', '编辑群名')}</div>
-            {/* 编辑群名（2026-11-27 用户裁定「左侧增加群图标」）：群图标与侧栏群行同件同尺寸 */}
-            <div className="sx-group-rename-row">
-              <span className="sx-ws-folder" aria-hidden="true">
-                <MessagesSquare size={16} strokeWidth={1.75} />
-              </span>
-              <input className="chat-title-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }} autoFocus />
-            </div>
+            {/* 编辑群名（2026-11-28 四轮裁定「和编辑会话名一致,不要前缀图标」）：裸输入框,
+                2026-11-27 的群图标前缀随裁定退役 */}
+            <input className="chat-title-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void rename(); }} autoFocus />
             <div className="dirpicker-foot">
               <button type="button" onClick={() => setNameOpen(false)}>{t('Cancel', '取消')}</button>
               <button type="button" className="primary" onClick={() => { void rename(); }}>{t('Save', '保存')}</button>
@@ -1189,7 +1188,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           window.setTimeout(() => inputRef.current?.focus(), 0);
         }}
       />
-      {copied && <div className="sx-toast" role="status">{t('Copied', '已复制')}</div>}
     </div>
   );
 }
@@ -1227,7 +1225,9 @@ function GroupMentions({ text, mentions = [], mentionAll = false }: {
   );
 }
 
-/** 引用行：复用用户气泡的既有次级文字/项目图标件；可点则跳到原气泡。 */
+/** 引用行：复用用户气泡的既有次级文字/项目图标件；可点则跳到原气泡。
+ *  2026-11-28 四轮裁定：常驻 1 行 sticky 钉气泡顶（不随限高滚动区滚走,灰标样式）,
+ *  「跳到引用气泡」data-tip 去除。 */
 function GroupQuoteLine({ text, mentions, mentionAll, onOpen }: {
   text: string;
   mentions?: SunxRoomTarget[];
@@ -1239,7 +1239,6 @@ function GroupQuoteLine({ text, mentions, mentionAll, onOpen }: {
       className={`sx-group-quote-line${onOpen !== undefined ? ' clickable' : ''}`}
       role={onOpen !== undefined ? 'button' : undefined}
       tabIndex={onOpen !== undefined ? 0 : undefined}
-      data-tip={onOpen !== undefined ? t('Jump to quoted message', '跳到引用气泡') : undefined}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (onOpen === undefined) return;

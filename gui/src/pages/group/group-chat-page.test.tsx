@@ -81,7 +81,7 @@ describe('GroupChatPage', () => {
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
     expect(screen.queryByRole('button', { name: 'mention member' })).toBeNull(); // @ 按钮退役（2026-11-27 二轮裁定）
-    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: '@' } }); // 输入 @ 触发成员面板
     fireEvent.click((await screen.findAllByRole('menuitem', { name: /A/ }))[0]);
     expect(input.value).toBe('@A '); // 选中即插 token
@@ -95,15 +95,15 @@ describe('GroupChatPage', () => {
     expect(screen.getByRole('button', { name: 'add attachment' })).toBeDefined(); // + 保留（图片/命令等；文件区不渲染）
     expect(screen.queryByRole('button', { name: 'toggle terminal dock' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'toggle side panel' })).toBeNull();
-    // 输入区提示行（2026-11-27 二轮裁定）
-    expect(document.querySelector('.sx-group-hint')?.textContent).toContain('@全体成员');
+    // @ 用法说明随占位常驻（2026-11-28 四轮裁定）,卡内提示行退役
+    expect(screen.queryByText(/输入 @ 选择成员/)).toBeNull();
   });
 
   it('输入框 @ 成员渲染成 chip（图标+名字，主对话高亮层同手法）；纯文本不挂层', async () => {
     const conn = makeConn();
     const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
-    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: '没有令牌的普通文本' } });
     expect(container.querySelector('.sx-composer-highlight')).toBeNull(); // 无令牌=原生显字
     fireEvent.change(input, { target: { value: '@A 你好' } });
@@ -119,7 +119,7 @@ describe('GroupChatPage', () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
-    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: '/s' } });
     expect(await screen.findByRole('listbox', { name: '命令面板' })).toBeDefined();
     const stop = await screen.findByRole('option', { name: /\/stop/ });
@@ -208,7 +208,9 @@ describe('GroupChatPage', () => {
     expect(renameItem.querySelector('svg')).not.toBeNull(); // 菜单项左侧群图标（2026-11-27 二轮裁定）
     fireEvent.click(renameItem);
     const dialog = await screen.findByRole('dialog', { name: '编辑群名' });
-    expect(dialog.querySelector('.sx-group-rename-row .sx-ws-folder svg')).not.toBeNull();
+    // 2026-11-28 四轮裁定「和编辑会话名一致,不要前缀图标」:裸输入框,图标前缀退役
+    expect(dialog.querySelector('input.chat-title-input')).not.toBeNull();
+    expect(dialog.querySelector('svg')).toBeNull();
   });
 
   it('查询侧栏打开即收 Sunx 面板（右缘单栏）', async () => {
@@ -221,17 +223,15 @@ describe('GroupChatPage', () => {
     await waitFor(() => expect(container.querySelector('aside.sx-group-sunx-panel')).toBeNull());
   });
 
-  it('群聊空态：群图标+群名+@ 用法+群命令行（2026-11-27 二轮裁定）', async () => {
+  it('群聊空态：群图标+「给 {群名} 群成员分派任务」两行,其余退役（2026-11-28 四轮裁定）', async () => {
     const conn = makeConn();
     (conn.sunxGroupMessages as ReturnType<typeof vi.fn>).mockResolvedValue({ group: { id: 'grp_x', name: '研发群' }, messages: [], cursor: 0, hasMore: false });
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
-    expect((await screen.findAllByText('研发群')).length).toBeGreaterThanOrEqual(1); // 顶栏群名+空态群名
+    expect((await screen.findAllByText('研发群')).length).toBeGreaterThanOrEqual(1); // 顶栏群名(+句中群名)
     expect(document.querySelector('.chat-empty .sx-group-empty-ico')).not.toBeNull(); // 第一行群图标
-    expect(document.querySelector('.chat-empty .chat-empty-title')?.textContent).toBe('研发群'); // 第二行群名
-    const cmds = document.querySelector('.sx-group-empty-cmds')?.textContent ?? '';
-    expect(cmds).toContain('/stop');
-    expect(cmds).toContain('/clear');
-    expect(cmds).toContain('/continue');
+    expect(document.querySelector('.chat-empty .chat-empty-title')?.textContent).toBe('给 研发群 群成员分派任务'); // 第二行
+    expect(document.querySelector('.sx-group-empty-cmds')).toBeNull(); // 群命令行退役
+    expect(document.querySelector('.chat-empty .chat-empty-hint')).toBeNull(); // 说明行退役
   });
 
   it('成员 ask 卡在群页弹出：来自 A；选项提交走 replyAsk（同一 pid），提交后撤卡', async () => {
@@ -250,7 +250,7 @@ describe('GroupChatPage', () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
-    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: '@' } });
     expect(await screen.findByRole('menuitem', { name: /全体成员/ })).toBeDefined();
     expect(screen.queryByPlaceholderText('筛选成员…')).toBeNull(); // 筛选行退役
@@ -269,7 +269,7 @@ describe('GroupChatPage', () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     await screen.findByText('研发群');
-    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: '/stop' } });
     expect(await screen.findByRole('option', { name: /\/stop/ })).toBeDefined();
     fireEvent.mouseDown(document.querySelector('.sx-group-chat')!); // 点其他地方
