@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Calendar, ChevronDown, ChevronLeft, ChevronRight, Folder, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronDown, ChevronLeft, ChevronRight, Folder, MessageSquare, type LucideIcon } from 'lucide-react';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
 import { usePopOutsideClose } from '../use-pop-outside-close';
@@ -14,7 +14,7 @@ import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
 import { Select } from '../settings/controls';
 import type { SelectOption } from '../settings/controls';
 import type { Connection, ScheduleDraft, ScheduleJobView, ScheduleMode, ScheduleTargetKind } from '../connection';
-import { SunxMark } from '../sunx-icon';
+import { SunxIcon } from '../sunx-icon';
 import { platformMeta } from '../sidebar/use-menu-channels';
 import { CADENCE_OPTIONS, buildWhen, formatStamp, pad2, weekdayLabel, weekdayListLabel, whenOf, whenSummary } from './cycle';
 import type { ScheduleCadence, ScheduleWhen } from './cycle';
@@ -371,6 +371,8 @@ interface TargetOpt {
   readonly id: string;
   readonly title: string;
   readonly sub?: string;
+  /** 平台图标（通道行；2026-11-21 用户裁定「每个通道名称前显示对应图标」） */
+  readonly icon?: LucideIcon;
 }
 
 /** 目标选择弹层（SUNX 会话 / 通道聊天）：筛选 + 列表，无新增/浏览入口（用户裁定只选已有） */
@@ -402,14 +404,18 @@ function TargetPickPop({
           onChange={(e) => onQuery(e.target.value)}
         />
       </div>
-      {rows.map((r) => (
-        <button key={r.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => onPick(r.id)}>
-          <span className="sx-schedule-target-opt">
-            <span className="sx-schedule-target-opt-title">{r.title}</span>
-            {r.sub !== undefined && r.sub !== '' && <span className="sx-schedule-target-opt-sub">{r.sub}</span>}
-          </span>
-        </button>
-      ))}
+      {rows.map((r) => {
+        const Icon = r.icon;
+        return (
+          <button key={r.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => onPick(r.id)}>
+            {Icon !== undefined && <Icon size={14} strokeWidth={1.75} aria-hidden="true" />}
+            <span className="sx-schedule-target-opt">
+              <span className="sx-schedule-target-opt-title">{r.title}</span>
+              {r.sub !== undefined && r.sub !== '' && <span className="sx-schedule-target-opt-sub">{r.sub}</span>}
+            </span>
+          </button>
+        );
+      })}
       {rows.length === 0 && <div className="proj-empty">{empty}</div>}
     </div>
   );
@@ -485,14 +491,13 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     conn.sunxSessions().then(
       (rows) => {
         if (!alive) return;
+        // 2026-11-21 用户裁定：不做自己的 sunx 过滤（列表照 daemon 应答直出）
         setSunxRows(
-          rows
-            .filter((r) => (r as { archived?: boolean }).archived !== true)
-            .map((r) => ({
-              id: r.id,
-              title: r.title ?? r.firstUser ?? t('New session', '新会话'),
-              sub: r.liveSessionId !== undefined ? t('Open', '已在座') : undefined,
-            })),
+          rows.map((r) => ({
+            id: r.id,
+            title: r.title ?? r.firstUser ?? t('New session', '新会话'),
+            sub: r.liveSessionId !== undefined ? t('Open', '已在座') : undefined,
+          })),
         );
       },
       () => {
@@ -522,20 +527,28 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
         const cfgById = new Map(cfg.channels.map((c) => [c.id, c]));
         const rowByJid = new Map(sessions.map((r) => [r.id, r]));
         setChanRows(
-          bindings.bindings.map((b) => {
-            const i = b.key.indexOf(':');
-            const channelId = i >= 0 ? b.key.slice(0, i) : b.key;
-            const chatId = i >= 0 ? b.key.slice(i + 1) : '';
-            const row = b.journalId !== undefined ? rowByJid.get(b.journalId) : undefined;
-            const chatTitle =
-              b.chatTitle ??
-              (row as { chatTitle?: string } | undefined)?.chatTitle ??
-              row?.title ??
-              chatId;
-            const cfgRow = cfgById.get(channelId);
-            const pm = platformMeta(cfgRow?.platform);
-            return { id: b.key, title: `${cfgRow?.name ?? channelId} · ${chatTitle}`, sub: t(pm.en, pm.zh) };
-          }),
+          bindings.bindings
+            .map((b): TargetOpt | null => {
+              const i = b.key.indexOf(':');
+              const channelId = i >= 0 ? b.key.slice(0, i) : b.key;
+              const row = b.journalId !== undefined ? rowByJid.get(b.journalId) : undefined;
+              // 已删除/未知通道配置的残留绑定不显示（2026-11-21 用户裁定「后台已标为删除的通道不要显示」）
+              const cfgRow = cfgById.get(channelId);
+              if (cfgRow === undefined) return null;
+              const chatTitle =
+                b.chatTitle ??
+                (row as { chatTitle?: string } | undefined)?.chatTitle ??
+                row?.title ??
+                t('Unnamed chat', '未命名聊天');
+              // 通道无自定义展示名时用平台名（飞书/Telegram…），不回退通道 id；行前挂平台图标
+              const pm = platformMeta(cfgRow.platform);
+              return {
+                id: b.key,
+                title: `${cfgRow.name ?? t(pm.en, pm.zh)} · ${chatTitle}`,
+                icon: pm.Icon,
+              };
+            })
+            .filter((x): x is TargetOpt => x !== null),
         );
       },
       () => {
@@ -869,7 +882,7 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
                     }}
                   >
                     {target === 'sunx' ? (
-                      <SunxMark size={14} strokeWidth={3.2} className="sx-schedule-target-mark" />
+                      <SunxIcon size={16} strokeWidth={1.75} className="sx-schedule-target-mark" />
                     ) : (
                       <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
                     )}

@@ -1,7 +1,7 @@
 import { Clock3, Folder, History, MessageSquare, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import { pathBasename } from '../ui-util';
-import { SunxMark } from '../sunx-icon';
+import { SunxIcon } from '../sunx-icon';
 import { whenOf, whenSummary } from './cycle';
 import type { ScheduleJobView, ScheduleTargetKind } from '../connection';
 
@@ -133,7 +133,7 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
           {target.kind === 'project' ? (
             <Folder size={13} strokeWidth={1.75} aria-hidden="true" />
           ) : target.kind === 'sunx' ? (
-            <SunxMark size={13} strokeWidth={3.2} />
+            <SunxIcon size={15} strokeWidth={1.75} />
           ) : (
             <MessageSquare size={13} strokeWidth={1.75} aria-hidden="true" />
           )}

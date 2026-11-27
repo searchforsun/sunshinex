@@ -444,4 +444,30 @@ describe('ScheduleConfig 上下三段', () => {
     expect(body.targetChatId).toBe('oc_1');
     expect(body.targetLabel).toBe('飞书 · 项目群');
   });
+
+  it('通道列表：已删除通道不显示；通道无自定义名用平台名（不回退 id）；行前带平台图标', async () => {
+    const { conn } = makeConn();
+    (conn as unknown as Record<string, unknown>).channelBindings = vi.fn(async () => ({
+      bindings: [
+        { key: 'feishu:oc_1', sessionId: 's1', journalId: 'j1', chatTitle: '项目群', updatedAt: 1 },
+        { key: 'feishu-dead:oc_2', sessionId: 's2', journalId: 'j2', chatTitle: '已删通道聊天', updatedAt: 1 },
+      ],
+    }));
+    (conn as unknown as Record<string, unknown>).channelSessions = vi.fn(async () => []);
+    (conn as unknown as Record<string, unknown>).settingsChannels = vi.fn(async () => ({
+      channels: [{ id: 'feishu', platform: 'feishu' }], // 无 name：应回退平台名，不显示通道 id
+      warnings: [],
+    }));
+    render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
+    await screen.findByText(bi('Title', '标题'));
+    fireEvent.click(screen.getByRole('tab', { name: bi('Channel', '通道') }));
+    fireEvent.click(await screen.findByRole('button', { name: bi('Channel chat', '通道聊天') }));
+    const rows = Array.from(document.querySelectorAll('.sx-schedule-target-pop .sx-menuitem'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.textContent).toMatch(/Feishu|飞书/);
+    expect(rows[0]!.textContent).toContain('项目群');
+    expect(rows[0]!.textContent).not.toContain('feishu');
+    expect(rows[0]!.textContent).not.toContain('oc_1');
+    expect(rows[0]!.querySelector('svg')).not.toBeNull();
+  });
 });
