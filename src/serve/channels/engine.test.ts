@@ -123,7 +123,10 @@ async function drain(): Promise<void> {
 
 test('① applyConfigs 调和:启用 mock → health connected;移除(快照缺席) → 健康行零残留(2026-11-25「彻底清除」);停用 → 行保留 enabled:false', () => {
   const h = makeHarness([mkCfg()]);
+  // 旧版本/外部编辑残留绑定（2026-11-27 用户报障「已删除的通道元数据还在」）：配置不在=启动调和即清
+  h.bindings.upsert({ key: 'gone:c9', sessionId: 's9', updatedAt: 1 });
   h.engine.start(); // applyConfigs(configs()) 调和
+  assert.equal(h.bindings.get('gone:c9'), undefined, '启动调和清掉配置已删的残留绑定');
   const up = h.engine.health();
   assert.equal(up.length, 1);
   assert.equal(up[0]!.id, 'm1');

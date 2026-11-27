@@ -93,6 +93,20 @@ export class ChannelsBindingsStore {
     return true;
   }
 
+  /** 绑定自愈（2026-11-27 用户报障「已删除的通道元数据还在」）：清掉指向**不存在通道配置**的残留
+   *  绑定——旧版本删除只摘 settings 条目、绑定留档,选择器/侧栏据此把已删通道复活;当前删除链
+   *  已即时清,这里兜老档/外部编辑 settings。返回清除条数（幂等,0 条不写盘）。 */
+  pruneMissingChannels(channelIds: ReadonlySet<string>): number {
+    const before = this.data.bindings.length;
+    this.data.bindings = this.data.bindings.filter((b) => {
+      const i = b.key.indexOf(':');
+      return channelIds.has(i > 0 ? b.key.slice(0, i) : b.key);
+    });
+    const removed = before - this.data.bindings.length;
+    if (removed > 0) this.persist();
+    return removed;
+  }
+
   private persist(): void {
     try {
       writeJsonAtomic(this.file, JSON.stringify(this.data));

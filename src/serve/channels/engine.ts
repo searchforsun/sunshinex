@@ -213,6 +213,10 @@ export class ChannelsEngine {
     this.snapshot = [...configs];
     this.broadcastAppNameChanges(prev, configs); // 应用名称变更 → 该通道全部活会话改名广播
     const nextIds = new Set(configs.map((c) => c.id));
+    // 绑定自愈（2026-11-27 用户报障「已删除的通道元数据还在」）：配置不存在的残留绑定即清——
+    // 旧版本删除只摘 settings 条目、绑定留档,定时任务选择器/侧栏会按绑定把已删通道列回来;
+    // 当前删除链已即时清,这里兜老档与外部编辑 settings（幂等,0 条不写盘）
+    this.bindings.pruneMissingChannels(nextIds);
     for (const cfg of configs) {
       this.knownConfigs.set(cfg.id, cfg);
       if (!cfg.enabled) {
