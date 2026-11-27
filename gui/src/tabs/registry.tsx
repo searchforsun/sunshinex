@@ -95,7 +95,7 @@ export interface TabRenderProps {
   /** G8b T7 会话内开标签面(标签体自治跳转——DirectoryTab 文件行 → openTab('file',{path});
    *  App 注入 openTabInSession,判重/单例经 tab-state 共口径;file/tasks 忽略) */
   readonly openTab: (type: TabTypeId, params?: TabParams) => void;
-  /** G14.2xx 关自身页签(file 页签探测到目录:移交 directory 页签后自关——文件夹不作标签) */
+  /** 关自身页签(file 页签探测到目录:目录移交左侧树定位后自关——文件夹不作右侧标签) */
   readonly closeTab: (uid: string) => void;
   /** 2026-10-30 目录分流(用户裁定「正文点目录=左侧目录树定位展开;区外目录按左上角配置的打开
    *  方式外开」):App openFileTab——尾斜杠/目录回抛走 openDirectoryPath,file 照旧开签;缺省回落
@@ -207,6 +207,7 @@ export const TAB_REGISTRY: readonly TabTypeEntry[] = [
         lineNonce={p.params.lineNonce}
         root={p.root}
         onOpenFile={fileTabOf(p)}
+        closeSelf={() => p.closeTab(p.uid)}
         onSideAsk={(text: string) => p.startSideChat?.(text)}
       />
     ),

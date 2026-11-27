@@ -143,7 +143,7 @@ export interface MessageListProps {
 /** 虚拟块视图(2026-11-19 滑动去重渲):滚动期 unit 对象与 renderUnit 回调恒稳(useCallback),
  *  React.memo 让已挂载块整段 bail-out——旧实现每次切片换界都重调全部块的 renderUnit,块内
  *  ToolSegBlock/Markdown 元素全量重建;模型/折叠/流式换新回调时照常重渲(身份判等) */
-const UnitView = memo(function UnitView({ unit, render, unitRef, claimEnter }: {
+const UnitView = memo(function UnitView({ unit, render, unitRef, claimEnter, live }: {
   unit: UnitSpan;
   render: (u: UnitSpan) => ReactNode;
   unitRef: (el: HTMLDivElement | null) => void;
@@ -151,10 +151,13 @@ const UnitView = memo(function UnitView({ unit, render, unitRef, claimEnter }: {
    *  已在宿主登记,认领返回 false 不重放动画;同一实例后续重渲沿用初值,属性不掉、动画不被
    *  流式更新打断(旧实现把判定放在 render 期且见了命中就回 true,重挂会重放) */
   claimEnter: (key: string) => boolean;
+  /** 在途轮块(2026-11-27 用户裁定「工具思考行运行态时调亮一点,和展开时一个亮度」):
+   *  该轮工具/思考/聚合头/折叠行统一 secondary 字档(app.css .chat-unit-live) */
+  live: boolean;
 }): JSX.Element {
   const [enter] = useState(() => claimEnter(unit.key));
   return (
-    <div className="chat-unit" data-unit-key={unit.key} data-enter={enter ? '' : undefined} ref={unitRef}>
+    <div className={`chat-unit${live ? ' chat-unit-live' : ''}`} data-unit-key={unit.key} data-enter={enter ? '' : undefined} ref={unitRef}>
       {render(unit)}
     </div>
   );
@@ -524,6 +527,18 @@ export function MessageList(props: MessageListProps): JSX.Element {
   }, [entries]);
   /** 在途轮已被折叠(用户点了「运行中 …」行):该轮 seg 块走 runFolded 面 */
   const liveRunFolded = liveRunKey !== undefined && collapsedRuns.has(liveRunKey);
+  /** 在途轮块集(run 条起、到下个 user 前):行亮度调档作用域(与折叠无关,只随运行态变) */
+  const liveRunUnitKeys = useMemo(() => {
+    const out = new Set<string>();
+    if (liveRunKey === undefined) return out;
+    let inRun = false;
+    for (const u of units) {
+      if (u.kind === 'run') inRun = u.key === liveRunKey;
+      else if (u.kind === 'user') inRun = false;
+      if (inRun) out.add(u.key);
+    }
+    return out;
+  }, [units, liveRunKey]);
   const liveRunSegs = useMemo(() => {
     const out = new Set<string>();
     if (liveRunKey === undefined || !liveRunFolded) return out;
@@ -1301,7 +1316,7 @@ export function MessageList(props: MessageListProps): JSX.Element {
         {virtual && <div className="chat-spacer" style={{ height: offsets[firstUnit] ?? 0 }} aria-hidden="true" />}
         {units.slice(firstUnit, lastUnit).map((u) =>
           virtual ? (
-            <UnitView key={u.key} unit={u} render={renderUnit} unitRef={unitRefCb} claimEnter={claimEnter} />
+            <UnitView key={u.key} unit={u} render={renderUnit} unitRef={unitRefCb} claimEnter={claimEnter} live={liveRunUnitKeys.has(u.key)} />
           ) : (
             <Fragment key={u.key}>{renderUnit(u)}</Fragment>
           ),

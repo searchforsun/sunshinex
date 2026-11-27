@@ -2868,6 +2868,13 @@ input.sx-setting-input { width: 100%; }
 @keyframes tool-count-pop { from { transform: scale(1.12); color: var(--fg); } }
 .tool-group-head .tool-chev { opacity: 1; }
 .tool-group-head.open .tool-chev { transform: rotate(90deg); }
+/* 2026-11-27 用户裁定「工具思考行运行态时调亮一点,和展开时一个亮度」:在途轮块(.chat-unit-live)
+   里的工具行/思考行/聚合头/简洁折叠头统一 secondary 字档;封段后的历史轮仍按原「折叠暗、
+   hover/展开亮」尺度(见 .entry-tool .tool-summary / .concise-fold 基础档) */
+.chat-unit-live .entry-tool .tool-summary,
+.chat-unit-live .entry-thinking .thinking-summary,
+.chat-unit-live .tool-group-head:not(:hover):not(:focus-visible),
+.chat-unit-live .concise-fold:not(:hover):not(.open) { color: var(--fg-secondary); }
 /* 成员展开壳:与 .tool-body 同配方(grid-rows 0fr→1fr + visibility 折叠尾切);
    G14.216b 间距与工具行节奏归一:成员行间距=顶层紧排 6px(seg 16px gap+负 margin 的等效值,
    组内以 6px gap 直给并中和全局 -10px margin),聚合头↔首成员/ghost 同 6px,收起态零占位 */

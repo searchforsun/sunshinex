@@ -44,6 +44,9 @@ interface FilesProps {
   /** md 预览内链点击（G14.125）：href 已解析为绝对路径，App 注入开 file 标签 */
   onOpenFile?: (path: string) => void;
   /** G14.2xx 目录路径移交(输入目录 → 目录页签定位展开;undefined = 宿主不支持) */
+  /** 目录探测命中后自关本页签(2026-11-27 用户裁定「文件夹禁止从右侧栏打开,从菜单栏定位到
+   *  指定行就可以」):file 页签只会开在目录路径上时闪一下,移交左侧树定位后即自关;缺省不自关 */
+  closeSelf?: () => void;
   /** G14.154 选区「在辅助对话中提问」：携带 @引用 文本,App 注入 fork+开辅助标签 */
   onSideAsk?: (insert: string) => void;
 }
@@ -84,7 +87,7 @@ function resolveHref(mdPath: string, href: string): string {
   return out.join('/');
 }
 
-export function Files({ conn, sessionId, initialPath, initialLine, initialLineEnd, lineNonce, root, onOpenFile, onSideAsk }: FilesProps): JSX.Element {
+export function Files({ conn, sessionId, initialPath, initialLine, initialLineEnd, lineNonce, root, onOpenFile, closeSelf, onSideAsk }: FilesProps): JSX.Element {
   const [load, setLoad] = useState<LoadState>(EMPTY_LOAD);
   /** G7 请求序守卫：发号单调节点——发请求 ++,应答落定时号不匹配即过期丢弃 */
   const requestIdRef = useRef(0);
@@ -170,10 +173,12 @@ export function Files({ conn, sessionId, initialPath, initialLine, initialLineEn
         (f) => {
           if (rid !== requestIdRef.current) return; // 过期应答:丢弃
           if (f.type === 'directory') {
-            // 目录无预览(directory 页签已退役):回落空态;有 onOpenFile 则尾斜杠回抛→App 左侧树/外开
+            // 目录无预览(directory 页签已退役):尾斜杠回抛→App 左侧树定位/外开,随后自关本签——
+            // 文件夹不作右侧标签(2026-11-27 用户裁定「文件夹禁止从右侧栏打开」)
             setLoad(EMPTY_LOAD);
             if (onOpenFile !== undefined) {
               onOpenFile(/[\\/]$/.test(target) ? target : `${target}/`);
+              closeSelf?.();
             }
             return;
           }
@@ -185,7 +190,7 @@ export function Files({ conn, sessionId, initialPath, initialLine, initialLineEn
         },
       );
     },
-    [readFileOf, onOpenFile],
+    [readFileOf, onOpenFile, closeSelf],
   );
 
   /** initialPath 到场自动加载（跳转面：依赖含 initialPath——已挂载时新跳转同样触发）。
