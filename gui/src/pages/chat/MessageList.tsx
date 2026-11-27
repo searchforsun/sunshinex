@@ -175,6 +175,27 @@ function ChannelEmpty({ platform }: { platform?: string }): JSX.Element {
   );
 }
 
+/** 虚拟窗探针(默认关;localStorage 'sunshinex.vlist-probe'='1' 开启):白屏/跳动实机排查用——
+ *  覆盖补挂触发时打一行(模型总高 vs 真实 scrollHeight、挂载区真实上下缺口、窗口、贴底态),
+ *  ≤2 行/秒。关时零成本(一次惰性读) */
+let probeOn: boolean | null = null;
+let probeAt = 0;
+function vlistProbe(o: Record<string, number | boolean | string>): void {
+  if (probeOn === null) {
+    try {
+      probeOn = localStorage.getItem('sunshinex.vlist-probe') === '1';
+    } catch {
+      probeOn = false;
+    }
+  }
+  if (probeOn !== true) return;
+  const now = performance.now();
+  if (now - probeAt < 500) return;
+  probeAt = now;
+  // eslint-disable-next-line no-console
+  console.log('[vlist]', o);
+}
+
 /** 会话流列表(2026-11-18 结构:虚拟窗口)——窗口内条目经 dayUnitSpans 切成「块」,只挂视口
  *  ±overscan 的块,上下 spacer 占位;块高实测表 + 前缀和,阅读位按块坐标锚定。jsdom(无布局)
  *  旁路为整窗逐块直渲(回退 DOM=旧 DayGroupBlock 拼接结果,测试面语义不变)。 */
@@ -600,14 +621,24 @@ export function MessageList(props: MessageListProps): JSX.Element {
   const offsets = useMemo(() => prefixOffsets(units, heightsRef.current), [units, heightVer]);
   offsetsRef.current = offsets;
   const totalH = offsets[units.length] ?? 0;
-  /** 本帧挂载区间:贴底恒取尾部(流式增长自动跟);阅读态取已提交区间(滚动事件更新) */
+  /** 贴底窗向上加宽块数(2026-11-25 运行轮白屏二修):贴底时渲染窗=模型尾部切片(流式增行
+   *  必须同帧挂上,否则尾行晚一帧=原锯齿回归);若已挂块真实高不足一屏,视口上方会露出 spacer,
+   *  ensureCovered 把该值 +k 让窗往上游扩几块。模型切片本身不动;离开贴底即复位 */
+  const [stickWiden, setStickWiden] = useState(0);
+  useEffect(() => {
+    if (!stick) setStickWiden(0);
+  }, [stick]);
+  const stickTail = virtual && stick ? sliceRange(offsets, Math.max(0, totalH - viewH), viewH, VIRTUAL_OVERSCAN) : null;
+  /** 本帧挂载区间:贴底=模型尾部切片+覆盖加宽(同帧跟流式);阅读态=已提交区间(滚动事件更新) */
   const rangeNow = virtual
-    ? stick
-      ? sliceRange(offsets, Math.max(0, totalH - viewH), viewH, VIRTUAL_OVERSCAN)
+    ? stickTail !== null
+      ? { first: Math.max(0, stickTail.first - stickWiden), last: stickTail.last }
       : range ?? sliceRange(offsets, Math.max(0, Math.min(scrollTopRef.current, Math.max(0, totalH - viewH))), viewH, VIRTUAL_OVERSCAN)
     : null;
   const firstUnit = Math.min(rangeNow?.first ?? 0, Math.max(0, units.length - 1));
   const lastUnit = Math.min(rangeNow?.last ?? units.length, units.length);
+  /** 贴底窗镜像:ensureCovered 量的是「屏上首末块」,贴底渲染绕过 range 时以本帧区间为准 */
+  if (stickTail !== null && rangeNow !== null) rangeRef.current = rangeNow;
   /** 记阅读锚(2026-11-19 二次回弹根修):锚块已挂载时记**真实盒位**——模型偏移含估算,
    *  实测校正只让模型追赶、不产生真实 DOM 位移;以估算坐标为锚会在下一次回钉时把误差再补一遍。
    *  锚块未挂载(极少,overscan 保证视口块恒挂)才回落模型坐标 */
@@ -625,6 +656,70 @@ export function MessageList(props: MessageListProps): JSX.Element {
     } else {
       anchorRef.current = { key: uu.key, off: (off[at] ?? 0) - el.scrollTop };
     }
+  };
+  /** 视口覆盖补挂单点(2026-11-25 运行轮白屏/闪动二修):量首末已挂块的真实盒位,视口没被
+   *  已挂块铺满(上方缺口 fTop>0 / 下方缺口 lBot<clientHeight)就按模型偏移扩窗——只加块,
+   *  **不改 scrollTop**(与用户滚动零对抗;内容真实位移由 RO 落账补偿)。补挂块随即实测落账,
+   *  模型收敛后切片贴合真实排版,缺口自然消失。flush=true 用于滚动 rAF 内同帧提交;
+   *  layout effect 内调用用 false(React 保证提交前绘制,且 flushSync 不得在生命周期内调用) */
+  const ensureCovered = (flush: boolean): void => {
+    if (LAYOUT_FREE || landingRef.current !== 0) return;
+    const el = chatScrollRef.current;
+    const rr = rangeRef.current;
+    const unitsNow = unitsRef.current;
+    const n = unitsNow.length;
+    if (el === null || rr === null || n === 0 || rr.first >= rr.last) return;
+    const h = el.clientHeight;
+    if (h <= 0) return;
+    const fU = unitsNow[rr.first];
+    const lU = unitsNow[rr.last - 1];
+    if (fU === undefined || lU === undefined) return;
+    const fNode = unitElsRef.current.get(fU.key);
+    const lNode = unitElsRef.current.get(lU.key);
+    if (fNode === undefined || lNode === undefined || !fNode.isConnected || !lNode.isConnected) return;
+    const cTop = el.getBoundingClientRect().top;
+    const fTop = fNode.getBoundingClientRect().top - cTop;
+    const lBot = lNode.getBoundingClientRect().bottom - cTop;
+    // 上方缺口 fTop>0=视口上方有 spacer(白屏真源);下方只在**表尾之外还有块**时才算缺口——
+    // 表尾之后的空白是 dock padding/自然尾部(运行行/尾垫),不是白屏,据此不会再无限补挂
+    if (fTop <= 0 && (lBot >= h || rr.last >= n)) return;
+    const off = offsetsRef.current;
+    vlistProbe({
+      units: n,
+      range: `${rr.first}..${rr.last}`,
+      fTop: Math.round(fTop),
+      lBot: Math.round(lBot),
+      viewH: h,
+      modelTotal: Math.round(off[n] ?? 0),
+      realScrollH: el.scrollHeight,
+      scrollTop: Math.round(el.scrollTop),
+      stick: propsRef.current.chatStickRef?.current === true,
+    });
+    let first = rr.first;
+    let last = rr.last;
+    if (fTop > 0) {
+      const want = fTop + VIRTUAL_OVERSCAN;
+      let k = 2;
+      while (first - k > 0 && (off[first] ?? 0) - (off[first - k] ?? 0) < want) k += 1;
+      first = Math.max(0, first - k);
+    } else {
+      const want = h - lBot + VIRTUAL_OVERSCAN;
+      let k = 2;
+      while (last + k < n && (off[last + k] ?? 0) - (off[last] ?? 0) < want) k += 1;
+      last = Math.min(n, last + k);
+    }
+    if (first === rr.first && last === rr.last) return;
+    // 贴底:改渲染期加宽量(贴底渲染不读 range);阅读态:直接扩已提交区间
+    if (first !== rr.first && propsRef.current.chatStickRef?.current === true) {
+      const bump = (): void => setStickWiden((w) => Math.min(120, w + (rr.first - first)));
+      if (flush) flushSync(bump);
+      else bump();
+      return;
+    }
+    const next = { first, last };
+    rangeRef.current = next;
+    if (flush) flushSync(() => setRange(next));
+    else setRange(next);
   };
   /** 滚动 → 视口高/挂载区间更新(rAF 合并;区间不变不重渲) */
   const scheduleViewport = (): void => {
@@ -671,29 +766,10 @@ export function MessageList(props: MessageListProps): JSX.Element {
           flushSync(() => setRange(r));
         }
       }
-      // 视口空洞兜底(2026-11-25 长正文白屏轮):模型再怎么滞后也不许把视口晾在 spacer 里。
-      // 量首末已挂块的真实盒位,视口整体落到挂载区之外即把 scrollTop 钳回区界;下一帧切片
-      // 随落账后的模型(或下一块挂载)自然复位
-      if (!(props.chatStickRef !== undefined && props.chatStickRef.current) && landingRef.current === 0) {
-        const rr = rangeRef.current;
-        const n = unitsRef.current.length;
-        if (rr !== null && rr.first < rr.last && rr.first >= 0 && rr.last <= n) {
-          const firstNode = unitElsRef.current.get(unitsRef.current[rr.first]!.key);
-          const lastNode = unitElsRef.current.get(unitsRef.current[rr.last - 1]!.key);
-          if (firstNode !== undefined && lastNode !== undefined && firstNode.isConnected && lastNode.isConnected) {
-            const cTop = el.getBoundingClientRect().top;
-            const fTop = firstNode.getBoundingClientRect().top - cTop;
-            const lBot = lastNode.getBoundingClientRect().bottom - cTop;
-            if (lBot <= 0) {
-              el.scrollTop += lBot - h; // 视口在挂载区下方(底部 spacer 空洞):贴回内容末尾
-              scrollTopRef.current = el.scrollTop;
-            } else if (fTop >= h) {
-              el.scrollTop += fTop; // 视口在挂载区上方:贴回内容开头
-              scrollTopRef.current = el.scrollTop;
-            }
-          }
-        }
-      }
+      // 视口覆盖补挂(2026-11-25 运行轮白屏二修):模型与真实排版偏差大时,视口会落在 spacer 里
+      // (白屏)。旧兜底把 scrollTop 钳回挂载区——与用户滚动对抗(拖条滚不动/上下闪动)。现改为
+      // **补挂块**:视口没被已挂块铺满就扩窗,补挂的块随即实测落账,模型收敛后切片自然贴合
+      ensureCovered(true);
       // 待落账高度:滚动中不断顺延(停手 200ms 后批量应用,见 RO effect)
       if (pendingHeightsRef.current.size > 0) scheduleHeightsRef.current();
       schedulePrefetch();
@@ -832,7 +908,11 @@ export function MessageList(props: MessageListProps): JSX.Element {
         const old = pending.get(key) ?? heightsRef.current.get(key);
         if (old !== undefined && Math.abs(old - h) <= 0.5) continue;
         const idx = unitIndexByKeyRef.current.get(key);
-        if (idx !== undefined && isStreamingUnit(idx)) {
+        // 贴底时流式块也即时落账(2026-11-25 运行轮白屏二修):贴底期视口钉在底部,spacer 变化
+        // 全在视口外(内容只向下长),不存在滚动期布局风暴;而不落账=模型停在估算,尾部切片
+        // 按估算选块——已挂块真实高不足一屏时视口上方露出 spacer(运行轮白屏的直接来源)
+        const stickNow = propsRef.current.chatStickRef?.current === true;
+        if (idx !== undefined && !stickNow && isStreamingUnit(idx)) {
           pending.set(key, h);
           got = true;
           continue;
@@ -872,21 +952,32 @@ export function MessageList(props: MessageListProps): JSX.Element {
   }, [chatScrollRef]);
   /** 模型变更后区间重算(2026-11-18 折叠展开缺口):折叠/展开/高度实测改块序列时,区间 state
    *  里的旧序号已不对应新块——只等滚动事件会漏(点击展开不产生滚动):视口下侧内容不挂载,
-   *  用户看到「展开只有两个轮次」。块/偏移一变即按当前滚动位重算区间,保证视口全覆盖 */
+   *  用户看到「展开只有两个轮次」。块/偏移一变即按当前滚动位重算区间,保证视口全覆盖。
+   *  2026-11-25 运行轮白屏二修:贴底窗由渲染期尾部切片(含覆盖加宽)维护,本 effect 不写 range */
   useLayoutEffect(() => {
-    if (!virtualRef.current) return;
+    if (!virtualRef.current || stick) return;
     const el = chatScrollRef.current;
     if (el === null) return;
     const h = el.clientHeight;
     if (h <= 0) return;
-    const total = offsetsRef.current[offsetsRef.current.length - 1] ?? 0;
-    const top = stick ? Math.max(0, total - h) : el.scrollTop;
-    const r = sliceRange(offsetsRef.current, top, h, VIRTUAL_OVERSCAN);
+    // 本 effect 只在阅读态跑(stick 在上方已 return)
+    const r = sliceRange(offsetsRef.current, el.scrollTop, h, VIRTUAL_OVERSCAN);
     const cur = rangeRef.current;
-    if (cur === null || r.first !== cur.first || r.last !== cur.last) setRange(r);
+    // 只扩不缩(2026-11-25 运行轮白屏三修):覆盖补挂会把窗显著加宽;模型每次校正都按尾部重算
+    // 会把它缩回去→补挂/卸载逐批反复(闪动+白屏复发)。模型更新只做并集,缩窗交给滚动路径
+    // (用户真滚出覆盖区时按新位重算)
+    const next = cur === null ? r : { first: Math.min(cur.first, r.first), last: Math.max(cur.last, r.last) };
+    if (cur === null || next.first !== cur.first || next.last !== cur.last) setRange(next);
     // 模型落定(种子/折叠/高度校正/流式停顿)后同样排一次前方预挂载
     schedulePrefetch();
   }, [offsets, units, stick, chatScrollRef]);
+  /** 覆盖补挂的提交后回路(2026-11-25 运行轮白屏二修):贴底流式增长时 scrollTop 写入常常
+   *  是 no-op(内容还没长出来),拿不到 scroll 事件→滚动 rAF 不跑;折叠/展开同理。每次提交后
+   *  量一次覆盖,缺口就补挂。layout effect 内 setRange 由 React 保证在绘制前提交 */
+  useLayoutEffect(() => {
+    ensureCovered(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ensureCovered 只读 ref/state 快照
+  }, [range, units, offsets, stick, stickWiden]);
 
   /** 阅读态内容锚回钉(虚拟窗口):块序列/高度变→按锚块**真实 DOM 位移**校正 scrollTop;
    *  贴底/无锚不接管。
