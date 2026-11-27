@@ -21,7 +21,6 @@ import { t, useLanguage } from '../../i18n';
 import { SunxIcon } from '../../sunx-icon';
 import { MarkdownCached, mdComponentsPlain, ModeIcon } from '../Chat';
 import { UserEntryView, baseModelName } from '../chat/EntryViews';
-import { TipButton } from '../chat/RunFooter';
 import { ImageLightbox } from '../../ImageLightbox';
 import { NewSunxDialog } from '../../welcome/NewSunxDialog';
 import { ComposerPlusPanel } from '../../composer/ComposerPlusPanel';
@@ -38,10 +37,6 @@ const DESTRUCTIVE = new Set(['/delete', '/skills-rm', '/memory-rm', '/memory-gc'
 /** Sunx 无计划模式闭环（2026-11-27 用户裁定）：/plan 不进群命令/面板 */
 const SUNX_EXCLUDED_COMMANDS = ['/plan'] as const;
 type AskAnswer = Parameters<Connection['replyAsk']>[1];
-
-function firstLine(text: string): string {
-  return (text.split('\n')[0] ?? '').trim();
-}
 
 function fmtTime(ts: number): string {
   const d = new Date(ts);
@@ -535,15 +530,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           {messages.map((m) => {
             const quoted = m.replyTo !== undefined ? messageById.get(m.replyTo) : undefined;
             const quote = m.replyPreview;
-            const okCount = (m.deliveries ?? []).filter((d) => d.ok).length;
-            const targetCount = (m.targets ?? []).length;
-            const pending = targetCount - (m.deliveries ?? []).length;
-            const failed = (m.deliveries ?? []).some((d) => !d.ok);
-            const receiptIcon = pending > 0
-              ? <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
-              : failed
-                ? <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
-                : <CheckCheck size={14} strokeWidth={1.75} aria-hidden="true" />;
             const quoteNode = quote !== undefined ? (
               <GroupQuoteLine
                 text={quote.text}
@@ -567,6 +553,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 <div className="user-md-plain">
                   {quoteNode}
                   <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} />
+                  {(m.targets ?? []).length > 0 && (
+                    <GroupReceiptStatus message={m} onOpen={() => openReceipt(m)} />
+                  )}
                 </div>
               );
             return (
@@ -587,26 +576,6 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   sourceSuffix={m.kind === 'peer' && m.to !== undefined ? (
                     <GroupTarget target={m.to} onOpenMember={onOpenMember} />
                   ) : undefined}
-                  actionsExtra={
-                    <>
-                      <TipButton
-                        className="user-action"
-                        tip={t('Reply', '回复')}
-                        label="reply message"
-                        icon={<CornerUpLeft size={14} strokeWidth={1.75} aria-hidden="true" />}
-                        onClick={() => setReplyTo({ id: m.id, preview: firstLine(m.text) })}
-                      />
-                      {m.kind === 'human' && targetCount > 0 && (
-                        <TipButton
-                          className="user-action"
-                          tip={`${okCount}/${targetCount} ${t('delivered', '已送达')}`}
-                          label="delivery receipt"
-                          icon={receiptIcon}
-                          onClick={() => openReceipt(m)}
-                        />
-                      )}
-                    </>
-                  }
                 />
                 {receipt?.id === m.id && (
                   <GroupReceipt message={m} onClose={() => setReceipt(null)} onOpenMember={onOpenMember} />
@@ -791,7 +760,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                     </div>
                     <div className="proj-rows-scroll">
                       <button type="button" role="menuitem" className="sx-menuitem" onClick={addAll}>
-                        <span className="sx-group-at">@</span>{t('All members', '全体成员')}
+                        <Users size={14} strokeWidth={1.75} aria-hidden="true" /> {t('All members', '全体成员')}
                       </button>
                       {mentionCandidates.map((member) => (
                         <button key={member.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => addMention(member)}>
@@ -956,7 +925,7 @@ function GroupMentions({ text, mentions = [], mentionAll = false }: {
             <span className="hn-ref-ico" aria-hidden="true">
               {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
             </span>
-            {part}
+            {part.slice(1)}
           </span>
         ) : <Fragment key={i}>{part}</Fragment>
       ))}
@@ -1009,6 +978,36 @@ function GroupTarget({ target, onOpenMember }: {
         </button>
       )}
     </>
+  );
+}
+
+/** 送达状态放在气泡内（2026-11-27 用户裁定「气泡下方只有时间和复制」）：图标+已送达 n/m，
+ *  点击打开原项目式送达列表；气泡下方不再出现回执/回复等额外按钮。 */
+function GroupReceiptStatus({ message, onOpen }: {
+  message: SunxRoomMessage;
+  onOpen: () => void;
+}): JSX.Element {
+  const targets = message.targets ?? [];
+  const deliveries = message.deliveries ?? [];
+  const ok = deliveries.filter((d) => d.ok).length;
+  const pending = targets.length - deliveries.length;
+  const failed = deliveries.some((d) => !d.ok);
+  const icon = pending > 0
+    ? <Clock size={14} strokeWidth={1.75} aria-hidden="true" />
+    : failed
+      ? <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
+      : <CheckCheck size={14} strokeWidth={1.75} aria-hidden="true" />;
+  return (
+    <button
+      type="button"
+      className="composer-pill sx-group-receipt-inline"
+      aria-label="delivery receipt"
+      data-tip={`${ok}/${targets.length} ${t('delivered', '已送达')}`}
+      onClick={onOpen}
+    >
+      {icon}
+      <span className="pill-label">{ok}/{targets.length} {t('delivered', '已送达')}</span>
+    </button>
   );
 }
 

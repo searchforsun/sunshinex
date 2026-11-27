@@ -486,7 +486,7 @@ function ChannelFromBadge({ from, userId, platform }: { from: string; userId?: s
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform, renderBody, sourceSuffix, actionsExtra, alignLeft, bubbleMaxHeight }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string; /** 群聊页复用：正文渲染替代（主人纯文+@chip / Sunx md+@chip） */ renderBody?: (md: string) => ReactNode; /** 群聊页复用：来源行后缀（发送给 群主/成员） */ sourceSuffix?: ReactNode; /** 群聊页复用：气泡动作行附加（送达回执/回复） */ actionsExtra?: ReactNode; /** 群聊页复用：左对齐（Sunx 消息；缺省右对齐=会话用户气泡原样） */ alignLeft?: boolean; /** 群聊页复用：气泡限高（Sunx=480；缺省=用户气泡 168） */ bubbleMaxHeight?: number } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform, renderBody, sourceSuffix, alignLeft, bubbleMaxHeight }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string; /** 群聊页复用：正文渲染替代（主人纯文+@chip / Sunx md+@chip） */ renderBody?: (md: string) => ReactNode; /** 群聊页复用：来源行后缀（发送给 群主/成员） */ sourceSuffix?: ReactNode; /** 群聊页复用：左对齐（Sunx 消息；缺省右对齐=会话用户气泡原样） */ alignLeft?: boolean; /** 群聊页复用：气泡限高（Sunx=480；缺省=用户气泡 168） */ bubbleMaxHeight?: number } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
@@ -685,7 +685,6 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
           icon={copied === 'ok' ? <Check size={14} strokeWidth={1.75} aria-hidden="true" /> : <Copy size={14} strokeWidth={1.75} aria-hidden="true" />}
           onClick={copy}
         />
-        {actionsExtra}
         {/* 编辑入口裁剪(2026-11-06 用户裁定 P2 + 2026-11-19 用户裁定「我自己发的插入消息也不支持编辑」):
             辅助会话正文与轮内插入档用户气泡均不给编辑——插入=运行中追加的历史,重发会打乱轮序;
             可编辑面只剩常规(非插入)用户气泡 */}

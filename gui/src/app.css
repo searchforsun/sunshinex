@@ -5059,6 +5059,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-dock .sx-group-palette { left: 0; right: 0; width: auto; }
 /* 送达回执：入口走会话 user-action，弹层走项目 sx-menu-pop + sx-search-row，只补锚位/两栏布局 */
 .sx-group-receipt { top: auto; right: 0; bottom: calc(100% + 6px); width: min(520px, 90vw); max-height: 340px; overflow: auto; z-index: 30; }
+/* 气泡内送达状态（气泡下方只留时间/复制）：项目 composer-pill 皮肤，右对齐贴正文尾 */
+.sx-group-receipt-inline { display: flex; width: max-content; margin: 6px 0 0 auto; padding: 2px 8px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+.sx-group-receipt-inline:hover { color: var(--fg); }
 .sx-group-receipt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 4px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
 .sx-group-receipt-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .sx-group-receipt-col { min-width: 0; }

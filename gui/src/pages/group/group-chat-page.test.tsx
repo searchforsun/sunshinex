@@ -48,17 +48,17 @@ function makeConn(): Connection {
 }
 
 describe('GroupChatPage', () => {
-  it('渲染群名/右侧群主气泡+饼图回执/左侧成员气泡（发送行+首行引用）；回执两栏点名跳转', async () => {
+  it('渲染群名/右侧群主气泡+气泡内回执/左侧成员气泡（发送行+首行引用）；回执两栏点名跳转', async () => {
     const conn = makeConn();
     const onOpenMember = vi.fn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={onOpenMember} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
     expect(await screen.findByText('研发群')).toBeDefined();
-    expect(screen.getAllByText(/你好/).some((el) => (el.textContent ?? '').includes('@A 你好'))).toBe(true); // @A 走项目 hn chip，文字被拆节点
-    // 左侧气泡：上方发送行 A 发送给 群主；首行引用 @A 你好；正文 md
+    expect(screen.getAllByText(/你好/).some((el) => (el.textContent ?? '').includes('A 你好'))).toBe(true); // @A 走项目 hn chip + 名称，文字被拆节点
+    // 左侧气泡：上方发送行 A 发送给 群主；首行引用 A 你好；正文 md
     expect(screen.getByText('发送给')).toBeDefined();
     expect(screen.getAllByText('A').length).toBeGreaterThan(0);
     expect(screen.getByText('回复正文')).toBeDefined();
-    // 饼图回执 1/1 → 点击两栏
+    // 回执入口在气泡内 → 点击两栏
     fireEvent.click(screen.getByRole('button', { name: 'delivery receipt' }));
     expect(await screen.findByText(/已接收/)).toBeDefined();
     expect(screen.getByText(/未接收/)).toBeDefined();
@@ -103,10 +103,15 @@ describe('GroupChatPage', () => {
     expect(peer.querySelector('.user-from-sunx')?.textContent).toContain('A');
     expect(peer.querySelector('.user-from-sunx')?.textContent).toContain('发送给');
     expect(peer.querySelector('.user-from-sunx .sx-sunx-badge')?.textContent).toBe('群主');
-    // @Sunx chip 走项目 hn 芯片；时间/复制走会话 user-actions
-    expect(owner.querySelector('.hn.hn-agent')?.textContent).toContain('@A');
-    expect(owner.querySelector('.user-actions .user-time')).not.toBeNull();
-    expect(owner.querySelector('.user-actions [aria-label="Copy"]')).not.toBeNull();
+    // @Sunx chip = 项目 hn 芯片 + 名称（不带 @）；气泡下方只剩时间+复制
+    expect(owner.querySelector('.hn.hn-agent')?.textContent).toBe('A');
+    const actions = owner.querySelector('.user-actions')!;
+    expect(actions.querySelector('.user-time')).not.toBeNull();
+    expect(actions.querySelectorAll('button')).toHaveLength(1);
+    expect(actions.querySelector('[aria-label="Copy"]')).not.toBeNull();
+    expect(actions.querySelector('[aria-label="delivery receipt"]')).toBeNull();
+    expect(actions.querySelector('[aria-label="reply message"]')).toBeNull();
+    expect(owner.querySelector('.sx-group-receipt-inline')).not.toBeNull();
     expect(peer.querySelector('.entry-md .entry-md-body')?.textContent).toContain('回复正文');
     // 输入面=会话 chat-dock/chat-composer
     expect(container.querySelector('.chat-dock .chat-composer')).not.toBeNull();
