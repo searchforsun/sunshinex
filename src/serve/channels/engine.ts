@@ -237,6 +237,12 @@ export class ChannelsEngine {
     }
   }
 
+  /** 通道配置单查（knownConfigs 快照;daemon 定时派发离座复活寻址消费——注入态与全局档读法
+   *  在此收口,勿在调用方直读 loadChannels 绕过快照） */
+  configOf(channelId: string): ChannelConfig | undefined {
+    return this.knownConfigs.get(channelId);
+  }
+
   /** 应用名称变更广播（2026-11-25 用户裁定「通道中更新名称要广播给所有的活的会话的 rename」）：
    *  通道 Sunx 的 agent 身份=通道配置应用名称（出生品性冻结层定版,见 session-handlers rename
    *  门槛注）——设置页改应用名称即身份变更,必须让该通道**每一个活会话**（bindings 档反查在座

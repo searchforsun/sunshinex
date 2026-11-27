@@ -288,7 +288,18 @@ export class GuiDaemon {
         if (live !== undefined) return live;
         const jid = binding.journalId;
         if (jid === undefined) return undefined;
-        const dataDir = findChannelsJournalOwner(jid);
+        // 离座 journal 寻址：缺省形态（cfg.root='auto'）落通道容器,容器扫描即中；固定 root 通道
+        // （cfg.root≠'auto'）或绑定工作区切换（rootOverride）的会话档在配置 root 的 data 下——
+        // 容器扫描不覆盖,此处兜底直查（2026-11-28 定时派发复活链补齐,与归档三扫同纪律）
+        let dataDir = findChannelsJournalOwner(jid);
+        if (dataDir === undefined) {
+          const dd = binding.rootOverride !== undefined && binding.rootOverride !== ''
+            ? resolveDataDir(binding.rootOverride)
+            : undefined;
+          const cfgRoot = this.channelsEngine.configOf(channelId)?.root;
+          const dd2 = dd ?? (cfgRoot !== undefined && cfgRoot !== 'auto' && cfgRoot !== '' ? resolveDataDir(cfgRoot) : undefined);
+          if (dd2 !== undefined && fs.existsSync(path.join(dd2, 'sessions', `${jid}.jsonl`))) dataDir = dd2;
+        }
         if (dataDir === undefined) return undefined;
         const prevActive = this.active;
         try {
@@ -299,6 +310,12 @@ export class GuiDaemon {
             this.releaseSession(created.value.sessionId);
             return undefined;
           }
+          // 绑定迁座（2026-11-28 用户裁定「定时任务派发的会话任务不要被过滤,要正常显示到通道中」
+          // 根修）：离座复活=新运行时 id,绑定档仍指已死旧座——通道投影器 boundTargets 按
+          // binding.sessionId 反查投递目标,不迁座则定时轮全部帧（正文/终态/审批/提问投影）找不到
+          // 目标被静默丢弃,飞书零输出。IM 入站路径早有同款迁座（router upsertBinding）,定时复活
+          // 路径补齐同一纪律；key 不变,journalId/chatKind/chatTitle/lockedUserId 原样带过
+          this.channelsBindings.upsert({ ...binding, sessionId: created.value.sessionId, updatedAt: Date.now() });
           return this.sessions.get(created.value.sessionId);
         } catch {
           return undefined;
@@ -2146,7 +2163,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
     const body = (parsed.body ?? {}) as {
       text?: unknown; images?: unknown; mentions?: unknown; mentionAll?: unknown;
-      replyTo?: unknown; clientMsgId?: unknown; model?: unknown; mode?: unknown;
+      replyTo?: unknown; clientMsgId?: unknown; model?: unknown; effort?: unknown; mode?: unknown;
     };
     if (typeof body.text !== 'string') return this.send(res, 400, { error: 'text required' });
     if (body.images !== undefined && (!Array.isArray(body.images) || body.images.some((x) => typeof x !== 'string'))) {
@@ -2161,6 +2178,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     if (body.replyTo !== undefined && typeof body.replyTo !== 'string') return this.send(res, 400, { error: 'replyTo must be a string' });
     if (body.clientMsgId !== undefined && typeof body.clientMsgId !== 'string') return this.send(res, 400, { error: 'clientMsgId must be a string' });
     if (body.model !== undefined && typeof body.model !== 'string') return this.send(res, 400, { error: 'model must be a string' });
+    if (body.effort !== undefined && typeof body.effort !== 'string') return this.send(res, 400, { error: 'effort must be a string' });
     if (body.mode !== undefined && typeof body.mode !== 'string') return this.send(res, 400, { error: 'mode must be a string' });
     const members = listGroupMembers(id, this.sessions, true);
     const prep = prepareGroupSend(id, {
@@ -2171,6 +2189,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       ...(body.replyTo !== undefined ? { replyTo: body.replyTo as string } : {}),
       ...(body.clientMsgId !== undefined ? { clientMsgId: body.clientMsgId as string } : {}),
       ...(body.model !== undefined ? { model: body.model as string } : {}),
+      ...(body.effort !== undefined ? { effort: body.effort as string } : {}),
       ...(body.mode !== undefined ? { mode: body.mode as 'read-only' | 'acceptEdits' | 'full-access' } : {}),
     }, members);
     if (!prep.ok) return this.send(res, prep.status, { error: prep.error });
@@ -2180,13 +2199,14 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     });
   }
 
-  /** 群选择透传到目标（2026-11-27 用户裁定）：模型/权限在投递前逐个 set；失败=该目标失败。 */
+  /** 群选择透传到目标（2026-11-27 用户裁定）：模型/强度/权限在投递前逐个 set；失败=该目标失败。 */
   private async applyGroupSettings(prepared: GroupSendPrepared, target: SunxRoomTarget): Promise<string | undefined> {
-    if (prepared.model === undefined && prepared.mode === undefined) return undefined;
+    if (prepared.model === undefined && prepared.mode === undefined && prepared.effort === undefined) return undefined;
     let rt = this.runtimeByJournal(target.id);
     if (rt === undefined && this.attachSunxRuntime(target.id).ok) rt = this.runtimeByJournal(target.id);
     if (rt === undefined) return 'unknown or not openable Sunx instance';
     if (prepared.model !== undefined && !rt.setModel(prepared.model)) return `unknown model: ${prepared.model}`;
+    if (prepared.effort !== undefined && !rt.setEffort(prepared.effort)) return `invalid effort: ${prepared.effort}`;
     if (prepared.mode !== undefined) {
       const m = await rt.setMode(prepared.mode);
       if (m === 'busy') return 'session is running';

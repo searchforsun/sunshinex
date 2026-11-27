@@ -2769,6 +2769,58 @@ describe('通道引擎挂进 GuiDaemon(Task 8)', () => {
     );
   });
 
+  test('④b 定时派发通道会话:离座复活迁绑定——出站投影落 IM,绑定 sessionId 迁到活座(2026-11-28 用户裁定「定时任务派发的会话任务不要被过滤,要正常显示到通道中」根修)', async () => {
+    await withChannelsDaemon(async ({ daemon, base, tmp, bindingsFile }) => {
+      const mock = daemon.channelsEngine.mockAdapter('m1')!;
+      // ① 真实入站走一遍:绑定+journal+聊天域目录出生(定时复活路径的原料)
+      mock.emit({ channel: 'm1', chatId: 'c1', chatKind: 'direct', userId: 'u1', userDisplay: 'Alice', msgId: 'n1', text: '你好' });
+      await waitFor(() => {
+        try { return readBindings(bindingsFile).some((b) => b.key === 'm1:c1'); } catch { return false; }
+      }, 5000);
+      const b1 = readBindings(bindingsFile).find((b) => b.key === 'm1:c1')!;
+      await waitFor(() => daemon.get(b1.sessionId)?.status() === 'idle', 8000);
+      const beforeStreamed = mock.streamed.length;
+      // ② 构造离座态:①真释放原座（journal 只认一个活座——不释放则复活 attach 拒收,生产形态
+      // 是注册表空/旧座已释放）②绑定 sessionId 指到不存在的运行时——旧实现此处起定时轮全部
+      // 帧按 binding.sessionId 反查投递目标落空,飞书零输出
+      const daemonPriv = daemon as unknown as {
+        releaseSession(id: string): void;
+        channelsBindings: { get(key: string): typeof b1; upsert(b: typeof b1): void };
+      };
+      daemonPriv.releaseSession(b1.sessionId);
+      await waitFor(() => daemon.get(b1.sessionId) === undefined, 8000);
+      const store = daemonPriv.channelsBindings;
+      const GONE = 'sun-gone-00000000-000000';
+      store.upsert({ ...b1, sessionId: GONE });
+      // ③ 定时任务落点=该通道聊天,立即触发
+      const draft = {
+        name: '定时派发', prompt: '报数', root: tmp, effort: 'medium', mode: 'full-access',
+        startAt: Date.now() - 1000, recurrence: { unit: 'minute', every: 1 },
+        target: 'channel', targetChannelId: 'm1', targetChatId: 'c1', targetPlatform: 'mock',
+      };
+      const created = await fetch(`${base}/schedules`, { method: 'POST', headers: AUTH, body: JSON.stringify(draft) });
+      assert.equal(created.status, 200);
+      const jobId = ((await created.json()) as { id: string }).id;
+      const runRes = await fetch(`${base}/schedules/${jobId}/run`, { method: 'POST', headers: AUTH });
+      assert.equal(runRes.status, 200);
+      // ④ 答案正常投影进 IM（不被过滤）——离座复活迁绑定后,投影器按新座反查命中
+      await waitFor(() => mock.streamed.length > beforeStreamed, 8000);
+      await waitFor(() => mock.streamed[mock.streamed.length - 1]?.done === true, 8000);
+      // ⑤ 绑定迁到活座 + 定时轮成功收尾
+      const b2 = readBindings(bindingsFile).find((b) => b.key === 'm1:c1')!;
+      assert.notEqual(b2.sessionId, GONE, '绑定已迁出死座');
+      assert.ok(daemon.get(b2.sessionId) !== undefined, '绑定指向在座活会话');
+      let status = '';
+      for (let i = 0; i < 60; i += 1) {
+        const runsView = await (await fetch(`${base}/schedules/${jobId}/runs`, { headers: AUTH })).json() as { runs: Array<{ status: string }> };
+        status = runsView.runs[0]?.status ?? '';
+        if (status === 'succeeded') break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      assert.equal(status, 'succeeded', '定时轮成功收尾');
+    });
+  });
+
   test('② 运行中第二条消息走 steer 路径:排队 ack「已加入排队」+ 队列帧可观测', async () => {
     await withChannelsDaemon(async ({ daemon }) => {
       const mock = daemon.channelsEngine.mockAdapter('m1')!;
