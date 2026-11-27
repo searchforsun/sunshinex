@@ -594,6 +594,8 @@ export interface GroupSendInput {
   clientMsgId?: string;
   /** 选中模型（2026-11-27 用户裁定「支持选择模型，直接透传到对应sunx」）：fan-out 前逐个 setModel */
   model?: string;
+  /** 选中思考强度（2026-11-28 用户裁定「模型选择要有强度选择条」）：fan-out 前逐个 setEffort */
+  effort?: string;
   /** 选中权限（三档；Sunx 无 plan）：fan-out 前逐个 setMode */
   mode?: 'read-only' | 'acceptEdits' | 'full-access';
 }
@@ -609,6 +611,7 @@ export interface GroupSendPrepared {
   command?: string;
   replyPreview?: SunxReplyPreview;
   model?: string;
+  effort?: string;
   mode?: 'read-only' | 'acceptEdits' | 'full-access';
 }
 
@@ -630,6 +633,7 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
     return { ok: false, status: 400, error: 'invalid mode' };
   }
   if (input.model !== undefined && input.model.trim() === '') return { ok: false, status: 400, error: 'invalid model' };
+  if (input.effort !== undefined && input.effort.trim() === '') return { ok: false, status: 400, error: 'invalid effort' };
 
   const first = input.text.trim().split(/\s+/)[0] ?? '';
   const command = ((COMMAND_SUPPORT as readonly string[]).includes(first) || isGroupControlCommand(first))
@@ -690,6 +694,7 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
       ...(command !== undefined ? { command } : {}),
       ...(replyPreview !== undefined ? { replyPreview } : {}),
       ...(input.model !== undefined && input.model.trim() !== '' ? { model: input.model.trim() } : {}),
+      ...(input.effort !== undefined && input.effort.trim() !== '' ? { effort: input.effort.trim() } : {}),
       ...(input.mode !== undefined ? { mode: input.mode } : {}),
     },
   };

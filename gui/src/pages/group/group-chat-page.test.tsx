@@ -150,8 +150,9 @@ describe('GroupChatPage', () => {
     expect(peer.querySelector('.user-from-sunx')?.textContent).toContain('A');
     expect(peer.querySelector('.user-from-sunx')?.textContent).toContain('发送给');
     expect(peer.querySelector('.user-from-sunx .sx-sunx-badge')?.textContent).toBe('群主');
-    // @Sunx chip = 项目 hn 芯片 + 名称（不带 @）；气泡下方只剩时间+复制
-    expect(owner.querySelector('.hn.hn-agent')?.textContent).toBe('A');
+    // @Sunx chip = sx-group-mention 芯片（图标+名称不带 @,accent 蓝;2026-11-28 三轮件）；气泡下方只剩时间+复制
+    expect(owner.querySelector('.sx-group-mention')?.textContent).toBe('A');
+    expect(owner.querySelector('.sx-group-mention .sx-group-mention-ico svg')).not.toBeNull();
     const actions = owner.querySelector('.user-actions')!;
     expect(actions.querySelector('.user-time')).not.toBeNull();
     expect(actions.querySelectorAll('button')).toHaveLength(1);
@@ -243,5 +244,71 @@ describe('GroupChatPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '提交' }));
     await waitFor(() => expect(conn.replyAsk).toHaveBeenCalledWith('p1', { type: 'selected', labels: ['是'] }));
     await waitFor(() => expect(screen.queryByText('要发布吗?')).toBeNull());
+  });
+
+  it('@ 面板无筛选行（输入 @ 即活滤）；模型弹层带强度滑条且选中不收口（2026-11-28 三轮）', async () => {
+    const conn = makeConn();
+    render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '@' } });
+    expect(await screen.findByRole('menuitem', { name: /全体成员/ })).toBeDefined();
+    expect(screen.queryByPlaceholderText('筛选成员…')).toBeNull(); // 筛选行退役
+    // 模型弹层:主对话同件=模型行+强度滑条;选中模型不收口(外点/再点收)
+    fireEvent.click(screen.getByRole('button', { name: '模型' }));
+    expect(await screen.findByRole('menuitem', { name: '跟随成员' })).toBeDefined();
+    expect(document.querySelector('.sx-menu-pop.pill-pop input[type="range"]')).not.toBeNull(); // EffortSlider
+    fireEvent.click(screen.getByRole('menuitem', { name: 'm1' }));
+    expect(screen.getByRole('menuitem', { name: '跟随成员' })).toBeDefined(); // 选中不收口
+    // 外点（消息区 mousedown）自关
+    fireEvent.mouseDown(document.querySelector('.sx-group-chat')!);
+    expect(screen.queryByRole('menuitem', { name: '跟随成员' })).toBeNull();
+  });
+
+  it('「/」面板外点自关、再点输入框重现（slashHidden 闸,2026-11-28 三轮裁定）', async () => {
+    const conn = makeConn();
+    render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('给全体成员派任务…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '/stop' } });
+    expect(await screen.findByRole('option', { name: /\/stop/ })).toBeDefined();
+    fireEvent.mouseDown(document.querySelector('.sx-group-chat')!); // 点其他地方
+    expect(screen.queryByRole('option', { name: /\/stop/ })).toBeNull();
+    fireEvent.click(input); // 再点输入框
+    expect(await screen.findByRole('option', { name: /\/stop/ })).toBeDefined();
+  });
+
+  it('SUNX 面板头行顶置（SUNX+X+分割线,拖宽把手在位）；查询面板头行「查询群消息 X」同款', async () => {
+    const conn = makeConn();
+    const { container, rerender } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    fireEvent.click(screen.getByRole('button', { name: 'sunx panel' }));
+    await waitFor(() => expect(container.querySelector('aside.sx-group-sunx-panel')).not.toBeNull());
+    const head = container.querySelector('.sx-group-sunx-panel .sx-panel-head')!;
+    expect(head.querySelector('.sx-panel-head-title')?.textContent).toBe('SUNX');
+    expect(head.querySelector('[aria-label="close sunx panel"]')).not.toBeNull();
+    expect(container.querySelector('.sx-group-sunx-panel .sx-resizer')).not.toBeNull(); // 拖宽加回
+    expect(container.querySelector('.sx-group-sunx-panel .sx-side-head')).toBeNull(); // 旧头退役
+    rerender(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen onSearchClose={vi.fn()} />);
+    const sHead = container.querySelector('.sx-group-search .sx-panel-head')!;
+    expect(sHead.querySelector('.sx-panel-head-title')?.textContent).toBe('查询群消息');
+    expect(sHead.querySelector('[aria-label="close search"]')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'run search' })).toBeNull(); // 查询按钮退役
+    const bar = container.querySelector('.sx-group-search .sx-group-search-bar')!;
+    expect(bar.querySelector('input')).not.toBeNull();
+  });
+
+  it('查询活滤：输入即查（去抖）,空态「无匹配消息」（2026-11-28 三轮裁定）', async () => {
+    const conn = makeConn();
+    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = container.querySelector('.sx-group-search-bar input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: '广播' } });
+    expect(conn.sunxGroupSearch).not.toHaveBeenCalled(); // 去抖中（250ms 未到）
+    await waitFor(() => expect(conn.sunxGroupSearch).toHaveBeenCalledWith('grp_x', '广播', 50));
+    (conn.sunxGroupSearch as ReturnType<typeof vi.fn>).mockResolvedValue({ results: [] });
+    fireEvent.change(input, { target: { value: '不存在的词' } });
+    await waitFor(() => expect(conn.sunxGroupSearch).toHaveBeenCalledWith('grp_x', '不存在的词', 50));
+    expect(await screen.findByText('无匹配消息')).toBeDefined();
   });
 });

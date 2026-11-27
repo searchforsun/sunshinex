@@ -20,10 +20,12 @@ import { mintSnippetToken, refContentRegister } from './mention';
 export function SelActionsOverlay(props: {
   readonly containerRef: MutableRefObject<HTMLElement | null>;
   readonly enabled?: boolean;
+  /** 插入钮文案（2026-11-28 群聊复用裁定「添加到会话」）：缺省=主对话原「添加到主对话」 */
+  readonly insertLabel?: string;
   readonly onInsert: (text: string, content?: string) => void;
   readonly onSideAsk?: (text: string, content?: string) => void;
 }): JSX.Element | null {
-  const { containerRef, enabled = true, onInsert, onSideAsk } = props;
+  const { containerRef, enabled = true, insertLabel, onInsert, onSideAsk } = props;
   const [sel, setSel] = useState<{ top: number; left: number; text: string } | null>(null);
   /** 选区复制回显（2026-11-25 用户裁定「添加到会话最右侧也增加一个复制按钮」）:项目既有
    *  TipButton+useCopyFeedback 单点（图标 Copy→Check,提示「复制/已复制」),正文纯复制出口 */
@@ -93,7 +95,7 @@ export function SelActionsOverlay(props: {
           setSel(null);
         }}
       >
-        {t('Add to main chat', '添加到主对话')}
+        {insertLabel ?? t('Add to main chat', '添加到主对话')}
       </button>
       {onSideAsk !== undefined && (
         <button

@@ -296,6 +296,8 @@ export interface SunxGroupSendBody {
   clientMsgId?: string;
   /** 选中模型/权限（2026-11-27 用户裁定）：daemon 在投递前逐个透传到目标 Sunx */
   model?: string;
+  /** 选中思考强度（2026-11-28 用户裁定「模型选择要有强度选择条」）：投递前逐个 setEffort */
+  effort?: string;
   mode?: 'read-only' | 'acceptEdits' | 'full-access';
 }
 
