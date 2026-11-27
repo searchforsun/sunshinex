@@ -34,9 +34,12 @@ export type ChatMessage =
   | { role: 'assistant'; content: string | null; toolCalls?: ToolCallSpec[]; reasoning?: string }
   | { role: 'tool'; content: string; toolCallId: string };
 
-/** 跨 Sunx 消息来源归属（2026-11-26 用户裁定「send_sunx_messages 前缀加上 fromSunx」）：
+/** 跨 Sunx 来源归属（2026-11-26 用户裁定「send_sunx_messages 前缀加上 fromSunx」）：
  *  id=发送方 journalId（GUI 归因行点击跳转的寻址键），name=发送方实例名（显示面）。
- *  随 user 事件 payload 进内核条目 → seg 行 → 快照/replay 全链原样贯通；旧档无此字段=普通用户条 */
+ *  随 user 事件 payload 进内核条目 → seg 行 → 快照/replay 全链原样贯通；旧档无此字段=普通用户条。
+ *  kind（2026-11-26 群组规格）：'sunx'=真实实例；'group'=群主虚拟身份（id=群 id，GUI 点击开群聊页）。
+ *  缺席=旧档，按 'sunx' 处理。 */
+export type SunxPeerKind = 'sunx' | 'group';
 export interface SunxPeerRef {
   id: string;
   name: string;
@@ -44,6 +47,8 @@ export interface SunxPeerRef {
    *  名字定位到对应发送气泡的轮次中」）——接收方点击归因行时打开发送方会话并滚到该轮；缺席=只能
    *  打开会话（发送方已空闲/旧档） */
   runSeq?: number;
+  /** 来源类型（群组规格）：'group'=群主虚拟身份；缺席/'sunx'=真实实例 */
+  kind?: SunxPeerKind;
 }
 
 /** 用户穿插行（GUI/TUI 提交与等待队列共载形）：text 正文；images 随行图片附件。

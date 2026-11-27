@@ -36,6 +36,8 @@ export function ChatComposerDock(props: {
   sideChat: boolean | undefined;
   /** Sunx 编排者会话显示名(2026-11-17 文案轮):占位据此换「给 {name} 一个目标」 */
   sunxName?: string;
+  /** Sunx 无计划模式闭环（2026-11-27 用户裁定）：权限菜单不列 plan */
+  allowPlan?: boolean;
   /** 会话尚无任何条目(空会话):占位区分「首次交代目标」与「接续对话」 */
   emptyChat: boolean;
   connState: ChatProps['connState'];
@@ -353,6 +355,7 @@ export function ChatComposerDock(props: {
               setSessMode={setSessMode}
               conn={conn}
               sessionId={sessionId}
+              allowPlan={props.allowPlan}
               terminalDockEnabled={terminalDockEnabled}
               dockOpen={dockOpen}
               onToggleDock={() => setDockOpen((v) => !v)}

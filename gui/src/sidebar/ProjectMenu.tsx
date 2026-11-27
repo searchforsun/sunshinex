@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import type { Connection, ScheduleJobView, SessionRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
+import type { Connection, ScheduleJobView, SessionRow, SunxGroupRow, SunxTemplateEntry, WorkspaceRow } from '../connection';
 import { errText, pickWorkspaceFolder } from '../ui-util';
 import { t } from '../i18n';
 import { SESSION_ARCHIVE_CHANGED_EVENT } from '../session-events';
@@ -8,6 +8,7 @@ import { ArrowLeft, Clock, PanelLeft, Search, Settings, SquarePen } from 'lucide
 import { SunxIcon } from '../sunx-icon';
 import { DirPicker } from '../pages/DirPicker';
 import { NewSunxDialog } from '../welcome/NewSunxDialog';
+import { NewGroupDialog } from '../welcome/NewGroupDialog';
 import { DirectoryTab } from '../tabs/DirectoryTab';
 import { NavButtons } from '../NavButtons';
 import type { NavControls } from '../nav-history';
@@ -59,6 +60,11 @@ export interface ProjectMenuConn {
   recentSessions(): Promise<Array<SessionRow & { root: string; slug: string }>>;
   /** GET /sunx/sessions(sunx P3 Task 3 数据源改向):sunx 域容器全域枚举——SUNX 过滤组数据源单点 */
   sunxSessions(): Promise<SessionRow[]>;
+  /** GET /sunx/groups（2026-11-26 群组规格）：群列表（默认群/成员数/lastMessageAt）；
+   *  旧测试桩缺名=降级平铺（合成默认群，不阻塞既有侧栏） */
+  sunxGroups?(): Promise<SunxGroupRow[]>;
+  /** POST /sunx/groups（新群组弹窗/创建弹窗行内新建）：旧测试桩缺名=入口不渲染 */
+  createSunxGroup?(name: string): Promise<{ ok: true; group: { id: string; name: string } }>;
   /** GET /channels/sessions(2026-11-21 channels Task 13):通道域容器全域枚举——侧栏「通道」
    *  组数据源(可选声明同 schedules? 先例:旧测试桩缺名=组不渲染,App 实传整只 Connection) */
   channelSessions?(): Promise<SessionRow[]>;
@@ -146,6 +152,9 @@ interface ProjectMenuProps {
   /** SUNX 组头看板钮(sunx P2 Task 7 留开合点,可选 guard):宿主开 Sunx 总览页——Task 8 注册
    *  'sunxboard' 页签后 App 传 openTab 接线;未配时钮不渲染(不产死钮) */
   readonly onOpenSunxBoard?: () => void;
+  /** 群聊页（2026-11-26 群组规格）：当前打开的群（群行高亮）+ 群行「进入群聊」入口 */
+  readonly activeSunxGroupId?: string;
+  readonly onOpenSunxGroupChat?: (groupId: string) => void;
   /** 2026-10-27 用户裁定:目录树入左菜单视图层——App 持状态(openProjectDirectory 落值),
    *  视图=返回+DirectoryTab 复用;文件行点击经 onOpenFileFromTree 开右侧文件标签 */
   /** locate=相对目录(posix /),打开后 DirectoryTab 逐层展开定位 */
@@ -205,6 +214,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  顶部快捷区行——与「新对话」主钮真同级(RECENTS 头簇的小钮用户看不见);成功后不走欢迎页,
    *  直接 openSession 打开新会话) */
   const [sunxOpen, setSunxOpen] = useState(false);
+  /** 「新建群组」弹窗（SUNX 组头） */
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
+  /** 从群行新 Sunx 进入时预填的群；顶部快捷区/总览页=undefined（默认群） */
+  const [sunxDefaultGroupId, setSunxDefaultGroupId] = useState<string | undefined>(undefined);
   /** 展开中的组 slug 集(2026-11-18 用户裁定「左侧打开项目菜单,不要自动关闭另一个项目的」):
    *  多组可同开——旧单 openSlug 是手风琴语义(开一组=收上一组)。集合同步进 ref:惰拉应答守卫/
    *  30s 聚焦刷新/归档重拉都在异步回调里读现值 */
@@ -280,6 +293,29 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
    *  setSunxReload——workspaces 未变(rows 保引用)时既有驱动点全不触发,nonce 即时缝兜底 */
   const [sunxReload, setSunxReload] = useState(0);
   const sunxRows = useMenuSunx(conn, rows, sunxReload);
+  /** 群列表（2026-11-26 群组规格）：与 SUNX 行集同源刷新；旧 daemon 404/缺名=[]（渲染面合成默认群） */
+  const [sunxGroups, setSunxGroups] = useState<SunxGroupRow[] | null>(null);
+  const [sunxGroupsReload, setSunxGroupsReload] = useState(0);
+  useEffect(() => {
+    if (conn.sunxGroups === undefined) {
+      setSunxGroups([]);
+      return;
+    }
+    let alive = true;
+    conn.sunxGroups().then(
+      (g) => { if (alive) setSunxGroups(g); },
+      () => { if (alive) setSunxGroups([]); },
+    );
+    return () => { alive = false; };
+  }, [conn, sunxReload, sunxGroupsReload]);
+  useEffect(() => {
+    const bump = (): void => {
+      setSunxGroupsReload((v) => v + 1);
+      setSunxReload((v) => v + 1);
+    };
+    window.addEventListener('sunx-groups-changed', bump);
+    return () => window.removeEventListener('sunx-groups-changed', bump);
+  }, []);
   /** 「通道」组行集(channels Task 13,spec §9.1;域枚举拉取收口 use-menu-channels):空容器=组整块不渲染(组内自守卫);
    *  recentVersion+channelReload 作重拉 nonce(2026-11-22 根修:通道会话 IM 侧外来创建,rows 引用不动它——run 起跑
    *  bump/归档动作链 bump 即时重拉,内置 30s tick 兜底) */
@@ -692,7 +728,10 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
   const groupShowMore = useCallback((slug: string): void => {
     setShowAllBySlug((prev) => (prev[slug] === true ? prev : { ...prev, [slug]: true }));
   }, []);
-  const openNewSunxDialog = useCallback((): void => setSunxOpen(true), []);
+  const openNewSunxDialog = useCallback((groupId?: string): void => {
+    setSunxDefaultGroupId(groupId);
+    setSunxOpen(true);
+  }, []);
 
   /** 侧栏动作接全局键面(2026-11-25 快捷键注册表轮:键面匹配在集中分发器,此处只接动作 bus;
    *  处理器回 true=已消费分发器才拦截)。可选回调未配(独立测试装配面)回 false 放行不拦。
@@ -856,6 +895,8 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
         // 归档层开启时不渲染(归档层整替语义)
         <SunxSection
           rows={sunxRows}
+          groups={sunxGroups}
+          activeSunxGroupId={props.activeSunxGroupId}
           activeSessionId={activeSessionId}
           runningIds={runningIds}
           journalOfSession={journalOfSession}
@@ -864,7 +905,9 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
           onAttach={attachSunxFromRow}
           onArchiveRow={archiveRow}
           onOpenBoard={props.onOpenSunxBoard}
-          onNewSunx={openNewSunxDialog}
+          onNewGroup={() => setNewGroupOpen(true)}
+          onNewSunxInGroup={openNewSunxDialog}
+          onOpenGroupChat={props.onOpenSunxGroupChat}
           onOpenArchive={() => {
             setArchiveScope('sunx'); // 归档 Sunx 专域(标题/行过滤随域,2026-11-16 用户裁定)
             loadArchived();
@@ -991,6 +1034,15 @@ export function ProjectMenu(props: ProjectMenuProps): JSX.Element {
             onClose={() => setSunxOpen(false)}
             conn={conn}
             onOpenSession={openCreatedSunx}
+            defaultGroupId={sunxDefaultGroupId}
+          />
+        )}
+        {newGroupOpen && (
+          <NewGroupDialog
+            open
+            conn={conn}
+            onClose={() => setNewGroupOpen(false)}
+            onCreated={() => { setNewGroupOpen(false); setSunxGroupsReload((v) => v + 1); window.dispatchEvent(new CustomEvent('sunx-groups-changed')); }}
           />
         )}
       </div>

@@ -483,11 +483,12 @@ test('⑦ 行形收窄：/sunx/sessions 行=白名单字段族（id/title/firstU
     const rows = await sunxRows(d.http);
     const row = rows.find((r) => r.id === jid);
     assert.ok(row !== undefined, '行在场');
-    const whitelist = new Set(['id', 'title', 'firstUser', 'root', 'kind', 'updatedAt', 'archived', 'liveSessionId', 'awaiting', 'status', 'runs', 'steps', 'createdAt']);
+    const whitelist = new Set(['id', 'title', 'firstUser', 'root', 'kind', 'groupId', 'updatedAt', 'archived', 'liveSessionId', 'awaiting', 'status', 'runs', 'steps', 'createdAt']);
     for (const k of Object.keys(row)) {
       assert.ok(whitelist.has(k), `行字段白名单外：${k}（charterText 全文/旁车超集不入行）`);
     }
     assert.equal((row as unknown as { charterText?: string }).charterText, undefined, 'charterText 全文剔出负载');
+    assert.equal((row as unknown as { groupId?: string }).groupId, 'grp_default', '群归属有效值（缺失=默认群）');
     assert.equal(readSessionMeta(sunxDomainDir(jid), jid).charterText?.length, 512, 'meta 面 charterText 原样（读面/重开链不受行收窄影响）');
     assert.equal(row!.kind, 'sunx', 'kind 恒在');
     assert.equal(row!.root, path.resolve(root), 'root 随出生 meta（GUI 分组键）');

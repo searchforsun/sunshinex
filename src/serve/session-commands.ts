@@ -7,6 +7,7 @@ import { MemoryStore } from '../harness/memory/store';
 import { consolidateMemory } from '../harness/memory/consolidate';
 import { markSessionArchived, purgeSession, purgeSideJournals, readSessionMeta } from '../session/journal';
 import type { SessionRuntime } from './session';
+import type { SunxPeerRef } from '../types';
 
 /** command 直跑通道(G10 spec §6):TUI handleSlash 分支的 daemon 移植层。
  *  纪律:操作共享 runtime 单点;纯函数(chainToHistoryItems/runCompaction/contextBreakdown)从
@@ -28,15 +29,18 @@ function isCommandSupported(line: string): boolean {
   return (COMMAND_SUPPORT as readonly string[]).includes(line.split(/\s/)[0] ?? '');
 }
 
-export async function runCommand(s: SessionRuntime, line: string, capture?: (text: string) => void): Promise<CommandRunResult> {
+export async function runCommand(s: SessionRuntime, line: string, capture?: (text: string) => void, fromSunx?: SunxPeerRef): Promise<CommandRunResult> {
   const cmd = line.split(/\s/)[0] ?? '';
   if (!isCommandSupported(line)) return 'unsupported';
+  // Sunx 无 exit_plan 出牌面（SUNX_FACE_TOOLS 不含）——计划模式在 Sunx 无闭环（2026-11-27 用户裁定）
+  if (s.sessionKind === 'sunx' && cmd === '/plan') return 'unsupported';
   if (IDLE_ONLY.has(cmd) && s.status() !== 'idle') return 'busy';
   // 命令气泡入档+回显(2026-10-21 用户裁决,对齐 TUI submit 先例 j.log({t:'user'})+pushMsg 回显):
   // unsupported/busy 先行拦截——只有真执行的命令落 user 行,回放(刷新/回溯)才可见「执行过什么命令」
   // 的气泡而不仅结果回执;user 事件走 pump 单点(kernel 归约→journal 行+WS 广播),不进模型上下文
-  // (命令不调 appendInstructionLine,模型链零影响)
-  s.pump({ type: 'user', text: line, ts: Date.now() });
+  // (命令不调 appendInstructionLine,模型链零影响)。群主 fan-out（2026-11-26 群组规格）：
+  // fromSunx 随 user 行落归因——命令正文不加前缀，命令解析仍看原始 line（首 token）。
+  s.pump({ type: 'user', text: line, ts: Date.now(), ...(fromSunx !== undefined ? { payload: { fromSunx } } : {}) });
   // 命令执行三态(2026-10-31 用户裁定「与工具行三态一致」):tool-call 行=执行中(波纹),tool-result
   // 行=完成/失败终态——同步命令不再只落孤立 notice;回执文本经 notice 捕获为结果载荷
   const callId = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;

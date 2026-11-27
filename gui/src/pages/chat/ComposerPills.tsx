@@ -23,6 +23,8 @@ interface PillsLeftProps {
   readonly setSessMode: Dispatch<SetStateAction<'read-only' | 'acceptEdits' | 'full-access' | 'plan'>>;
   readonly conn: Connection;
   readonly sessionId: string;
+  /** false=不列计划模式（Sunx） */
+  readonly allowPlan?: boolean;
 }
 
 export function ComposerPillsLeft(props: PillsLeftProps & { terminalDockEnabled?: boolean; dockOpen?: boolean; onToggleDock?: () => void }): JSX.Element {
@@ -60,6 +62,7 @@ export function ComposerPillsLeft(props: PillsLeftProps & { terminalDockEnabled?
                 <ModeMenu
                   mode={sessMode}
                   ariaLabel="session mode menu"
+                  allowPlan={props.allowPlan !== false}
                   onPick={(m) => {
                     setPillOpen(null);
                     setSessMode(m);

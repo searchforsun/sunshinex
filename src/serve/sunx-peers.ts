@@ -10,6 +10,7 @@ import { sunxContainerDir } from '../config/data-dir';
 import { listSessions, readSessionMeta } from '../session/journal';
 import type { SunxPeerInfo, SunxPeerSendResult } from '../harness/tools/sunx-peer-tools';
 import type { SunxPeerRef } from '../types';
+import { DEFAULT_GROUP_ID, appendRoomPeer, groupById, inferQuote, lastMessageAt } from './sunx-groups';
 
 /** 会话表最小结构面（daemon Map 直引用；测试注入轻量桩） */
 export interface PeersSessionLike {
@@ -57,31 +58,49 @@ function callerRef(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: st
   return { id: jid, name: displayName(s, s.dataDir, jid), ...(runSeq > 0 ? { runSeq } : {}) };
 }
 
+/** caller 所属群（meta.groupId ?? 默认群）——同群被发现/投递的作用域键 */
+function callerGroup(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: string): string {
+  const s = sessions.get(callerId);
+  const jid = s?.attachedJournalId;
+  if (s !== undefined && jid !== undefined && jid !== '') {
+    const g = readSessionMeta(s.dataDir, jid).groupId;
+    if (g !== undefined && g !== '') return g;
+  }
+  return DEFAULT_GROUP_ID;
+}
+
 /**
- * 实例枚举（排己；归档不列）：域容器逐域 listSessions（行形=id/title/firstUser/updatedAt/archived/
- * root/runs/steps）+ 旁车 charterText。**存在即列**——GUI SUNX 分组可见面=未归档存在实例面，枚举
- * 与之同口径（2026-11-26 用户裁定「gui侧肯定都是活的」）；在座与否只作状态标注（running/idle/
+ * 实例枚举（同群；排己；归档不列）：域容器逐域 listSessions（行形=id/title/firstUser/updatedAt/archived/
+ * root/runs/steps）+ 旁车 charterText + 群归属。**存在即列**——GUI SUNX 分组可见面=未归档存在实例面，
+ * 枚举与之同口径（2026-11-26 用户裁定「gui侧肯定都是活的」）；在座与否只作状态标注（running/idle/
  * not open），未在座实例投递时自动 attach（见 deliver 的 ensureLive 缝）——不再以「有运行时」为列/投条件。
+ * 群组规格（2026-11-26）：只列 caller 同群成员；置首一行群目标（kind='group'，id=群 id），成员回群主
+ * 即发到这一行。跨群成员不列（作用域隔离）。
  */
 export function listSunxPeers(sessions: ReadonlyMap<string, PeersSessionLike>, callerId: string): SunxPeerInfo[] {
   const caller = sessions.get(callerId);
   const callerJournal = caller?.attachedJournalId;
+  const groupId = callerGroup(sessions, callerId);
   const live = liveByJournal(sessions);
   const out: SunxPeerInfo[] = [];
-  let entries: fs.Dirent[];
+  let memberCount = 0;
+  let entries: fs.Dirent[] = [];
   try {
     entries = fs.readdirSync(sunxContainerDir(), { withFileTypes: true });
   } catch {
-    return out; // 容器不存在=空列合法空态
+    entries = []; // 容器不存在=空列合法空态（群目标行仍返回）
   }
   for (const ent of entries) {
     if (!ent.isDirectory()) continue;
     const dataDir = path.join(sunxContainerDir(), ent.name, 'data');
     for (const r of listSessions(dataDir)) {
-      if (r.archived === true) continue; // 归档实例不列（同分组口径）
-      if (r.id === callerJournal) continue; // 排己
-      const rt = live.get(r.id);
+      if (r.archived === true) continue; // 归档实例不列/不计数（同分组口径）
       const meta = readSessionMeta(dataDir, r.id);
+      const effectiveGroup = meta.groupId !== undefined && meta.groupId !== '' ? meta.groupId : DEFAULT_GROUP_ID;
+      if (effectiveGroup !== groupId) continue; // 跨群不列
+      memberCount += 1;
+      if (r.id === callerJournal) continue; // 排己（计数仍含己）
+      const rt = live.get(r.id);
       const name = r.title ?? meta.title ?? r.firstUser ?? 'Sunx';
       const charter = meta.charterText ?? undefined;
       out.push({
@@ -99,12 +118,81 @@ export function listSunxPeers(sessions: ReadonlyMap<string, PeersSessionLike>, c
     }
   }
   out.sort((a, b) => b.updatedAt - a.updatedAt);
+  const group = groupById(groupId);
+  out.unshift({
+    id: groupId,
+    name: group?.name ?? groupId,
+    running: false,
+    live: true,
+    awaiting: false,
+    root: '',
+    updatedAt: lastMessageAt(groupId) ?? group?.createdAt ?? Date.now(),
+    kind: 'group',
+    memberCount,
+  });
   return out;
 }
 
-/** 投递（只投活实例；归因按 caller 会话补全后随 submit/steer 落链）：
- *  - 目标非活/未知 → ok:false（错误原样进工具面）
- *  - 目标=自己 → 拒
+/** 目标投递核心（不写房间）：解析/attach 目标、群/归档校验、用户消息语义。工具路径与群主 fan-out
+ *  共用；quote 仅供群主显式引用时把引用块放进目标成员的消息正文。 */
+export function deliverToTarget(
+  sessions: ReadonlyMap<string, PeersSessionLike>,
+  from: SunxPeerRef,
+  to: string,
+  text: string,
+  opts?: {
+    ensureLive?: (journalId: string) => boolean;
+    groupId?: string;
+    quote?: { name: string; text: string };
+    /** 随行图片（群主 fan-out；工具消息暂无图片）：dataURL 列，原样进目标用户消息 */
+    images?: string[];
+  },
+): SunxPeerSendResult {
+  let target = liveByJournal(sessions).get(to);
+  if (target === undefined) {
+    // 存在但未打开（GUI 分组可见面）：attach 开座后投递（与侧栏行点击同一重开链）
+    if (opts?.ensureLive !== undefined && opts.ensureLive(to)) target = liveByJournal(sessions).get(to);
+    if (target === undefined) {
+      return { ok: false, error: `cannot send_sunx_messages to ${to}: unknown or not openable Sunx instance (see list_sunx_peers)` };
+    }
+  }
+  if (target.sessionKind !== 'sunx') {
+    return { ok: false, error: `cannot send_sunx_messages to ${to}: not a Sunx session` };
+  }
+  const meta = readSessionMeta(target.dataDir, to);
+  if (meta.archived === true) {
+    return { ok: false, error: `cannot send_sunx_messages to ${to}: archived Sunx instance` };
+  }
+  if (opts?.groupId !== undefined) {
+    const targetGroup = meta.groupId !== undefined && meta.groupId !== '' ? meta.groupId : DEFAULT_GROUP_ID;
+    if (targetGroup !== opts.groupId) {
+      return { ok: false, error: `cannot send_sunx_messages to ${to}: not in your group (see list_sunx_peers)` };
+    }
+  }
+  const name = displayName(target, target.dataDir, to);
+  if (target.pendingSnapshot().length > 0) {
+    return { ok: false, error: `cannot deliver to ${name}: awaiting input - answer its question in its session first` };
+  }
+  const quoteLine = opts?.quote !== undefined ? `> [${opts.quote.name}] ${opts.quote.text}\n` : '';
+  const body = `[fromSunx: ${from.name} (${from.id})] ${quoteLine}${text}\n\n(From another Sunx, not from the user. Reply to that Sunx with send_sunx_messages, to="${from.id}".)`;
+  if (target.status() === 'idle') {
+    const r = target.submitExternal(body, opts?.images, from);
+    if (r.ok) return { ok: true, name, queued: false };
+    // 受理竞态（idle→running 间隙）：回退入队（channels router 409 回退 steer 同口径）
+    if (r.status === 409) {
+      target.steer(body, opts?.images, from);
+      return { ok: true, name, queued: true };
+    }
+    return { ok: false, error: `cannot deliver to ${name}: submit rejected` };
+  }
+  target.steer(body, opts?.images, from);
+  return { ok: true, name, queued: true };
+}
+
+/** 投递（群作用域；归因按 caller 会话补全后随 submit/steer 落链）：
+ *  - 目标=本群群 id → 写房间 peer（回复群主），不 attach 任何会话；回执 kind='group'
+ *  - 目标=同群成员（含未在座可 attach 的实例）→ 现有 idle/running/409 用户消息语义；成功后房间镜像
+ *  - 跨群/归档/未知/自己 → 英文可读错误
  *  - 注入 md = 来源前缀 + 正文 + 回答提示行（2026-11-26 用户二轮裁定「提示添加到这里」：
  *    回答提示随消息正文进模型面，不再只靠工具描述；提示行恒英文——进模型上下文的文案恒英文
  *    单语，2026-09-18 prompt-english-only；GUI 显示侧前缀与提示行同剥，用户只看到正文） */
@@ -120,29 +208,31 @@ export function deliverSunxPeerMessage(
   const from = callerRef(sessions, callerId);
   if (from === undefined) return { ok: false, error: 'caller session has no journal yet - cannot send_sunx_messages before your first run' };
   if (to === from.id) return { ok: false, error: 'cannot send_sunx_messages to yourself' };
-  let target = liveByJournal(sessions).get(to);
-  if (target === undefined) {
-    // 存在但未打开（GUI 分组可见面）：attach 开座后投递（与侧栏行点击同一重开链）
-    if (opts?.ensureLive !== undefined && opts.ensureLive(to)) target = liveByJournal(sessions).get(to);
-    if (target === undefined) {
-      return { ok: false, error: `cannot send_sunx_messages to ${to}: unknown or not openable Sunx instance (see list_sunx_peers)` };
-    }
+  const groupId = callerGroup(sessions, callerId);
+
+  // 群目标（回群主）：群 id 必须=caller 自己的群；只写房间，不投任何会话
+  if (to.startsWith('grp_')) {
+    if (to !== groupId) return { ok: false, error: `cannot send_sunx_messages to ${to}: not your group` };
+    const group = groupById(to);
+    if (group === undefined) return { ok: false, error: `cannot send_sunx_messages to ${to}: unknown group` };
+    const quote = inferQuote(groupId, from.id);
+    appendRoomPeer(groupId, {
+      from,
+      to: { id: groupId, name: '群主', kind: 'group' },
+      text,
+      ...(quote !== undefined ? quote : {}),
+    });
+    return { ok: true, name: group.name, queued: false, kind: 'group' };
   }
-  if (target.sessionKind !== 'sunx') {
-    return { ok: false, error: `cannot send_sunx_messages to ${to}: not a Sunx session` };
-  }
-  const name = displayName(target, target.dataDir, to);
-  const body = `[fromSunx: ${from.name} (${from.id})] ${text}\n\n(From another Sunx, not from the user. Reply to that Sunx with send_sunx_messages, to="${from.id}".)`;
-  if (target.status() === 'idle') {
-    const r = target.submitExternal(body, undefined, from);
-    if (r.ok) return { ok: true, name, queued: false };
-    // 受理竞态（idle→running 间隙）：回退入队（channels router 409 回退 steer 同口径）
-    if (r.status === 409) {
-      target.steer(body, undefined, from);
-      return { ok: true, name, queued: true };
-    }
-    return { ok: false, error: `cannot deliver to ${name}: submit rejected` };
-  }
-  target.steer(body, undefined, from);
-  return { ok: true, name, queued: true };
+
+  const r = deliverToTarget(sessions, from, to, text, { ...(opts ?? {}), groupId });
+  if (!r.ok) return r;
+  const quote = inferQuote(groupId, from.id, to);
+  appendRoomPeer(groupId, {
+    from,
+    to: { id: to, name: r.name, kind: 'sunx' },
+    text,
+    ...(quote !== undefined ? quote : {}),
+  });
+  return r;
 }

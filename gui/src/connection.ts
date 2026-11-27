@@ -37,6 +37,7 @@ import type {
   GlobalRulesView,
   SkillsGroup,
   SnapshotResponse,
+  SunxGroupRow,
   SunxTemplatesView,
   TeamsOpInput,
   TeamsView,
@@ -157,6 +158,17 @@ export function createConnection(opts: ConnectionOpts): Connection {
   async function putJson<T>(path: string, body: unknown): Promise<T> {
     const res = await fetch(`${base}${path}`, {
       method: 'PUT',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw await opError(path, res);
+    return (await res.json()) as T;
+  }
+
+  /** PATCH 带 JSON 应答（群组规格：群改名/换群走 PATCH；失败同 putJson 透出 error/hint） */
+  async function patchJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await fetch(`${base}${path}`, {
+      method: 'PATCH',
       headers: { ...authHeaders, 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
@@ -449,7 +461,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
     dirpicker(path?: string): Promise<DirPickerResp> {
       return getJson<DirPickerResp>(path === undefined ? '/dirpicker' : `/dirpicker?path=${encodeURIComponent(path)}`);
     },
-    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
+    async newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string; groupId?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }> {
       const res = await fetch(`${base}/session/new`, {
         method: 'POST',
         headers: { ...authHeaders, 'content-type': 'application/json' },
@@ -463,6 +475,7 @@ export function createConnection(opts: ConnectionOpts): Connection {
           ...(opts?.kind !== undefined ? { kind: opts.kind } : {}),
           ...(opts?.name !== undefined && opts.name.trim() !== '' ? { name: opts.name.trim() } : {}),
           ...(opts?.charter !== undefined && opts.charter.trim() !== '' ? { charter: opts.charter } : {}),
+          ...(opts?.groupId !== undefined && opts.groupId.trim() !== '' ? { groupId: opts.groupId.trim() } : {}),
         }),
       });
       if (!res.ok) {
@@ -479,6 +492,42 @@ export function createConnection(opts: ConnectionOpts): Connection {
     },
     sunxSessions() {
       return getJson<SessionRow[]>('/sunx/sessions');
+    },
+    async sunxGroups() {
+      const r = await getJson<{ groups: SunxGroupRow[] }>('/sunx/groups');
+      return r.groups;
+    },
+    createSunxGroup(name: string) {
+      return postJson<{ ok: true; group: SunxGroupRow }>('/sunx/groups', { name });
+    },
+    renameSunxGroup(id: string, name: string) {
+      return patchJson<{ ok: true; group: SunxGroupRow }>(`/sunx/groups/${encodeURIComponent(id)}`, { name });
+    },
+    async deleteSunxGroup(id: string): Promise<{ ok: true }> {
+      await del(`/sunx/groups/${encodeURIComponent(id)}`);
+      return { ok: true };
+    },
+    sunxGroupDetail(id: string) {
+      return getJson<import('./connection-types').SunxGroupDetail>(`/sunx/groups/${encodeURIComponent(id)}`);
+    },
+    sunxGroupMessages(id: string, opts?: { after?: number; before?: number; limit?: number }) {
+      const qs = new URLSearchParams();
+      if (opts?.after !== undefined) qs.set('after', String(opts.after));
+      if (opts?.before !== undefined) qs.set('before', String(opts.before));
+      if (opts?.limit !== undefined) qs.set('limit', String(opts.limit));
+      const suffix = qs.toString() === '' ? '' : `?${qs.toString()}`;
+      return getJson<import('./connection-types').SunxGroupMessagesResp>(`/sunx/groups/${encodeURIComponent(id)}/messages${suffix}`);
+    },
+    sunxGroupSearch(id: string, q: string, limit?: number) {
+      const qs = new URLSearchParams({ q });
+      if (limit !== undefined) qs.set('limit', String(limit));
+      return getJson<{ results: import('./connection-types').SunxGroupSearchHit[] }>(`/sunx/groups/${encodeURIComponent(id)}/search?${qs.toString()}`);
+    },
+    sunxGroupSend(id: string, body: import('./connection-types').SunxGroupSendBody) {
+      return postJson<import('./connection-types').SunxGroupSendResp>(`/sunx/groups/${encodeURIComponent(id)}/send`, body);
+    },
+    setSessionGroup(id: string, groupId: string) {
+      return patchJson<{ ok: true; groupId: string }>(`/session/${encodeURIComponent(id)}/group`, { groupId });
     },
     // 定时任务面（2026-11-20 scheduled-tasks Task 7）：路径/形状与 brief 逐字对齐；id 恒 encodeURIComponent
     schedules() {

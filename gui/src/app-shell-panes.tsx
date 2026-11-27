@@ -1,4 +1,4 @@
-import { memo, Suspense } from 'react';
+import { memo, Suspense, useEffect, useState } from 'react';
 import type { CSSProperties, Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { GitCompare, Globe, MessageCircle, PanelLeft, SquareTerminal, type LucideIcon } from 'lucide-react';
 import { t, t as tLabel } from './i18n';
@@ -14,6 +14,7 @@ import type { RewindRequest } from './pages/chat/chat-types';
 import { ProjectMenu } from './sidebar/ProjectMenu';
 import { SettingsShell } from './settings/SettingsShell';
 import { SchedulePage } from './schedules/SchedulePage';
+import { GroupChatPage } from './pages/group/GroupChatPage';
 import { TabStrip } from './tabs/TabStrip';
 import { WebTabPool, poolKey, type WebPoolItem } from './tabs/WebTabPool';
 import { IS_SHELL, WindowControls } from './window-shell';
@@ -176,6 +177,10 @@ export interface AppShellPanesProps {
   sideSinkFor: (sideId: string, parent?: string) => MutableRefObject<ChatSink | null>;
   sideReleased: SideChatsReturn['sideReleased'];
   openSunxInstance: AppLinksReturn['openSunxInstance'];
+  /** 群聊页（2026-11-26 群组规格 §7）：主区覆盖层 + 无右侧页签栏；群行/群主归因入口 */
+  groupChatId: string | null;
+  onOpenSunxGroupChat: (groupId: string) => void;
+  onCloseSunxGroupChat: () => void;
   /** 跨 Sunx 归因行定位信号与开签回调（2026-11-26 用户裁定「点击气泡上蓝色 sunx 名字定位到对应
    *  发送气泡的轮次中」）：openSunxPeer=打开发送方实例+下发轮次锚；Chat 消费后 clear 清信号 */
   sunxPeerFocus: { journalId: string; nonce: number; runSeq?: number; text?: string } | null;
@@ -203,9 +208,14 @@ export interface AppShellPanesProps {
  *  宿主保留:全部状态/回调装配与非 JSX effects。 */
 export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
   const {
-    openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, openSunxBoardFromMenu, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabLit, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, sunxPeerFocus, clearSunxPeerFocus, openSunxPeerStable, openSunxPeerBubbleStable, memoryFocus, learnedFocus, bgFocus, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
+    openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, openSunxBoardFromMenu, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabLit, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, groupChatId, onOpenSunxGroupChat, onCloseSunxGroupChat, sunxPeerFocus, clearSunxPeerFocus, openSunxPeerStable, openSunxPeerBubbleStable, memoryFocus, learnedFocus, bgFocus, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
   } = props;
   const activeTab = tabState.tabs.find((t2) => t2.uid === tabState.activeUid) ?? null;
+  const [groupSearchOpen, setGroupSearchOpen] = useState(false);
+  useEffect(() => {
+    setGroupSearchOpen(false);
+  }, [groupChatId]);
+  const groupChatVisible = groupChatId !== null && !settingsOpen && !schedulesMain;
   return (
     <DirOpenerContext.Provider value={openDirectoryPath}>
     <div
@@ -280,6 +290,8 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
               onNewChat={newChatFromMenu}
               onComposeIn={composeInFromMenu}
               onCollapse={collapseMenuStable}
+              activeSunxGroupId={groupChatId ?? undefined}
+              onOpenSunxGroupChat={onOpenSunxGroupChat}
             />
           ) : (
             <nav className="sx-menu" aria-label="projects">
@@ -440,8 +452,27 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
               />
             </div>
           )}
+          {/* 群聊页（2026-11-26 群组规格 §7）：主区覆盖层，无右侧页签栏；左侧菜单保留 */}
+          {groupChatVisible && connInstance !== null && groupChatId !== null && (
+            <GroupChatPage
+              conn={connInstance}
+              groupId={groupChatId}
+              onClose={onCloseSunxGroupChat}
+              onOpenMember={(journalId) => {
+                onCloseSunxGroupChat();
+                openSunxInstance({ journalId, root: '' });
+              }}
+              onOpenSession={(sessionId, root) => {
+                onCloseSunxGroupChat();
+                openSession(sessionId, root);
+              }}
+              onError={showOpError}
+              searchOpen={groupSearchOpen}
+              onSearchClose={() => setGroupSearchOpen(false)}
+            />
+          )}
           {/* 右栏:会话标签页(G10:welcome 态整体不渲染;G14.28:折叠态也不渲染——展开钮入 Chat 顶栏) */}
-          {!schedulesMain && sidebarAnim.mounted && (
+          {!schedulesMain && groupChatId === null && sidebarAnim.mounted && (
           <aside className={`sx-sidebar${sidebarAnim.closing ? ' sx-closing' : ''}`} ref={sidebarRef} style={{ '--sb-w': `${tabState.width}px`, '--drawer-w': `${sidebarRenderW}px` } as CSSProperties}>
             <TabStripMemo
               tabs={tabState.tabs}
@@ -582,7 +613,13 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
       )}
       {/* 2026-10-23 用户裁定:[|] 唯一渲染=本簇(web 贴窗口最右/桌面 −□× 左),对话页常驻
           不随收展换实现——页签条自有钮两套渲染致切换变尺寸,已退役 */}
-      <WindowControls showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain} onToggleRightSidebar={toggleRightSidebarStable} />
+      <WindowControls
+        showSideToggle={(page === 'chat' || page === 'welcome') && !settingsOpen && !schedulesMain}
+        onToggleRightSidebar={toggleRightSidebarStable}
+        groupChat={groupChatVisible}
+        groupSearchOpen={groupSearchOpen}
+        onToggleGroupSearch={() => setGroupSearchOpen((v) => !v)}
+      />
     </div>
     </DirOpenerContext.Provider>
   );

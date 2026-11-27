@@ -10,8 +10,13 @@ import type { SessionRuntime } from './session';
 import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../session/journal";
 import { listCommands } from './commands';
-import { COMMAND_SUPPORT } from './session-commands';
-import { listSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
+import { COMMAND_SUPPORT, runCommand } from './session-commands';
+import { deliverToTarget, listSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
+import {
+  appendRoomCommand, appendRoomDelivery, createGroup, deleteGroup, groupById, listGroupMembers,
+  listGroupSummaries, prepareGroupSend, readRoom, replyPreviewOf, renameGroup, searchRoom,
+  type GroupSendPrepared, type SunxRoomTarget,
+} from './sunx-groups';
 import { listChanges, changeContent, commitChanges, pushChanges, restoreChange, gitStatusMap, gitBranches, branchDiffStat, createBranch, checkoutBranch, commitAndCheckout, stageChanges, unstageChanges, discardUnstaged, workspaceFiles, fetchRemoteBranches } from './session-changes';
 import { restoreTurnFile, turnDiffContent } from './turn-changes';
 import { removeWorktreeForSession } from '../harness/worktree';
@@ -939,6 +944,8 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     { method: 'POST', path: '/session/:id/title', auth: true, run: (req, res, p) => this.handleSessionTitle(req, res, p.id) },
     // G14.16 标题统一流：rename 落旁车 <id>.meta.json(侧栏/TUI 列表同源)；GET 回读(重开回显)
     { method: 'POST', path: '/session/:id/rename', auth: true, run: (req, res, p) => this.handleSessionRename(req, res, p.id) },
+    // 群组换群（2026-11-26 群组规格）：写 meta.groupId，房间历史不迁移
+    { method: 'PATCH', path: '/session/:id/group', auth: true, run: async (req, res, p) => sessionHandlers.handleSessionGroup(this.sessionIo, req, res, p.id) },
     { method: 'GET', path: '/session/:id/title/get', auth: true, run: async (_req, res, p) => this.handleSessionTitleGet(res, p.id) },
     // G10-C11 建项目面：原生文件选择器选完自动建项目——name=浏览器态(projectsRoot 下建目录+初始化)、
     // path=桌面壳态(系统对话框回全路径,直接注册外部根);同名幂等返回既有行
@@ -998,6 +1005,15 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
     // GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：sunx 域容器全域枚举——GUI SUNX
     // 组/总览页数据源单点（宿主 /sessions 聚合不再过路 sunx）
     { method: 'GET', path: '/sunx/sessions', auth: true, run: async (_req, res) => this.handleSunxSessions(res) },
+    // 群组面（2026-11-26 群组规格 §4.1）：群 CRUD / 详情 / 房间读取 / 查询 / 群主发送
+    { method: 'GET', path: '/sunx/groups', auth: true, run: async (_req, res) => this.handleSunxGroupsList(res) },
+    { method: 'POST', path: '/sunx/groups', auth: true, run: (req, res) => this.handleSunxGroupCreate(req, res) },
+    { method: 'GET', path: '/sunx/groups/:id', auth: true, run: async (_req, res, p) => this.handleSunxGroupDetail(res, p.id) },
+    { method: 'PATCH', path: '/sunx/groups/:id', auth: true, run: (req, res, p) => this.handleSunxGroupRename(req, res, p.id) },
+    { method: 'DELETE', path: '/sunx/groups/:id', auth: true, run: async (_req, res, p) => this.handleSunxGroupDelete(res, p.id) },
+    { method: 'GET', path: '/sunx/groups/:id/messages', auth: true, run: async (req, res, p) => this.handleSunxGroupMessages(req, res, p.id) },
+    { method: 'GET', path: '/sunx/groups/:id/search', auth: true, run: async (req, res, p) => this.handleSunxGroupSearch(req, res, p.id) },
+    { method: 'POST', path: '/sunx/groups/:id/send', auth: true, run: async (req, res, p) => this.handleSunxGroupSend(req, res, p.id) },
     // 2026-10-21 归档面:双寻址(daemon 会话 id 或 journalId)+ 跨工作区归档列表(归档页消费)
     { method: 'POST', path: '/session/:id/archive', auth: true, run: async (req, res, p) => {
         const parsed = await this.readJson(req);
@@ -2048,6 +2064,210 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   }
   private handleSunxSessions(res: http.ServerResponse): void {
     sessionHandlers.handleSunxSessions(this.sessionIo, res);
+  }
+
+  // ─── 群组面（2026-11-26 群组规格 §4.1）────────────────────────────────────────────────────────
+
+  private handleSunxGroupsList(res: http.ServerResponse): void {
+    this.send(res, 200, { groups: listGroupSummaries() });
+  }
+
+  private async handleSunxGroupCreate(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const name = (parsed.body as { name?: unknown }).name;
+    if (typeof name !== 'string') return this.send(res, 400, { error: 'group name required' });
+    const r = createGroup(name);
+    if (!r.ok) return this.send(res, r.error === 'group name already exists' ? 409 : 400, { error: r.error });
+    this.send(res, 200, { ok: true, group: r.group });
+  }
+
+  private async handleSunxGroupRename(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req);
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const name = (parsed.body as { name?: unknown }).name;
+    if (typeof name !== 'string') return this.send(res, 400, { error: 'group name required' });
+    const r = renameGroup(id, name);
+    if (!r.ok) return this.send(res, r.error === 'group not found' ? 404 : r.error === 'group name already exists' ? 409 : 400, { error: r.error });
+    this.send(res, 200, { ok: true, group: r.group });
+  }
+
+  private handleSunxGroupDelete(res: http.ServerResponse, id: string): void {
+    const r = deleteGroup(id, listGroupMembers(id, this.sessions, true).length);
+    if (!r.ok) return this.send(res, r.error === 'group not found' ? 404 : 409, { error: r.error });
+    this.send(res, 200, { ok: true });
+  }
+
+  private handleSunxGroupDetail(res: http.ServerResponse, id: string): void {
+    const group = groupById(id);
+    if (group === undefined) return this.send(res, 404, { error: 'group not found' });
+    this.send(res, 200, {
+      group,
+      members: listGroupMembers(id, this.sessions),
+      owner: { id, name: '群主', kind: 'group' },
+    });
+  }
+
+  private handleSunxGroupMessages(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    const group = groupById(id);
+    if (group === undefined) return this.send(res, 404, { error: 'group not found' });
+    const sp = urlOf(req).searchParams;
+    const num = (key: string): number | undefined | null => {
+      const raw = sp.get(key);
+      if (raw === null) return undefined;
+      const n = Number(raw);
+      return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+    };
+    const after = num('after');
+    const before = num('before');
+    const limit = num('limit');
+    if (after === null || before === null || limit === null) return this.send(res, 400, { error: 'invalid cursor' });
+    const r = readRoom(id, {
+      ...(after !== undefined ? { after } : {}),
+      ...(before !== undefined ? { before } : {}),
+      ...(limit !== undefined ? { limit } : {}),
+    });
+    this.send(res, 200, { group, ...r });
+  }
+
+  private handleSunxGroupSearch(req: http.IncomingMessage, res: http.ServerResponse, id: string): void {
+    if (groupById(id) === undefined) return this.send(res, 404, { error: 'group not found' });
+    const sp = urlOf(req).searchParams;
+    const q = sp.get('q') ?? '';
+    const rawLimit = sp.get('limit');
+    const limit = rawLimit === null ? 50 : Number(rawLimit);
+    if (!Number.isFinite(limit) || limit <= 0) return this.send(res, 400, { error: 'invalid limit' });
+    this.send(res, 200, { results: searchRoom(id, q, Math.floor(limit)) });
+  }
+
+  private async handleSunxGroupSend(req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+    const parsed = await this.readJson(req, 32 * 1024 * 1024); // 图片随行（≤8 张，通道 submit 同口径）
+    if (!parsed.ok) return this.send(res, parsed.status, { error: parsed.error });
+    const body = (parsed.body ?? {}) as {
+      text?: unknown; images?: unknown; mentions?: unknown; mentionAll?: unknown;
+      replyTo?: unknown; clientMsgId?: unknown; model?: unknown; mode?: unknown;
+    };
+    if (typeof body.text !== 'string') return this.send(res, 400, { error: 'text required' });
+    if (body.images !== undefined && (!Array.isArray(body.images) || body.images.some((x) => typeof x !== 'string'))) {
+      return this.send(res, 400, { error: 'images must be an array of data URLs' });
+    }
+    if (body.mentions !== undefined && (!Array.isArray(body.mentions) || body.mentions.some((x) => typeof x !== 'string'))) {
+      return this.send(res, 400, { error: 'mentions must be an array of ids' });
+    }
+    if (body.mentionAll !== undefined && typeof body.mentionAll !== 'boolean') {
+      return this.send(res, 400, { error: 'mentionAll must be a boolean' });
+    }
+    if (body.replyTo !== undefined && typeof body.replyTo !== 'string') return this.send(res, 400, { error: 'replyTo must be a string' });
+    if (body.clientMsgId !== undefined && typeof body.clientMsgId !== 'string') return this.send(res, 400, { error: 'clientMsgId must be a string' });
+    if (body.model !== undefined && typeof body.model !== 'string') return this.send(res, 400, { error: 'model must be a string' });
+    if (body.mode !== undefined && typeof body.mode !== 'string') return this.send(res, 400, { error: 'mode must be a string' });
+    const members = listGroupMembers(id, this.sessions, true);
+    const prep = prepareGroupSend(id, {
+      text: body.text,
+      ...(body.images !== undefined ? { images: body.images as string[] } : {}),
+      ...(body.mentions !== undefined ? { mentions: body.mentions as string[] } : {}),
+      ...(body.mentionAll !== undefined ? { mentionAll: body.mentionAll as boolean } : {}),
+      ...(body.replyTo !== undefined ? { replyTo: body.replyTo as string } : {}),
+      ...(body.clientMsgId !== undefined ? { clientMsgId: body.clientMsgId as string } : {}),
+      ...(body.model !== undefined ? { model: body.model as string } : {}),
+      ...(body.mode !== undefined ? { mode: body.mode as 'read-only' | 'acceptEdits' | 'full-access' } : {}),
+    }, members);
+    if (!prep.ok) return this.send(res, prep.status, { error: prep.error });
+    this.send(res, 200, { ok: true, messageId: prep.prepared.messageId, seq: prep.prepared.seq, targets: prep.prepared.targets });
+    void this.fanoutGroupSend(prep.prepared).catch((err) => {
+      console.error('[serve] group fanout error:', err);
+    });
+  }
+
+  /** 群选择透传到目标（2026-11-27 用户裁定）：模型/权限在投递前逐个 set；失败=该目标失败。 */
+  private async applyGroupSettings(prepared: GroupSendPrepared, target: SunxRoomTarget): Promise<string | undefined> {
+    if (prepared.model === undefined && prepared.mode === undefined) return undefined;
+    let rt = this.runtimeByJournal(target.id);
+    if (rt === undefined && this.attachSunxRuntime(target.id).ok) rt = this.runtimeByJournal(target.id);
+    if (rt === undefined) return 'unknown or not openable Sunx instance';
+    if (prepared.model !== undefined && !rt.setModel(prepared.model)) return `unknown model: ${prepared.model}`;
+    if (prepared.mode !== undefined) {
+      const m = await rt.setMode(prepared.mode);
+      if (m === 'busy') return 'session is running';
+    }
+    return undefined;
+  }
+
+  private runtimeByJournal(journalId: string): SessionRuntime | undefined {
+    for (const s of this.sessions.values()) {
+      if (s.attachedJournalId === journalId) return s;
+    }
+    return undefined;
+  }
+
+  /** 群主 fan-out：逐目标顺序执行；正常文本=用户消息（core），命令=daemon 命令通道；逐目标回执落房间。
+   *  HTTP 已返回（targets 快照），页面靠房间轮询看饼图进度。 */
+  private async fanoutGroupSend(prepared: GroupSendPrepared): Promise<void> {
+    for (const target of prepared.targets) {
+      let outcome: { ok: boolean; queued?: boolean; error?: string };
+      try {
+        const settingError = await this.applyGroupSettings(prepared, target);
+        if (settingError !== undefined) {
+          outcome = { ok: false, error: settingError };
+        } else if (prepared.command !== undefined) {
+          let rt = this.runtimeByJournal(target.id);
+          if (rt === undefined && this.attachSunxRuntime(target.id).ok) rt = this.runtimeByJournal(target.id);
+          if (rt === undefined) {
+            outcome = { ok: false, error: 'unknown or not openable Sunx instance' };
+          } else if (readSessionMeta(rt.dataDir, target.id).archived === true) {
+            outcome = { ok: false, error: 'archived Sunx instance' };
+          } else {
+            const captured: string[] = [];
+            let result: 'ok' | 'busy' | 'unsupported' | 'error' = 'error';
+            let errText = '';
+            try {
+              result = await runCommand(rt, prepared.text, (t) => captured.push(t), prepared.owner);
+            } catch (e) {
+              errText = e instanceof Error ? e.message : String(e);
+            }
+            if (result === 'ok') {
+              const runSeq = rt.openRunSeq();
+              appendRoomCommand(prepared.groupId, {
+                from: { id: target.id, name: target.name, kind: 'sunx', ...(runSeq > 0 ? { runSeq } : {}) },
+                to: prepared.owner,
+                text: captured.join('\n').trim() === '' ? '(no output)' : captured.join('\n').trim(),
+                command: prepared.command,
+                replyTo: prepared.messageId,
+                ...(replyPreviewOf(prepared.groupId, prepared.messageId) !== undefined
+                  ? { replyPreview: replyPreviewOf(prepared.groupId, prepared.messageId)! }
+                  : {}),
+              });
+              outcome = { ok: true };
+            } else {
+              outcome = { ok: false, error: result === 'busy' ? 'session is running' : result === 'unsupported' ? 'unsupported command' : errText || 'command failed' };
+            }
+          }
+        } else {
+          const r = deliverToTarget(this.sessions, prepared.owner, target.id, prepared.text, {
+            ensureLive: (jid) => this.attachSunxRuntime(jid).ok,
+            ...(prepared.replyPreview !== undefined
+              ? { quote: { name: prepared.replyPreview.from.name, text: prepared.replyPreview.text } }
+              : {}),
+            ...(prepared.images !== undefined ? { images: prepared.images } : {}),
+          });
+          outcome = r.ok ? { ok: true, queued: r.queued } : { ok: false, error: r.error };
+        }
+      } catch (e) {
+        outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+      try {
+        appendRoomDelivery(prepared.groupId, {
+          msgId: prepared.messageId,
+          to: target.id,
+          name: target.name,
+          ok: outcome.ok,
+          ...(outcome.queued === true ? { queued: true } : {}),
+          ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+        });
+      } catch (e) {
+        console.error('[serve] group delivery append error:', e);
+      }
+    }
   }
   private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
     // GUI 发起轮打标(2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到」):通道绑定

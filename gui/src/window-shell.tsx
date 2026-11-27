@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Copy, Minus, PanelRight, Square, X } from 'lucide-react';
+import { Copy, Minus, PanelRight, Search, Square, X } from 'lucide-react';
 import { t } from './i18n';
 
 /** 桌面壳窗控面（D62 批B，2026-11-08 自 App.tsx 外提——逐字平移零行为变化）：壳判定/窗控桥/窗控簇/程序化拖拽 */
@@ -18,14 +18,38 @@ const winBridge = (): Window['sunshinexWindow'] => (IS_SHELL ? window.sunshinexW
 /** 桌面窗控簇:[|] 侧栏开关(唯一渲染——web 贴窗口最右/桌面 −□× 左,同件同尺寸不随收展
  *  变形,页签条自有钮已退役)+ − □ × 自绘按钮(桌面态)——sx-iconbtn 同款圆角 hover,
  *  撤原生 WCO 方块。−□× 走 preload IPC,关闭=驻留 hide 语义 */
-export function WindowControls({ showSideToggle, onToggleRightSidebar }: { showSideToggle: boolean; onToggleRightSidebar: () => void }): JSX.Element {
+export function WindowControls({
+  showSideToggle,
+  onToggleRightSidebar,
+  groupChat,
+  groupSearchOpen,
+  onToggleGroupSearch,
+}: {
+  showSideToggle: boolean;
+  onToggleRightSidebar: () => void;
+  /** 群聊页：群聊页没有右侧页签栏，[|] 原位置换查询图标（2026-11-26 群组规格） */
+  groupChat?: boolean;
+  groupSearchOpen?: boolean;
+  onToggleGroupSearch?: () => void;
+}): JSX.Element {
   const bridge = winBridge();
   const [maximized, setMaximized] = useState(false);
   useEffect(() => bridge?.onMaximizedChange(setMaximized), [bridge]);
-  // [|] 仅对话页显示(欢迎/设置页无右栏);簇其余为窗口三钮(桌面态)
+  // [|] 仅对话页显示；群聊页换成群消息查询图标（无页签栏）
   return (
     <div className="sx-wincontrols">
-      {showSideToggle && (
+      {groupChat === true ? (
+        <button
+          type="button"
+          className={`sx-winbtn${groupSearchOpen === true ? ' active' : ''}`}
+          aria-label="search group messages"
+          aria-expanded={groupSearchOpen === true}
+          data-tip={t('Search group messages', '查询群消息')}
+          onClick={onToggleGroupSearch}
+        >
+          <Search size={14} strokeWidth={1.75} />
+        </button>
+      ) : showSideToggle && (
         <button type="button" className="sx-winbtn" aria-label="toggle side panel" data-tip={t('Open side panel', '打开侧边栏')} onClick={onToggleRightSidebar}>
           <PanelRight size={14} strokeWidth={1.75} />
         </button>

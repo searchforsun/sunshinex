@@ -23,6 +23,7 @@ import { contextBreakdown } from '../harness/context';
 import { resolveRunWindow } from '../config/termination-config';
 import { resolveDataDir } from '../config/data-dir';
 import { validSessionId } from './session-id';
+import { DEFAULT_GROUP_ID, groupById } from './sunx-groups';
 import { abortLedger, stopBoardTask } from '../harness/tools/task-stop';
 
 /** 会话控制面 HTTP 处理器（D31 批2 拆分自 daemon.ts 类）：submit/interrupt/steer 族/reset/snapshot/
@@ -183,6 +184,29 @@ export async function handleSessionRename(io: SessionHandlerIo, req: http.Incomi
     session.runtime.harness.context.appendChain([{ action: 'note', observation: `[rename] The user renamed you to "${title}" — use this name from now on.` }]);
   }
   io.send(res, 200, { ok: true, title });
+}
+
+/** PATCH /session/:id/group {groupId}（2026-11-26 群组规格 §3.2）：Sunx 换群——写旁车 meta.groupId，
+ *  房间历史不迁移；归档/非 sunx/无档/未知群拒绝。群存在性走 groups.json 单点。 */
+export async function handleSessionGroup(io: SessionHandlerIo, req: http.IncomingMessage, res: http.ServerResponse, id: string): Promise<void> {
+  if (!validSessionId(id)) return io.send(res, 400, { error: 'invalid session id' });
+  const parsed = await io.readJson(req);
+  if (!parsed.ok) return io.send(res, parsed.status, { error: parsed.error });
+  const groupId = (parsed.body as { groupId?: unknown }).groupId;
+  if (typeof groupId !== 'string' || groupId.trim() === '') {
+    return io.send(res, 400, { error: 'groupId required' });
+  }
+  const session = io.sessions.get(id);
+  if (session === undefined) return io.send(res, 404, { error: 'unknown session' });
+  if (session.sessionKind !== 'sunx') return io.send(res, 409, { error: 'not a sunx session' });
+  if (groupById(groupId.trim()) === undefined) return io.send(res, 404, { error: 'group not found' });
+  const jid = session.attachedJournalId;
+  if (jid === undefined) return io.send(res, 409, { error: 'no journaled session' });
+  if (readSessionMeta(session.dataDir, jid).archived === true) {
+    return io.send(res, 409, { error: 'session is archived' });
+  }
+  writeSessionMeta(session.dataDir, jid, { groupId: groupId.trim() });
+  io.send(res, 200, { ok: true, groupId: groupId.trim() });
 }
 
 export function handleSessionTitleGet(io: SessionHandlerIo, res: http.ServerResponse, id: string): void {
@@ -560,6 +584,8 @@ export async function handleSessionMode(io: SessionHandlerIo, req: http.Incoming
   if (mode !== 'read-only' && mode !== 'acceptEdits' && mode !== 'full-access' && mode !== 'plan') return io.send(res, 400, { error: 'invalid mode' });
   const session = io.sessionFor(res, id);
   if (session === undefined) return;
+  // Sunx 不支持计划模式（2026-11-27 用户裁定）：权限面三档；plan 仅在普通会话开放。
+  if (session.sessionKind === 'sunx' && mode === 'plan') return io.send(res, 400, { error: 'plan mode is not supported for Sunx' });
   // setMode 异步化(终审修复:disarm 收口——切离 plan 先中止在途流程再实切)后本端点 await 等其落定,
   // 409 busy 面语义不变;disarm 收束窗口内被并发 run 抢跑同样归 busy
   if ((await session.setMode(mode)) === 'busy') return io.send(res, 409, { error: 'session is running' });
@@ -693,6 +719,22 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     io.send(res, 400, { error: 'charter must be a non-empty string' });
     return;
   }
+  // 群组归属（2026-11-26 群组规格 §3.2）：只对 sunx 生效；缺省=默认群；未知群 400。校验放在
+  // worktree 创建之前（与 mode/kind 同位）——非法入参零副作用，不遗孤儿树。
+  const groupIdRaw = (parsed.body as { groupId?: unknown } | null)?.groupId;
+  if (groupIdRaw !== undefined && typeof groupIdRaw !== 'string') {
+    io.send(res, 400, { error: 'groupId must be a string' });
+    return;
+  }
+  if (groupIdRaw !== undefined && kindRaw !== 'sunx') {
+    io.send(res, 400, { error: 'groupId is only valid for sunx' });
+    return;
+  }
+  const groupId = typeof groupIdRaw === 'string' && groupIdRaw.trim() !== '' ? groupIdRaw.trim() : DEFAULT_GROUP_ID;
+  if (kindRaw === 'sunx' && groupById(groupId) === undefined) {
+    io.send(res, 400, { error: 'group not found' });
+    return;
+  }
   let wtInfo: { name: string; path: string; branch: string } | undefined;
   if (wtRaw !== undefined) {
     const wt = createWorktree(root, resolveDataDir(root), wtRaw === true ? randomWorktreeName() : (wtRaw as string), {
@@ -711,6 +753,7 @@ export async function handleSessionNew(io: SessionHandlerIo, req: http.IncomingM
     ...(isSunx ? { kind: 'sunx' as const } : {}),
     ...(isSunx && typeof nameRaw === 'string' ? { name: nameRaw.trim().slice(0, 80) } : {}),
     ...(isSunx && typeof charterRaw === 'string' ? { charter: charterRaw } : {}),
+    ...(isSunx ? { groupId } : {}),
   };
   const hasOpts = Object.keys(createOpts).length > 0;
   const r = io.createSession(root, hasOpts ? createOpts : undefined);

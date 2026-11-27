@@ -154,7 +154,7 @@ export function ToolEntryBody({
     body = (
       <div className="tool-md tool-sunx-msg">
         <div className="tool-sunx-target">
-          {t('Target Sunx', '目标 Sunx')}: {toName !== '' ? `${toName} (${toId})` : toId}
+          {toId.startsWith('grp_') ? t('Target group', '目标群') : t('Target Sunx', '目标 Sunx')}: {toName !== '' ? `${toName} (${toId})` : toId}
         </div>
         {sent !== '' && <div className="tool-sunx-body">{sent}</div>}
       </div>

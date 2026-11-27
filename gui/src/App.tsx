@@ -105,6 +105,12 @@ function AppShell(): JSX.Element {
 
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
+  /** 群聊页（2026-11-26 群组规格）：单层覆盖，groupId=null 关闭；打开新会话时自动关闭 */
+  const [groupChatId, setGroupChatId] = useState<string | null>(null);
+  const openSunxGroupChat = useCallback((groupId: string): void => {
+    setGroupChatId((cur) => (cur === groupId ? null : groupId));
+  }, []);
+  const closeSunxGroupChat = useCallback((): void => { setGroupChatId(null); }, []);
   /** 2026-10-27 欢迎页全局草稿:座判定按页面不按 openSessionId——进欢迎页(新对话)不清会话,残留侧栏即此根因 */
   const isWelcome = page === 'welcome';
   const dev = useDeveloperMode();
@@ -114,6 +120,10 @@ function AppShell(): JSX.Element {
   const [composePreset, setComposePreset] = useState<{ root: string | null; seq: number; goal?: string }>({ root: null, seq: 0 });
   const presetCompose = useCallback((root: string | null, goal?: string): void => setComposePreset((p) => ({ root, seq: p.seq + 1, ...(goal !== undefined ? { goal } : {}) })), []);
   const [openSessionId, setOpenSessionId] = useState<string>('');
+  /** 打开新会话即关群聊页（群聊页是覆盖层；侧栏/总览/成员跳转都会换会话） */
+  useEffect(() => {
+    if (openSessionId !== '') setGroupChatId(null);
+  }, [openSessionId]);
   /** 打开期会话形态 hint(2026-11-17):sunx 打开链同步下发,首屏即 Sunx 欢迎面 */
   const [openKind, setOpenKind] = useState<string | undefined>(undefined);
   /** G14.213 会话 journal 档案 id(滚动位存档等跨重挂持久面的稳定键):sessionId 是活动会话
@@ -628,12 +638,20 @@ function AppShell(): JSX.Element {
    *  打开发送方实例（attachSunx 直寻址重开）+ 下发该轮定位信号——Chat 播种后滚到对应 run 并闪光； 
    *  runSeq 缺席（旧档/发送方空闲无锚）= 只打开会话 */
   const openSunxPeerStable = useCallback((journalId: string, runSeq?: number): void => {
+    if (journalId.startsWith('grp_')) {
+      openSunxGroupChat(journalId);
+      return;
+    }
     openSunxInstance({ journalId, root: '' });
     if (runSeq !== undefined && runSeq > 0) focusSunxPeer({ journalId, runSeq });
-  }, [openSunxInstance, focusSunxPeer]);
+  }, [openSunxGroupChat, openSunxInstance, focusSunxPeer]);
   /** 发送方视角（2026-11-26 用户裁定「发送消息后面跟上目标 sunx 蓝色名字,点击可以跳转到指定气泡」）：
-   *  打开发送目标会话并按正文定位刚投递的那条用户气泡 */
+   *  打开发送目标会话并按正文定位刚投递的那条用户气泡；目标=群 id 则打开群聊页 */
   const openSunxPeerBubbleStable = useCallback((journalId: string, text: string): void => {
+    if (journalId.startsWith('grp_')) {
+      openSunxGroupChat(journalId);
+      return;
+    }
     openSunxInstance({ journalId, root: '' });
     focusSunxPeer({ journalId, text });
   }, [openSunxInstance, focusSunxPeer]);
@@ -842,6 +860,9 @@ function AppShell(): JSX.Element {
     sideSinkFor,
     sideReleased,
     openSunxInstance,
+    groupChatId,
+    onOpenSunxGroupChat: openSunxGroupChat,
+    onCloseSunxGroupChat: closeSunxGroupChat,
     sunxPeerFocus,
     clearSunxPeerFocus,
     openSunxPeerStable,

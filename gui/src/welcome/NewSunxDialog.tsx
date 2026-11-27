@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder } from 'lucide-react';
+import { Folder, MessagesSquare } from 'lucide-react';
 import { SunxMark } from '../sunx-icon';
 import type { DirPickerResp, SunxTemplateEntry } from '../connection';
+import type { SunxGroupRow } from '../connection-types';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
 import { DirPicker } from '../pages/DirPicker';
@@ -41,7 +42,13 @@ export interface NewSunxConn {
   /** 工作区在他面创建落库时广播(旧桩/降级面缺名即不订阅) */
   onConfigChanged?(cb: (info: { resource: string; scope?: string; root?: string | null }) => void): () => void;
   /** 第 5 参 opts(2026-11-15 Task 4):kind/name/charter 透传——缺席字段省发,body 与旧形态逐字节相同 */
-  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string }>;
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string; groupId?: string }): Promise<{ sessionId: string }>;
+  /** 群列表（2026-11-26 群组规格）：创建/编辑弹窗群字段；缺名=旧 daemon，降级默认群 */
+  sunxGroups?(): Promise<SunxGroupRow[]>;
+  /** 行内新建群组（下拉底部入口） */
+  createSunxGroup?(name: string): Promise<{ ok: true; group: { id: string; name: string } }>;
+  /** 编辑模式换群 */
+  setSessionGroup?(id: string, groupId: string): Promise<{ ok: true; groupId: string }>;
   /** GET /settings/sunx-templates(sunx P2 Task 6,模板挑选数据源):打开/切换工作目录时惰拉,失败静默 */
   sunxTemplates(root?: string): Promise<{ entries: SunxTemplateEntry[]; warnings: string[] }>;
   /** GET /session/:id/charter(编辑模式品性预填) */
@@ -63,9 +70,11 @@ interface NewSunxDialogProps {
   /** 编辑模式(2026-11-15 用户裁定「编辑 Sunx 复用创建弹窗,禁用工作区,支持改名+品性」):
    *  sessionId 寻址;name=当前显示名(预填);root=工作目录(禁用显示,创建定死不可改——域绑定语义);
    *  提交走 rename+editCharter 双端点 */
-  readonly edit?: { sessionId: string; name: string; root?: string };
+  readonly edit?: { sessionId: string; name: string; root?: string; groupId?: string };
   /** 创建模式缺省工作目录锚(当前默认工作区 root;宿主 defaultWorkspaceAnchor 单点供值) */
   readonly defaultRoot?: string;
+  /** 创建模式缺省群（群行 + 进入时=该群；缺省=默认群） */
+  readonly defaultGroupId?: string;
   /** 编辑模式成功回显(2026-11-15 换挂 ChatTopbar):改名落盘后宿主乐观上屏+侧栏联动
    *  (adoptTitle 通道——弹窗自管 renameSession,通道不重发,防双尾追同步行) */
   readonly onEdited?: (name: string) => void;
@@ -84,6 +93,14 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
   /** 模板清单(创建模式):空数组=无模板态(选择器隐藏);templateId=下拉当前选中(空串=未选) */
   const [templates, setTemplates] = useState<SunxTemplateEntry[]>([]);
   const [templateId, setTemplateId] = useState('');
+  /** 群组字段（2026-11-26 群组规格 §6.3）：groups=清单；groupId=选中；pop=下拉；query=筛选 */
+  const [groups, setGroups] = useState<SunxGroupRow[]>([]);
+  const [groupId, setGroupId] = useState('');
+  const [groupPop, setGroupPop] = useState(false);
+  const [groupQuery, setGroupQuery] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const [groupError, setGroupError] = useState('');
+  const [groupBusy, setGroupBusy] = useState(false);
   /** 编辑模式品性预填(GET /session/:id/charter;失败=加载失败态,保存禁用+错误行可见——
    *  2026-11-16 技术债补审 I2:原失败静默置 loaded=true,用户保存吃裸 400 无前置提示) */
   const [charterLoaded, setCharterLoaded] = useState(false);
@@ -118,7 +135,31 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     setHint('');
     setDirOpen(false);
     setCharterError(false);
+    setGroupId(isEdit ? (edit?.groupId ?? '') : (props.defaultGroupId ?? 'grp_default'));
+    setGroupPop(false);
+    setGroupQuery('');
+    setNewGroupName('');
+    setGroupError('');
+    setGroupBusy(false);
   }, [open]);
+
+  /** 群列表惰拉（创建/编辑群字段）：失败=默认群兜底，不阻塞提交 */
+  useEffect(() => {
+    if (!open) return;
+    if (conn.sunxGroups === undefined) return;
+    let alive = true;
+    conn.sunxGroups().then(
+      (g) => {
+        if (!alive) return;
+        setGroups(g);
+        setGroupId((prev) => prev !== '' ? prev : (g.find((x) => x.isDefault === true)?.id ?? g[0]?.id ?? 'grp_default'));
+      },
+      () => {
+        if (alive) setGroupId((prev) => (prev !== '' ? prev : 'grp_default'));
+      },
+    );
+    return () => { alive = false; };
+  }, [conn, open]);
 
   /** 编辑模式品性预填(GET /session/:id/charter;失败=charterError 可见态) */
   useEffect(() => {
@@ -197,7 +238,7 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     return nm === 'default' || nm.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : nm;
   })();
   /** 姓名必填(trim 后非空)+ busy 锁(提交中禁重复提交) */
-  const canSubmit = name.trim() !== '' && !busy && (isEdit ? charterLoaded && !charterError : true);
+  const canSubmit = name.trim() !== '' && !busy && (isEdit ? charterLoaded && !charterError : groupId !== '');
 
   /** 创建提交 */
   const submitCreate = (): void => {
@@ -211,10 +252,12 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
         kind: 'sunx',
         name: name.trim(),
         ...(text.trim() !== '' ? { charter: text } : {}),
+        ...(groupId !== '' && groupId !== 'grp_default' ? { groupId } : {}),
       })
       .then(
         ({ sessionId }) => {
           setBusy(false);
+          window.dispatchEvent(new CustomEvent('sunx-groups-changed'));
           onOpenSession(sessionId, target); // 既有 openSession 链路(宿主装配)
           onClose();
         },
@@ -241,6 +284,9 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
     const jobs: Array<Promise<unknown>> = [];
     if (nextName !== edit.name) jobs.push(conn.renameSession(edit.sessionId, nextName));
     if (charter !== (fetchedCharter ?? '')) jobs.push(conn.editCharter(edit.sessionId, charter));
+    if (edit.groupId !== undefined && groupId !== '' && groupId !== edit.groupId && conn.setSessionGroup !== undefined) {
+      jobs.push(conn.setSessionGroup(edit.sessionId, groupId));
+    }
     Promise.all(jobs).then(
       () => {
         setBusy(false);
@@ -250,6 +296,30 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
       (err: unknown) => {
         setBusy(false);
         setError(errText(err));
+      },
+    );
+  };
+
+  /** 群字段展示/筛选/行内创建（2026-11-26 群组规格 §6.3） */
+  const selectedGroup = groups.find((g) => g.id === groupId);
+  const groupLabel = selectedGroup?.name ?? (groupId === 'grp_default' ? t('Default group', '默认群组') : groupId);
+  const filteredGroups = groups.filter((g) => g.name.toLowerCase().includes(groupQuery.trim().toLowerCase()));
+  const createGroupInline = (): void => {
+    const n = newGroupName.trim();
+    if (n === '' || groupBusy || conn.createSunxGroup === undefined) return;
+    setGroupBusy(true);
+    setGroupError('');
+    conn.createSunxGroup(n).then(
+      (r) => {
+        setGroupBusy(false);
+        setGroups((prev) => [...prev.filter((g) => g.id !== r.group.id), { id: r.group.id, name: r.group.name }]);
+        setGroupId(r.group.id);
+        setNewGroupName('');
+        setGroupPop(false);
+      },
+      (err: unknown) => {
+        setGroupBusy(false);
+        setGroupError(errText(err));
       },
     );
   };
@@ -316,6 +386,62 @@ export function NewSunxDialog(props: NewSunxDialogProps): JSX.Element | null {
             }}
           />
         </label>
+        {(!isEdit || edit?.groupId !== undefined) && (
+          <div className="sx-sunx-field">
+            <span>{t('Group', '群组')}</span>
+            <div className="sx-sunx-ws-anchor">
+              <button
+                type="button"
+                className="choose-project-bar sx-sunx-ws-bar"
+                aria-label={t('Choose group', '选择群组')}
+                onClick={() => { setGroupQuery(''); setGroupPop((v) => !v); }}
+              >
+                <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+                <span className="wc-pill-label">{groupLabel}</span>
+              </button>
+              {groupPop && (
+                <div className="sx-menu-pop sx-group-picker" role="menu" aria-label={t('Choose group', '选择群组')}>
+                  <input
+                    className="sx-group-palette-filter"
+                    autoFocus
+                    value={groupQuery}
+                    placeholder={t('Filter groups', '筛选群组')}
+                    onChange={(e) => setGroupQuery(e.target.value)}
+                  />
+                  <div className="sx-group-picker-list">
+                    {filteredGroups.map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        role="menuitem"
+                        className={`sx-menuitem${g.id === groupId ? ' current' : ''}`}
+                        onClick={() => { setGroupId(g.id); setGroupPop(false); }}
+                      >
+                        <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+                        {g.name}
+                      </button>
+                    ))}
+                    {filteredGroups.length === 0 && <div className="sx-group-palette-empty">{t('No groups', '暂无群组')}</div>}
+                  </div>
+                  {conn.createSunxGroup !== undefined && (
+                    <div className="sx-group-picker-new">
+                      <input
+                        value={newGroupName}
+                        placeholder={t('New group name', '新群组名称')}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); createGroupInline(); } }}
+                      />
+                      <button type="button" disabled={groupBusy || newGroupName.trim() === ''} onClick={createGroupInline}>
+                        {t('Create', '创建')}
+                      </button>
+                    </div>
+                  )}
+                  {groupError !== '' && <div className="sx-group-error">{groupError}</div>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* 工作目录(2026-11-15 用户实测反馈「不支持手写,参考欢迎页」):choose-project-bar 同款
             选择条+WelcomeProjectPop 弹层(筛选/默认工作区锚/浏览文件夹…),登记面走 DirPicker
             overlay(welcome 同构)。anchor 相对容器使弹层向下展开(dialog 内无 welcome-dock 锚)。

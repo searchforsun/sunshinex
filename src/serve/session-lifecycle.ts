@@ -112,6 +112,8 @@ export interface CreateSessionOpts {
   name?: string;
   /** 实例品性原文：装配透传 ContextManager 品性冻结层 */
   charter?: string;
+  /** Sunx 所属群（2026-11-26 群组规格 §3.2）：出生 meta.groupId；HTTP 层校验群存在并兜底默认群 */
+  groupId?: string;
   /** 通道元信息（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：装配透传 ContextManager
    *  会话冻结层——出生定版一次不重写（前缀缓存纪律）；仅通道域会话传入（router createOpts） */
   channelMeta?: { platform: string; chatId: string; appName?: string };
@@ -210,6 +212,7 @@ export function createSessionIn(io: SessionLifecycleIo, root: string, opts?: Cre
     ...(opts?.kind !== undefined ? { kind: opts.kind } : {}),
     ...(opts?.name !== undefined ? { name: opts.name } : {}),
     ...(opts?.charter !== undefined ? { charter: opts.charter } : {}),
+    ...(opts?.groupId !== undefined ? { groupId: opts.groupId } : {}),
     ...(opts?.channelMeta !== undefined ? { channelMeta: opts.channelMeta } : {}),
     ...(io.channelSendFor !== undefined ? { channelSend: io.channelSendFor(id) } : {}),
     // 域绑定（2026-11-15 sunx P3 Task 2）：dataDir=域——持久化数据面全落域,handler 寻址走 dataDir 外窥

@@ -46,7 +46,8 @@ export interface WakeRef {
 }
 
 /** 跨 Sunx 来源净化（user 事件 payload.fromSunx → 条目字段；seg 行读侧同源）：id/name 双非空才收，
- *  否则 undefined（旧档/坏载荷=普通用户条,渲染面零归因行）；runSeq=发送方轮次锚（正整数才收） */
+ *  否则 undefined（旧档/坏载荷=普通用户条,渲染面零归因行）；runSeq=发送方轮次锚（正整数才收）；
+ *  kind 只收 'sunx'|'group'（群组规格；缺席=旧档按 sunx 处理） */
 export function parseSunxPeerRef(raw: unknown): SunxPeerRef | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const r = raw as Record<string, unknown>;
@@ -54,7 +55,8 @@ export function parseSunxPeerRef(raw: unknown): SunxPeerRef | undefined {
   const name = typeof r.name === 'string' ? r.name.trim() : '';
   if (id === '' || name === '') return undefined;
   const runSeq = typeof r.runSeq === 'number' && Number.isFinite(r.runSeq) && r.runSeq > 0 ? Math.floor(r.runSeq) : undefined;
-  return { id, name, ...(runSeq !== undefined ? { runSeq } : {}) };
+  const kind = r.kind === 'group' ? 'group' : r.kind === 'sunx' ? 'sunx' : undefined;
+  return { id, name, ...(runSeq !== undefined ? { runSeq } : {}), ...(kind !== undefined ? { kind } : {}) };
 }
 
 /** 唤醒载荷净化（notice 事件 payload.wake → 条目字段）：非法形态整条剔除，全非法返回 undefined */

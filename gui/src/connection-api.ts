@@ -32,6 +32,12 @@ import type {
   GlobalRulesView,
   SkillsGroup,
   SnapshotResponse,
+  SunxGroupDetail,
+  SunxGroupMessagesResp,
+  SunxGroupRow,
+  SunxGroupSearchHit,
+  SunxGroupSendBody,
+  SunxGroupSendResp,
   SunxTemplatesView,
   TeamsOpInput,
   TeamsView,
@@ -107,6 +113,17 @@ export interface Connection {
   /** GET /sunx/sessions（2026-11-15 sunx P3 Task 3 数据源改向）：sunx 域容器全域枚举——
    *  SUNX 组/总览页数据源单点（kind 恒 'sunx'，行附 liveSessionId/awaiting/status 标注） */
   sunxSessions(): Promise<SessionRow[]>;
+  /** 群组面（2026-11-26 群组规格 §4.1）：群列表（含默认群/成员数/lastMessageAt）/CRUD/详情/
+   *  房间读取（seq 游标）/查询/群主发送/换群 */
+  sunxGroups(): Promise<SunxGroupRow[]>;
+  createSunxGroup(name: string): Promise<{ ok: true; group: SunxGroupRow }>;
+  renameSunxGroup(id: string, name: string): Promise<{ ok: true; group: SunxGroupRow }>;
+  deleteSunxGroup(id: string): Promise<{ ok: true }>;
+  sunxGroupDetail(id: string): Promise<SunxGroupDetail>;
+  sunxGroupMessages(id: string, opts?: { after?: number; before?: number; limit?: number }): Promise<SunxGroupMessagesResp>;
+  sunxGroupSearch(id: string, q: string, limit?: number): Promise<{ results: SunxGroupSearchHit[] }>;
+  sunxGroupSend(id: string, body: SunxGroupSendBody): Promise<SunxGroupSendResp>;
+  setSessionGroup(id: string, groupId: string): Promise<{ ok: true; groupId: string }>;
   /** 定时任务面（2026-11-20 scheduled-tasks Task 7）：daemon /schedules* 端点全声明——
    *  GET 清单 / POST 创建 / PUT 更新 / DELETE 删除 / POST run 立即运行 / POST enabled 启停 /
    *  GET runs 运行史（limit 可选）/ POST preview 预览 next 时刻。写面 body=ScheduleDraft 直发 */
@@ -295,7 +312,7 @@ export interface Connection {
    *  第 5 参 opts（2026-11-15 sunx P1 Task 4）：kind/name/charter 透传 body——缺席时 body 与今日
    *  逐字节相同（向后兼容锚）;kind='sunx'=编排会话（出生 meta 落 kind/title/charterRev:1）,
    *  name=自定义会话名（meta.title）,charter=品性原文。GUI 弹窗（Task 6）只消费本签名 */
-  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
+  newSession(root: string, mode?: 'acceptEdits' | 'full-access', worktree?: boolean, branch?: string, opts?: { kind?: 'sunx'; name?: string; charter?: string; groupId?: string }): Promise<{ sessionId: string; worktree?: { name: string; path: string; branch: string } }>;
   /** POST /session/:id/attach {journalId}：恢复既有 journal 到该会话（并置激活） */
   /** attach:daemon 可能收编同 journal 在座会话(运行中刷新恢复)——返回**实际** sessionId(可能异于入参) */
   attach(sessionId: string, journalId: string): Promise<{ sessionId: string; root: string; kind?: string }>;

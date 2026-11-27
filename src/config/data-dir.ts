@@ -62,6 +62,13 @@ export function sunxDomainDir(journalId: string): string {
   return path.join(sunxContainerDir(), journalId, 'data');
 }
 
+/** 群组容器根（2026-11-26 sunx 群组规格 §3.1）：`<sunx 容器>-groups`（缺省 ~/.sunshinex/sunx-groups）——
+ *  groups.json + `<groupId>/room.jsonl` 落位；跟随 SUNSHINEX_SUNX_DIR 覆盖（与域容器同源换轨），
+ *  独立于域扫描面（容器内不出现 groups 目录，避免被当作 journal 域）。不 mkdir（首次写建） */
+export function sunxGroupsDir(): string {
+  return `${sunxContainerDir()}-groups`;
+}
+
 /** channels 域容器根（2026-11-21 channels spec §4 存储总览：IM 聊天持久化独立容器）：`~/.sunshinex/channels/`——
  *  各聊天专属域 `im-<channelSlug>-<chatSlug>/{workspace,data}` 逐域落位（config/channels.ts
  *  channelChatDomainDir 同根推导）；GET 侧栏「通道」扫描面用（Task 9 与 sunxContainerDir 扫描同构）。

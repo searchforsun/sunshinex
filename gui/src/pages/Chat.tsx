@@ -244,7 +244,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   const cmdData = rawCmdData === null ? null : (() => {
     const { commands, descriptions, supported } = rawCmdData;
     return kindHint === 'sunx'
-      ? { commands: commands.filter((c) => c !== '/fork'), descriptions, supported: supported.filter((c) => c !== '/fork') }
+      ? { commands: commands.filter((c) => c !== '/fork' && c !== '/plan'), descriptions, supported: supported.filter((c) => c !== '/fork' && c !== '/plan') }
       : rawCmdData;
   })();
   // 2026-11-07 用户实测「+ 能实时加出来,/ 不实时」:/ 面板在场即现拉技能清单(运行中新装技能实时可弹)
@@ -761,6 +761,7 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
         root={root}
         sideChat={sideChat}
         sunxName={sunxLabel}
+        allowPlan={kindHint !== 'sunx'}
         emptyChat={chat.entries.length === 0}
         connState={connState}
         queued={queued}

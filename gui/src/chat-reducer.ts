@@ -33,7 +33,7 @@ export interface ChatEntry {
   /** user:跨 Sunx 消息来源(2026-11-26;内核条目直映)——气泡上方归因行(SunxIcon+名称+点击跳转
    *  发送方实例)数据源;display 侧剥 `[fromSunx: …] ` 前缀,归因走本字段渲染。runSeq=发送方轮次锚
    *  (点击归因行定位到发送方会话的该轮;缺席=只打开会话) */
-  fromSunx?: { id: string; name: string; runSeq?: number };
+  fromSunx?: { id: string; name: string; runSeq?: number; kind?: 'sunx' | 'group' };
   streaming?: boolean;
   /** thinking 专用：段耗时秒（内核封段计首尾 ts 差） */
   seconds?: number;
@@ -141,7 +141,7 @@ export interface SnapshotTranscriptEntry {
   /** notice:定时唤醒标记(2026-11-15 sunx P2 Task 3;内核条目原生随档,显示归 run 行前缀) */
   schedule?: boolean;
   /** user:跨 Sunx 消息来源(2026-11-26;内核条目直序列化——快照/回放同字段;runSeq=发送方轮次锚) */
-  fromSunx?: { id: string; name: string; runSeq?: number };
+  fromSunx?: { id: string; name: string; runSeq?: number; kind?: 'sunx' | 'group' };
   meta?: {
     seconds?: number;
     steps?: number;

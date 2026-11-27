@@ -7,9 +7,9 @@ import { CodedToolError, type RegisteredTool } from '../tools';
 
 /** 发现行（内容=域 meta 原样：名称/品性等用户内容零翻译——用户裁定「内容是什么就是什么」） */
 export interface SunxPeerInfo {
-  /** 稳定寻址键 = 目标 sunx 的 journalId（send_sunx_messages 的 to 参数） */
+  /** 稳定寻址键 = 目标 sunx 的 journalId（send_sunx_messages 的 to 参数）；群目标行=群 id */
   id: string;
-  /** 实例名（meta.title 原样；缺省回落首条用户消息摘要/'Sunx'） */
+  /** 实例名（meta.title 原样；缺省回落首条用户消息摘要/'Sunx'）；群目标行=群名 */
   name: string;
   /** 在飞轮状态（在座且非 idle） */
   running: boolean;
@@ -24,11 +24,15 @@ export interface SunxPeerInfo {
   steps?: number;
   /** 品行/品性原文（meta.charterText 原样；缺席=未设品性层） */
   charter?: string;
+  /** 行类型（2026-11-26 群组规格）：'group'=群目标（send 到该 id 即回群主）；缺席/'sunx'=实例 */
+  kind?: 'sunx' | 'group';
+  /** 群目标行的未归档成员数（含 caller 自己） */
+  memberCount?: number;
 }
 
 /** 投递结果（宿主接缝回执）：ok=false 时 error 原样进工具错误（模型面可读） */
 export type SunxPeerSendResult =
-  | { ok: true; name: string; queued: boolean }
+  | { ok: true; name: string; queued: boolean; kind?: 'sunx' | 'group' }
   | { ok: false; error: string };
 
 /** 宿主接缝（daemon 按 sessionId 注入；caller=发起方会话，归因由宿主按 caller 身份补全——
@@ -52,6 +56,10 @@ function peerLines(peers: readonly SunxPeerInfo[]): string {
   if (peers.length === 0) return '(no other live Sunx instances)';
   const out: string[] = [];
   for (const p of peers) {
+    if (p.kind === 'group') {
+      out.push(`group: ${p.name} [group] id=${p.id}${p.memberCount !== undefined ? ` members=${p.memberCount}` : ''} - send here to reply to the group owner`);
+      continue;
+    }
     const status = p.running ? 'running' : p.live ? 'idle' : 'not open';
     out.push(`${p.name} [${status}${p.awaiting ? ', awaiting input' : ''}] id=${p.id}`);
     out.push(`  root: ${p.root}`);
@@ -68,7 +76,7 @@ export function makeListSunxPeersTool(peers?: SunxPeersSeam): RegisteredTool {
     parameters: { type: 'object', additionalProperties: false, properties: {} },
     name: 'list_sunx_peers',
     description:
-      'List the other Sunx instances (name, state, workspace, activity, charter). Each line carries id=<journalId> - pass that id to send_sunx_messages. Every existing instance is listed; "[not open]" means it has no live session yet and sending to it opens it first. Archived instances are not listed.',
+      'List the Sunx instances in your group (name, state, workspace, activity, charter) and the group target line. The group line carries id=<groupId> and members=<n>: sending to that id replies to the group owner and posts to the group room. Every other line carries id=<journalId> - pass that id to send_sunx_messages. "[not open]" means it has no live session yet and sending to it opens it first. Instances in other groups and archived instances are not listed.',
     category: 'task',
     fullObservation: true,
     executor: async () => {
@@ -87,13 +95,13 @@ export function makeSendSunxMessagesTool(peers?: SunxPeersSeam): RegisteredTool 
       additionalProperties: false,
       required: ['to', 'text'],
       properties: {
-        to: { type: ['string', 'null'], description: 'Target Sunx instance id (journalId) from list_sunx_peers.' },
+        to: { type: ['string', 'null'], description: 'Target Sunx instance id (journalId) or group id from list_sunx_peers. Sending to the group id replies to the group owner.' },
         text: { type: ['string', 'null'], description: 'Message body (max 4000 chars).' },
       },
     },
     name: 'send_sunx_messages',
     description:
-      'Send a message to another Sunx instance (it is opened first if not open yet). It arrives there as a user message (viewer sees a user bubble attributed to you); a running instance queues it until its current run ends, an idle instance starts a run. When you receive a message from another Sunx (user text prefixed with "[fromSunx: <name> (<journalId>)]"), answer that Sunx with this tool - never treat it as a message from the user. Errors name the reason.',
+      'Send a message to another Sunx instance in your group (it is opened first if not open yet), or to the group id to reply to the group owner. A peer message arrives there as a user message (viewer sees a user bubble attributed to you); a running instance queues it until its current run ends, an idle instance starts a run. When you receive a message from another Sunx (user text prefixed with "[fromSunx: <name> (<journalId>)]"), answer that Sunx with this tool - never treat it as a message from the user. Errors name the reason.',
     category: 'task',
     fullObservation: true,
     executor: async (input) => {
@@ -108,7 +116,7 @@ export function makeSendSunxMessagesTool(peers?: SunxPeersSeam): RegisteredTool 
       if (!r.ok) throw new CodedToolError('INVALID_ARG', r.error);
       return {
         exitCode: 0,
-        stdout: `message delivered to ${r.name} (${to}) - ${r.queued ? 'queued until its current run ends' : 'run started'}`,
+        stdout: `message delivered to ${r.name} (${to}) - ${r.kind === 'group' ? 'posted to the group room' : r.queued ? 'queued until its current run ends' : 'run started'}`,
         stderr: '',
         timedOut: false,
       };

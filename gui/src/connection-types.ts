@@ -126,6 +126,9 @@ export interface SnapshotResponse {
    *  可选防旧 daemon（无此字段=未暂停面） */
   queuePaused?: boolean;
   team?: Array<{ name: string; busy: boolean; teamId?: string; createdAt?: number }>;
+  /** 在飞子智能体标签（spawn/后台任务子代不在 team 名册,2026-11-27）:悬空 run 封口与 team.busy
+   *  取并集——在飞子代不得被误封「已停止」。可选防旧 daemon（无此字段=只按 team.busy 封） */
+  subagents?: string[];
   /** 工作区团队注册表（daemon 快照必发） */
   teams?: Array<{ teamId: string; name: string; createdAt: number }>;
   /** 挂起段 kind 三值(阶段三 plan-arm 增 plan-approval):reseed 据此重建挂起卡(卡内容唯一来源) */
@@ -197,6 +200,110 @@ export interface SessionRow {
   liveSessionId?: string;
   /** 会话待确认(2026-10-31 主菜单「?」图标):daemon 挂起表非空(approval/ask/plan-approval 任一未决) */
   awaiting?: boolean;
+  /** Sunx 所属群（2026-11-26 群组规格）：/sunx/sessions 行透出有效归属（缺失由 daemon 补默认群） */
+  groupId?: string;
+}
+
+// ─── 群组面（2026-11-26 群组规格 §3.4）────────────────────────────────────────────────────────────
+
+export interface SunxGroupRow {
+  id: string;
+  name: string;
+  isDefault?: boolean;
+  memberCount?: number;
+  lastMessageAt?: number;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
+export interface SunxGroupMemberRow {
+  id: string;
+  name: string;
+  live: boolean;
+  running: boolean;
+  awaiting?: boolean;
+  archived?: boolean;
+  updatedAt: number;
+  root: string;
+  runs?: number;
+  steps?: number;
+  /** 群页 ask 卡（2026-11-27）：与成员会话同一 pending(pid)；回答走 /ask/:pid/reply，两边同步 */
+  asks?: Array<{ pid: string; req: GuiAskReq }>;
+}
+
+/** 房间消息里的来源/目标引用（GUI 本地形，字段与 src/types.ts SunxPeerRef 对齐） */
+export interface SunxRoomPeerRef {
+  id: string;
+  name: string;
+  runSeq?: number;
+  kind?: 'sunx' | 'group';
+}
+
+export interface SunxRoomTarget { id: string; name: string }
+export interface SunxRoomDelivery { to: string; name: string; ok: boolean; queued?: boolean; error?: string }
+export interface SunxRoomReplyPreview { from: SunxRoomPeerRef; text: string }
+
+export interface SunxRoomMessage {
+  id: string;
+  seq: number;
+  ts: number;
+  kind: 'human' | 'peer' | 'command';
+  from: SunxRoomPeerRef;
+  to?: SunxRoomPeerRef;
+  text: string;
+  images?: string[];
+  mentions?: SunxRoomTarget[];
+  mentionAll?: boolean;
+  replyTo?: string;
+  replyPreview?: SunxRoomReplyPreview;
+  targets?: SunxRoomTarget[];
+  deliveries?: SunxRoomDelivery[];
+  command?: string;
+  clientMsgId?: string;
+  updatedSeq?: number;
+  runSeq?: number;
+}
+
+export interface SunxGroupDetail {
+  group: SunxGroupRow;
+  members: SunxGroupMemberRow[];
+  owner: { id: string; name: string; kind: 'group' };
+}
+
+export interface SunxGroupMessagesResp {
+  group: SunxGroupRow;
+  messages: SunxRoomMessage[];
+  cursor: number;
+  hasMore: boolean;
+  reset?: boolean;
+}
+
+export interface SunxGroupSearchHit {
+  id: string;
+  seq: number;
+  ts: number;
+  kind: 'human' | 'peer' | 'command';
+  from: SunxRoomPeerRef;
+  text: string;
+}
+
+export interface SunxGroupSendBody {
+  text: string;
+  images?: string[];
+  mentions?: string[];
+  mentionAll?: boolean;
+  replyTo?: string;
+  clientMsgId?: string;
+  /** 选中模型/权限（2026-11-27 用户裁定）：daemon 在投递前逐个透传到目标 Sunx */
+  model?: string;
+  mode?: 'read-only' | 'acceptEdits' | 'full-access';
+}
+
+export interface SunxGroupSendResp {
+  ok: true;
+  messageId: string;
+  seq: number;
+  targets: SunxRoomTarget[];
 }
 
 /** GET /dirpicker?path= 载荷（T2 服务端目录选择）：path=绝对路径，parent=上级（盘根=自身），dirs=子目录名 */

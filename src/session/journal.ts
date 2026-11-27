@@ -160,6 +160,9 @@ export interface SessionSidecarMeta {
   /** 会话形态(2026-11-14 sunx 设计 §17.1 实例身份三元组):出生写一次,不改档。string 而非联合——
    *  旁车 JSON 保持宽容、消费侧收窄(读侧白名单键值校验既有纪律);缺席=standard 不落键 */
   kind?: string;
+  /** Sunx 所属群（2026-11-26 群组规格 §3.2）：出生写一次；缺席=默认群 `grp_default`（读取兜底，
+   *  不批量改写存量）。换群走 PATCH /session/:id/group 覆盖本键；房间历史不迁移 */
+  groupId?: string;
   /** 品性替代序次(改品性=尾追替代行,+1/次;缺席=初版未替代)——实例身份三元组的第三面 */
   charterRev?: number;
   /** 品性当前全文(sunx P2 Task 7 fix round 1):POST /charter 编辑时与 charterRev 同拍落盘——
@@ -184,11 +187,11 @@ const SIDECAR_KEYS: ReadonlyArray<keyof SessionSidecarMeta> = [
   'title', 'updatedAt', 'runs', 'steps', 'tokens', 'seconds', 'root',
   'cacheTokens', 'promptTokens', 'childTokens', 'ctxUsed', 'ctxWindow', 'model', 'effort', 'mode', 'side',
   'archived', 'archivedAt', 'sideCount', 'sideOf', 'sideSeq', 'rewoundTo', 'kind', 'charterRev', 'charterText',
-  'scheduled', 'channel', 'chatId', 'chatTitle',
+  'scheduled', 'channel', 'chatId', 'chatTitle', 'groupId',
 ];
 /** 字符串值键（其余键一律 number 值，类型不合法即弃该键防脏数据回流）。root（2026-11-11 根修）：
  *  写侧早已落盘、读侧漏列=按数字键校验被丢——列表行/attach 归位恒读不到真根(树会话重启回主分支/hover 主根真根因) */
-const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo', 'root', 'kind', 'charterText', 'channel', 'chatId', 'chatTitle']);
+const SIDECAR_STR_KEYS: ReadonlySet<string> = new Set(['title', 'model', 'effort', 'mode', 'sideOf', 'rewoundTo', 'root', 'kind', 'charterText', 'channel', 'chatId', 'chatTitle', 'groupId']);
 /** 布尔值键（G14.29 side 辅助会话标记 / archived 归档标记 / scheduled 定时任务执行会话标记） */
 const SIDECAR_BOOL_KEYS: ReadonlySet<string> = new Set(['side', 'archived', 'scheduled']);
 

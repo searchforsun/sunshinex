@@ -35,6 +35,20 @@ test('user 条归因:submit(fromSunx) → 条目携带 + seg 行落档 + 重放�
   assert.deepEqual(seeded.entries[0]?.fromSunx, PEER, 'seed 回种归因不丢');
 });
 
+test('群主归因 kind=group:条目/seg/重放往返;非法 kind 丢弃;旧档无 kind 视为 sunx', () => {
+  const owner = { id: 'grp_x', name: '群主', kind: 'group' as const };
+  const events: KernelEvent[] = [];
+  const k = new SessionKernel({ onKernelEvent: (ev) => events.push(ev) });
+  k.submit('[fromSunx: 群主 (grp_x)] hi', undefined, owner);
+  assert.deepEqual(k.replay().find((e) => e.kind === 'user')?.fromSunx, owner, '条目携带 kind=group');
+  const rows = kernelEventRows(events.find((ev) => ev.t === 'seg-open')!) as SegRowLike[];
+  assert.deepEqual(reduceSegRows(rows)[0]?.fromSunx, owner, 'seg 行往返 kind=group');
+  const legacy = reduceSegRows([{ t: 'seg', kind: 'user', md: 'x', ts: 1, seq: 1, fromSunx: { id: 'a', name: 'n' } }]);
+  assert.deepEqual(legacy[0]?.fromSunx, { id: 'a', name: 'n' }, '旧档无 kind 原样（GUI 按 sunx 处理）');
+  const bad = reduceSegRows([{ t: 'seg', kind: 'user', md: 'x', ts: 1, seq: 1, fromSunx: { id: 'a', name: 'n', kind: 'weird' } }]);
+  assert.deepEqual(bad[0]?.fromSunx, { id: 'a', name: 'n' }, '非法 kind 丢弃，归因仍在');
+});
+
 test('user 条归因:runSeq 轮次锚随档往返（点击归因行定位到发送方该轮）', () => {
   const events: KernelEvent[] = [];
   const k = new SessionKernel({ onKernelEvent: (ev) => events.push(ev) });

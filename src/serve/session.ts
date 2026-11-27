@@ -217,6 +217,8 @@ export interface SessionRuntimeOpts {
   /** 实例品性原文（charter，2026-11-15 sunx §17.1 用户面=品性/代码面=charter）：assemble() 透传
    *  ContextManager 会话冻结层（全局 → 项目 → 品性）；后续编辑走 /session/:id/charter 尾追替代行 */
   charter?: string;
+  /** Sunx 所属群（2026-11-26 群组规格 §3.2）：出生 meta 落 groupId；缺席=不写键（读取兜底默认群） */
+  groupId?: string;
   /** 通道元信息（2026-11-23 用户裁定「平台/聊天 id/应用名进系统上下文」）：assemble() 透传
    *  ContextManager 会话冻结层——出生定版一次不重写（前缀缓存纪律：同一聊天逐字节一致；
    *  动态发言用户走消息级 [来自 x]: 前缀不入此层）；缺席=普通会话装配字节不变 */
@@ -1314,6 +1316,7 @@ ${this.sessionCharter ?? ''}` }
       // **通道聊天会话不题名**——journalDisplayTitle 落到首条用户消息总结（重命名经 ⋯ 菜单落
       // meta.title 同普通会话）;手建 Sunx 保持 name 题名（名称即身份,创建名即显示名）
       ...(this.sessionName !== undefined && this.opts.channelMeta === undefined ? { title: this.sessionName } : {}),
+      ...(this.opts.groupId !== undefined && this.opts.groupId !== '' ? { groupId: this.opts.groupId } : {}),
       charterRev: 1,
       root: this.root, // 域旁车带 root（P3 Task 2）：attachSunx 重开壳根的唯一定位源——出生未跑也有
     });

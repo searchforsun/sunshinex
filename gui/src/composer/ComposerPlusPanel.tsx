@@ -49,6 +49,7 @@ export function ComposerPlusPanel({
   root,
   onInsert,
   onAttachImages,
+  excludeCommands,
 }: {
   conn: PlusPanelConn;
   /** 在场 = 会话内:文件区可浏览(tree);欢迎页不传 → 文件区不渲染 */
@@ -58,6 +59,8 @@ export function ComposerPlusPanel({
   onInsert: (text: string) => void;
   /** 图片附件(2026-10-26 置首区):文件选择承接(装载+钳制在调用面);未配不渲染附件区 */
   onAttachImages?: (files: File[]) => void;
+  /** 命令区剔除项（群聊页 Sunx 无计划模式：'/plan' 不进 + 面板；普通会话缺省零变化） */
+  excludeCommands?: readonly string[];
 }): JSX.Element {
   const [cmds, setCmds] = useState<Array<{ name: string; desc: string }> | null>(null);
   const [skills, setSkills] = useState<Array<{ id: string; desc: string }> | null>(null);
@@ -79,7 +82,7 @@ export function ComposerPlusPanel({
         const supported = Array.isArray(r.supported) ? r.supported : [];
         setCmds(
           r.commands
-            .filter((c) => supported.length === 0 || supported.includes(c))
+            .filter((c) => (supported.length === 0 || supported.includes(c)) && !(excludeCommands?.includes(c) ?? false))
             .map((c) => { const bare = c.replace(/^\//, ''); return { name: c, desc: r.descriptions[c] ?? r.descriptions[bare] ?? '' }; }),
         );
       },
@@ -90,7 +93,7 @@ export function ComposerPlusPanel({
     return () => {
       alive = false;
     };
-  }, [conn]);
+  }, [conn, excludeCommands]);
 
   useEffect(() => {
     let alive = true;

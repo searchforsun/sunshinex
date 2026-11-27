@@ -1,63 +1,117 @@
+/**
+ * SUNX 过滤组（2026-11-26 群组规格 §6）：SUNX 组头 → 群组行（二级）→ 实例行（三级）。
+ * 群行右侧「进入群聊」「在本群新建」；SUNX 组头「新建群组」（新建 Sunx 入口在顶部快捷区/群行）。
+ * 纯渲染件：群/行/动作全部 props 注入；折叠态本组件自持并持久化。
+ */
 import { memo, useMemo, useState } from 'react';
-import type { SessionRow } from '../connection';
+import type { SessionRow, SunxGroupRow } from '../connection';
 import { t, useLanguage } from '../i18n';
-import { Archive, ChevronRight, KanbanSquare } from 'lucide-react';
+import { Archive, ChevronRight, FolderPlus, KanbanSquare, MessagesSquare } from 'lucide-react';
 import { SunxIcon } from '../sunx-icon';
 import { SessionRow as SessionRowView, SortPop, useConfirmOutsideCancel } from './project-menu-util';
 
-/**
- * SUNX 过滤组(sunx P2 Task 7,spec §10):侧栏 SUNX 会话聚合组(宿主挂载:ProjectsSection 工作区组
- * 之前、RECENTS 之前,两组并存不互斥)。**平铺单列**(2026-11-15 用户实测裁定:工作区分节头退役——
- * 「sunshinex-default」根标签行去掉;行布局与最近会话完全同款 recent-list/SessionRow,左对齐含
- * 状态图标)。空组整块不隐(组头恒显+「暂无Sunx」空态行)。条目=既有 SessionRow 复用,点击=宿主
- * attachSunx 链。组头=「SUNX」标题(可折叠)+动作簇(数量/看板/排序/归档/新建,可选 guard 缺接线
- * 不渲染)。纯渲染件:数据/动作 props 注入,折叠态本组件自持。
- */
+const COLLAPSED_KEY = 'sunshinex.sunx-groups.collapsed';
+const DEFAULT_GROUP_ID = 'grp_default';
+
+function readCollapsed(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as unknown;
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeCollapsed(set: Set<string>): void {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...set]));
+  } catch {
+    // 本地持久化失败只影响下次默认展开
+  }
+}
+
 interface SunxSectionProps {
-  /** kind==='sunx' 聚合行(跨工作区;null=装载中);空列=「暂无Sunx」空态行 */
   readonly rows: Array<SessionRow & { root: string; slug: string }> | null;
+  /** 群列表（null=装载中/旧 daemon 降级：合成默认群）；空数组=旧 daemon，仅一个默认群 */
+  readonly groups?: SunxGroupRow[] | null;
   readonly activeSessionId: string;
   readonly runningIds: ReadonlySet<string>;
   readonly journalOfSession: ReadonlyMap<string, string>;
   readonly isUnseen: (id: string, updatedAt: number) => boolean;
   readonly busy: boolean;
-  /** 条目点击链(sunx P3 Task 3 数据源改向):宿主注入 attachSunx 包装——root 参数退役
-   *  (journalId 直寻址重开,不再 newSession(root)+attach 两步) */
   readonly onAttach: (root: string, journalId: string, journalUpdatedAt?: number) => void;
-  /** T6 行内归档(落库+宿主重拉;确认 morph 本组件行级 confirmId 承载) */
   readonly onArchiveRow: (id: string, archived: boolean) => void;
-  /** 组头看板钮(可选 guard):未接线不渲染 */
   readonly onOpenBoard?: () => void;
-  /** 组头「新建 Sunx」(2026-11-15 用户裁定组头动作簇对齐「项目」:数量/排序/归档/看板/新建) */
-  readonly onNewSunx?: () => void;
-  /** 组头「归档」入口:进归档层(宿主 archiveOpen 整替语义) */
+  readonly onNewGroup?: () => void;
+  readonly onNewSunxInGroup?: (groupId: string) => void;
+  readonly onOpenGroupChat?: (groupId: string) => void;
+  readonly activeSunxGroupId?: string;
   readonly onOpenArchive?: () => void;
 }
 
+interface GroupView {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  members: Array<SessionRow & { root: string; slug: string }>;
+}
+
 export const SunxSection = memo(function SunxSection(props: SunxSectionProps): JSX.Element | null {
-  useLanguage(); // memo 响应面:语言同步(en→zh)强制重渲染,区块头标签随 t() 调用时求值归位
-  const { rows, activeSessionId, runningIds, journalOfSession, isUnseen, busy, onAttach, onArchiveRow, onOpenBoard, onNewSunx, onOpenArchive } = props;
-  /** 行排序(2026-11-15 用户裁定组头簇对齐「项目」):updated=更新时间新→旧(默认)/name=名称 */
+  useLanguage();
+  const {
+    rows, groups = null, activeSessionId, runningIds, journalOfSession, isUnseen, busy,
+    onAttach, onArchiveRow, onOpenBoard, onNewGroup, onNewSunxInGroup, onOpenGroupChat, activeSunxGroupId, onOpenArchive,
+  } = props;
   const [sortMode, setSortMode] = useState<'updated' | 'name'>('updated');
   const [sortOpen, setSortOpen] = useState(false);
-  /** 分区折叠(本组件自持——宿主只管 Projects/Recents 折叠与归档层,过滤组内聚) */
   const [open, setOpen] = useState(true);
-  /** T6 行内归档确认 morph:行级单份,他行点击即换位 */
+  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
   const [confirmId, setConfirmId] = useState('');
   useConfirmOutsideCancel(confirmId, () => setConfirmId(''));
-  // 已归档行不进分组(2026-11-24 归档层共源根修:滤行从 useMenuSunx 移到本渲染面——行集同时
-  // 供「归档 Sunx」层取 archived===true,分组只留未归档;计数 chip 同口径滤后计数)
+
   const visibleRows = useMemo(() => (rows === null ? null : rows.filter((r) => r.archived !== true)), [rows]);
-  /** 平铺单列(2026-11-15 用户裁定:工作区分节头退役)——排序后直出,行与最近会话同款 */
-  const sorted = useMemo(() => {
-    if (visibleRows === null) return null;
-    const list = [...visibleRows];
-    if (sortMode === 'name') list.sort((a, b) => (a.title ?? a.id).localeCompare(b.title ?? b.id));
-    else list.sort((a, b) => b.updatedAt - a.updatedAt);
-    return list;
-  }, [visibleRows, sortMode]);
-  // SUNX 分组常驻(2026-11-15 用户裁定「SUNX分组常驻」:空组不再整块隐——组头恒显+空态行
-  // 引导创建;装载中 null 同口径=区块随数据在场,不闪占位)
+
+  const groupViews = useMemo<GroupView[]>(() => {
+    const base: GroupView[] = [];
+    const seen = new Set<string>();
+    const add = (id: string, name: string, isDefault: boolean): void => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      base.push({ id, name, isDefault, members: [] });
+    };
+    if (groups !== null && groups.length > 0) {
+      for (const g of groups) add(g.id, g.isDefault === true && g.name === '默认群组' ? t('Default group', '默认群组') : g.name, g.isDefault === true);
+    } else {
+      add(DEFAULT_GROUP_ID, t('Default group', '默认群组'), true);
+    }
+    for (const r of visibleRows ?? []) {
+      const gid = r.groupId !== undefined && r.groupId !== '' ? r.groupId : DEFAULT_GROUP_ID;
+      if (!seen.has(gid)) add(gid, gid, false);
+    }
+    const byId = new Map(base.map((g) => [g.id, g]));
+    for (const r of visibleRows ?? []) {
+      const gid = r.groupId !== undefined && r.groupId !== '' ? r.groupId : DEFAULT_GROUP_ID;
+      byId.get(gid)?.members.push(r);
+    }
+    for (const g of base) {
+      if (sortMode === 'name') g.members.sort((a, b) => (a.title ?? a.id).localeCompare(b.title ?? b.id));
+      else g.members.sort((a, b) => b.updatedAt - a.updatedAt);
+    }
+    return base;
+  }, [groups, sortMode, t, visibleRows]);
+
+  const total = visibleRows?.length ?? 0;
+
+  const toggleGroup = (gid: string): void => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(gid)) next.delete(gid);
+      else next.add(gid);
+      writeCollapsed(next);
+      return next;
+    });
+  };
+
   return (
     <>
       <div
@@ -75,14 +129,8 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
       >
         <span>{t('SUNX', 'SUNX')}</span>
         <ChevronRight size={14} strokeWidth={2} aria-hidden="true" className={`sx-side-chev${open ? ' open' : ''}`} />
-        {/* 组头动作簇(2026-11-15 用户裁定:数量/排序/归档/看板/新建——对齐「项目」组头同款簇;
-            数量值在簇内、看板钮左侧——同日二轮裁定「数量跟随在看板图标左侧」) */}
         <span className="sx-side-head-actions">
-          {/* 数量值:sunx 行数计数 chip(装载中 null 不显;滤后口径=未归档行数) */}
-          {visibleRows !== null && (
-            <span className="sx-sunx-count" aria-label="sunx count">{visibleRows.length}</span>
-          )}
-          {/* 看板钮(可选 guard):onOpenBoard 接线才渲染 */}
+          {visibleRows !== null && <span className="sx-sunx-count" aria-label="sunx count">{total}</span>}
           {onOpenBoard !== undefined && (
             <button
               type="button"
@@ -90,15 +138,11 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
               aria-label="sunx board"
               data-tip={t('Sunx board', 'Sunx 看板')}
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenBoard();
-              }}
+              onClick={(e) => { e.stopPropagation(); onOpenBoard(); }}
             >
               <KanbanSquare size={14} strokeWidth={1.75} />
             </button>
           )}
-          {/* 排序钮+二选弹层(SortPop 共用件,PROJECTS 三选同构) */}
           <SortPop
             open={sortOpen}
             ariaLabel={t('Sort Sunx', 'Sunx 排序')}
@@ -113,7 +157,6 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
             onToggle={() => setSortOpen((v) => !v)}
             buttonMouseDown={(e) => e.stopPropagation()}
           />
-          {/* 归档入口(可选 guard):进归档层(宿主 archiveOpen 整替) */}
           {onOpenArchive !== undefined && (
             <button
               type="button"
@@ -121,66 +164,113 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
               aria-label="archive sunx"
               data-tip={t('Archive Sunx', '归档 Sunx')}
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenArchive();
-              }}
+              onClick={(e) => { e.stopPropagation(); onOpenArchive(); }}
             >
               <Archive size={14} strokeWidth={1.75} />
             </button>
           )}
-          {/* 新建钮(可选 guard):开创建弹窗(顶部快捷区行同款弹窗) */}
-          {onNewSunx !== undefined && (
+          {onNewGroup !== undefined && (
             <button
               type="button"
               className="sx-iconbtn"
-              aria-label="new sunx header"
-              data-tip={t('New Sunx', '新建 Sunx')}
+              aria-label="new group"
+              data-tip={t('New group', '新建群组')}
               onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                onNewSunx();
-              }}
+              onClick={(e) => { e.stopPropagation(); onNewGroup(); }}
             >
-              <SunxIcon size={14} strokeWidth={1.75} />
+              <FolderPlus size={14} strokeWidth={1.75} />
             </button>
           )}
         </span>
       </div>
       <div className={`sx-collapse sx-collapse-sunx${open ? ' open' : ''}`}>
-        <ul className="recent-list" aria-label="sunx sessions">
-          {sorted !== null && sorted.length === 0 && <li className="no-sessions">{t('No Sunx yet', '暂无Sunx')}</li>}
-          {(sorted ?? []).map((sr) => {
-            const active =
-              activeSessionId !== '' &&
-              (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
-            const running = active
-              ? runningIds.has(activeSessionId)
-              : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
-            const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
-            return (
-              <SessionRowView
-                key={sr.id}
-                rowId={sr.id}
-                label={label}
-                info={{ runs: sr.runs, steps: sr.steps, createdAt: sr.createdAt, rootPath: sr.root }}
-                updatedAt={sr.updatedAt}
-                active={active}
-                running={running}
-                awaiting={sr.awaiting === true}
-                unseen={isUnseen(sr.id, sr.updatedAt)}
-                busy={busy}
-                onOpen={() => onAttach(sr.root, sr.id, sr.updatedAt)} // 条目点击=既有 attach 链
-                confirmId={confirmId}
-                onArm={() => setConfirmId(sr.id)}
-                onConfirm={() => {
-                  setConfirmId('');
-                  onArchiveRow(sr.id, true);
+        {rows !== null && (
+        <ul className="sx-sunx-groups" aria-label="sunx sessions">
+        {groupViews.map((g) => {
+          const groupOpen = !collapsed.has(g.id);
+          return (
+            <li className="sx-sunx-group" key={g.id}>
+              <div
+                className={`sx-sunx-group-head${activeSunxGroupId === g.id ? ' active' : ''}`}
+                role="button"
+                aria-expanded={groupOpen}
+                tabIndex={0}
+                onClick={() => toggleGroup(g.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggleGroup(g.id);
+                  }
                 }}
-              />
-            );
-          })}
+              >
+                <ChevronRight size={14} strokeWidth={2} className={`sx-side-chev${groupOpen ? ' open' : ''}`} aria-hidden="true" />
+                <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" className="sx-sunx-group-icon" />
+                <span className="sx-sunx-group-name">{g.name}</span>
+                <span className="sx-sunx-count">{g.members.length}</span>
+                <span className="sx-side-head-actions">
+                  {onOpenGroupChat !== undefined && (
+                    <button
+                      type="button"
+                      className="sx-iconbtn"
+                      aria-label="open group chat"
+                      data-tip={t('Open group chat', '进入群聊')}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); onOpenGroupChat(g.id); }}
+                    >
+                      <MessagesSquare size={14} strokeWidth={1.75} />
+                    </button>
+                  )}
+                  {onNewSunxInGroup !== undefined && (
+                    <button
+                      type="button"
+                      className="sx-iconbtn"
+                      aria-label="new sunx in group"
+                      data-tip={t('New Sunx in this group', '在本群新建 Sunx')}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onClick={(e) => { e.stopPropagation(); onNewSunxInGroup(g.id); }}
+                    >
+                      <SunxIcon size={14} strokeWidth={1.75} />
+                    </button>
+                  )}
+                </span>
+              </div>
+              {groupOpen && (
+                <ul className="recent-list sx-sunx-group-rows" aria-label={`sunx group ${g.name}`}>
+                  {g.members.length === 0 && <li className="no-sessions">{t('No Sunx yet', '暂无Sunx')}</li>}
+                  {g.members.map((sr) => {
+                    const active =
+                      activeSessionId !== '' &&
+                      (sr.liveSessionId === activeSessionId || journalOfSession.get(activeSessionId) === sr.id);
+                    const running = active
+                      ? runningIds.has(activeSessionId)
+                      : sr.liveSessionId !== undefined && sr.liveSessionId !== activeSessionId;
+                    const label = sr.title ?? sr.firstUser ?? t('New session', '新会话');
+                    return (
+                      <SessionRowView
+                        key={sr.id}
+                        rowId={sr.id}
+                        label={label}
+                        info={{ runs: sr.runs, steps: sr.steps, createdAt: sr.createdAt, rootPath: sr.root }}
+                        updatedAt={sr.updatedAt}
+                        active={active}
+                        running={running}
+                        awaiting={sr.awaiting === true}
+                        unseen={isUnseen(sr.id, sr.updatedAt)}
+                        busy={busy}
+                        onOpen={() => onAttach(sr.root, sr.id, sr.updatedAt)}
+                        confirmId={confirmId}
+                        onArm={() => setConfirmId(sr.id)}
+                        onConfirm={() => { setConfirmId(''); onArchiveRow(sr.id, true); }}
+                      />
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
         </ul>
+        )}
       </div>
     </>
   );

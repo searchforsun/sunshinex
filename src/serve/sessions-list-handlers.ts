@@ -8,6 +8,7 @@ import type { SessionHandlerIo } from './session-handlers';
 import { urlOf } from './daemon-wire';
 import { listSessions, markSessionArchived, sessionsDir, type SessionSidecarMeta } from '../session/journal';
 import { projectsRoot, resolveDataDir, sunxContainerDir, sunxDomainDir, channelsContainerDir } from '../config/data-dir';
+import { DEFAULT_GROUP_ID } from './sunx-groups';
 
 /**
  * 会话列表面 + 归档族（D42 端点族拆分自 session-handlers.ts，行搬运零逻辑变化）：
@@ -173,6 +174,7 @@ export function enumerateContainerSessions(opts: {
         ...(r.title !== undefined ? { title: r.title } : {}),
         ...(r.firstUser !== undefined ? { firstUser: r.firstUser } : {}),
         kind: opts.kind, // 域容器恒该 kind（裁定：容器=纯域，不读 meta，杂散目录不误标）
+        groupId: r.groupId !== undefined && r.groupId !== '' ? r.groupId : DEFAULT_GROUP_ID, // 有效归属（缺失=默认群）
         updatedAt: r.updatedAt,
         ...(r.archived === true ? { archived: true as const } : {}), // 归档行随列（sunx 面终审 Fix 4 可达性）
         ...(r.runs !== undefined ? { runs: r.runs } : {}),
