@@ -13,16 +13,31 @@ import { applyAgentEvent, sealOrphanAgentRuns, type AgentActivities } from './ta
  * 旧基线/旧板,弃)。refs 穿透 use-connection-wiring(onEvent 帧路由按窗分流直投/缓冲)。
  */
 
+/**
+ * 在飞执行体标签并集（快照 team.busy ∪ 快照 subagents）：悬空 run 封口的 busy 集合单点。
+ * spawn/后台任务子代不在成员名册（设计如此），只按 team.busy 会把仍在飞行的同步子智能体
+ * 误封「已停止」（2026-11-27 用户报障根因）。
+ */
+export function inFlightAgentNames(
+  team: ReadonlyArray<{ name: string; busy: boolean }>,
+  subagents: readonly string[] | undefined,
+): Set<string> {
+  return new Set([...team.filter((m) => m.busy).map((m) => m.name), ...(subagents ?? [])]);
+}
+
 interface BoardSeedDeps {
   readonly sessionRef: MutableRefObject<string>;
   /** G14.2xx 运行态对表(零额外请求,复用 reseed 快照的 status 权威) */
   readonly setRunningIds: (f: (s: ReadonlySet<string>) => ReadonlySet<string>) => void;
   readonly setProjection: (f: (p: SessionProjection) => SessionProjection) => void;
   readonly bumpActs: (sessionId: string, f: (a: AgentActivities) => AgentActivities) => void;
-  /** 快照权威 busy 成员名(影子水合落定后封悬空 run 共用) */
+  /** 快照权威在飞标签(team.busy ∪ subagents;影子水合落定后封悬空 run 共用) */
   readonly busyTeamRef: MutableRefObject<ReadonlySet<string>>;
   /** 已收到至少一次快照 team 段——水合在此之前不封(防刷新中途误封在飞流) */
   readonly busyTeamReadyRef: MutableRefObject<boolean>;
+  /** 快照 status 权威:true=会话在飞。在飞会话不封悬空轮——同步 spawn 子代必然随父轮在飞，
+   *  父轮未收口前任何「未收口 run」都只能是在飞而非悬空（2026-11-27 报障守门） */
+  readonly sessionLiveRef: MutableRefObject<boolean>;
 }
 
 export function useBoardSeed(deps: BoardSeedDeps): {
@@ -37,7 +52,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
   /** 面板刷新(智能体团队/任务板刷新钮、打开即刷):快照整替 + 近期帧 seq 门重放 */
   refreshFromSnapshot: (snap: SnapshotResponse) => void;
 } {
-  const { sessionRef, setRunningIds, setProjection, bumpActs, busyTeamRef, busyTeamReadyRef } = deps;
+  const { sessionRef, setRunningIds, setProjection, bumpActs, busyTeamRef, busyTeamReadyRef, sessionLiveRef } = deps;
   /** G6 板投影 seq 门:播种窗(快照在途)内 board/delegation 帧缓冲(与 Chat pendingRef 同构
    *  {seq, e}[])——onSeeded 整替快照板后过滤重放;窗由 Chat reseed 生命周期驱动 */
   const boardPendingRef = useRef<Array<{ e: SessionEvent; seq: number }>>([]);
@@ -52,6 +67,7 @@ export function useBoardSeed(deps: BoardSeedDeps): {
     // 会话切换/重连：busy 权威随新快照再立，避免沿用上一会话 busy 名误留悬空 run
     busyTeamReadyRef.current = false;
     busyTeamRef.current = new Set();
+    sessionLiveRef.current = false;
   };
 
   /** G5 Chat 播种回调:快照权威态回填 App 投影——team(事件流无此面)+board/delegations
@@ -98,12 +114,16 @@ export function useBoardSeed(deps: BoardSeedDeps): {
         if (replayActs && sessionRef.current !== '') bumpActs(sessionRef.current, (a) => applyAgentEvent(a, f.e));
       }
     }
-    const busy = new Set(nextTeam.filter((m) => m.busy).map((m) => m.name));
+    // 在飞权威=team.busy ∪ 快照 subagents（spawn/后台任务子代不在成员名册——只按 busy 名册封，
+    //  同步派发的在飞子代会被误封「已停止」，2026-11-27 用户报障根因）
+    const busy = inFlightAgentNames(nextTeam, snap.subagents);
     busyTeamRef.current = busy;
     busyTeamReadyRef.current = true;
+    sessionLiveRef.current = snap.status === 'running';
     setProjection((p) => ({ ...p, board: nextBoard, delegations: nextDelegations, team: nextTeam, teams: nextTeams }));
-    // 重启后 journal 未收口 run 与板 cancelled 对齐：非 busy 成员封悬空转圈
-    if (sessionRef.current !== '') {
+    // 重启后 journal 未收口 run 与板 cancelled 对齐：仅空闲会话封悬空转圈——在飞会话里未收口
+    //  run 必属在飞子代（同步 spawn 随父轮存活），封了就是「实际运行中却显示已停止」
+    if (sessionRef.current !== '' && !sessionLiveRef.current) {
       bumpActs(sessionRef.current, (a) => sealOrphanAgentRuns(a, busy));
     }
   };

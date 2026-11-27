@@ -105,6 +105,9 @@ interface SessionSnapshot {
   status: 'idle' | 'running';
   lastSeq: number;
   team: Array<{ name: string; busy: boolean; teamId?: string; createdAt?: number }>;
+  /** 在飞子智能体标签（spawn/后台任务子代——不在 team 名册，2026-11-27）:GUI 悬空 run 封口的
+   *  第二权威（与 team.busy 并集），防在飞子代被误封「已停止」；重启后恒空=悬空轮照旧封口 */
+  subagents: string[];
   /** 工作区 AgentTeam 注册表投影（teamId/name/createdAt） */
   teams: AgentTeam[];
   /** G10-C1b 切换回显段:model=当前选择 id(undefined=缺省主模型/单模型);mode=会话权限态 */
@@ -2132,6 +2135,7 @@ ${this.sessionCharter ?? ''}` }
         };
       }),
       teams: this.runtimeImpl.harness.agentTeams.list(),
+      subagents: this.runtimeImpl.harness.runner.inFlightNames(),
     };
   }
 

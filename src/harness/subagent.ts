@@ -370,6 +370,18 @@ export class SubagentRunner {
     this.parentSignal = undefined;
   }
 
+  /** 在飞子智能体标签（同名并发按事件面 finalLabel 口径展开 #N）。GUI 悬空 run 封口在 team.busy
+   *  之外的唯一权威：spawn/后台任务子代不在成员名册（设计如此），只凭 busy 名册会把在飞轮误封
+   *  「已停止」（2026-11-27 用户报障「同步派发的子智能体显示已停止，实际运行中」） */
+  inFlightNames(): string[] {
+    const out: string[] = [];
+    for (const [label, n] of this.inFlightLabels) {
+      out.push(label);
+      for (let i = 2; i <= n; i += 1) out.push(`${label}#${i}`);
+    }
+    return out;
+  }
+
   /** 追加目标三态解析（fail-fast 不静默新建）：在飞 → INVALID_STATE（先 task_wait 等终态）；未知名 →
    *  INVALID_ARG 带可续跑键清单（前 12 个防长清单击穿观察）；命中 → 累计步。键空间=label ∪ 后台任务 id */
   private lookupResumable(key: string): Result<StepRecord[]> {

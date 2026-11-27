@@ -178,7 +178,7 @@ export function bindShadowHydration(
   bumpActs: (sessionId: string, fold: (a: AgentActivities) => AgentActivities) => void,
   connInstance: Connection | null,
   dropPendingActs?: (sessionId: string) => void,
-  busyTeam?: { ready: MutableRefObject<boolean>; names: MutableRefObject<ReadonlySet<string>> },
+  busyTeam?: { ready: MutableRefObject<boolean>; names: MutableRefObject<ReadonlySet<string>>; live: MutableRefObject<boolean> },
   settle?: { dropPendingFolds: (sessionId: string) => void; flushActsNow: () => void },
 ): void {
   const { shadowHydrateRef, shadowHydratedRef, shadowHydratingRef, shadowBufRef, shadowCutRef } = refs;
@@ -200,8 +200,9 @@ export function bindShadowHydration(
         for (const { e, seq } of buf()) {
           if (seq > cut) acts = fold(acts, e); // 读档后到达的帧只在缓冲
         }
-        // 快照已到才封：整替会盖掉 seed 侧封口，须在此再封非 busy 悬空 run
-        if (busyTeam?.ready.current === true) {
+        // 快照已到且会话空闲才封：整替会盖掉 seed 侧封口，须在此再封非在飞悬空 run；
+        // 在飞会话（父轮未收口）的未收口 run 必属在飞子代，封了就是「运行中显示已停止」
+        if (busyTeam?.ready.current === true && busyTeam.live.current !== true) {
           acts = sealOrphanAgentRuns(acts, busyTeam.names.current);
         }
         shadowBufRef.current.delete(sessionId);

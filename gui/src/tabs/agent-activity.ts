@@ -82,7 +82,8 @@ function isInboundStep(e: SessionEvent): boolean {
 /**
  * 重启/水合后封悬空 run：journal 里未收口的 model-start 会让 chat.status 停在 running，
  * 转录页底部永转；板侧 recoverOnLoad 已把任务标 cancelled，两边不一致。
- * busyNames = 快照 team 段中 busy=true 的成员——仅跳过仍在飞的执行体（页面刷新保活流）。
+ * busyNames = 在飞执行体标签 = 快照 team 段 busy=true 的成员 ∪ 快照 subagents（spawn/后台任务
+ * 子代不在成员名册，设计如此）——漏掉后者会把「同步派发、实际在跑」的子智能体误封「已停止」。
  */
 export function sealOrphanAgentRuns(
   s: AgentActivities,

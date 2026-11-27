@@ -218,9 +218,11 @@ function AppShell(): JSX.Element {
   };
   /** 板播种窗(use-board-seed 单点,2026-10-27 技术债轮 D53 批F 外提):G6 seq 门缓冲/重开/
    *  快照回填一条域一条文件;refs 穿透 use-connection-wiring 帧路由 */
-  /** 快照 team.busy 权威(封悬空 agent run；与影子水合共用) */
+  /** 在飞执行体权威 = 快照 team.busy ∪ subagents(封悬空 agent run；与影子水合共用) */
   const busyTeamRef = useRef<ReadonlySet<string>>(new Set());
   const busyTeamReadyRef = useRef(false);
+  /** 快照 status 权威(在飞会话不封悬空轮;2026-11-27「运行中显示已停止」守门) */
+  const sessionLiveRef = useRef(false);
   const { boardPendingRef, boardSeedingRef, reopenBoardSeedWindow, seedFromSnapshot, boardRecentRef, refreshFromSnapshot } = useBoardSeed({
     sessionRef,
     setRunningIds,
@@ -228,6 +230,7 @@ function AppShell(): JSX.Element {
     bumpActs,
     busyTeamRef,
     busyTeamReadyRef,
+    sessionLiveRef,
   });
   /** 拖宽在途清理句柄:mouseup 解绑外,卸载兜底解绑(会话切走/组件卸毁不泄漏 window 监听) */
   const resizeCleanupRef = useRef<(() => void) | null>(null);
@@ -292,7 +295,7 @@ function AppShell(): JSX.Element {
     bumpActs,
     connInstance,
     (sid) => dropPendingActsRef.current?.(sid),
-    { ready: busyTeamReadyRef, names: busyTeamRef },
+    { ready: busyTeamReadyRef, names: busyTeamRef, live: sessionLiveRef },
     { dropPendingFolds, flushActsNow },
   );
 
