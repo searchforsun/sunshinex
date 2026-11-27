@@ -1,4 +1,4 @@
-import { test, describe } from 'node:test';
+import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type * as http from 'node:http';
 import * as fs from 'node:fs';
@@ -217,14 +217,30 @@ describe('通道 handlers(Task 9)', () => {
 });
 
 describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,真正的删除各种配置和目录」)', () => {
+  /** HOME 自钉（2026-11-27 事故根修）：本 describe 的用例会**写** settings.json——裸跑
+   *  `node --test dist/...` 未预载 scripts/test-env.cjs 时 process.env.HOME 是真实用户目录，
+   *  用例夹具会把真实全局配置整档覆盖（实测把用户 settings.json 写成 {version:1,channels:[]}）。
+   *  这里不依赖预载，自建私有 home 并还原，任何跑法都碰不到真实档。 */
+  let prevHome: string | undefined;
+  let homeDir = '';
+  beforeEach(() => {
+    prevHome = process.env.HOME;
+    homeDir = tmpdir('sunshinex-ch-home-');
+    process.env.HOME = homeDir;
+  });
+  afterEach(() => {
+    if (prevHome === undefined) delete process.env.HOME;
+    else process.env.HOME = prevHome;
+    fs.rmSync(homeDir, { recursive: true, force: true });
+  });
   test('条目移除+绑定解绑+在座释放+聊天域目录真删;缺条目 404', () => {
     const dir = tmpdir('sunshinex-ch-del-');
     const prevCh = process.env.SUNSHINEX_CHANNELS_DIR;
     const container = path.join(dir, 'channels');
     process.env.SUNSHINEX_CHANNELS_DIR = container;
     try {
-      // 全局 settings(HOME 已被 test-env 钉到私有 home):channels 带 del1/keep 两条
-      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      // 全局 settings(HOME 由 describe 钩子自钉到用例私有 home,裸跑也不碰真实档):channels 带 del1/keep 两条
+      const settingsPath = path.join(homeDir, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
       fs.writeFileSync(
         settingsPath,
@@ -276,7 +292,7 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
     const container = path.join(dir, 'channels');
     process.env.SUNSHINEX_CHANNELS_DIR = container;
     try {
-      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      const settingsPath = path.join(homeDir, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
       fs.writeFileSync(
         settingsPath,
@@ -314,7 +330,7 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
     const container = path.join(dir, 'channels');
     process.env.SUNSHINEX_CHANNELS_DIR = container;
     try {
-      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      const settingsPath = path.join(homeDir, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
       fs.writeFileSync(
         settingsPath,
@@ -348,7 +364,7 @@ describe('DELETE /channels/:id 真删除(2026-11-23 用户裁定「弹窗确认,
     process.env.SUNSHINEX_SUNX_DIR = sunxDir;
     try {
       // settings:bad 条目(mode 非法=parseChannelsKey 跳过——解析态无此条目,raw 在)
-      const settingsPath = path.join(process.env.HOME ?? dir, '.sunshinex', 'settings.json');
+      const settingsPath = path.join(homeDir, '.sunshinex', 'settings.json');
       fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
       fs.writeFileSync(
         settingsPath,
