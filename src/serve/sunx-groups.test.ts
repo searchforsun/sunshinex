@@ -187,6 +187,17 @@ test('群主发送准备：@all 快照/归档排除、room-only、破坏件单�
   const allStatus = prepareGroupSend(gid, { text: '/status', mentionAll: true }, members);
   assert.equal(allStatus.ok, true, '非破坏命令可 @all');
 
+  // 群聊控制命令（2026-11-27）：/stop /clear /continue 识别为命令，必须显式目标，可多目标
+  for (const command of ['/stop', '/clear', '/continue']) {
+    const one = prepareGroupSend(gid, { text: command, mentions: ['jid_a'] }, members);
+    assert.equal(one.ok, true, `${command} 单目标允许`);
+    if (one.ok) assert.equal(one.prepared.command, command);
+    const allTargets = prepareGroupSend(gid, { text: command, mentionAll: true }, members);
+    assert.equal(allTargets.ok, true, `${command} 可 @all（逐个 Sunx 对应执行）`);
+    const noTarget = prepareGroupSend(gid, { text: command }, members);
+    assert.equal(noTarget.ok, false, `${command} 必须至少 1 个 @`);
+  }
+
   const badReply = prepareGroupSend(gid, { text: 'x', mentions: ['jid_a'], replyTo: 'm_nope' }, members);
   assert.equal(badReply.ok, false);
   if (!badReply.ok) assert.equal(badReply.status, 400);

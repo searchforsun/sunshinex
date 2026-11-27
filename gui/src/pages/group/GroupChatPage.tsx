@@ -33,6 +33,9 @@ import { MAIN_MIN_WIDTH } from '../../thread-width';
 import { zoomScale } from '../../ui-zoom';
 
 const GROUPS_CHANGED_EVENT = 'sunx-groups-changed';
+/** 群聊专用控制命令（2026-11-27）：/stop 暂停对应 Sunx、/clear 清其排队、/continue 恢复队列。
+ *  不并进普通会话 supported；群页 supported 取 daemon 列表后再并这三条。 */
+const SUNX_GROUP_COMMANDS = ['/stop', '/clear', '/continue'] as const;
 const DESTRUCTIVE = new Set(['/delete', '/skills-rm', '/memory-rm', '/memory-gc']);
 /** Sunx 无计划模式闭环（2026-11-27 用户裁定）：/plan 不进群命令/面板 */
 const SUNX_EXCLUDED_COMMANDS = ['/plan'] as const;
@@ -172,7 +175,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     setModel('');
     setMode('');
     void loadInitial();
-    void conn.commands().then((r) => setSupported(r.supported.filter((c) => c !== '/plan')), () => setSupported([]));
+    void conn.commands().then(
+      (r) => setSupported([...new Set([...r.supported, ...SUNX_GROUP_COMMANDS])].filter((c) => c !== '/plan')),
+      () => setSupported([...SUNX_GROUP_COMMANDS]),
+    );
     void conn.models().then((r) => setModels(r.choices), () => setModels([]));
   }, [conn, groupId, loadInitial]);
 
@@ -391,7 +397,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     md: m.text,
     ts: m.ts,
     ...(m.images !== undefined && m.images.length > 0 ? { images: m.images } : {}),
-    ...(m.kind === 'peer' ? { fromSunx: { id: m.from.id, name: m.from.name } } : {}),
+    ...(m.kind !== 'human' || m.from.kind === 'sunx'
+      ? { fromSunx: { id: m.from.id, name: m.from.name } }
+      : {}),
   }), []);
   const messageById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
 
@@ -525,6 +533,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           {messages.map((m) => {
             const quoted = m.replyTo !== undefined ? messageById.get(m.replyTo) : undefined;
             const quote = m.replyPreview;
+            /** 命令回执也来自成员（kind='command'），不能按 human/peer 二分——来源为 sunx 即左侧。 */
+            const fromMember = m.kind !== 'human' || m.from.kind === 'sunx';
             const quoteNode = quote !== undefined ? (
               <GroupQuoteLine
                 text={quote.text}
@@ -533,7 +543,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 onOpen={quoted?.seq !== undefined ? () => { void revealSeq(quoted.seq); } : undefined}
               />
             ) : null;
-            const body = m.kind === 'peer'
+            const body = fromMember
               ? (md: string) => (
                 <>
                   {quoteNode}
@@ -560,12 +570,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 <UserEntryView
                   entry={entryOf(m)}
                   conn={conn}
-                  alignLeft={m.kind === 'peer'}
-                  {...(m.kind === 'peer' ? { bubbleMaxHeight: 480 } : {})}
+                  alignLeft={fromMember}
+                  {...(fromMember ? { bubbleMaxHeight: 480 } : {})}
                   onOpenImage={setLightbox}
                   onOpenSunx={(journalId) => onOpenMember(journalId)}
                   renderBody={body}
-                  sourceSuffix={m.kind === 'peer' && m.to !== undefined ? (
+                  sourceSuffix={fromMember && m.to !== undefined ? (
                     <GroupTarget target={m.to} onOpenMember={onOpenMember} />
                   ) : undefined}
                 />
@@ -729,6 +739,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   <ComposerPlusPanel
                     conn={conn}
                     excludeCommands={SUNX_EXCLUDED_COMMANDS}
+                    extraCommands={SUNX_GROUP_COMMANDS}
                     onInsert={(text) => {
                       setInput((v) => `${v}${v === '' || v.endsWith(' ') ? '' : ' '}${text}`);
                       setPlusOpen(false);

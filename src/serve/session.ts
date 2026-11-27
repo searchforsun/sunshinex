@@ -2057,6 +2057,12 @@ ${this.sessionCharter ?? ''}` }
     return this.kernel.steerRemoveAt(seq);
   }
 
+  /** 清空排队插话（2026-11-27 群聊 /clear）：取走全部待发条目并返回条数；内核 emitSteer
+   *  广播整列快照，GUI 队列 chips 随即清空。暂停态不回滚（清队列≠恢复执行）。 */
+  clearSteer(): number {
+    return this.kernel.steerTakePending().length;
+  }
+
   /** fork 血缘读数(header 单行读+按 journalId 缓存):kind='fork' 主链分档才显(side=辅助档不显,
    *  原生档无字段=undefined)。title=父档显示题(journalDisplayTitle 单点;父同 root,fallback=root 名) */
   private forkedFromInfo(): SessionSnapshot['forkedFrom'] {

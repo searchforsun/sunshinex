@@ -572,6 +572,16 @@ export function listGroupSummaries(): SunxGroupSummary[] {
   });
 }
 
+/** 群聊专用控制命令（2026-11-27 用户裁定）：/stop 暂停对应 Sunx 执行（中断+暂停队列）、
+ *  /clear 清空对应 Sunx 排队消息、/continue 恢复其队列。不并进普通会话 COMMAND_SUPPORT，
+ *  避免普通会话命令面板出现无对应执行面的项。 */
+export const GROUP_CONTROL_COMMANDS = ['/stop', '/clear', '/continue'] as const;
+
+/** 是否群聊专用控制命令（daemon fan-out 分支用） */
+export function isGroupControlCommand(cmd: string): boolean {
+  return (GROUP_CONTROL_COMMANDS as readonly string[]).includes(cmd);
+}
+
 /** 破坏四件：只允许恰好 1 个显式成员（@all/多目标禁止发出） */
 export const GROUP_COMMAND_SINGLE_ONLY: ReadonlySet<string> = new Set(['/delete', '/skills-rm', '/memory-rm', '/memory-gc']);
 
@@ -622,7 +632,9 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
   if (input.model !== undefined && input.model.trim() === '') return { ok: false, status: 400, error: 'invalid model' };
 
   const first = input.text.trim().split(/\s+/)[0] ?? '';
-  const command = (COMMAND_SUPPORT as readonly string[]).includes(first) ? first : undefined;
+  const command = ((COMMAND_SUPPORT as readonly string[]).includes(first) || isGroupControlCommand(first))
+    ? first
+    : undefined;
   if (command !== undefined && images !== undefined) return { ok: false, status: 400, error: 'commands do not accept images' };
   if (command === '/plan') return { ok: false, status: 400, error: 'plan mode is not supported for Sunx' };
   const mentionAll = input.mentionAll === true;

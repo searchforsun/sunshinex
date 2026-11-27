@@ -22,7 +22,10 @@ async function waitFor(pred: () => Promise<boolean>, timeoutMs: number): Promise
 test('群组 HTTP：建群/归群/群列表/详情/房间/发送回执/命令/查询/改名/删除保护', async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sunshinex-group-http-'));
   const prevData = process.env.SUNSHINEX_DATA_DIR;
+  const prevSunx = process.env.SUNSHINEX_SUNX_DIR;
   process.env.SUNSHINEX_DATA_DIR = path.join(tmp, 'data');
+  // 群容器由 SUNSHINEX_SUNX_DIR 单点重定向（data-dir 头注 ②）；不设会把测试群/域写进用户 ~/.sunshinex
+  process.env.SUNSHINEX_SUNX_DIR = path.join(tmp, 'sunx');
   const daemon = new GuiDaemon({ model: new ScriptedAdapter(['{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}', '{"done":true,"reply":"ok"}']) });
   const s = await daemon.start({ port: 0, token: 'test-token' });
   const base = `http://127.0.0.1:${s.port}`;
@@ -84,6 +87,28 @@ test('群组 HTTP：建群/归群/群列表/详情/房间/发送回执/命令/�
     const commandMsg = afterCmd.messages.find((x) => x.kind === 'command' && x.command === '/status');
     assert.equal(commandMsg?.from.id, aJid, '命令结果来自目标 Sunx');
 
+    // 群聊控制命令（2026-11-27）：/clear 清排队、/stop 暂停执行+队列、/continue 恢复队列
+    const attached = await fetch(`${base}/sunx/attach`, { method: 'POST', headers: AUTH, body: JSON.stringify({ journalId: aJid }) });
+    assert.equal(attached.status, 200, 'A 显式 attach 取 live session');
+    const aLive = ((await attached.json()) as { sessionId: string }).sessionId;
+    const steer = await fetch(`${base}/session/${aLive}/steer`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '排队清理测试' }) });
+    assert.equal(steer.status, 200, '预置一条排队');
+    const clearSend = await fetch(`${base}/sunx/groups/${gid}/send`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '/clear', mentions: [aJid] }) });
+    assert.equal(clearSend.status, 200, '/clear 受理');
+    await waitFor(async () => {
+      const r = await (await fetch(`${base}/sunx/groups/${gid}/messages`, { headers: AUTH })).json() as { messages: Array<{ kind: string; command?: string; from: { id: string } }> };
+      return r.messages.some((x) => x.kind === 'command' && x.command === '/clear' && x.from.id === aJid);
+    }, 5000);
+    const snapCleared = await (await fetch(`${base}/session/${aLive}/snapshot`, { headers: AUTH })).json() as { queued: unknown[] };
+    assert.equal(snapCleared.queued.length, 0, '/clear 清空排队');
+
+    const stopSend = await fetch(`${base}/sunx/groups/${gid}/send`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '/stop', mentions: [aJid] }) });
+    assert.equal(stopSend.status, 200, '/stop 受理');
+    await waitFor(async () => (await (await fetch(`${base}/session/${aLive}/snapshot`, { headers: AUTH })).json() as { queuePaused: boolean }).queuePaused === true, 5000);
+    const continueSend = await fetch(`${base}/sunx/groups/${gid}/send`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '/continue', mentions: [aJid] }) });
+    assert.equal(continueSend.status, 200, '/continue 受理');
+    await waitFor(async () => (await (await fetch(`${base}/session/${aLive}/snapshot`, { headers: AUTH })).json() as { queuePaused: boolean }).queuePaused === false, 5000);
+
     const destructive = await fetch(`${base}/sunx/groups/${gid}/send`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '/delete', mentionAll: true }) });
     assert.equal(destructive.status, 400, '@all 破坏件禁止');
     const roomOnly = await fetch(`${base}/sunx/groups/${gid}/send`, { method: 'POST', headers: AUTH, body: JSON.stringify({ text: '仅记录' }) });
@@ -106,6 +131,8 @@ test('群组 HTTP：建群/归群/群列表/详情/房间/发送回执/命令/�
     await s.close();
     if (prevData === undefined) delete process.env.SUNSHINEX_DATA_DIR;
     else process.env.SUNSHINEX_DATA_DIR = prevData;
+    if (prevSunx === undefined) delete process.env.SUNSHINEX_SUNX_DIR;
+    else process.env.SUNSHINEX_SUNX_DIR = prevSunx;
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

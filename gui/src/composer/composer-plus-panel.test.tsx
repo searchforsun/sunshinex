@@ -24,4 +24,12 @@ describe('+ 面板分区收起(普通态)', () => {
     expect(await screen.findByText('Commands')).toBeDefined();
     applyDeveloperMode(false);
   });
+  it('extraCommands 把群聊专用控制命令补入命令区', async () => {
+    applyDeveloperMode(true);
+    render(<ComposerPlusPanel conn={conn} onInsert={vi.fn()} extraCommands={['/stop', '/clear', '/continue']} />);
+    expect(await screen.findByText('/stop')).toBeDefined();
+    expect(screen.getByText('/clear')).toBeDefined();
+    expect(screen.getByText('/continue')).toBeDefined();
+    applyDeveloperMode(false);
+  });
 });

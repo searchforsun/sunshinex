@@ -11,9 +11,10 @@ import type { ApprovalDecision, AskUserAnswer } from '../types';
 import { purgeSession, purgeSideJournals, sideJournalsOf, readSessionMeta, sessionsDir, writeSessionMeta } from "../session/journal";
 import { listCommands } from './commands';
 import { COMMAND_SUPPORT, runCommand } from './session-commands';
+import { t } from '../i18n';
 import { deliverToTarget, listSunxPeers, deliverSunxPeerMessage } from './sunx-peers';
 import {
-  appendRoomCommand, appendRoomDelivery, createGroup, deleteGroup, groupById, listGroupMembers,
+  appendRoomCommand, appendRoomDelivery, createGroup, deleteGroup, groupById, isGroupControlCommand, listGroupMembers,
   listGroupSummaries, prepareGroupSend, readRoom, replyPreviewOf, renameGroup, searchRoom,
   type GroupSendPrepared, type SunxRoomTarget,
 } from './sunx-groups';
@@ -2203,10 +2204,12 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
   /** 群主 fan-out：逐目标顺序执行；正常文本=用户消息（core），命令=daemon 命令通道；逐目标回执落房间。
    *  HTTP 已返回（targets 快照），页面靠房间轮询看饼图进度。 */
   private async fanoutGroupSend(prepared: GroupSendPrepared): Promise<void> {
+    const control = prepared.command !== undefined && isGroupControlCommand(prepared.command);
     for (const target of prepared.targets) {
       let outcome: { ok: boolean; queued?: boolean; error?: string };
       try {
-        const settingError = await this.applyGroupSettings(prepared, target);
+        // 控制命令不改模型/权限：/stop 在运行中发时 setMode 会 busy，且这三条只操作运行/队列。
+        const settingError = control ? undefined : await this.applyGroupSettings(prepared, target);
         if (settingError !== undefined) {
           outcome = { ok: false, error: settingError };
         } else if (prepared.command !== undefined) {
@@ -2216,6 +2219,24 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
             outcome = { ok: false, error: 'unknown or not openable Sunx instance' };
           } else if (readSessionMeta(rt.dataDir, target.id).archived === true) {
             outcome = { ok: false, error: 'archived Sunx instance' };
+          } else if (control) {
+            try {
+              const text = this.runGroupControl(rt, prepared.command);
+              const runSeq = rt.openRunSeq();
+              appendRoomCommand(prepared.groupId, {
+                from: { id: target.id, name: target.name, kind: 'sunx', ...(runSeq > 0 ? { runSeq } : {}) },
+                to: prepared.owner,
+                text,
+                command: prepared.command,
+                replyTo: prepared.messageId,
+                ...(replyPreviewOf(prepared.groupId, prepared.messageId) !== undefined
+                  ? { replyPreview: replyPreviewOf(prepared.groupId, prepared.messageId)! }
+                  : {}),
+              });
+              outcome = { ok: true };
+            } catch (e) {
+              outcome = { ok: false, error: e instanceof Error ? e.message : String(e) };
+            }
           } else {
             const captured: string[] = [];
             let result: 'ok' | 'busy' | 'unsupported' | 'error' = 'error';
@@ -2269,6 +2290,29 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
       }
     }
   }
+  /** 群聊控制命令执行（2026-11-27）：/stop=中断当前执行并暂停队列；/clear=清空排队；
+   *  /continue=恢复队列（idle 有排队即续跑第一条）。返回落房间的回执文本。 */
+  private runGroupControl(rt: SessionRuntime, cmd: string): string {
+    if (cmd === '/stop') {
+      try {
+        rt.interrupt(); // 无在跑 run 时 interrupt 会抛；/stop 仍把队列置暂停
+      } catch {
+        /* idle：仅暂停队列 */
+      }
+      rt.queuePause();
+      return t('Execution paused', '已暂停执行');
+    }
+    if (cmd === '/clear') {
+      const n = rt.clearSteer();
+      return t(`Cleared ${n} queued message${n === 1 ? '' : 's'}`, `已清理 ${n} 条排队消息`);
+    }
+    if (cmd === '/continue') {
+      rt.queueResume();
+      return t('Queue resumed', '已恢复排队');
+    }
+    throw new Error('unsupported command');
+  }
+
   private async handleSubmit(req: http.IncomingMessage, res: http.ServerResponse, id: string | undefined): Promise<void> {
     // GUI 发起轮打标(2026-11-23 用户裁定「sunshinex 的输入回答不应该让飞书收到」):通道绑定
     // 会话的 HTTP 提交进引擎抑制集,该轮出站不投影进 IM(engine done 帧清位)。

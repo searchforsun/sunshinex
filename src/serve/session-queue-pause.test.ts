@@ -31,6 +31,27 @@ function makeSession(model: import('../model/adapter').ModelAdapter): SessionRun
   });
 }
 
+test('clearSteer 清空全部排队（群聊 /clear）：返回条数、队列归零；暂停态保留待 /continue', async () => {
+  const model = {
+    provider: 'scripted-clear',
+    chat: async () => JSON.stringify({ done: true, reply: 'unused' }),
+  } as unknown as import('../model/adapter').ModelAdapter;
+  const s = makeSession(model);
+  try {
+    s.steer('q1');
+    s.steer('q2');
+    assert.equal(s.snapshotResponse().queued.length, 2);
+    s.queuePause();
+    assert.equal(s.clearSteer(), 2, '返回清掉的条数');
+    assert.equal(s.snapshotResponse().queued.length, 0, '队列清空');
+    assert.equal(s.snapshotResponse().queuePaused, true, '清队列不等于恢复执行');
+    s.queueResume();
+    assert.equal(s.snapshotResponse().queuePaused, false);
+  } finally {
+    await s.teardown().catch(() => undefined);
+  }
+});
+
 test('队列暂停:暂停态轮收束不自动发出(待发留存+queuePaused=true);恢复即按序续发', async () => {
   const replies = [
     JSON.stringify({ done: true, reply: '第一轮完成' }),

@@ -129,6 +129,17 @@ describe('GroupChatPage', () => {
     expect(aside!.querySelector('.sx-setting-input')).not.toBeNull();
   });
 
+  it('群聊专用控制命令 /stop /clear /continue 并入命令面板（目标仍由 @ 选择）', async () => {
+    const conn = makeConn();
+    render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('发消息到群聊…') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: '/stop' } });
+    for (const name of ['/stop', '/clear', '/continue']) {
+      expect(await screen.findByRole('menuitem', { name })).toBeDefined();
+    }
+  });
+
   it('成员 ask 卡在群页弹出：来自 A；选项提交走 replyAsk（同一 pid），提交后撤卡', async () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);

@@ -50,6 +50,7 @@ export function ComposerPlusPanel({
   onInsert,
   onAttachImages,
   excludeCommands,
+  extraCommands,
 }: {
   conn: PlusPanelConn;
   /** 在场 = 会话内:文件区可浏览(tree);欢迎页不传 → 文件区不渲染 */
@@ -61,6 +62,9 @@ export function ComposerPlusPanel({
   onAttachImages?: (files: File[]) => void;
   /** 命令区剔除项（群聊页 Sunx 无计划模式：'/plan' 不进 + 面板；普通会话缺省零变化） */
   excludeCommands?: readonly string[];
+  /** 群聊专用命令（/stop /clear /continue）：daemon /commands 不列，由调用面补入面板；
+   *  描述继续走 cmdDescOf 内置双语表。 */
+  extraCommands?: readonly string[];
 }): JSX.Element {
   const [cmds, setCmds] = useState<Array<{ name: string; desc: string }> | null>(null);
   const [skills, setSkills] = useState<Array<{ id: string; desc: string }> | null>(null);
@@ -80,11 +84,15 @@ export function ComposerPlusPanel({
         if (!alive) return;
         // G14.145 只列可用命令(supported 在场即过滤)+行内说明(descriptions 键不带斜杠,双键兼容)
         const supported = Array.isArray(r.supported) ? r.supported : [];
-        setCmds(
-          r.commands
-            .filter((c) => (supported.length === 0 || supported.includes(c)) && !(excludeCommands?.includes(c) ?? false))
-            .map((c) => { const bare = c.replace(/^\//, ''); return { name: c, desc: r.descriptions[c] ?? r.descriptions[bare] ?? '' }; }),
-        );
+        const listed = r.commands
+          .filter((c) => (supported.length === 0 || supported.includes(c)) && !(excludeCommands?.includes(c) ?? false))
+          .map((c) => { const bare = c.replace(/^\//, ''); return { name: c, desc: r.descriptions[c] ?? r.descriptions[bare] ?? '' }; });
+        // 群聊专用控制命令不在 daemon /commands 清单：调用面补入（去重/剔排除项）
+        const names = new Set(listed.map((c) => c.name));
+        const extra = (extraCommands ?? [])
+          .filter((c) => !names.has(c) && !(excludeCommands?.includes(c) ?? false))
+          .map((c) => ({ name: c, desc: '' }));
+        setCmds([...listed, ...extra]);
       },
       () => {
         if (alive) setCmds([]);
@@ -93,7 +101,7 @@ export function ComposerPlusPanel({
     return () => {
       alive = false;
     };
-  }, [conn, excludeCommands]);
+  }, [conn, excludeCommands, extraCommands]);
 
   useEffect(() => {
     let alive = true;
