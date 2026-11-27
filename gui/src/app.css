@@ -4758,9 +4758,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-target-chip .sx-schedule-target-type { color: var(--fg-secondary); flex: none; }
 .sx-schedule-target-chip .sx-schedule-target-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sx-schedule-target-chip svg { flex: none; }
-/* 卡片目标行独立成行（2026-11-21）：与名称同挤首行会把任务名截断 */
+/* 卡片目标行独立成行（2026-11-21）：与名称同挤首行会把任务名截断。
+   用户复裁定：不要 chip 的灰底（像 hover 态）；图标与左缘时钟图标同 x/同大小同线宽 */
 .sx-schedule-target-row { display: flex; min-width: 0; }
-.sx-schedule-target-row .sx-schedule-target-chip { max-width: 100%; }
+.sx-schedule-target-row .sx-schedule-target-chip { max-width: 100%; padding: 0; border-radius: 0; background: transparent; }
 /* 截止时间：调度行右端（自绘月历 + 右侧时/分滚轮；不用原生日期/时间控件）
    2026-11-21 用户裁定「时分应该显示在右侧，就是滚轮」：弹层加宽为 日历 | 时分轮 两栏 */
 .sx-schedule-deadline-anchor { position: relative; margin-left: auto; }

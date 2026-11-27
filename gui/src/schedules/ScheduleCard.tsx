@@ -131,11 +131,11 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
           data-tip={`${t(target.type.en, target.type.zh)} · ${target.label}`}
         >
           {target.kind === 'project' ? (
-            <Folder size={13} strokeWidth={1.75} aria-hidden="true" />
+            <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
           ) : target.kind === 'sunx' ? (
-            <SunxIcon size={15} strokeWidth={1.75} />
+            <SunxIcon size={14} strokeWidth={1.75} />
           ) : (
-            <MessageSquare size={13} strokeWidth={1.75} aria-hidden="true" />
+            <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
           )}
           <span className="sx-schedule-target-type">{t(target.type.en, target.type.zh)}</span>
           <span className="sx-schedule-target-label">{target.label}</span>
