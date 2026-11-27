@@ -4899,8 +4899,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 [data-theme='light'] .sx-schedules-content > .sx-schedule-error { color: color-mix(in srgb, var(--err) 78%, var(--fg)); }
 .sx-schedules-content > .sx-schedule-error { margin: 0 0 12px; color: var(--err); font-size: var(--sx-font); }
 .sx-schedules-content > .sx-schedule-notice { margin: 0 0 12px; color: var(--fg-tertiary); font-size: var(--sx-font); }
-/* 通知改上部居中 toast（2026-11-21 用户裁定「可以在上部中间触发 toast 提示,普通 info 提示」） */
-.sx-schedule-toast { top: 56px; bottom: auto; }
+/* 通知改上部居中 toast（2026-11-21 用户裁定「可以在上部中间触发 toast 提示,普通 info 提示」;
+   2026-11-21 复裁定「全局上下 toast 是右侧居中,不包含左侧菜单」）：挂在 .sx-schedules-layer
+   （fixed 层=内容区,left 已让过菜单）内做绝对定位——水平居中只对内容区,不再对整窗 */
+.sx-schedule-toast { position: absolute; top: 14px; bottom: auto; left: 50%; }
 .sx-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 760px) { .sx-schedule-grid { grid-template-columns: 1fr; } }
 /* 卡面恒三行:开关+名称+⋯ / 内容两行截断 / 倒计时。悬停仅微提亮,焦点环走 accent 22% 混色 */
