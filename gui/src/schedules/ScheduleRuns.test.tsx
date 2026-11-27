@@ -201,4 +201,18 @@ describe('ScheduleRuns', () => {
     fireEvent.click(buttons[1]!);
     expect(onOpenSession).toHaveBeenCalledWith('jid-b', '/w/b');
   });
+
+  it('目标列：SUNX 记录展示类型+名字；打开会话带 kind=sunx（2026-11-21）', async () => {
+    const { conn } = makeConn([
+      makeRun({ target: 'sunx', targetLabel: '运维助手', journalId: 'jsx', root: 'D:/sunx-domain' }),
+      makeRun({ target: 'channel', targetLabel: '飞书 · 项目群', journalId: 'jch', root: 'D:/chan-domain' }),
+    ]);
+    const onOpenSession = vi.fn();
+    render(<ScheduleRuns conn={conn} job={job} onOpenSession={onOpenSession} />);
+    expect(await screen.findByText('SUNX')).toBeDefined();
+    expect(screen.getByText('运维助手')).toBeDefined();
+    expect(screen.getByText('飞书 · 项目群')).toBeDefined();
+    fireEvent.click(screen.getAllByRole('button', { name: /Open session|打开会话/ })[0]!);
+    expect(onOpenSession).toHaveBeenCalledWith('jsx', 'D:/sunx-domain', 'sunx');
+  });
 });

@@ -5,6 +5,23 @@ export type ScheduleMode = 'read-only' | 'acceptEdits' | 'full-access';
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'stopped' | 'skipped' | 'interrupted';
 export type RunTrigger = 'schedule' | 'catch-up' | 'manual';
 
+/** 指令落点（2026-11-21 用户裁定三种）：project=按工作区新建会话（原行为，不动）；
+ *  sunx=发给已选 Sunx 会话（不新建）；channel=发给通道聊天对应的在座会话（不新建）。
+ *  缺席=project（旧任务零迁移）。 */
+export type ScheduleTargetKind = 'project' | 'sunx' | 'channel';
+
+/** 目标选择字段（job/draft 共用；执行只认 id，label 是展示快照） */
+export interface ScheduleTargetFields {
+  target?: ScheduleTargetKind;
+  /** 显示名快照：项目=工作区名 / SUNX=会话标题 / 通道=应用·聊天名（卡片/记录展示，执行不依赖） */
+  targetLabel?: string;
+  /** SUNX 目标：目标会话 journal id */
+  targetJournalId?: string;
+  /** 通道目标：通道配置 id + 聊天 id（binding key 两段） */
+  targetChannelId?: string;
+  targetChatId?: string;
+}
+
 export interface Recurrence {
   unit: CadenceUnit;
   every: number;
@@ -27,9 +44,12 @@ export interface RunRecord {
   root: string;
   error?: string;
   seconds?: number;
+  /** 本轮落点类型/显示名（2026-11-21）：执行记录列表展示目标用 */
+  target?: ScheduleTargetKind;
+  targetLabel?: string;
 }
 
-export interface ScheduleJob {
+export interface ScheduleJob extends ScheduleTargetFields {
   id: string;
   name: string;
   prompt: string;
@@ -55,7 +75,7 @@ export interface StoreFile {
   jobs: ScheduleJob[];
 }
 
-export interface ScheduleDraft {
+export interface ScheduleDraft extends ScheduleTargetFields {
   name: string;
   prompt: string;
   root: string;
@@ -76,6 +96,7 @@ export const SCHEDULE_RUN_LIMIT = 100;
 
 const UNITS: readonly CadenceUnit[] = ['minute', 'hour', 'day', 'weekday', 'week', 'month', 'year'];
 const MODES: readonly ScheduleMode[] = ['read-only', 'acceptEdits', 'full-access'];
+const TARGETS: readonly ScheduleTargetKind[] = ['project', 'sunx', 'channel'];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -144,6 +165,20 @@ export function validateDraft(raw: unknown, now: number): { ok: true; value: Sch
     return { ok: false, error: 'invalid effort' };
   }
   if (typeof raw.mode !== 'string' || !(MODES as readonly string[]).includes(raw.mode)) return { ok: false, error: 'invalid mode' };
+  // 指令落点（2026-11-21 用户裁定三种）：sunx/channel 必须带齐目标 id；project（旧缺省）不带
+  const targetRaw = raw.target === undefined || raw.target === null || raw.target === '' ? 'project' : raw.target;
+  if (typeof targetRaw !== 'string' || !(TARGETS as readonly string[]).includes(targetRaw)) return { ok: false, error: 'invalid target' };
+  const target = targetRaw as ScheduleTargetKind;
+  const cleanId = (v: unknown, max: number): string => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const targetLabelRaw = cleanId(raw.targetLabel, 200);
+  const targetLabel = targetLabelRaw === '' ? undefined : targetLabelRaw;
+  const targetJournalId = cleanId(raw.targetJournalId, 200);
+  const targetChannelId = cleanId(raw.targetChannelId, 200);
+  const targetChatId = cleanId(raw.targetChatId, 400);
+  if (target === 'sunx' && targetJournalId === '') return { ok: false, error: 'targetJournalId required for sunx target' };
+  if (target === 'channel' && (targetChannelId === '' || targetChatId === '')) {
+    return { ok: false, error: 'targetChannelId and targetChatId required for channel target' };
+  }
   const rec = validateRecurrence(raw.recurrence);
   if (!rec.ok) return rec;
   if (typeof raw.startAt !== 'number' || !Number.isFinite(raw.startAt)) return { ok: false, error: 'startAt required' };
@@ -153,7 +188,21 @@ export function validateDraft(raw: unknown, now: number): { ok: true; value: Sch
   void now;
   return {
     ok: true,
-    value: { name, prompt, root, ...(model !== undefined ? { model } : {}), effort, mode: raw.mode as ScheduleMode, recurrence: rec.value, startAt: raw.startAt, ...(until !== undefined ? { until } : {}) },
+    value: {
+      name,
+      prompt,
+      root,
+      ...(model !== undefined ? { model } : {}),
+      effort,
+      mode: raw.mode as ScheduleMode,
+      recurrence: rec.value,
+      startAt: raw.startAt,
+      ...(until !== undefined ? { until } : {}),
+      target,
+      ...(targetLabel !== undefined ? { targetLabel } : {}),
+      ...(target === 'sunx' ? { targetJournalId } : {}),
+      ...(target === 'channel' ? { targetChannelId, targetChatId } : {}),
+    },
   };
 }
 

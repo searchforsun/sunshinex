@@ -102,6 +102,13 @@ export class ScheduleEngine {
       nextRunAt: next,
       ...(prev.enabled ? { ended: next === null, enabled: next !== null } : {}),
     };
+    // 目标切换清残留（2026-11-21 三种落点）：改了类型就不得带旧类型的 id（spread 只覆盖
+    // draft 里出现的键，旧 targetJournalId/channel 两段会残留）
+    if (job.target !== 'sunx') delete job.targetJournalId;
+    if (job.target !== 'channel') {
+      delete job.targetChannelId;
+      delete job.targetChatId;
+    }
     this.store.upsert(job);
     this.arm(job);
     return job;

@@ -4733,6 +4733,27 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-schedule-instruction .sx-composer-input { min-height: 112px; font-size: var(--sx-font); line-height: calc(var(--sx-font) * var(--f-base-lh, 1.6)); }
 .sx-schedule-instruction .composer-pill, .sx-schedule-instruction .model-effort-chip, .sx-schedule-instruction .effort-scale, .sx-schedule-instruction .mode-item-name, .sx-schedule-instruction .mode-item-desc, .sx-schedule-instruction .sx-menu-pop .sx-menuitem { font-size: var(--sx-font); }
 .sx-schedule-editor .proj-pop, .sx-schedule-editor .proj-pop .sx-menuitem { font-size: var(--sx-font); }
+/* ===== 指令落点三选一(2026-11-21 用户裁定):项目=原工作区链;SUNX/通道=选已有会话(只选不建) ===== */
+.sx-schedule-instr-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 24px; }
+.sx-schedule-target-tabs { display: inline-flex; align-items: center; gap: 2px; }
+.sx-schedule-target-tab { height: 24px; padding: 0 9px; border: none; border-radius: var(--radius-row); background: transparent; color: var(--fg-tertiary); font-size: var(--sx-font); }
+.sx-schedule-target-tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.sx-schedule-target-tab.is-active { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); font-weight: 500; }
+.sx-schedule-target-pill { max-width: 280px; }
+.sx-schedule-target-pill .pill-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-schedule-target-mark { flex: none; }
+.sx-schedule-ws-anchor .sx-schedule-target-pop { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; width: min(340px, calc(100vw - 40px)); }
+.sx-schedule-target-opt { display: flex; flex-direction: column; gap: 1px; min-width: 0; width: 100%; }
+.sx-schedule-target-opt-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sx-schedule-target-opt-sub { color: var(--fg-tertiary); font-size: var(--sx-font); }
+/* 目标 chip(卡片首行 + 执行记录目标列):类型 + 目标名快照;字号随系统 ≥14px */
+.sx-schedule-target-chip { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 48%; padding: 1px 7px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--fg) 4%, transparent); color: var(--fg-tertiary); font-size: var(--sx-font); white-space: nowrap; flex: none; }
+.sx-schedule-target-chip .sx-schedule-target-type { color: var(--fg-secondary); flex: none; }
+.sx-schedule-target-chip .sx-schedule-target-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sx-schedule-target-chip svg { flex: none; }
+/* 卡片目标行独立成行（2026-11-21）：与名称同挤首行会把任务名截断 */
+.sx-schedule-target-row { display: flex; min-width: 0; }
+.sx-schedule-target-row .sx-schedule-target-chip { max-width: 100%; }
 /* 截止时间：调度行右端（自绘月历 + 右侧时/分滚轮；不用原生日期/时间控件）
    2026-11-21 用户裁定「时分应该显示在右侧，就是滚轮」：弹层加宽为 日历 | 时分轮 两栏 */
 .sx-schedule-deadline-anchor { position: relative; margin-left: auto; }

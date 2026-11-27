@@ -79,11 +79,11 @@ describe('SchedulePage 列表', () => {
     expect(await screen.findByText('仓库巡检')).toBeDefined();
     expect(screen.getByText('检查昨天以来的提交与 CI')).toBeDefined();
     expect(screen.getByText('升级依赖并跑测试')).toBeDefined();
-    // 两列网格 + 每卡恰好三行(首行开关/名称/…；内容；倒计时),无工作区/强度/上次运行等附加行
+    // 两列网格 + 每卡四行(首行开关/名称/…；目标类型；内容；倒计时)——2026-11-21 增目标行
     expect(container.querySelector('.sx-schedule-grid')).not.toBeNull();
     const cards = Array.from(container.querySelectorAll('.sx-schedule-card'));
     expect(cards).toHaveLength(2);
-    for (const card of cards) expect(card.children).toHaveLength(3);
+    for (const card of cards) expect(card.children).toHaveLength(4);
     const switches = screen.getAllByRole('switch');
     expect(switches).toHaveLength(2);
     expect(switches[0]!.getAttribute('aria-checked')).toBe('true');
@@ -384,5 +384,19 @@ describe('SchedulePage 列表', () => {
     await waitFor(() => expect(btn.getAttribute('aria-busy')).not.toBe('true'), { timeout: 2000 });
     expect(btn.className).not.toContain('is-spinning');
     expect(btn.disabled).toBe(false);
+  });
+
+  it('卡片展示目标类型 chip：项目 / SUNX / 通道 + 目标名（2026-11-21 用户裁定）', async () => {
+    const { conn } = makeConn([
+      job({ id: 'jp', name: '项目任务', target: 'project', targetLabel: '默认工作区' }),
+      job({ id: 'js', name: 'SUNX 任务', target: 'sunx', targetJournalId: 'sj1', targetLabel: '运维助手' }),
+      job({ id: 'jc', name: '通道任务', target: 'channel', targetChannelId: 'feishu', targetChatId: 'oc_1', targetLabel: '飞书 · 项目群' }),
+    ]);
+    const { container } = render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
+    await screen.findByText('SUNX 任务');
+    const chips = Array.from(container.querySelectorAll('.sx-schedule-card .sx-schedule-target-chip')).map((e) => e.textContent ?? '');
+    expect(chips.some((t) => /项目|Project/.test(t) && t.includes('默认工作区'))).toBe(true);
+    expect(chips.some((t) => t.includes('SUNX') && t.includes('运维助手'))).toBe(true);
+    expect(chips.some((t) => /通道|Channel/.test(t) && t.includes('飞书 · 项目群'))).toBe(true);
   });
 });

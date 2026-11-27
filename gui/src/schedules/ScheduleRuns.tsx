@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { t } from '../i18n';
-import { errText } from '../ui-util';
-import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView, ScheduleRunTrigger } from '../connection';
+import { errText, pathBasename } from '../ui-util';
+import type { Connection, ScheduleJobView, ScheduleRunStatus, ScheduleRunView, ScheduleRunTrigger, ScheduleTargetKind } from '../connection';
 
 /**
  * 任务执行记录表(scheduled-tasks Task 9,spec §9.5):
- * 触发方式/计划时间/开始时间/状态/耗时/会话六列;状态只用项目 `.tb-status-dot`(五态点+转圈),
+ * 触发方式/目标/计划时间/开始时间/状态/耗时/会话七列;状态只用项目 `.tb-status-dot`(五态点+转圈),
  * 失败原因 err 色、跳过/中断原因与补跑延迟灰字,会话列 accent 文本链直开 journal 会话。
- * 取数单点 conn.scheduleRuns(job.id),挂载/任务切换重取;`tick`(页面轮询计数)变化时静默刷新
- * (旧行保留,不闪加载态——配合列表 10s 重拉,运行中记录到点转终态);空态与取数失败各有独立文案。
+ * 2026-11-21 用户裁定「指令落点三种」:目标列体现 项目/SUNX/通道 + 目标名;SUNX 记录打开走
+ * attachSunx(容器域 journal 不能用普通工作区 attach 链)。
  */
 interface ScheduleRunsProps {
   readonly conn: Connection;
   readonly job: ScheduleJobView;
-  readonly onOpenSession: (journalId: string, root: string) => void;
+  /** 打开运行记录会话;第三参 kind='sunx' 时 App 侧走 attachSunx 打开链 */
+  readonly onOpenSession: (journalId: string, root: string, kind?: 'sunx') => void;
   /** 页面轮询计数(SchedulePage 的 refresh):变化即后台重取记录,保留旧行 */
   readonly tick?: number;
 }
@@ -91,6 +92,13 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
     return () => { alive = false; };
   }, [conn, job.id, tick]);
   const { runs, error } = state;
+  /** 记录目标（2026-11-21）：旧记录 target 缺席=项目；label 优先快照，回退根 basename */
+  const targetOf = (run: ScheduleRunView): { kind: ScheduleTargetKind; type: string; label: string } => {
+    const kind: ScheduleTargetKind = run.target === 'sunx' || run.target === 'channel' ? run.target : 'project';
+    const type = kind === 'sunx' ? t('SUNX', 'SUNX') : kind === 'channel' ? t('Channel', '通道') : t('Project', '项目');
+    const label = run.targetLabel ?? (kind === 'project' ? pathBasename(run.root) : '');
+    return { kind, type, label };
+  };
   return (
     <div className="sx-schedule-records">
       {error !== '' ? (
@@ -104,6 +112,7 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
           <thead>
             <tr>
               <th>{t('Trigger', '触发方式')}</th>
+              <th>{t('Target', '目标')}</th>
               <th>{t('Scheduled', '计划时间')}</th>
               <th>{t('Started', '开始时间')}</th>
               <th>{t('Status', '状态')}</th>
@@ -115,6 +124,12 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
             {runs.map((run) => (
               <tr key={run.id}>
                 <td>{t(triggerLabel(run.trigger).en, triggerLabel(run.trigger).zh)}</td>
+                <td>
+                  <span className={`sx-schedule-target-chip is-${targetOf(run).kind}`}>{targetOf(run).type}</span>
+                  {targetOf(run).kind !== 'project' && targetOf(run).label !== '' && (
+                    <div className="sx-schedule-note">{targetOf(run).label}</div>
+                  )}
+                </td>
                 <td className="num">{timeLabel(run.scheduledAt)}</td>
                 <td className="num">{timeLabel(run.startedAt)}</td>
                 <td>
@@ -128,7 +143,15 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
                 </td>
                 <td className="num">{run.seconds !== undefined ? durationLabel(run.seconds) : '—'}</td>
                 <td>{run.journalId !== undefined ? (
-                  <button type="button" className="sx-schedule-open" onClick={() => onOpenSession(run.journalId!, run.root)}>
+                  <button
+                    type="button"
+                    className="sx-schedule-open"
+                    onClick={() =>
+                      run.target === 'sunx'
+                        ? onOpenSession(run.journalId!, run.root, 'sunx')
+                        : onOpenSession(run.journalId!, run.root)
+                    }
+                  >
                     {t('Open session', '打开会话')} <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" />
                   </button>
                 ) : '—'}</td>

@@ -4,7 +4,7 @@ import type { CreateSessionOpts } from '../session-lifecycle';
 import type { Result } from '../../result';
 import type { RunEndInfo, SessionRuntime } from '../session';
 import { purgeSession, writeSessionMeta } from '../../session/journal';
-import type { RunRecord, RunStatus, RunTrigger, ScheduleJob } from './model';
+import type { RunRecord, RunStatus, RunTrigger, ScheduleJob, ScheduleTargetKind } from './model';
 import type { ScheduleStore } from './store';
 
 const RETAIN_MAX = 10;
@@ -19,6 +19,11 @@ interface ScheduleExecutorIo {
    *  按工作区根回列通道绑定且在座的会话（daemon 按绑定档+channelMeta 判定）——定时触发提交进
    *  它（闲=新轮,忙=排队）,不再另建会话;缺席=按既有建席流程 */
   reuseChannelSession?(root: string): SessionRuntime | undefined;
+  /** SUNX 目标（2026-11-21 用户裁定「指令落点三种」）：按 journal id 取在座会话，缺席则复活
+   *  （不抢 GUI active）；不可用=undefined。执行器只提交，不再建会话。 */
+  sunxTargetSession?(journalId: string): SessionRuntime | undefined;
+  /** 通道目标：按 通道id+聊天id 取该聊天绑定会话（在座直接用；离座按绑定 journal 复活）。 */
+  channelTargetSession?(channelId: string, chatId: string): SessionRuntime | undefined;
   now?: () => number;
 }
 
@@ -65,6 +70,11 @@ export class ScheduleExecutor {
     try {
       startedAt = this.now();
       root = job.root === 'default' ? defaultScratchRoot() : job.root;
+      // 指令落点三种（2026-11-21 用户裁定）：sunx/channel 发给已有会话（不建席）；
+      // project/旧任务（target 缺席）走下方原建席链，行为不变
+      if (job.target === 'sunx' || job.target === 'channel') {
+        return this.runOnExisting(id, job, trigger, plannedAt, startedAt, root);
+      }
       // 通道绑定会话复用（裁定②,见 io 注）：提交进最新绑定会话,零新席;忙=steer 排队不丢;
       // 复用座标记 reused——finish 不进 retained LRU（释放=聊天断链）
       const reused = this.io.reuseChannelSession?.(root);
@@ -151,6 +161,103 @@ export class ScheduleExecutor {
     }
   }
 
+  /** 发给已有会话（2026-11-21 用户裁定「SUNX/通道 后面两种发给已有会话」）：解析目标 → 记 running
+   *  → 透传模型/强度/权限 → 提交（忙=steer 排队）。目标不可用=记 failed，绝不新建会话。
+   *  设置透传与提交异步完成（setMode 是 Promise），提交失败回写 failed。 */
+  private runOnExisting(
+    id: string,
+    job: ScheduleJob,
+    trigger: RunTrigger,
+    plannedAt: number | undefined,
+    startedAt: number,
+    fallbackRoot: string,
+  ): string {
+    const kind: ScheduleTargetKind = job.target === 'channel' ? 'channel' : 'sunx';
+    let resolved: SessionRuntime | undefined;
+    try {
+      resolved =
+        kind === 'sunx'
+          ? job.targetJournalId !== undefined
+            ? this.io.sunxTargetSession?.(job.targetJournalId)
+            : undefined
+          : job.targetChannelId !== undefined && job.targetChatId !== undefined
+            ? this.io.channelTargetSession?.(job.targetChannelId, job.targetChatId)
+            : undefined;
+    } catch {
+      resolved = undefined;
+    }
+    if (resolved === undefined) {
+      this.addFailed(
+        id,
+        job,
+        trigger,
+        plannedAt,
+        startedAt,
+        fallbackRoot,
+        kind === 'sunx' ? 'Sunx session is not available' : 'Channel chat is not available',
+        kind,
+        job.targetLabel,
+      );
+      return id;
+    }
+    const target = resolved;
+    this.reused.add(target.id); // 已有会话永不 LRU 释放（释放=会话/tab 断链）
+    try {
+      this.store.addRun(job.id, {
+        id,
+        trigger,
+        ...(plannedAt !== undefined ? { scheduledAt: plannedAt } : {}),
+        startedAt,
+        status: 'running',
+        sessionId: target.id,
+        ...(target.attachedJournalId !== undefined ? { journalId: target.attachedJournalId } : {}),
+        root: target.root !== '' ? target.root : fallbackRoot,
+        target: kind,
+        ...(job.targetLabel !== undefined ? { targetLabel: job.targetLabel } : {}),
+      });
+    } catch {
+      /* 落盘失败由 store 内兜底；run 契约不抛 */
+    }
+    void (async () => {
+      try {
+        // 右侧权限/模型/强度透传（2026-11-21 用户裁定）：模型/强度立即生效；权限在会话运行中
+        // 改不了（busy）则保持当前，提交仍走 steer 排队
+        if (job.model !== undefined) {
+          try {
+            target.setModel(job.model);
+          } catch {
+            /* 未知模型：沿用会话当前模型 */
+          }
+        }
+        if (!target.setEffort(job.effort)) target.setEffort('medium');
+        try {
+          await target.setMode(job.mode);
+        } catch {
+          /* 会话忙/非法档：保持当前权限 */
+        }
+        const submitted = target.submitExternal(job.prompt);
+        if (!submitted.ok && submitted.status === 409) target.steer(job.prompt);
+        else if (!submitted.ok) {
+          this.store.patchRun(job.id, id, { status: 'failed', endedAt: this.now(), error: submitted.error });
+          return;
+        }
+        try {
+          target.onRunEnd((info) => this.finish(job.id, id, target.id, info));
+        } catch {
+          /* 观测面注册失败不改已受理事实：记录停在 running */
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        try {
+          this.store.patchRun(job.id, id, { status: 'failed', endedAt: this.now(), error: message });
+        } catch {
+          /* 落盘兜底 */
+        }
+      }
+    })();
+    return id;
+  }
+
   /** run 收尾回填（spec §6.9）：done→succeeded，interrupted→stopped，其它/异常→failed。
    *  seconds 可为 0（边界拒收）——信息性字段，无正值不变量 */
   private finish(jobId: string, runIdValue: string, sessionId: string, info: RunEndInfo): void {
@@ -205,7 +312,7 @@ export class ScheduleExecutor {
     }
   }
 
-  private addFailed(id: string, job: ScheduleJob, trigger: RunTrigger, plannedAt: number | undefined, at: number, root: string, error: string): void {
+  private addFailed(id: string, job: ScheduleJob, trigger: RunTrigger, plannedAt: number | undefined, at: number, root: string, error: string, target?: ScheduleTargetKind, targetLabel?: string): void {
     const run: RunRecord = {
       id,
       trigger,
@@ -215,6 +322,8 @@ export class ScheduleExecutor {
       status: 'failed',
       root,
       error,
+      ...(target !== undefined ? { target } : {}),
+      ...(targetLabel !== undefined ? { targetLabel } : {}),
     };
     try {
       this.store.addRun(job.id, run);

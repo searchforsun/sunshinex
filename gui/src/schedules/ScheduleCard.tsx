@@ -1,13 +1,16 @@
-import { Clock3, History, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react';
+import { Clock3, Folder, History, MessageSquare, MoreHorizontal, Pencil, Play, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
+import { pathBasename } from '../ui-util';
+import { SunxMark } from '../sunx-icon';
 import { whenOf, whenSummary } from './cycle';
-import type { ScheduleJobView } from '../connection';
+import type { ScheduleJobView, ScheduleTargetKind } from '../connection';
 
 /**
  * 列表卡(scheduled-tasks Task 10,spec §9.4):恒三行——首行开关+名称+⋯ 菜单、
  * 内容两行截断、倒计时行(停用=已暂停/ended=已结束)。2026-11-21 用户裁定:倒计时行左侧
  * 补调度周期说明(如「每天 00:45 ·」),右端补已运行次数;卡面字号随 --sx-font(≥14px)。
- * 工作区/强度/上次运行徽标不落卡面。卡体点击进执行记录;开关/⋯/菜单项各自 stopPropagation。
+ * 首行名称后补目标 chip(项目/SUNX/通道+目标名)。卡体点击进执行记录;开关/⋯/菜单项
+ * 各自 stopPropagation。
  */
 interface ScheduleCardProps {
   readonly job: ScheduleJobView;
@@ -40,10 +43,26 @@ function countdown(ms: number): string {
   return t(`${Math.floor(h / 24)}d ${h % 24}h`, `${Math.floor(h / 24)} 天 ${h % 24} 小时后`);
 }
 
+/** 目标类型/显示名（2026-11-21 用户裁定「外侧卡片展示三种类型」）：旧任务 target 缺席=项目 */
+function targetOf(job: ScheduleJobView): { kind: ScheduleTargetKind; label: string; type: { en: string; zh: string } } {
+  const kind: ScheduleTargetKind = job.target === 'sunx' || job.target === 'channel' ? job.target : 'project';
+  if (kind === 'sunx') {
+    return { kind, label: job.targetLabel ?? t('Sunx session', 'Sunx 会话'), type: { en: 'SUNX', zh: 'SUNX' } };
+  }
+  if (kind === 'channel') {
+    const fallback = [job.targetChannelId, job.targetChatId].filter((x) => x !== undefined && x !== '').join(' · ');
+    return { kind, label: job.targetLabel ?? (fallback !== '' ? fallback : t('Channel', '通道')), type: { en: 'Channel', zh: '通道' } };
+  }
+  const base = job.root === 'default' ? '' : pathBasename(job.root);
+  const label = job.targetLabel ?? (base === '' || base === 'default' || base.startsWith('sunshinex-default') ? t('Default workspace', '默认工作区') : base);
+  return { kind, label, type: { en: 'Project', zh: '项目' } };
+}
+
 export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
   const { job, now, busy, menuOpen, confirmDelete, focus } = props;
   // 周期说明（2026-11-21 用户裁定「左下角最前面补充调度的周期」）：由 recurrence 反推四档口径
   const summary = whenSummary(whenOf({ recurrence: job.recurrence, startAt: job.startAt }));
+  const target = targetOf(job);
   return (
     <div
       className={`sx-schedule-card${job.enabled ? '' : ' is-off'}${focus ? ' is-focus' : ''}`}
@@ -103,6 +122,24 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
             </button>
           </div>
         )}
+      </div>
+      {/* 目标类型行（2026-11-21 用户裁定三种落点可见）：项目/SUNX/通道 + 目标名。
+          独立一行——与名称同挤首行会把任务名截断 */}
+      <div className="sx-schedule-target-row">
+        <span
+          className={`sx-schedule-target-chip is-${target.kind}`}
+          data-tip={`${t(target.type.en, target.type.zh)} · ${target.label}`}
+        >
+          {target.kind === 'project' ? (
+            <Folder size={13} strokeWidth={1.75} aria-hidden="true" />
+          ) : target.kind === 'sunx' ? (
+            <SunxMark size={13} strokeWidth={3.2} />
+          ) : (
+            <MessageSquare size={13} strokeWidth={1.75} aria-hidden="true" />
+          )}
+          <span className="sx-schedule-target-type">{t(target.type.en, target.type.zh)}</span>
+          <span className="sx-schedule-target-label">{target.label}</span>
+        </span>
       </div>
       <p className="sx-schedule-prompt">{job.prompt}</p>
       <div className="sx-schedule-next">

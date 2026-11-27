@@ -20,7 +20,7 @@ import { ScheduleRuns } from './ScheduleRuns';
  */
 interface SchedulePageProps {
   readonly conn: Connection;
-  readonly onOpenSession: (journalId: string, root: string) => void;
+  readonly onOpenSession: (journalId: string, root: string, kind?: 'sunx') => void;
   readonly onExit: () => void;
   /** 左侧菜单开合（菜单收起时仍能从本页重开；App 传 toggleMenuStable） */
   readonly onToggleMenu?: () => void;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Calendar, ChevronDown, ChevronLeft, ChevronRight, Folder } from 'lucide-react';
+import { ArrowLeft, Calendar, ChevronDown, ChevronLeft, ChevronRight, Folder, MessageSquare } from 'lucide-react';
 import { t } from '../i18n';
 import { errText, pathBasename } from '../ui-util';
 import { usePopOutsideClose } from '../use-pop-outside-close';
@@ -13,7 +13,9 @@ import { WelcomeModelMenu } from '../welcome/welcome-model-menu';
 import { ModeMenu, sessionModeLabel } from '../composer/mode-menu';
 import { Select } from '../settings/controls';
 import type { SelectOption } from '../settings/controls';
-import type { Connection, ScheduleDraft, ScheduleJobView, ScheduleMode } from '../connection';
+import type { Connection, ScheduleDraft, ScheduleJobView, ScheduleMode, ScheduleTargetKind } from '../connection';
+import { SunxMark } from '../sunx-icon';
+import { platformMeta } from '../sidebar/use-menu-channels';
 import { CADENCE_OPTIONS, buildWhen, formatStamp, pad2, weekdayLabel, weekdayListLabel, whenOf, whenSummary } from './cycle';
 import type { ScheduleCadence, ScheduleWhen } from './cycle';
 
@@ -357,6 +359,62 @@ function DeadlinePicker({ value, onChange }: { value: number | undefined; onChan
   );
 }
 
+/** 指令落点三类（2026-11-21 用户裁定）：项目=按工作区建新会话（原行为不动）；
+ *  SUNX/通道=发给已有会话（选择器只选不改，不透新建入口）。 */
+const TARGET_OPTIONS: ReadonlyArray<{ id: ScheduleTargetKind; en: string; zh: string }> = [
+  { id: 'project', en: 'Project', zh: '项目' },
+  { id: 'sunx', en: 'SUNX', zh: 'SUNX' },
+  { id: 'channel', en: 'Channel', zh: '通道' },
+];
+
+interface TargetOpt {
+  readonly id: string;
+  readonly title: string;
+  readonly sub?: string;
+}
+
+/** 目标选择弹层（SUNX 会话 / 通道聊天）：筛选 + 列表，无新增/浏览入口（用户裁定只选已有） */
+function TargetPickPop({
+  ariaLabel,
+  placeholder,
+  query,
+  onQuery,
+  rows,
+  empty,
+  onPick,
+}: {
+  readonly ariaLabel: string;
+  readonly placeholder: string;
+  readonly query: string;
+  readonly onQuery: (v: string) => void;
+  readonly rows: readonly TargetOpt[];
+  readonly empty: string;
+  readonly onPick: (id: string) => void;
+}): JSX.Element {
+  return (
+    <div className="proj-pop sx-schedule-target-pop" role="menu" aria-label={ariaLabel}>
+      <div className="branch-pop-filter">
+        <input
+          autoFocus
+          value={query}
+          aria-label={placeholder}
+          placeholder={placeholder}
+          onChange={(e) => onQuery(e.target.value)}
+        />
+      </div>
+      {rows.map((r) => (
+        <button key={r.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => onPick(r.id)}>
+          <span className="sx-schedule-target-opt">
+            <span className="sx-schedule-target-opt-title">{r.title}</span>
+            {r.sub !== undefined && r.sub !== '' && <span className="sx-schedule-target-opt-sub">{r.sub}</span>}
+          </span>
+        </button>
+      ))}
+      {rows.length === 0 && <div className="proj-empty">{empty}</div>}
+    </div>
+  );
+}
+
 export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: ScheduleConfigProps): JSX.Element {
   const initialWhen = useMemo(() => whenOf(job), [job]);
   const [when, setWhen] = useState<ScheduleWhen>(initialWhen);
@@ -378,6 +436,17 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
   const [error, setError] = useState('');
   const [nextPreview, setNextPreview] = useState<number | null>(null);
   const projRef = useRef<HTMLDivElement>(null);
+  // 指令落点（2026-11-21 用户裁定三种）：project 原样；sunx/channel 选已有会话
+  const [target, setTarget] = useState<ScheduleTargetKind>(job?.target ?? 'project');
+  const [sunxJid, setSunxJid] = useState(job?.target === 'sunx' ? (job.targetJournalId ?? '') : '');
+  const [sunxLabel, setSunxLabel] = useState(job?.target === 'sunx' ? (job.targetLabel ?? '') : '');
+  const [chanId, setChanId] = useState(job?.target === 'channel' ? (job.targetChannelId ?? '') : '');
+  const [chatId, setChatId] = useState(job?.target === 'channel' ? (job.targetChatId ?? '') : '');
+  const [chanLabel, setChanLabel] = useState(job?.target === 'channel' ? (job.targetLabel ?? '') : '');
+  const [targetOpen, setTargetOpen] = useState(false);
+  const [targetQuery, setTargetQuery] = useState('');
+  const [sunxRows, setSunxRows] = useState<TargetOpt[] | null>(null);
+  const [chanRows, setChanRows] = useState<TargetOpt[] | null>(null);
 
   /** 编辑态根权威：workspaces 清单可能不含任务原 root——把 job.root 合成一行喂给 hook，
    *  用户显式改选前恒保持原 root，rename-only 不改落点 */
@@ -403,6 +472,80 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
   usePopOutsideClose(projOpen, '.proj-pop', '.sx-schedule-ws-anchor', () => setProjOpen(false));
   usePopOutsideClose(modelOpen, '.sx-schedule-model-pop', '.sx-schedule-model-pill', () => setModelOpen(false));
   usePopOutsideClose(modeOpen, '.mode-pop', '.sx-schedule-mode-pill', () => setModeOpen(false));
+  usePopOutsideClose(targetOpen, '.sx-schedule-target-pop', '.sx-schedule-target-anchor', () => setTargetOpen(false));
+
+  // SUNX 目标清单（只选已有，不新建）：切到 SUNX 时惰拉；失败=空列提示
+  useEffect(() => {
+    if (target !== 'sunx' || sunxRows !== null) return;
+    if (typeof conn.sunxSessions !== 'function') {
+      setSunxRows([]);
+      return;
+    }
+    let alive = true;
+    conn.sunxSessions().then(
+      (rows) => {
+        if (!alive) return;
+        setSunxRows(
+          rows
+            .filter((r) => (r as { archived?: boolean }).archived !== true)
+            .map((r) => ({
+              id: r.id,
+              title: r.title ?? r.firstUser ?? t('New session', '新会话'),
+              sub: r.liveSessionId !== undefined ? t('Open', '已在座') : undefined,
+            })),
+        );
+      },
+      () => {
+        if (alive) setSunxRows([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [target, sunxRows, conn]);
+
+  // 通道目标清单（通道配置 × 绑定聊天，只选已有）：绑定键两段 + 配置名/聊天名富化
+  useEffect(() => {
+    if (target !== 'channel' || chanRows !== null) return;
+    if (typeof conn.channelBindings !== 'function') {
+      setChanRows([]);
+      return;
+    }
+    let alive = true;
+    Promise.all([
+      conn.channelBindings(),
+      typeof conn.channelSessions === 'function' ? conn.channelSessions().catch(() => []) : Promise.resolve([]),
+      typeof conn.settingsChannels === 'function' ? conn.settingsChannels().catch(() => ({ channels: [], warnings: [] })) : Promise.resolve({ channels: [], warnings: [] }),
+    ]).then(
+      ([bindings, sessions, cfg]) => {
+        if (!alive) return;
+        const cfgById = new Map(cfg.channels.map((c) => [c.id, c]));
+        const rowByJid = new Map(sessions.map((r) => [r.id, r]));
+        setChanRows(
+          bindings.bindings.map((b) => {
+            const i = b.key.indexOf(':');
+            const channelId = i >= 0 ? b.key.slice(0, i) : b.key;
+            const chatId = i >= 0 ? b.key.slice(i + 1) : '';
+            const row = b.journalId !== undefined ? rowByJid.get(b.journalId) : undefined;
+            const chatTitle =
+              b.chatTitle ??
+              (row as { chatTitle?: string } | undefined)?.chatTitle ??
+              row?.title ??
+              chatId;
+            const cfgRow = cfgById.get(channelId);
+            const pm = platformMeta(cfgRow?.platform);
+            return { id: b.key, title: `${cfgRow?.name ?? channelId} · ${chatTitle}`, sub: t(pm.en, pm.zh) };
+          }),
+        );
+      },
+      () => {
+        if (alive) setChanRows([]);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [target, chanRows, conn]);
 
   // 模型清单（与输入框同一个 WelcomeModelMenu 数据源；旧桩无 settings 时留空，pill 回显 defaultModel）
   useEffect(() => {
@@ -445,7 +588,9 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
   }, [conn, when, until]);
 
   // 保存/创建钮仅在两必填项齐备时可点（2026-11-20 用户裁定：指令与调度都填了之后才能保存）
-  const canSave = prompt.trim() !== '' && (when.cadence !== 'weekly' || when.weekdays.length > 0);
+  // 2026-11-21：SUNX/通道落点必须选好目标才可保存
+  const targetReady = target === 'project' || (target === 'sunx' ? sunxJid !== '' : chanId !== '' && chatId !== '');
+  const canSave = prompt.trim() !== '' && targetReady && (when.cadence !== 'weekly' || when.weekdays.length > 0);
 
   const save = (): void => {
     if (busy) return;
@@ -466,12 +611,27 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
       setError(t('Deadline must be after the start', '截止时间必须晚于开始'));
       return;
     }
+    if (target === 'sunx' && sunxJid === '') {
+      setError(t('Pick a Sunx session', '请选择 Sunx 会话'));
+      return;
+    }
+    if (target === 'channel' && (chanId === '' || chatId === '')) {
+      setError(t('Pick a channel chat', '请选择通道聊天'));
+      return;
+    }
     setBusy(true);
     setError('');
+    const targetFields: Pick<ScheduleDraft, 'target' | 'targetLabel' | 'targetJournalId' | 'targetChannelId' | 'targetChatId'> =
+      target === 'sunx'
+        ? { target: 'sunx', targetJournalId: sunxJid, ...(sunxLabel !== '' ? { targetLabel: sunxLabel } : {}) }
+        : target === 'channel'
+          ? { target: 'channel', targetChannelId: chanId, targetChatId: chatId, ...(chanLabel !== '' ? { targetLabel: chanLabel } : {}) }
+          : { target: 'project', targetLabel: wsLabel };
     const body: ScheduleDraft = {
       name: name.trim(),
       prompt: prompt.trim(),
       root: picked.trim() === '' ? 'default' : picked.trim(),
+      ...targetFields,
       ...(model !== undefined ? { model } : {}),
       effort,
       mode,
@@ -492,9 +652,9 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
     );
   };
 
-  // Esc 层级：本面弹层（工作区/强度/权限/DirPicker）先收，不连带退页；Select 自己的 Esc 在弹层内收
+  // Esc 层级：本面弹层（工作区/目标/强度/权限/DirPicker）先收，不连带退页；Select 自己的 Esc 在弹层内收
   useEffect(() => {
-    if (!projOpen && !modelOpen && !modeOpen && !dirOpen) return;
+    if (!projOpen && !modelOpen && !modeOpen && !dirOpen && !targetOpen) return;
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== 'Escape') return;
       e.stopPropagation();
@@ -502,12 +662,16 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
       setModelOpen(false);
       setModeOpen(false);
       setDirOpen(false);
+      setTargetOpen(false);
     };
     document.addEventListener('keydown', onKey, true);
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [projOpen, modelOpen, modeOpen, dirOpen]);
+  }, [projOpen, modelOpen, modeOpen, dirOpen, targetOpen]);
 
   const nextLabel = nextPreview !== null ? new Date(nextPreview).toLocaleString() : '—';
+  const targetRows = target === 'sunx' ? (sunxRows ?? []) : (chanRows ?? []);
+  const targetQueryN = targetQuery.trim().toLowerCase();
+  const filteredTargets = targetQueryN === '' ? targetRows : targetRows.filter((r) => r.title.toLowerCase().includes(targetQueryN));
 
   return (
     <div className="sx-schedule-editor">
@@ -618,7 +782,28 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
       </div>
 
       <div className="sx-schedule-field">
-        <span className="sx-schedule-field-label">{t('Instruction', '指令')}</span>
+        <div className="sx-schedule-instr-head">
+          <span className="sx-schedule-field-label">{t('Instruction', '指令')}</span>
+          {/* 落点三选一（2026-11-21 用户裁定）：项目=建新会话；SUNX/通道=发给已有会话 */}
+          <div className="sx-schedule-target-tabs" role="tablist" aria-label={t('Instruction target', '指令落点')}>
+            {TARGET_OPTIONS.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="tab"
+                aria-selected={target === o.id}
+                className={`sx-schedule-target-tab${target === o.id ? ' is-active' : ''}`}
+                onClick={() => {
+                  setTarget(o.id);
+                  setTargetOpen(false);
+                  setTargetQuery('');
+                }}
+              >
+                {t(o.en, o.zh)}
+              </button>
+            ))}
+          </div>
+        </div>
         <ComposerCard
           label={t('Instruction', '指令')}
           value={prompt}
@@ -632,44 +817,109 @@ export function ScheduleConfig({ conn, job, defaultModel, onSaved, onBack }: Sch
           className="sx-schedule-instruction"
           footLeft={
             <>
-              <div className="pill-anchor sx-schedule-ws-anchor">
-                <button
-                  type="button"
-                  className="composer-pill"
-                  aria-label={t('Workspace', '工作区')}
-                  aria-expanded={projOpen}
-                  onClick={() => {
-                    setProjQuery('');
-                    setProjOpen((v) => !v);
-                  }}
-                >
-                  <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
-                  <span className="pill-label">{wsLabel}</span>
-                  <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
-                </button>
-                {projOpen && (
-                  <WelcomeProjectPop
-                    rows={rows}
-                    picked={picked}
-                    query={projQuery}
-                    onQuery={setProjQuery}
-                    onPick={(root) => {
-                      setPicked(root);
-                      setProjOpen(false);
+              {target === 'project' ? (
+                <div className="pill-anchor sx-schedule-ws-anchor">
+                  <button
+                    type="button"
+                    className="composer-pill"
+                    aria-label={t('Workspace', '工作区')}
+                    aria-expanded={projOpen}
+                    onClick={() => {
+                      setProjQuery('');
+                      setProjOpen((v) => !v);
                     }}
-                    onBrowse={() => void browseFolder()}
-                    hint={hint}
-                    projRef={projRef}
-                  />
-                )}
-                {dirOpen && (
-                  <div className="modal-overlay" onClick={() => setDirOpen(false)}>
-                    <div className="modal-body" onClick={(e) => e.stopPropagation()}>
-                      <DirPicker conn={conn} showManual={false} onCancel={() => setDirOpen(false)} onConfirm={registerFolder} />
+                  >
+                    <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+                    <span className="pill-label">{wsLabel}</span>
+                    <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                  {projOpen && (
+                    <WelcomeProjectPop
+                      rows={rows}
+                      picked={picked}
+                      query={projQuery}
+                      onQuery={setProjQuery}
+                      onPick={(root) => {
+                        setPicked(root);
+                        setProjOpen(false);
+                      }}
+                      onBrowse={() => void browseFolder()}
+                      hint={hint}
+                      projRef={projRef}
+                    />
+                  )}
+                  {dirOpen && (
+                    <div className="modal-overlay" onClick={() => setDirOpen(false)}>
+                      <div className="modal-body" onClick={(e) => e.stopPropagation()}>
+                        <DirPicker conn={conn} showManual={false} onCancel={() => setDirOpen(false)} onConfirm={registerFolder} />
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <div className="pill-anchor sx-schedule-ws-anchor sx-schedule-target-anchor">
+                  <button
+                    type="button"
+                    className="composer-pill sx-schedule-target-pill"
+                    aria-label={target === 'sunx' ? t('Sunx session', 'Sunx 会话') : t('Channel chat', '通道聊天')}
+                    aria-expanded={targetOpen}
+                    onClick={() => {
+                      setTargetQuery('');
+                      setTargetOpen((v) => !v);
+                    }}
+                  >
+                    {target === 'sunx' ? (
+                      <SunxMark size={14} strokeWidth={3.2} className="sx-schedule-target-mark" />
+                    ) : (
+                      <MessageSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+                    )}
+                    <span className="pill-label">
+                      {target === 'sunx'
+                        ? sunxLabel !== ''
+                          ? sunxLabel
+                          : t('Select Sunx session', '选择 Sunx 会话')
+                        : chanLabel !== ''
+                          ? chanLabel
+                          : t('Select channel chat', '选择通道聊天')}
+                    </span>
+                    <ChevronDown className="pill-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
+                  </button>
+                  {targetOpen && (
+                    <TargetPickPop
+                      ariaLabel={target === 'sunx' ? t('Sunx session', 'Sunx 会话') : t('Channel chat', '通道聊天')}
+                      placeholder={target === 'sunx' ? t('Filter Sunx sessions…', '筛选 Sunx 会话…') : t('Filter channel chats…', '筛选通道聊天…')}
+                      query={targetQuery}
+                      onQuery={setTargetQuery}
+                      rows={filteredTargets}
+                      empty={
+                        targetRows.length === 0
+                          ? target === 'sunx'
+                            ? t('No Sunx sessions', '暂无 Sunx 会话')
+                            : t('No bound channel chats', '暂无已绑定的通道聊天')
+                          : t('No matches', '无匹配项')
+                      }
+                      onPick={(id) => {
+                        if (target === 'sunx') {
+                          const row = (sunxRows ?? []).find((r) => r.id === id);
+                          setSunxJid(id);
+                          setSunxLabel(row?.title ?? id);
+                        } else {
+                          const row = (chanRows ?? []).find((r) => r.id === id);
+                          const i = id.indexOf(':');
+                          const cid = i >= 0 ? id.slice(0, i) : id;
+                          const chat = i >= 0 ? id.slice(i + 1) : '';
+                          if (row !== undefined) {
+                            setChanId(cid);
+                            setChatId(chat);
+                            setChanLabel(row.title);
+                          }
+                        }
+                        setTargetOpen(false);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
               <div className="pill-anchor">
                 <button
                   type="button"

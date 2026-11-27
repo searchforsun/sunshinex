@@ -395,4 +395,53 @@ describe('ScheduleConfig 上下三段', () => {
     expect(alert.textContent).toBe('daemon down');
     await waitFor(() => expect(save.disabled).toBe(false));
   });
+
+  it('指令落点 SUNX：切换页签→筛选选已有会话→保存带 target/targetJournalId/label（2026-11-21）', async () => {
+    const { conn, createSchedule } = makeConn();
+    const sunxSessions = vi.fn(async () => [
+      { id: 'sj1', title: '运维助手', updatedAt: 1, file: '/d/sj1.jsonl' },
+      { id: 'sj2', title: '代码审查', updatedAt: 2, file: '/d/sj2.jsonl' },
+    ]);
+    (conn as unknown as Record<string, unknown>).sunxSessions = sunxSessions;
+    render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
+    await screen.findByText(bi('Title', '标题'));
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '巡检' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'SUNX' }));
+    await waitFor(() => expect(sunxSessions).toHaveBeenCalled());
+    fireEvent.click(await screen.findByRole('button', { name: bi('Sunx session', 'Sunx 会话') }));
+    fireEvent.change(screen.getByLabelText(bi('Filter Sunx sessions…', '筛选 Sunx 会话…')), { target: { value: '运维' } });
+    fireEvent.click(await screen.findByText('运维助手'));
+    expect(screen.getByRole('button', { name: bi('Sunx session', 'Sunx 会话') }).textContent).toContain('运维助手');
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
+    const body = createSchedule.mock.calls[0]![0];
+    expect(body.target).toBe('sunx');
+    expect(body.targetJournalId).toBe('sj1');
+    expect(body.targetLabel).toBe('运维助手');
+  });
+
+  it('指令落点 通道：切页签→筛选选绑定聊天→保存带 channelId/chatId/label（2026-11-21）', async () => {
+    const { conn, createSchedule } = makeConn();
+    (conn as unknown as Record<string, unknown>).channelBindings = vi.fn(async () => ({
+      bindings: [{ key: 'feishu:oc_1', sessionId: 's1', journalId: 'j1', chatTitle: '项目群', updatedAt: 1 }],
+    }));
+    (conn as unknown as Record<string, unknown>).channelSessions = vi.fn(async () => []);
+    (conn as unknown as Record<string, unknown>).settingsChannels = vi.fn(async () => ({
+      channels: [{ id: 'feishu', name: '飞书', platform: 'feishu' }],
+      warnings: [],
+    }));
+    render(<ScheduleConfig conn={conn} defaultModel="DeepSeek" onSaved={vi.fn()} onBack={vi.fn()} />);
+    await screen.findByText(bi('Title', '标题'));
+    fireEvent.change(screen.getByLabelText(bi('Instruction', '指令')), { target: { value: '巡检' } });
+    fireEvent.click(screen.getByRole('tab', { name: bi('Channel', '通道') }));
+    fireEvent.click(await screen.findByRole('button', { name: bi('Channel chat', '通道聊天') }));
+    fireEvent.click(await screen.findByText('飞书 · 项目群'));
+    fireEvent.click(screen.getByRole('button', { name: bi('Create', '创建') }));
+    await waitFor(() => expect(createSchedule).toHaveBeenCalledTimes(1));
+    const body = createSchedule.mock.calls[0]![0];
+    expect(body.target).toBe('channel');
+    expect(body.targetChannelId).toBe('feishu');
+    expect(body.targetChatId).toBe('oc_1');
+    expect(body.targetLabel).toBe('飞书 · 项目群');
+  });
 });

@@ -28,7 +28,7 @@ export function useAppOverlays(opts: {
   setAgentTeamsOn: Dispatch<SetStateAction<boolean>>;
   openSettings: () => void;
   closeSettings: () => void;
-  openJournalSessionStable: (journalId: string, root: string) => void;
+  openJournalSessionStable: (journalId: string, root: string, kind?: 'sunx') => void;
 } {
   const { connInstance, connRef, openRoot, openSession, showOpError, setTabStates } = opts;
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -92,13 +92,21 @@ export function useAppOverlays(opts: {
 
   /** 记录 → 会话(定时任务 Task 11):关层 + 既有 newSession+attach 打开链(daemon 在座会收编/复用),
    *  root 取 attach 应答真根、缺省回退记录行根;失败经 showOpError 上屏。
+   *  2026-11-21:SUNX 目标记录走 attachSunx(容器域 journal 与普通工作区 attach 不同链)。
    *  openSession 每渲染换身份——经 ref 取最新(跳板同形,回调身份恒稳) */
   const openSessionRef = useRef(openSession);
   openSessionRef.current = openSession;
-  const openJournalSessionStable = useCallback((journalId: string, root: string): void => {
+  const openJournalSessionStable = useCallback((journalId: string, root: string, kind?: 'sunx'): void => {
     setSchedulesMain(false);
     const conn = connRef.current;
     if (conn === null) return;
+    if (kind === 'sunx') {
+      void conn
+        .attachSunx(journalId)
+        .then((r) => openSessionRef.current(r.sessionId, r.root || root, journalId))
+        .catch(showOpError);
+      return;
+    }
     void conn
       .newSession(root)
       .then(({ sessionId }) => conn.attach(sessionId, journalId))

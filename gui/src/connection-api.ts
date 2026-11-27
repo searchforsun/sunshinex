@@ -94,6 +94,8 @@ export interface ChannelBindingMsg {
   /** 聊天形态(单聊/群聊,Task 13 信息条只读面):可选防旧 daemon——wire 暂未透出时信息条
    *  只示聊天 id 不示单聊群聊标(GUI 无平台无关推导法,如实缺省) */
   chatKind?: 'direct' | 'group';
+  /** 聊天名称(2026-11-21 定时目标选择器消费):daemon 绑定档透出,缺席回落 chatId */
+  chatTitle?: string;
   updatedAt: number;
 }
 

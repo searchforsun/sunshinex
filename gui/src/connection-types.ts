@@ -692,6 +692,19 @@ export type ScheduleRunStatus = 'running' | 'succeeded' | 'failed' | 'stopped' |
 /** 触发来源：定时/错过的补跑/手动立即运行 */
 export type ScheduleRunTrigger = 'schedule' | 'catch-up' | 'manual';
 
+/** 指令落点（2026-11-21 用户裁定三种）：project=按工作区新建会话；sunx=发给已选 Sunx 会话；
+ *  channel=发给通道聊天会话。缺席=project（旧任务）。 */
+export type ScheduleTargetKind = 'project' | 'sunx' | 'channel';
+
+/** 目标选择字段（job/draft 共用；executor 只认 id，label 为展示快照） */
+export interface ScheduleTargetFields {
+  target?: ScheduleTargetKind;
+  targetLabel?: string;
+  targetJournalId?: string;
+  targetChannelId?: string;
+  targetChatId?: string;
+}
+
 /** 单次运行行（对齐 daemon ScheduleRunView）：sessionId/journalId 可跳转会话，seconds=时长 */
 export interface ScheduleRunView {
   id: string;
@@ -705,11 +718,13 @@ export interface ScheduleRunView {
   root: string;
   error?: string;
   seconds?: number;
+  target?: ScheduleTargetKind;
+  targetLabel?: string;
 }
 
 /** GET /schedules 任务行（对齐 daemon ScheduleJobView）：nextRunAt=null 表示已结束/无后续；
  *  lastRun=最近一次运行（含状态徽标数据源） */
-export interface ScheduleJobView {
+export interface ScheduleJobView extends ScheduleTargetFields {
   id: string;
   name: string;
   prompt: string;
@@ -730,7 +745,7 @@ export interface ScheduleJobView {
 }
 
 /** 创建/更新请求体（对齐 daemon ScheduleDraft）：GUI 编辑表单直发 */
-export interface ScheduleDraft {
+export interface ScheduleDraft extends ScheduleTargetFields {
   name: string;
   prompt: string;
   root: string;

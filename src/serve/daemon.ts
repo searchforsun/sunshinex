@@ -258,6 +258,48 @@ export class GuiDaemon {
         }
         return undefined;
       },
+      // SUNX 目标（2026-11-21 用户裁定「指令落点三种」）：在座即返；离座按 journal 复活
+      // （attachSunxIn 会把该实例设为 GUI active——这里存旧值还原，定时执行不抢用户当前页）
+      sunxTargetSession: (journalId) => {
+        const live = this.runtimeByJournal(journalId);
+        if (live !== undefined) return live;
+        const prevActive = this.active;
+        try {
+          const r = this.attachSunxRuntime(journalId);
+          if (!r.ok) return undefined;
+          return this.sessions.get(r.value.sessionId);
+        } catch {
+          return undefined;
+        } finally {
+          this.active = prevActive;
+        }
+      },
+      // 通道目标：按 binding key 取该聊天会话；在座直接用，离座按绑定 journal 复活（不新建聊天）
+      channelTargetSession: (channelId, chatId) => {
+        const binding = this.channelsBindings.get(`${channelId}:${chatId}`);
+        if (binding === undefined) return undefined;
+        const live = this.sessions.get(binding.sessionId);
+        if (live !== undefined) return live;
+        const jid = binding.journalId;
+        if (jid === undefined) return undefined;
+        const dataDir = findChannelsJournalOwner(jid);
+        if (dataDir === undefined) return undefined;
+        const prevActive = this.active;
+        try {
+          const created = this.createSession(path.dirname(dataDir), { activate: false });
+          if (!created.ok) return undefined;
+          const attached = this.attach(created.value.sessionId, jid);
+          if (!attached.ok) {
+            this.releaseSession(created.value.sessionId);
+            return undefined;
+          }
+          return this.sessions.get(created.value.sessionId);
+        } catch {
+          return undefined;
+        } finally {
+          this.active = prevActive;
+        }
+      },
       createSession: (root, opts) => this.createSession(root, opts),
       getSession: (id) => this.sessions.get(id),
       releaseSession: (id) => this.releaseSession(id),

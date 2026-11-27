@@ -410,3 +410,116 @@ test('run：通道绑定会话复用（2026-11-25 用户裁定②「定时/唤�
   assert.deepEqual(steered, ['检查'], '忙=steer 排队不丢');
   assert.equal(created.length, 0, '忙路径同样零建席');
 });
+
+test('run：SUNX 目标发给已有会话（不建席）——透传强度/模型/权限，submitExternal；缺目标记 failed', async () => {
+  const dir = tmpData();
+  const store = new ScheduleStore(path.join(dir, 'schedules.json'));
+  const j = job({ root: 'D:/unused', target: 'sunx', targetJournalId: 'sx-jid', targetLabel: '运维助手', model: 'm9' });
+  store.upsert(j);
+  const session = new FakeSession(dir);
+  (session as unknown as { id: string }).id = 'sx-live';
+  (session as unknown as { root: string }).root = '/sunx/root';
+  const calls: { model: string[]; mode: string[]; ext: string[] } = { model: [], mode: [], ext: [] };
+  const s = session as unknown as {
+    setModel: (m: string) => boolean;
+    setMode: (m: string) => Promise<'ok' | 'busy'>;
+    submitExternal: (g: string) => { ok: boolean };
+  };
+  s.setModel = (m) => { calls.model.push(m); return true; };
+  s.setMode = async (m) => { calls.mode.push(m); return 'ok'; };
+  s.submitExternal = (g) => { calls.ext.push(g); return { ok: true }; };
+  const ex = new ScheduleExecutor({
+    createSession: () => { throw new Error('must not create'); },
+    getSession: () => session as never,
+    releaseSession: () => undefined,
+    activeSessionId: () => undefined,
+    sunxTargetSession: (jid) => (jid === 'sx-jid' ? (session as never) : undefined),
+  }, store);
+  assert.ok(ex.run(j, 'schedule', 5)!.startsWith('run-'));
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(calls.ext, ['检查'], 'submitExternal 直提目标会话');
+  assert.deepEqual(session.effortCalls, ['high'], '强度透传');
+  assert.equal(session.effort, 'high');
+  assert.deepEqual(calls.model, ['m9'], '模型透传');
+  assert.deepEqual(calls.mode, ['full-access'], '权限透传');
+  const run = store.get('j')!.runs[0]!;
+  assert.equal(run.target, 'sunx');
+  assert.equal(run.targetLabel, '运维助手');
+  assert.equal(run.sessionId, 'sx-live');
+  assert.equal(run.root, '/sunx/root');
+
+  // 目标不可用：不建席，记录 failed 且带目标信息
+  const j2 = job({ id: 'j2', target: 'sunx', targetJournalId: 'missing', targetLabel: '已删会话' });
+  store.upsert(j2);
+  let created = 0;
+  const ex2 = new ScheduleExecutor({
+    createSession: () => { created += 1; return { ok: true, value: { sessionId: 'nope' } }; },
+    getSession: () => undefined,
+    releaseSession: () => undefined,
+    activeSessionId: () => undefined,
+    sunxTargetSession: () => undefined,
+  }, store);
+  ex2.run(j2, 'schedule');
+  assert.equal(created, 0, 'SUNX 目标绝不建席');
+  const failed = store.get('j2')!.runs[0]!;
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.target, 'sunx');
+  assert.equal(failed.targetLabel, '已删会话');
+  assert.match(failed.error ?? '', /not available/);
+});
+
+test('run：通道目标发给绑定聊天会话——忙(409)=steer；无会话不建席记 failed', () => {
+  const dir = tmpData();
+  const store = new ScheduleStore(path.join(dir, 'schedules.json'));
+  const j = job({ id: 'ch1', root: 'D:/unused', target: 'channel', targetChannelId: 'feishu', targetChatId: 'oc_1', targetLabel: '飞书 · 项目群' });
+  store.upsert(j);
+  const session = new FakeSession(dir);
+  (session as unknown as { id: string }).id = 'chat-live';
+  (session as unknown as { root: string }).root = '/chat/root';
+  const steered: string[] = [];
+  const s = session as unknown as {
+    submitExternal: () => { ok: false; status: 409; error: string };
+    steer: (g: string) => void;
+    setMode: (m: string) => Promise<'ok' | 'busy'>;
+    setModel: (m: string) => boolean;
+  };
+  s.submitExternal = () => ({ ok: false, status: 409, error: 'run in progress' });
+  s.steer = (g) => steered.push(g);
+  s.setMode = async () => 'busy';
+  s.setModel = () => true;
+  const ex = new ScheduleExecutor({
+    createSession: () => { throw new Error('must not create'); },
+    getSession: () => session as never,
+    releaseSession: () => undefined,
+    activeSessionId: () => undefined,
+    channelTargetSession: (cid, chat) => (cid === 'feishu' && chat === 'oc_1' ? (session as never) : undefined),
+  }, store);
+  ex.run(j, 'schedule');
+  // setMode 是 Promise：等一轮微任务再断言 steer
+  return new Promise<void>((resolve) => {
+    setTimeout(() => {
+      assert.deepEqual(steered, ['检查'], '通道会话忙=steer 排队');
+      const run = store.get('ch1')!.runs[0]!;
+      assert.equal(run.target, 'channel');
+      assert.equal(run.targetLabel, '飞书 · 项目群');
+      assert.equal(run.status, 'running');
+
+      const j2 = job({ id: 'ch2', target: 'channel', targetChannelId: 'feishu', targetChatId: 'oc_missing' });
+      store.upsert(j2);
+      let created = 0;
+      const ex2 = new ScheduleExecutor({
+        createSession: () => { created += 1; return { ok: true, value: { sessionId: 'nope' } }; },
+        getSession: () => undefined,
+        releaseSession: () => undefined,
+        activeSessionId: () => undefined,
+        channelTargetSession: () => undefined,
+      }, store);
+      ex2.run(j2, 'schedule');
+      assert.equal(created, 0, '通道目标绝不新建聊天会话');
+      const failed = store.get('ch2')!.runs[0]!;
+      assert.equal(failed.status, 'failed');
+      assert.equal(failed.target, 'channel');
+      resolve();
+    }, 0);
+  });
+});
