@@ -110,7 +110,8 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
       ) : runs.length === 0 ? (
         <p className="sx-schedule-empty">{t('No runs yet', '暂无执行记录')}</p>
       ) : (
-        <table className="sx-schedule-table">
+        <div className="sx-schedule-table-scroll">
+          <table className="sx-schedule-table">
           <thead>
             <tr>
               <th>{t('Trigger', '触发方式')}</th>
@@ -132,7 +133,7 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
                     {targetOf(run).kind === 'project' ? (
                       <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
                     ) : targetOf(run).kind === 'sunx' ? (
-                      <SunxIcon size={14} strokeWidth={1.75} />
+                      <SunxIcon size={16} strokeWidth={1.75} />
                     ) : (
                       (() => {
                         // 通道按 label 前缀反查平台图标（label 快照=「平台名 · 聊天名」）
@@ -149,9 +150,6 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
                   <span className="sx-schedule-status"><span className={`tb-status-dot ${statusClass(run.status)}`} aria-hidden="true" />{t(statusLabel(run.status).en, statusLabel(run.status).zh)}</span>
                   {run.status === 'succeeded' && run.scheduledAt !== undefined && run.startedAt - run.scheduledAt > 60_000 ? (
                     <div className="sx-schedule-note">{t('Late', '延迟')} {Math.round((run.startedAt - run.scheduledAt) / 60_000)} {t('min', '分钟')}</div>
-                  ) : null}
-                  {run.error !== undefined ? (
-                    <div className={run.status === 'failed' ? 'sx-schedule-err' : 'sx-schedule-note'}>{run.error}</div>
                   ) : null}
                 </td>
                 <td className="num">{run.seconds !== undefined ? durationLabel(run.seconds) : '—'}</td>
@@ -171,7 +169,8 @@ export function ScheduleRuns({ conn, job, onOpenSession, tick }: ScheduleRunsPro
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       )}
     </div>
   );

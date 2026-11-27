@@ -259,6 +259,7 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
     clearConfirm();
     conn.runScheduleNow(job.id).then(
       () => {
+        // 2026-11-21 用户裁定：成功提示改为上部居中 toast（普通 info），不再行内状态条
         setNotice(t('Triggered once', '已触发一次执行'));
         if (runReloadTimer.current !== null) clearTimeout(runReloadTimer.current);
         runReloadTimer.current = setTimeout(() => {
@@ -412,9 +413,9 @@ export function SchedulePage({ conn, onOpenSession, onExit, onToggleMenu, onCrea
             </p>
           )}
           {notice !== '' && (
-            <p className="sx-schedule-notice" role="status">
+            <div className="sx-toast sx-schedule-toast" role="status">
               {notice}
-            </p>
+            </div>
           )}
           {view.kind === 'list' &&
             (loadFailed && jobs === null ? null : jobs === null ? (

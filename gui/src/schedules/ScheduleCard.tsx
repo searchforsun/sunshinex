@@ -134,7 +134,7 @@ export function ScheduleCard(props: ScheduleCardProps): JSX.Element {
           {target.kind === 'project' ? (
             <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
           ) : target.kind === 'sunx' ? (
-            <SunxIcon size={14} strokeWidth={1.75} />
+            <SunxIcon size={16} strokeWidth={1.75} />
           ) : (
             (() => {
               // 通道行：图标 = 该通道配置的平台（飞书→羽毛等）；配置不可得时退中性图标。

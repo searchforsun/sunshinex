@@ -50,7 +50,7 @@ describe('ScheduleRuns', () => {
     expect(onOpenSession).toHaveBeenCalledWith('jid1', '/p');
   });
 
-  it('六态映射到项目 tb-status-dot 类;失败原因 err 色、中断原因灰字', async () => {
+  it('六态映射到项目 tb-status-dot 类;失败/中断原因不再渲染(2026-11-21 用户裁定)', async () => {
     const statuses: ScheduleRunStatus[] = ['succeeded', 'failed', 'skipped', 'interrupted', 'stopped', 'running'];
     const dotClass: Record<ScheduleRunStatus, string> = {
       succeeded: 'task-status-success',
@@ -83,8 +83,8 @@ describe('ScheduleRuns', () => {
       expect(dots[i]!.className).toContain(dotClass[status]);
       expect(screen.getByText(label[status])).toBeDefined();
     });
-    expect(screen.getByText('429').className).toContain('sx-schedule-err');
-    expect(screen.getByText('interrupted by stop').className).toContain('sx-schedule-note');
+    expect(screen.queryByText('429')).toBeNull();
+    expect(screen.queryByText('interrupted by stop')).toBeNull();
   });
 
   it('触发方式三值中英标签', async () => {

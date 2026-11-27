@@ -408,7 +408,7 @@ function TargetPickPop({
         const Icon = r.icon;
         return (
           <button key={r.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => onPick(r.id)}>
-            {Icon !== undefined && <Icon size={14} strokeWidth={1.75} aria-hidden="true" />}
+            {Icon !== undefined && <Icon size={16} strokeWidth={1.75} aria-hidden="true" />}
             <span className="sx-schedule-target-opt">
               <span className="sx-schedule-target-opt-title">{r.title}</span>
               {r.sub !== undefined && r.sub !== '' && <span className="sx-schedule-target-opt-sub">{r.sub}</span>}

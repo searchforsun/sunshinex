@@ -136,7 +136,7 @@ describe('SchedulePage 列表', () => {
     expect(screen.getByText(bi('No scheduled tasks yet', '暂无定时任务'))).toBeDefined();
   });
 
-  it('立即执行：runScheduleNow + 状态行 notice，随后自动刷新列表', async () => {
+  it('立即执行：runScheduleNow + 上部居中 toast 提示，随后自动刷新列表(2026-11-21)', async () => {
     const { conn, schedules, runScheduleNow } = makeConn([job()]);
     render(<SchedulePage conn={conn} onOpenSession={vi.fn()} onExit={vi.fn()} />);
     await screen.findByText('仓库巡检');
@@ -147,6 +147,7 @@ describe('SchedulePage 列表', () => {
     await waitFor(() => expect(runScheduleNow).toHaveBeenCalledWith('j1'));
     const status = await screen.findByRole('status');
     expect(status.textContent).toBe('Triggered once');
+    expect(status.className).toContain('sx-schedule-toast'); // 上部居中 toast 形态
     // 执行后 ~700ms 静默重拉列表
     await waitFor(() => expect(schedules).toHaveBeenCalledTimes(2), { timeout: 2000 });
   });
