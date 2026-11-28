@@ -5128,10 +5128,13 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-msg { position: relative; }
 /* 引用区固定槽（2026-11-28 六轮裁定「像下方折叠按钮一样开辟固定区域,不是浮层;两侧弧度对齐
    气泡;滚动条不可显示到该区域」）：引用行移出滚动区（user-bubble-head 槽,气泡转 flex 列）——
-   左右满出血抵泡 padding,顶缘弧度随泡(radius-composer),下缘 1px 分割;滚动条只在正文区 */
+   左右满出血抵泡 padding,顶缘弧度随泡(radius-composer);滚动条只在正文区 */
 .entry-user .user-bubble.user-bubble-headered { display: flex; flex-direction: column; }
 .user-bubble.user-bubble-headered .user-bubble-scroll { min-height: 0; }
-.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 6px; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-bottom: 1px solid var(--border); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
+.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 6px; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
+/* 2026-11-28 六轮复裁定「不要分割线区分,去掉;跳转图标保持一致,不要一大一小」：分割线退役;
+   svg 锁 flex:none——flex 行内长文本会把未锁宽的图标挤到 6px(实测),恒 14 原寸 */
+.sx-group-quote-line > svg { flex: none; }
 .sx-group-quote-line.clickable { cursor: pointer; }
 .sx-group-quote-line.clickable:hover { color: var(--fg-secondary); }
 .sx-group-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

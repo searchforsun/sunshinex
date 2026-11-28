@@ -737,10 +737,54 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       : {}),
   }), []);
   const messageById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
-  /** 刻度条目（2026-11-28 六轮「群聊支持刻度,对齐普通会话」）：群消息全走会话用户条形
-   *  （entryOf kind='user'），刻度=每条消息一枚,hover 预览首行内容;DOM 锚 data-entry-key=m.id 同源 */
-  const railEntries = useMemo(() => messages.map(entryOf), [messages, entryOf]);
+  /** 刻度条目（2026-11-28 六轮补正「只要右侧群主气泡;亮色显示群主消息,暗色显示回复的第一条消息」）：
+   *  刻度=仅群主消息（entryOf kind='user'）;紧随其后的第一条成员消息转 kind='assistant' 作回复
+   *  预览（ChatRail 预览卡:亮行=pv-user 群主,暗行=pv-reply 回复首条）,后续成员消息不入刻度;
+   *  DOM 锚 data-entry-key=m.id 同源,回复条锚=该成员气泡自身。 */
+  const railEntries = useMemo<ChatEntry[]>(() => {
+    const out: ChatEntry[] = [];
+    let replyTaken = false;
+    for (const m of messages) {
+      const fromMember = m.kind !== 'human' || m.from.kind === 'sunx';
+      if (fromMember) {
+        if (!replyTaken) {
+          out.push({ ...entryOf(m), kind: 'assistant' });
+          replyTaken = true;
+        }
+        continue;
+      }
+      replyTaken = false;
+      out.push(entryOf(m));
+    }
+    return out;
+  }, [messages, entryOf]);
 
+  /** 刻度当前位模型反查（ChatRail activeKeyAt 入参=判定线内容坐标）：视口 y=rect.top+(line−scrollTop),
+   *  二分最后一只「群主」气泡——成员气泡也在 DOM 但不入刻度序列,不过滤则反查恒断档 */
+  const railActiveKeyAt = useCallback((line: number): string | null => {
+    const el = scrollRef.current;
+    if (el === null) return null;
+    const keys = new Set(railEntries.filter((e) => e.kind === 'user').map((e) => e.key));
+    if (keys.size === 0) return null;
+    const rect = el.getBoundingClientRect();
+    const viewLine = rect.top + (line - el.scrollTop);
+    const nodes = Array.from(el.querySelectorAll('.entry-user[data-entry-key]')).filter((n) => keys.has(n.getAttribute('data-entry-key') ?? ''));
+    let lo = 0;
+    let hi = nodes.length - 1;
+    let hit = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if ((nodes[mid]?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY) <= viewLine) {
+        hit = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (hit < 0) return null;
+    const key = nodes[hit]?.getAttribute('data-entry-key') ?? '';
+    return keys.has(key) ? key : null;
+  }, [railEntries]);
   /** 群页 ask 卡：来源成员 + 与成员会话同一 pid（回答走 /ask/:pid/reply，两边同步） */
   const askItems = useMemo<Array<{ pid: string; req: GuiAskReq; member: SunxGroupMemberRow }>>(
     () => members.flatMap((member) => (member.asks ?? []).map((a) => ({ pid: a.pid, req: a.req, member }))),
@@ -890,7 +934,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         <div className="chat sx-group-chat" ref={scrollRef} onScroll={onScroll}>
           {/* 刻度导航条（2026-11-28 六轮「对齐普通会话的样式和逻辑」）：主对话 ChatRail 同件——
               群主消息与成员回复各一枚刻度,hover 预览首行内容;跳转直落 DOM 锚不走 revealSeq=无高亮 */}
-          <ChatRail entries={railEntries} chatScrollRef={scrollRef} />
+          <ChatRail entries={railEntries} chatScrollRef={scrollRef} activeKeyAt={railActiveKeyAt} />
           {loading && (
             <div className="chat-empty">
               <div className="chat-empty-hint">{t('Loading…', '加载中…')}</div>
