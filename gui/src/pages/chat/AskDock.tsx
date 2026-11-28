@@ -66,7 +66,7 @@ export function AskDock(props: AskDockProps): JSX.Element {
         <span className="ask-source-who">
           <span>{t('From', '来自')}</span>
           <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
-          <button type="button" className="ask-card-agent-link" data-tip={t('Open sub-agent transcript', '打开子智能体转录')} onClick={() => onOpenAgent?.(askedBy.label, askedBy.label)}>
+          <button type="button" className="ask-card-agent-link" onClick={() => onOpenAgent?.(askedBy.label, askedBy.label)}>
             {askedBy.label}
           </button>
         </span>

@@ -5202,12 +5202,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-ask-body .pending-card { border: none; background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
 /* 普通会话多题（2026-11-28 十二轮复裁定）：问题行上侧独立一行——左「来自 图标 名称」（子智能体
    归因时）或空,右 ‹1/N›;本轮并发工具与子智能体投递的 ask 同进这一集合分页 */
-.ask-top-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 2px 6px; min-height: 22px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
-.ask-source-who { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+/* 顶带边距（2026-11-28 十三轮「左右和上下合理边距」）：与正文/选项同一左缘(14px),
+   上 10px 下 2px;来源三段（来自/图标/名称）6px 间隔,分页与右缘同距 */
+.ask-top-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px 2px; min-height: 22px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+.ask-source-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+/* 正文/选项区左右与顶带同缘;标量 10px→14px */
 /* 底部动作行留行距,不贴边（2026-11-28 十轮） */
-.sx-group-ask-dock .ask-actions { padding: 6px 12px 12px; }
+.sx-group-ask-dock .ask-actions { padding: 8px 14px 12px; }
 /* 正文+选项限高（弹窗有最大高度,内部滚动;动作行恒在视口内） */
-.sx-group-ask-body { max-height: min(46vh, 420px); padding: 8px 10px 0; overflow-y: auto; }
+.sx-group-ask-body { max-height: min(46vh, 420px); padding: 6px 14px 0; overflow-y: auto; }
 .sx-group-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sx-group-ask-source { display: flex; align-items: center; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); padding: 0 2px; min-width: 0; }
 .sx-group-muted { color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

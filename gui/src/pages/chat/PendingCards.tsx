@@ -97,7 +97,6 @@ export function AskCard({ req, pick, onPick, onOpenAgent, headRight, hideSource 
           <button
             type="button"
             className="ask-card-agent-link"
-            data-tip={t('Open sub-agent transcript', '打开子智能体转录')}
             onClick={() => onOpenAgent?.(req.askedBy!.label, req.askedBy!.label)}
           >
             {req.askedBy.label}
