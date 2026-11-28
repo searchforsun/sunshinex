@@ -5,7 +5,7 @@
  * 查询侧栏=sx-sidebar + sx-resizer + sx-search-*（可拖宽）。房间数据靠 seq 游标轮询。
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
+import type { ClipboardEvent, CompositionEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, Search, Users, X,
@@ -29,8 +29,11 @@ import { ComposerCard } from '../../composer/ComposerCard';
 import { ModeMenu, sessionModeLabel } from '../../composer/mode-menu';
 import { CommandPalette, type CmdItem } from '../../CommandPalette';
 import { useCommandPalette, slashItemsFor } from '../chat/use-command-palette';
-import { RefPalette, hasMentionTokens, renderMentionSpans } from '../chat/mention';
-import { refTokenAt, refPanelItems as buildRefPanelItems, refPickLabel, expandRefNames } from '../chat/ref-palette';
+import {
+  RefPalette, atomicRangeOver, expandRefContents, groupMentionTokenSpans, hasMentionTokens, renderMentionSpans,
+  slashTokenAt, splitMentionTokenSpans, tokenDeleteRangeOver, tokenGuardVerdictOver, tokenSpanAtOver,
+} from '../chat/mention';
+import { refTokenAt, refPanelItems as buildRefPanelItems, refPickLabel, expandRefNames, unknownRefTokens } from '../chat/ref-palette';
 import type { RefItem, RefPal } from '../chat/ref-palette';
 import { useRefCatalog } from '../chat/use-chat-ref-entries';
 import { SelActionsOverlay } from '../chat/SelActionsOverlay';
@@ -43,6 +46,9 @@ import { MAIN_MIN_WIDTH, chatMaxFor } from '../../thread-width';
 import { zoomScale } from '../../ui-zoom';
 
 const GROUPS_CHANGED_EVENT = 'sunx-groups-changed';
+/** 群草稿驻留（2026-11-28 五轮移植主对话「切会话草稿不丢」）：模块级按 groupId 存 input/images
+ *  （App 生命周期内,驻留座同口径）；切群/关页再回不丢草稿，提交通后由保活 effect 落空值。 */
+const groupDrafts = new Map<string, { input: string; images: string[] }>();
 /** 群聊专用控制命令（2026-11-27）：/stop 暂停对应 Sunx、/clear 清其排队、/continue 恢复队列。
  *  不并进普通会话 supported；群页 supported 取 daemon 列表后再并这三条。 */
 const SUNX_GROUP_COMMANDS = ['/stop', '/clear', '/continue'] as const;
@@ -78,6 +84,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  /** 瞬态提示（2026-11-28 五轮移植主对话 showImgHint 同语义）：未知引用等非阻断信息,4s 自隐 */
+  const [hint, setHint] = useState('');
   const [input, setInput] = useState('');
   const [mentions, setMentions] = useState<SunxRoomTarget[]>([]);
   const [mentionAll, setMentionAll] = useState(false);
@@ -126,7 +134,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
    *  触发/过滤/插入复用 ref-palette 单点；群 send 前按目录 expandRefNames 还原 id。 */
   const [refPal, setRefPal] = useState<RefPal | null>(null);
   const [refActive, setRefActive] = useState(0);
-  const { refEntries, loadRefEntries } = useRefCatalog({ conn });
+  const { refEntries, loadRefEntries, refEntriesLoadedRef } = useRefCatalog({ conn });
   const refItems = useMemo(
     () => (refPal === null ? null : buildRefPanelItems(refEntries, refPal.query, refPal.sym)),
     [refPal, refEntries],
@@ -152,6 +160,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 
   useEffect(() => { cursorRef.current = cursor; }, [cursor]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // 瞬态提示自隐（4s）
+  useEffect(() => {
+    if (hint === '') return;
+    const id = window.setTimeout(() => setHint(''), 4000);
+    return () => window.clearTimeout(id);
+  }, [hint]);
 
   const mergeMessages = useCallback((incoming: SunxRoomMessage[], reset: boolean): void => {    if (reset) {
       setMessages(incoming);
@@ -208,10 +222,13 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     setHasMore(false);
     setActiveSeq(null);
     nodeBySeq.current.clear();
-    setImages([]);
     setPlusOpen(false);
     setModel('');
     setMode('');
+    // 草稿驻留（2026-11-28 五轮）：回群恢复上次的输入与图片（提交通后 effect 落空值）
+    const draft = groupDrafts.get(groupId);
+    setInput(draft?.input ?? '');
+    setImages(draft?.images ?? []);
     void loadInitial();
     void conn.commands().then(
       (r) => setSupported([...new Set([...r.supported, ...SUNX_GROUP_COMMANDS])].filter((c) => c !== '/plan')),
@@ -219,6 +236,11 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     );
     void conn.models().then((r) => setModels(r.choices), () => setModels([]));
   }, [conn, groupId, loadInitial]);
+
+  // 草稿保活（与上行恢复配对）：输入/图片变化即落驻留表（切群/关页再回不丢）
+  useEffect(() => {
+    groupDrafts.set(groupId, { input, images });
+  }, [groupId, input, images]);
 
   // 成员状态（running/awaiting）刷新：ask_question 挂起在成员会话，群页据此弹同一张 ask 卡并跳转
   useEffect(() => {
@@ -231,8 +253,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const addImages = useCallback(async (files: File[]): Promise<void> => {
     const loaded = await loadImages(files);
     if (loaded.length === 0) return;
+    // 超限提示（2026-11-28 五轮移植主对话）：静默截断改提示行（warn 槽,发信即清）
+    if (images.length + loaded.length > MAX_IMAGES) {
+      setError(t(`Up to ${MAX_IMAGES} images per message`, `每条消息最多 ${MAX_IMAGES} 张图片`));
+    }
     setImages((prev) => [...prev, ...loaded].slice(0, MAX_IMAGES));
-  }, []);
+  }, [images]);
 
   useEffect(() => {
     const id = window.setInterval(() => { void poll(); }, 1500);
@@ -266,7 +292,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   // 「/」面板开合沿触发一次技能现拉（开→开不打扰；与 + 面板每次现拉同口径）
   const slashWasOpenRef = useRef(false);
   useEffect(() => {
-    const open = input.trim().startsWith('/') && !input.includes(' ');
+    const open = slashTokenAt(input, inputRef.current?.selectionStart ?? input.length) !== null;
     if (open && !slashWasOpenRef.current) reloadSkills();
     slashWasOpenRef.current = open;
   }, [input, reloadSkills]);
@@ -381,9 +407,18 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   }, []);
 
   const send = useCallback(async (): Promise<void> => {
-    // $/# 名称→id 发送期还原（主对话 expandRefNames 同口径;目录未拉过=原样直发）
-    const text = expandRefNames(input, refEntries);
+    // 发送期展开链（2026-11-28 五轮移植主对话全链尾环）：$/# 名称→id（expandRefNames）+
+    // ⟦片段⟧→正文/终端围栏（expandRefContents,注册表兜底）——圈选「添加到会话」的内容随
+    // token 送达成员,不再以字面 ⟦文本片段N⟧ 占位符出站
+    const text = expandRefContents(expandRefNames(input, refEntries), new Map());
     if ((text.trim() === '' && images.length === 0) || sending) return;
+    // 未知引用提示（五轮移植主对话 R5,不拦截不改写原文照发）：目录已拉过且有候选才对照
+    if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
+      const unknown = unknownRefTokens(text, refEntries);
+      if (unknown.length > 0) {
+        setHint(t('No registered match for {tokens} — sent as-is', '{tokens} 未匹配到在册条目——已按原文发送').replace('{tokens}', unknown.join(' ')));
+      }
+    }
     const token = text.trim().split(/\s+/)[0] ?? '';
     const isCommand = supported.includes(token);
     if (isCommand && images.length > 0) {
@@ -448,13 +483,80 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const q = mentionQuery.trim().toLowerCase();
     return members.filter((m) => q === '' || m.name.toLowerCase().includes(q));
   }, [members, mentionQuery]);
+  /** 守卫区间双源（2026-11-28 五轮移植主对话 token 原子性/IME/归位链）：通用 token（/命令·$
+   *  成员·#团队·⟦片段⟧）+ 群 @成员/@全体成员（CJK 名不在通用词法内），合并成一份有序区间。 */
+  const guardSpans = useCallback((text: string): Array<{ s: number; e: number }> => [
+    ...splitMentionTokenSpans(text),
+    ...groupMentionTokenSpans(text, members.map((m) => m.name)),
+  ], [members]);
+  const composingRef = useRef(false);
+  /** IME 组字范围（2026-11-28 五轮移植）：三拍回抛,高亮层把与范围交叠的 chip 压平为普通段 */
+  const [compRange, setCompRange] = useState<{ start: number; end: number } | null>(null);
+  const compRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const setCompRangeGuarded = useCallback((r: { start: number; end: number } | null): void => {
+    const prev = compRangeRef.current;
+    if (prev === null ? r === null : r !== null && prev.start === r.start && prev.end === r.end) return;
+    compRangeRef.current = r;
+    setCompRange(r);
+  }, []);
+  const onCompositionGuard = useCallback((e: CompositionEvent<HTMLTextAreaElement>): void => {
+    composingRef.current = true;
+    const ta = e.currentTarget;
+    const s = ta.selectionStart ?? 0;
+    const en = ta.selectionEnd ?? 0;
+    const [as, ae] = atomicRangeOver(s, en, guardSpans(input));
+    if (as !== s || ae !== en) e.preventDefault();
+  }, [guardSpans, input]);
+  const onCompositionEndGuard = useCallback((): void => {
+    composingRef.current = false;
+  }, []);
+  const onBeforeInputGuard = useCallback((e: FormEvent<HTMLTextAreaElement>): void => {
+    const native = e.nativeEvent as InputEvent;
+    const ta = e.currentTarget;
+    const s = ta.selectionStart ?? 0;
+    const en = ta.selectionEnd ?? 0;
+    const v = tokenGuardVerdictOver(s, en, native.inputType ?? '', guardSpans(input));
+    if (v.action === 'redirectEnd') {
+      e.preventDefault();
+      ta.setSelectionRange(v.to, v.to);
+    } else if (v.action === 'splice') {
+      e.preventDefault();
+      setInput((prev) => prev.slice(0, v.s) + prev.slice(v.e));
+      requestAnimationFrame(() => ta.setSelectionRange(v.s, v.s));
+    }
+  }, [guardSpans, input]);
+  const onPasteGuard = useCallback((e: ClipboardEvent<HTMLTextAreaElement>): void => {
+    const ta = e.currentTarget;
+    const s = ta.selectionStart ?? 0;
+    const en = ta.selectionEnd ?? 0;
+    const [as, ae] = atomicRangeOver(s, en, guardSpans(input));
+    if (as !== s || ae !== en) {
+      e.preventDefault();
+      ta.setSelectionRange(ae, ae);
+    }
+  }, [guardSpans, input]);
+  const onSelectGuard = useCallback((): void => {
+    // G14.213 光标不落 token 中间:原生移动后的兜底归位(←→ 在 keydown 已跨 token);IME 组合中跳过
+    if (composingRef.current) return;
+    const ta = inputRef.current;
+    if (ta === null) return;
+    const v = ta.value;
+    if (!v.includes('@') && !v.includes('⟦') && !v.includes('/') && !v.includes('$') && !v.includes('#')) return;
+    const s = ta.selectionStart ?? 0;
+    if ((ta.selectionEnd ?? s) !== s) return;
+    const span = tokenSpanAtOver(s, guardSpans(v));
+    if (span !== null) ta.setSelectionRange(span[1], span[1]);
+  }, [guardSpans]);
   /** 「/」面板项（主对话同件）：群支持集 = daemon supported ∪ 群控制命令 − /plan；
-   *  行首 / 令牌 → 命令+技能，命令行带双语说明（CommandPalette 渲染件）。
+   *  2026-11-28 五轮移植 caret 级触发——slashTokenAt(input, caret)（行首=命令+技能,行中=技能池,
+   *  主对话同式）；@ 令牌在场即收口（同一 caret 前缀互斥）。
    *  2026-11-28 三轮实机排查「/stop 不弹面板」：daemon /commands 清单（SLASH_COMMANDS）无群控制
-   *  三条，仅并 supported 不够——commands 清单与双语说明一并并入（jsdom 桩含清单曾遮住此洞）。 */
+   *  三条，仅并 supported 不够——commands 清单一并并入（jsdom 桩含清单曾遮住此洞）。 */
   const slashItems = useMemo<CmdItem[] | null>(() => {
-    const q = input.trim();
-    if (!q.startsWith('/') || q.includes(' ')) return null;
+    const caret = inputRef.current?.selectionStart ?? input.length;
+    const atMatch = /(^|\s)@([^\s@]*)$/.exec(input.slice(0, caret));
+    const token = atMatch === null ? slashTokenAt(input, caret) : null;
+    if (token === null) return null;
     const excluded = SUNX_EXCLUDED_COMMANDS as readonly string[];
     const merged: typeof cmdData = cmdData === null ? null : {
       commands: [...new Set([...cmdData.commands, ...SUNX_GROUP_COMMANDS])].filter((c) => !excluded.includes(c)),
@@ -462,17 +564,23 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       descriptions: cmdData.descriptions,
       supported: [...new Set([...cmdData.supported, ...SUNX_GROUP_COMMANDS])].filter((c) => !excluded.includes(c)),
     };
-    const items = slashItemsFor(merged, { query: input.slice(1), atStart: true }, skills);
+    const items = slashItemsFor(merged, token, skills);
     return items.length > 0 ? items : null;
   }, [cmdData, input, skills]);
   const slashActive = Math.min(cmdActive, Math.max(0, (slashItems?.length ?? 1) - 1));
   const pickSlash = useCallback((item: CmdItem): void => {
     if (!item.ok) return;
-    setInput(`${item.cmd} `);
+    // caret 级插入（2026-11-28 五轮移植主对话同式）：token 起点替换+分隔符守卫+尾段保留
+    const caret = inputRef.current?.selectionStart ?? input.length;
+    const tok = slashTokenAt(input, caret);
+    const from = tok !== null ? tok.from : input.length;
+    const head = input.slice(0, from);
+    const sep = head !== '' && /\S$/.test(head) ? ' ' : '';
+    setInput(head + sep + item.cmd + ' ' + input.slice(caret));
     setMentions([]);
     setMentionAll(false);
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
+  }, [input]);
   const pickRef = useCallback((item: RefItem): void => {
     if (refPal === null) return;
     // 插名称而非 id（主对话同口径,用户不感知 id）；群 send 前 expandRefNames 按目录还原 id
@@ -491,7 +599,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const ta = inputRef.current;
     const caret = ta?.selectionStart ?? input.length;
     const v = input;
-    if (v.trim().startsWith('/') && !v.includes(' ')) setSlashHidden(false);
+    if (slashTokenAt(v, caret) !== null) setSlashHidden(false);
     const m = /(^|\s)@([^\s@]*)$/.exec(v.slice(0, caret));
     if (m !== null) {
       setMentionOpen(true);
@@ -535,38 +643,53 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [popsOpen]);
-  /** 输入框高亮层（2026-11-27 二轮 chip + 2026-11-28 三轮补全「/skills 和命令怎么没有 chip,
-   *  # $ 怎么没有提示和 chip」）：群 @成员/@全体成员 令牌按主对话 file 芯片同手法（原文 @ 透明
-   *  保字宽,图标绝对定位落 @ 位——2026-11-28 三轮「图标加大居中」:盒子收到 @ 字形位,15px 图标
-   *  居中悬置不再压名）；其余段交主对话 renderMentionSpans(composer 形态)——/命令·$成员·#团队
-   *  蓝分色、⟦文本片段⟧ 芯片与气泡面同口径。纯文本不挂层（IME/光标原生）。 */
+  /** 输入框高亮层（2026-11-27 二轮 chip + 2026-11-28 三轮补全 + 五轮守卫适配）：群 @成员/
+   *  @全体成员 令牌按主对话 file 芯片同手法（原文 @ 透明保字宽,图标绝对定位落 @ 位）；其余段交
+   *  主对话 renderMentionSpans(composer 形态)。五轮两处升级——①IME 组字段交叠的 chip 压平为
+   *  普通段（textarea 恒透明,组字串由叠层绘制,芯片不再随组字消失）；②成员 chip 可点击跳成员
+   *  会话（@全体成员 无跳转面,点击无害）。纯文本段不包 span（层与 textarea 同为逐字排版）。 */
   const renderGroupHighlight = useCallback((text: string): ReactNode => {
-    // 纯文本段保持原文字面（不包 span）——层与 textarea 同为逐字排版,且 IME 候选/选区全原生
-    const rest = (seg: string, key: React.Key): ReactNode => (
-      <Fragment key={key}>{hasMentionTokens(seg) ? renderMentionSpans(seg, undefined, undefined, undefined, true) : seg}</Fragment>
+    const rest = (seg: string, key: React.Key, overlap: boolean): ReactNode => (
+      <Fragment key={key}>{!overlap && hasMentionTokens(seg) ? renderMentionSpans(seg, undefined, undefined, undefined, true, compRange) : seg}</Fragment>
     );
     const tokens = [...(text.includes('@全体成员') ? ['@全体成员'] : []), ...members.map((m) => `@${m.name}`)]
       .sort((a, b) => b.length - a.length);
     if (tokens.length === 0) {
-      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true) : undefined;
+      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true, compRange) : undefined;
     }
     const escaped = tokens.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const parts = text.split(new RegExp(`(${escaped.join('|')})`, 'g'));
     if (!parts.some((p) => tokens.includes(p))) {
-      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true) : undefined;
+      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true, compRange) : undefined;
     }
-    return parts.map((part, i) => (
-      tokens.includes(part) ? (
-        <span key={i} className="hn hn-file">
-          <span className="hn-file-ico" aria-hidden="true">
-            {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
+    let off = 0;
+    return parts.map((part, i) => {
+      const start = off;
+      off += part.length;
+      const overlap = compRange !== null && start < compRange.end && off > compRange.start;
+      if (tokens.includes(part) && !overlap) {
+        const member = part === '@全体成员' ? undefined : members.find((m) => `@${m.name}` === part);
+        return (
+          <span
+            key={i}
+            className="hn hn-file sx-group-chip-link"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (member !== undefined) onOpenMember(member.id);
+            }}
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <span className="hn-file-ico" aria-hidden="true">
+              {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
+            </span>
+            <span className="hn-file-at" aria-hidden="true">@</span>
+            {part.slice(1)}
           </span>
-          <span className="hn-file-at" aria-hidden="true">@</span>
-          {part.slice(1)}
-        </span>
-      ) : rest(part, i)
-    ));
-  }, [members]);
+        );
+      }
+      return rest(part, i, overlap);
+    });
+  }, [members, compRange, onOpenMember]);
   /** 底栏 pill 文案（空串=跟随成员；模型名按聊天同款短名收敛） */
   const modelLabel = model === ''
     ? t('Follow members', '跟随成员')
@@ -864,9 +987,61 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 if (refPal !== null) setRefPal(null);
               }
               // 「/」面板：继续输入即复位外点收口闸（再显示）
-              if (v.trim().startsWith('/') && !v.includes(' ')) setSlashHidden(false);
+              // 「/」面板：继续输入即复位外点收口闸（再显示）
+              if (slashTokenAt(v, inputRef.current?.selectionStart ?? v.length) !== null) setSlashHidden(false);
             }}
+            onBeforeInput={onBeforeInputGuard}
+            onPasteGuard={onPasteGuard}
+            onCompositionGuard={onCompositionGuard}
+            onCompositionRange={setCompRangeGuarded}
+            onCompositionEndGuard={onCompositionEndGuard}
+            onSelectGuard={onSelectGuard}
             onKeyDown={(e) => {
+              // token 原子性 keydown 面（2026-11-28 五轮移植主对话 G14.212/213）：字符键/IME 不可
+              // 落 token 中间（阻止+钉尾）；←→ 单击跨整个 token；退格/删除在 token 内整删
+              if ((e.key.length === 1 || e.key === 'Process') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const taA = e.currentTarget as HTMLTextAreaElement;
+                const cs = taA.selectionStart ?? input.length;
+                const ce = taA.selectionEnd ?? cs;
+                const [as, ae] = atomicRangeOver(cs, ce, guardSpans(input));
+                if (as !== cs || ae !== ce) {
+                  e.preventDefault();
+                  taA.setSelectionRange(ae, ae);
+                  return;
+                }
+              }
+              if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                const taA = e.currentTarget as HTMLTextAreaElement;
+                const c = taA.selectionStart ?? 0;
+                const ce = taA.selectionEnd ?? c;
+                if (c === ce) {
+                  const dir = e.key === 'ArrowLeft' ? -1 : 1;
+                  const nc = c + dir;
+                  if (nc >= 0 && nc <= taA.value.length) {
+                    const span = tokenSpanAtOver(nc, guardSpans(taA.value));
+                    if (span !== null) {
+                      e.preventDefault();
+                      const to = dir < 0 ? span[0] : span[1];
+                      taA.setSelectionRange(to, to);
+                    }
+                  }
+                }
+              }
+              if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) composingRef.current = false;
+              if (e.key === 'Backspace' || e.key === 'Delete') {
+                const ta = e.currentTarget as HTMLTextAreaElement;
+                const caret = ta.selectionStart ?? input.length;
+                if (ta.selectionStart === ta.selectionEnd) {
+                  const range = tokenDeleteRangeOver(caret, e.key, guardSpans(input));
+                  if (range !== null) {
+                    e.preventDefault();
+                    const [s, e2] = range;
+                    setInput((prev) => prev.slice(0, s) + prev.slice(e2));
+                    requestAnimationFrame(() => { inputRef.current?.setSelectionRange(s, s); });
+                    return;
+                  }
+                }
+              }
               // $/# 引用面板键盘链（主对话同款）：↑↓ 选行 / Tab·Enter 选中 / Esc 收口
               if (refPal !== null && refItems !== null && refItems.length > 0) {
                 const rActive = Math.max(0, Math.min(refActive, refItems.length - 1));
@@ -879,17 +1054,36 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 }
                 if (e.key === 'Escape') { e.preventDefault(); setRefPal(null); return; }
               }
-              // 「/」面板键盘链（主对话同款）：↑↓ 选行 / Tab 补全 / Enter 选中 / Esc 清令牌
+              // 「/」面板键盘链（主对话同款）：↑↓ 选行 / Tab 补全 / Enter 补全(查询=完整命令名时
+              // 落发送,主对话同款) / Esc 收口
               if (slashItems !== null && slashItems.length > 0) {
                 const active = Math.min(cmdActive, slashItems.length - 1);
                 if (e.key === 'ArrowDown') { e.preventDefault(); setCmdActive(Math.min(active + 1, slashItems.length - 1)); return; }
                 if (e.key === 'ArrowUp') { e.preventDefault(); setCmdActive(Math.max(active - 1, 0)); return; }
-                if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing)) {
+                const caret = (e.currentTarget as HTMLTextAreaElement).selectionStart ?? input.length;
+                const tok = slashTokenAt(input, caret);
+                const queryFull = tok !== null ? input.slice(tok.from + 1, caret) : '';
+                const item = slashItems[active]!;
+                if (e.key === 'Tab') {
                   e.preventDefault();
-                  pickSlash(slashItems[active]!);
+                  if (tok !== null) setInput((prev) => prev.slice(0, tok.from) + item.cmd + ' ' + prev.slice(caret));
                   return;
                 }
-                if (e.key === 'Escape') { e.preventDefault(); setInput(''); return; }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  if (tok !== null && item.cmd !== `/${queryFull}`) {
+                    e.preventDefault();
+                    setInput((prev) => prev.slice(0, tok.from) + item.cmd + ' ' + prev.slice(Math.max(caret, tok.from)));
+                    requestAnimationFrame(() => {
+                      const ta = inputRef.current;
+                      if (ta !== null) {
+                        const to = Math.min(tok.from + item.cmd.length + 1, ta.value.length);
+                        ta.setSelectionRange(to, to);
+                      }
+                    });
+                    return;
+                  }
+                }
+                if (e.key === 'Escape') { e.preventDefault(); setSlashHidden(true); return; }
               }
               if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
@@ -908,6 +1102,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   </div>
                 )}
                 {error !== '' && <div className="sx-img-hint warn" role="alert">{error}</div>}
+                {hint !== '' && <div className="sx-img-hint" role="status">{hint}</div>}
                 {/* @ 用法说明改由占位常驻（2026-11-28 四轮裁定「占位常驻为 使用 @ 选择成员…」）,
                     卡内提示行退役 */}
               </>
@@ -991,8 +1186,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                     </div>
                   )}
                 </span>
-                <button type="button" className="send tip-right" aria-label="send" data-tip={`${t('Send', '发送')} · Enter`} disabled={sending || (input.trim() === '' && images.length === 0)} onClick={() => { void send(); }}>
-                  <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />
+                <button type="button" className={`send tip-right${sending ? ' loading' : ''}`} aria-label="send" data-tip={`${t('Send', '发送')} · Enter`} disabled={sending || (input.trim() === '' && images.length === 0)} onClick={() => { void send(); }}>
+                  {/* 投递在途转圈（2026-11-28 五轮移植主对话 send-loading 同语言） */}
+                  {sending ? <span className="run-spinner" aria-hidden="true" /> : <ArrowUp size={16} strokeWidth={2.25} aria-hidden="true" />}
                 </button>
               </div>
             }

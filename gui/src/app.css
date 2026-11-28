@@ -5101,6 +5101,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    (~10px),15px 图标居中悬置（@ 中心对齐,不再右压名称首字）；全体成员不再 warn 分色 */
 .sx-group-page .sx-composer-highlight .hn-file .hn-file-ico { width: 10px; }
 .sx-group-page .sx-composer-highlight .hn-file .hn-file-ico svg { width: 15px; height: 15px; flex: none; }
+/* 成员 chip 可点击跳成员会话（2026-11-28 五轮移植主对话 @file 点击语义）：高亮层整体
+   pointer-events:none,群芯片单独放行 */
+.sx-group-page .sx-composer-highlight .hn-file { pointer-events: auto; cursor: pointer; }
 /* 气泡 @ 成员/全体 chip（2026-11-28 三轮裁定「上下居中对齐,左右留缝,全体成员蓝色」）：
    inline-flex 中线对齐+左右 3px 缝,accent 单色（成员/全体同件,不再 .hn-team warn） */
 .sx-group-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; margin: 0 3px; color: var(--accent); background: none; padding: 0; }

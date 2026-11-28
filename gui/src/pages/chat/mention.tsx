@@ -319,36 +319,65 @@ export function renderUserMd(md: string): string {
     .join('\n');
 }
 
-/** G14.156 token 整删判定:Backspace/Delete 与 caret → 应整删的 token 区间(无则 null)。
- *  非明文 token(文件/命令/技能)作为整体:Backspace 在 token 内(含末位)、Delete 在 token 内(含首位)即整删 */
-export function tokenDeleteRange(text: string, caret: number, key: 'Backspace' | 'Delete'): [number, number] | null {
+/** token 区间投影（2026-11-28 五轮群聊守卫移植的共用底座）：非明文 token → 有序 {s,e} 区间。
+ *  导出给群聊守卫并源（与 groupMentionTokenSpans 合并成双源区间）。 */
+export function splitMentionTokenSpans(text: string): Array<{ s: number; e: number }> {  const out: Array<{ s: number; e: number }> = [];
   let pos = 0;
   for (const tk of splitMentionTokens(text)) {
     if (tk.kind === 'plain') { pos += tk.text.length; continue; }
-    const s = pos;
-    const e2 = pos + tk.text.length;
-    pos = e2;
-    if (key === 'Backspace' && caret > s && caret <= e2) return [s, e2];
-    if (key === 'Delete' && caret >= s && caret < e2) return [s, e2];
+    out.push({ s: pos, e: pos + tk.text.length });
+    pos += tk.text.length;
+  }
+  return out;
+}
+
+/** 群聊 @成员/@全体成员 令牌区间（2026-11-28 五轮,群守卫/整删/归位用）：CJK 成员名不在
+ *  splitMentionTokens 的 @ 词法（\w 不含中文）内,由群渲染同一份令牌清单在这里补区间。 */
+export function groupMentionTokenSpans(text: string, memberNames: readonly string[]): Array<{ s: number; e: number }> {
+  const tokens = [...(text.includes('@全体成员') ? ['@全体成员'] : []), ...memberNames.map((n) => `@${n}`)]
+    .sort((a, b) => b.length - a.length);
+  if (tokens.length === 0) return [];
+  const escaped = tokens.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = new RegExp(`(${escaped.join('|')})`, 'g');
+  const out: Array<{ s: number; e: number }> = [];
+  for (const m of text.matchAll(re)) {
+    const s = m.index ?? 0;
+    out.push({ s, e: s + m[0].length });
+  }
+  return out;
+}
+
+/** G14.156 token 整删判定(区间注入版):Backspace 在 token 内(含末位)、Delete 在 token 内(含首位)即整删 */
+export function tokenDeleteRangeOver(caret: number, key: 'Backspace' | 'Delete', spans: Array<{ s: number; e: number }>): [number, number] | null {
+  for (const span of spans) {
+    if (key === 'Backspace' && caret > span.s && caret <= span.e) return [span.s, span.e];
+    if (key === 'Delete' && caret >= span.s && caret < span.e) return [span.s, span.e];
   }
   return null;
+}
+
+/** G14.156 token 整删判定:Backspace/Delete 与 caret → 应整删的 token 区间(无则 null)。
+ *  非明文 token(文件/命令/技能)作为整体:Backspace 在 token 内(含末位)、Delete 在 token 内(含首位)即整删 */
+export function tokenDeleteRange(text: string, caret: number, key: 'Backspace' | 'Delete'): [number, number] | null {
+  return tokenDeleteRangeOver(caret, key, splitMentionTokenSpans(text));
+}
+
+/** G14.212 token 原子区间(区间注入版):编辑区间与 token 部分相交(未整段覆盖)→ 扩为完整 token;
+ *  返回与入参相同=无部分相交,编辑放行。整段覆盖(token 全落在区间内)=有意整替,放行 */
+export function atomicRangeOver(start: number, end: number, spans: Array<{ s: number; e: number }>): [number, number] {
+  let s = start;
+  let e = end;
+  for (const ts of spans) {
+    const covers = start <= ts.s && end >= ts.e;
+    if (start < ts.e && end > ts.s && !covers) { s = Math.min(s, ts.s); e = Math.max(e, ts.e); }
+  }
+  return [s, e];
 }
 
 /** G14.212 token 原子区间:编辑区间与非明文 token 部分相交(未整段覆盖)→ 扩为完整 token;
  *  返回与入参相同=无部分相交,编辑放行。整段覆盖(token 全落在区间内)=有意整替,放行 */
 export function atomicRange(text: string, start: number, end: number): [number, number] {
-  let pos = 0;
-  let s = start;
-  let e = end;
-  for (const tk of splitMentionTokens(text)) {
-    if (tk.kind === 'plain') { pos += tk.text.length; continue; }
-    const ts = pos;
-    const te = pos + tk.text.length;
-    pos = te;
-    const covers = start <= ts && end >= te;
-    if (start < te && end > ts && !covers) { s = Math.min(s, ts); e = Math.max(e, te); }
-  }
-  return [s, e];
+  return atomicRangeOver(start, end, splitMentionTokenSpans(text));
 }
 
 export type TokenGuardVerdict =
@@ -359,34 +388,40 @@ export type TokenGuardVerdict =
 const INSERT_INPUT_TYPES = new Set(['insertText', 'insertReplacementText', 'insertCompositionText', 'insertParagraph', 'insertLineBreak', 'insertFromPaste', 'insertFromDrop']);
 const DELETE_INPUT_TYPES = new Set(['deleteContentBackward', 'deleteContentForward', 'deleteByCut', 'deleteByDrag', 'deleteCompositionText', 'deleteWordBackward', 'deleteWordForward', 'deleteSoftLineBackward', 'deleteSoftLineForward', 'deleteHardLineBackward', 'deleteHardLineForward']);
 
-/** G14.212 beforeinput 判定(token 原子性):插入面部分命中 token → 阻止+光标钉 token 尾(再击
- *  落边界);删除面部分命中 → 扩为整 token 删。整段覆盖/边界编辑放行(:L 行锚续写、有意整替) */
-export function tokenGuardVerdict(text: string, start: number, end: number, inputType: string): TokenGuardVerdict {
+/** G14.212 beforeinput 判定(区间注入版,群聊守卫复用):插入面部分命中 token → 阻止+光标钉
+ *  token 尾(再击落边界);删除面部分命中 → 扩为整 token 删。整段覆盖/边界编辑放行 */
+export function tokenGuardVerdictOver(start: number, end: number, inputType: string, spans: Array<{ s: number; e: number }>): TokenGuardVerdict {
   if (INSERT_INPUT_TYPES.has(inputType)) {
-    const [s, e] = atomicRange(text, start, end);
+    const [s, e] = atomicRangeOver(start, end, spans);
     if (s !== start || e !== end) return { action: 'redirectEnd', to: e };
     return { action: 'allow' };
   }
   if (DELETE_INPUT_TYPES.has(inputType)) {
-    const [s, e] = atomicRange(text, start, end);
+    const [s, e] = atomicRangeOver(start, end, spans);
     if (s !== start || e !== end) return { action: 'splice', s, e };
     return { action: 'allow' };
   }
   return { action: 'allow' };
 }
 
+/** G14.212 beforeinput 判定(token 原子性):插入面部分命中 token → 阻止+光标钉 token 尾(再击
+ *  落边界);删除面部分命中 → 扩为整 token 删。整段覆盖/边界编辑放行(:L 行锚续写、有意整替) */
+export function tokenGuardVerdict(text: string, start: number, end: number, inputType: string): TokenGuardVerdict {
+  return tokenGuardVerdictOver(start, end, inputType, splitMentionTokenSpans(text));
+}
+
+/** G14.213 严格包含 caret 的 token 区间(区间注入版,群聊复用;首尾边界不算内);无则 null。 */
+export function tokenSpanAtOver(caret: number, spans: Array<{ s: number; e: number }>): [number, number] | null {
+  for (const span of spans) {
+    if (caret > span.s && caret < span.e) return [span.s, span.e];
+  }
+  return null;
+}
+
 /** G14.213 严格包含 caret 的 token 区间(s < caret < e;首尾边界不算内);无则 null。
  *  「光标不落 token 中间」的归位判据——点击/方向键/原生移动统一钉到边界 */
 export function tokenSpanAt(text: string, caret: number): [number, number] | null {
-  let pos = 0;
-  for (const tk of splitMentionTokens(text)) {
-    if (tk.kind === 'plain') { pos += tk.text.length; continue; }
-    const s = pos;
-    const e2 = pos + tk.text.length;
-    pos = e2;
-    if (caret > s && caret < e2) return [s, e2];
-  }
-  return null;
+  return tokenSpanAtOver(caret, splitMentionTokenSpans(text));
 }
 /** G14.132 输入框高亮层(导出共享——欢迎页 composer 同款):file token 渲染文件图标+显形文本。
  *  G14.211 显形=原始字形(tokenBody 原样,行锚 :L 段弱色)——显示宽度逐字形等于原文,
