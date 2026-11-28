@@ -1863,6 +1863,9 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       const wv1 = container.querySelector('webview');
       expect(wv1?.getAttribute('src')).toBe(TARGET);
       expect(container.querySelector('.sx-web-empty')).toBeNull();
+      // jsdom 无 Electron webview API:reload 平台方法由测试桩承载(原生刷新语义,见下方刷新步)
+      const reloadSpy = vi.fn();
+      if (wv1) (wv1 as HTMLElement & { reload: () => void }).reload = reloadSpy;
 
       // —— 外开钮:window.open stub(jsdom noop)→ 点击断言实参(_blank + noopener 隔离 opener)——
       // (2026-10-31 起外开入口在 ⋯ 更多操作菜单内)
@@ -1876,6 +1879,7 @@ describe('G8d-T6 场景C:Web 标签——+菜单裸开 → url 输入 localhost 
       // —— 刷新(builtin webview 档):原生 reload 语义,节点不重挂 src 不变 ——
       const before = container.querySelector('webview');
       fireEvent.click(screen.getByRole('button', { name: bi('Reload', '刷新') }));
+      expect(reloadSpy).toHaveBeenCalledTimes(1);
       const after = container.querySelector('webview');
       expect(after).toBe(before);
       expect(after?.getAttribute('src')).toBe(TARGET);
