@@ -17,9 +17,9 @@ const SNAPSHOT_TAIL_FULL = 2000;
 /** 挂起卡(approval/ask/plan-approval 判别联合;pid 为 daemon 级寻址键)。plan-approval=阶段三
  *  plan-arm 裁决卡(spec §5.1,req {doc,items} 计划书+步骤) */
 export type PendingCard =
-  | { kind: 'approval'; pid: string; req: GuiApprovalReq }
-  | { kind: 'ask'; pid: string; req: GuiAskReq }
-  | { kind: 'plan-approval'; pid: string; req: GuiPlanApprovalReq };
+  | { kind: 'approval'; pid: string; req: GuiApprovalReq; bornAt?: number }
+  | { kind: 'ask'; pid: string; req: GuiAskReq; bornAt?: number }
+  | { kind: 'plan-approval'; pid: string; req: GuiPlanApprovalReq; bornAt?: number };
 
 /** 会话事件面 hook（D32 批C 拆分自 Chat.tsx）：播种门/种子窗帧缓冲/挂起卡列表/事件分流 sink
  *  装配（G14.137 todo 上抛、G14.89 done 刷队列）+ G5 idle 清卡。投影态
@@ -150,7 +150,7 @@ export function useSessionEvents(deps: {
 
   /** G4 卡增(同 pid 防重挂——连接层已去重,本地二次防线;G7 reseed 重建复用)与移(回执落定即移) */
   const addCard = useCallback((card: PendingCard): void => {
-    setCards((cs) => (cs.some((c) => c.pid === card.pid) ? cs : [...cs, card]));
+    setCards((cs) => (cs.some((c) => c.pid === card.pid) ? cs : [...cs, { ...card, bornAt: card.bornAt ?? Date.now() }]));
   }, []);
   const removeCard = useCallback((pid: string): void => {
     setCards((cs) => cs.filter((c) => c.pid !== pid));
@@ -173,6 +173,7 @@ export function useSessionEvents(deps: {
    *  历史与滚动位一并保住),异档/有缓冲重放才换新。快照失败也不再清缓存(错误条追加在
    *  缓存转录尾,语义与旧一致且不丢正文)。 */
   const reseed = useCallback((): void => {
+    const seedStart = Date.now();
     const gen = ++seedGenRef.current;
     pendingRef.current = [];
     // 未落账的流式帧随快照重建作废(快照 lastSeq 基线会滤掉重放)
@@ -253,12 +254,19 @@ export function useSessionEvents(deps: {
         onSeededRef.current?.(snap); // G5:App 借快照取 team(每次 reseed 均回填——重播种即更新)
         // G7 挂起卡重建:快照 pending 段逐项(挂起中=status running,reseed 瞬态豁免保卡不误清);
         // plan-approval 分支=阶段三 plan-arm——快照挂起行 req={doc,items},reseed 后 PlanCard 复现
+        const alivePids = new Set<string>();
         for (const row of snap.pending ?? []) {
           if (typeof row?.pid !== 'string' || row.pid.length === 0) continue;
+          alivePids.add(row.pid);
           if (row.kind === 'approval') addCard({ kind: 'approval', pid: row.pid, req: (row.req ?? {}) as GuiApprovalReq });
           else if (row.kind === 'ask') addCard({ kind: 'ask', pid: row.pid, req: (row.req ?? {}) as GuiAskReq });
           else if (row.kind === 'plan-approval') addPlanCard({ kind: 'plan-approval', pid: row.pid, req: (row.req ?? { doc: '', items: [] }) as GuiPlanApprovalReq });
         }
+        // 反向裁剪（2026-11-28 十一轮「第二个或者多个的 ask_question 没有关掉」）：快照挂起表是唯一
+        // 权威——本地存在但快照已无的卡（别处已答：群页 dock / IM 回执 / 命令面）在此收口；只增不删
+        // 会让旧 ask 永久占着 dock。宽限 2s：reseed 起点前同一瞬间新建的卡可能是「实时帧先于快照」
+        // 的在途竞态（App.test G4 不变式），保留待下次权威快照再裁。
+        setCards((cs) => cs.filter((c) => alivePids.has(c.pid) || (c.bornAt ?? seedStart) > seedStart - 2000));
       },
       (err: unknown) => {
         if (seedGenRef.current !== gen) return;
