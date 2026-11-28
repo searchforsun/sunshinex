@@ -390,6 +390,15 @@ function AppShell(): JSX.Element {
    *  自此解;菜单包装回调(openSettingsFromMenu 等)留宿主,closeMenuDrawer/recordNav 延迟闭包判例同形 */
   const { settingsOpen, settingsRoot, settingsPane, setSettingsPane, schedulesMain, setSchedulesMain, scheduleFocus, setScheduleFocus, agentTeamsOn, openSettings, closeSettings, openJournalSessionStable } = useAppOverlays({ connInstance, connRef, openRoot, openSession, showOpError, setTabStates });
 
+  /** 群聊页⇄定时任务层互斥切换（2026-11-28 五轮复裁定「就是切换显示,不是盖在上面;群聊和普通
+   *  会话没有区别」）：进群聊收定时任务层,进定时任务(菜单/搜索)关群聊页——与会话同层级互切 */
+  useEffect(() => {
+    if (groupChatId !== null) setSchedulesMain(false);
+  }, [groupChatId, setSchedulesMain]);
+  useEffect(() => {
+    if (schedulesMain) setGroupChatId(null);
+  }, [schedulesMain]);
+
   // 升级链 journalId 回填(2026-11-07 用户实测「欢迎页升级首条完成仍亮未读/点行清草稿」根修):
   // 欢迎发送=临时 id 开席(openJournalId 暂=sessionId),journal 首个事件才建档,id 此后才有。
   // recents 行带 liveSessionId(journal↔活跃会话反查)——本会话收束/侧栏 bump 后对账一回填

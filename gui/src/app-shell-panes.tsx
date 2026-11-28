@@ -214,9 +214,9 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
   useEffect(() => {
     setGroupSearchOpen(false);
   }, [groupChatId]);
-  // 群聊页可叠定时任务层（2026-11-28 五轮裁定「在定时任务页面不能进入群聊页面?」:原
-  // !schedulesMain 把群页挡住——层 z66 高于 schedules 层 z60,开群页盖定时任务,关闭回落）
-  const groupChatVisible = groupChatId !== null && !settingsOpen;
+  // 群聊页⇄定时任务层互斥（2026-11-28 五轮复裁定「就是切换显示,不是盖在上面」）：App 侧
+  // 双向 effect 已收口,此处 !schedulesMain 兜显示层语义(任意路径进定时任务都切走群页)
+  const groupChatVisible = groupChatId !== null && !settingsOpen && !schedulesMain;
   return (
     <DirOpenerContext.Provider value={openDirectoryPath}>
     <div
@@ -229,6 +229,9 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
         !sidebarFloating && tabState.collapsed ? 'sx-sidebar-collapsed' : '',
         // 左菜单抽屉面(2026-10-24 三轮裁定):<856 菜单自动关闭;手动重开=悬浮抽屉(fixed 左满高)
         menuFloating && !menuClosed ? 'sx-menu-float' : '',
+        // 群聊页在座（2026-11-28 五轮复裁定「进入群聊后去掉会话的 hover」）：会话行悬浮卡
+        // fixed 高层会浮到群页之上,整壳抑制(行 hover 底色不受影响)
+        groupChatId !== null ? 'sx-group-open' : '',
       ].filter(Boolean).join(' ')}
       ref={shellRef}
       style={{

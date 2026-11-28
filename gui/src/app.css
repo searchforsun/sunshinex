@@ -5061,9 +5061,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    输入面 = 会话 .chat-dock + ComposerCard；查询侧栏 = 会话 .sx-sidebar + .sx-resizer + .sx-search-*。
    本段只保留群聊独有的布局槽（顶栏窗控让位 / 引用行 / 送达列表 / ask 来源行 / 查询栏内距），
    不再定义任何气泡、卡片、输入框或搜索皮肤的替代实现。 */
-/* z 60→66（2026-11-28 五轮裁定「在定时任务页面不能进入群聊页面?」）：群页叠定时任务层之上
-   （schedules 层 z60），关闭回落定时任务;仍低于菜单抽屉 z80/设置 z85/窗控 z90 */
-.sx-group-page { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 66; background: var(--surface); display: flex; min-width: 0; }
+/* z 66 复位 60（2026-11-28 五轮复裁定「就是切换显示,不是盖在上面」）：群页⇄定时任务层/会话
+   在 App 侧双向互斥切换（进群聊收定时任务层,进定时任务关群聊页）,不再同屏叠加 */
+.sx-group-page { position: fixed; top: 0; left: var(--menu-occ, 0px); right: 0; bottom: 0; z-index: 60; background: var(--surface); display: flex; min-width: 0; }
+/* 群聊页在座：会话行悬浮卡 fixed 高层会浮到群页之上（用户实测截图）,整壳抑制 */
+.sx-shell.sx-group-open .sx-sess-card { display: none !important; }
 /* 菜单关闭态呼出簇（2026-11-28 五轮裁定）：群顶栏内《》导航+【|】重开菜单,欢迎页 sx-welcome-nav 同构 */
 .sx-group-nav { display: inline-flex; align-items: center; gap: 4px; flex: none; }
 .sx-group-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
