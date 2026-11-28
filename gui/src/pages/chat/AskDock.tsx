@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Bot, ChevronLeft, ChevronRight } from 'lucide-react';
 import { t } from '../../i18n';
 import type { Dispatch, SetStateAction } from 'react';
 import { AskCard, pickAnswered } from './PendingCards';
@@ -45,6 +45,18 @@ export function AskDock(props: AskDockProps): JSX.Element {
     clearPick(card.pid);
   };
   if (card === undefined) return <></>;
+  // 分页控件（2026-11-28 十一轮用户裁定）：
+  //  · 有来源行（子智能体 fork 问询）→ 来源行「来自 图标 名称 …… ‹1/N›」
+  //  · 无来源行 → 放进「问题？」行最右侧（AskCard headRight），不再单独占一行
+  //  · 单题不渲染分页
+  const pager = askCards.length > 1 ? (
+    <span className="sx-group-ask-pager">
+      <button type="button" className="sx-iconbtn" aria-label="previous ask" onClick={() => setIdx((i) => (i - 1 + askCards.length) % askCards.length)}><ChevronLeft size={14} strokeWidth={2} aria-hidden="true" /></button>
+      <span className="sx-group-ask-count" aria-label="ask position">{cur + 1}/{askCards.length}</span>
+      <button type="button" className="sx-iconbtn" aria-label="next ask" onClick={() => setIdx((i) => (i + 1) % askCards.length)}><ChevronRight size={14} strokeWidth={2} aria-hidden="true" /></button>
+    </span>
+  ) : null;
+  const askedBy = card.req.askedBy;
   return (
     <div
       className="ask-dock sx-group-ask-dock"
@@ -55,19 +67,20 @@ export function AskDock(props: AskDockProps): JSX.Element {
         submit();
       }}
     >
-      {askCards.length > 1 && (
-        <div className="sx-group-ask-head">
-          <span className="sx-group-ask-source">
-            <span>{t('Questions', '待答复')}</span>
-          </span>
-          <span className="sx-group-ask-pager">
-            <button type="button" className="sx-iconbtn" aria-label="previous ask" onClick={() => setIdx((i) => (i - 1 + askCards.length) % askCards.length)}><ChevronLeft size={14} strokeWidth={2} aria-hidden="true" /></button>
-            <span className="sx-group-ask-count" aria-label="ask position">{cur + 1}/{askCards.length}</span>
-            <button type="button" className="sx-iconbtn" aria-label="next ask" onClick={() => setIdx((i) => (i + 1) % askCards.length)}><ChevronRight size={14} strokeWidth={2} aria-hidden="true" /></button>
-          </span>
-        </div>
-      )}
       <div className="ask-scroll sx-group-ask-body">
+        {askedBy !== undefined && (
+          // 来源行上移（问题行之上）：图标+名称可点跳转录;右侧同槽放分页——混合来源逐题各归其位
+          <div className="ask-source-above">
+            <span className="ask-source-who">
+              <span>{t('From', '来自')}</span>
+              <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
+              <button type="button" className="ask-card-agent-link" data-tip={t('Open sub-agent transcript', '打开子智能体转录')} onClick={() => onOpenAgent?.(askedBy.label, askedBy.label)}>
+                {askedBy.label}
+              </button>
+            </span>
+            {pager}
+          </div>
+        )}
         <AskCard
           key={card.pid}
           req={card.req}
@@ -77,6 +90,8 @@ export function AskDock(props: AskDockProps): JSX.Element {
             return { ...m, [card.pid]: { ...base, ...patch } };
           })}
           onOpenAgent={onOpenAgent}
+          headRight={askedBy === undefined ? pager : undefined}
+          hideSource={askedBy !== undefined}
         />
       </div>
       <div className="ask-actions">

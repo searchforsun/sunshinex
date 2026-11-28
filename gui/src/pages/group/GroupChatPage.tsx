@@ -34,7 +34,7 @@ import { CommandPalette, type CmdItem } from '../../CommandPalette';
 import { useCommandPalette, slashItemsFor } from '../chat/use-command-palette';
 import {
   RefPalette, RefTokenChip, atomicRangeOver, expandRefContents, groupMentionTokenSpans, hasMentionTokens,
-  refContentConsume, renderMentionSpans, slashTokenAt, splitBrowserFences, splitMentionTokenSpans,
+  refContentConsume, refContentRegister, renderMentionSpans, slashTokenAt, splitBrowserFences, splitMentionTokenSpans,
   tokenDeleteRangeOver, tokenGuardVerdictOver, tokenSpanAtOver,
 } from '../chat/mention';
 import { refTokenAt, refPanelItems as buildRefPanelItems, refPickLabel, expandRefNames, unknownRefTokens } from '../chat/ref-palette';
@@ -61,7 +61,7 @@ const groupRoomCache = new Map<string, { detail: SunxGroupDetail; messages: Sunx
 const groupScrolls = new Map<string, { seq: number; rel: number; top: number }>();
 /** 群草稿驻留（2026-11-28 五轮移植主对话「切会话草稿不丢」）：模块级按 groupId 存 input/images
  *  （App 生命周期内,驻留座同口径）；切群/关页再回不丢草稿，提交通后由保活 effect 落空值。 */
-const groupDrafts = new Map<string, { input: string; images: string[] }>();
+const groupDrafts = new Map<string, { input: string; images: string[]; contents?: Array<[string, string]> }>();
 /** 群聊专用控制命令（2026-11-27）：/stop 暂停对应 Sunx、/clear 清其排队、/continue 恢复队列。
  *  不并进普通会话 supported；群页 supported 取 daemon 列表后再并这三条。 */
 const SUNX_GROUP_COMMANDS = ['/stop', '/clear', '/continue'] as const;
@@ -195,6 +195,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   /** 草稿内在场 ⟦token⟧ 集（2026-11-28 八轮「主动删除也从缓存去除」）：差集消费——删除的
    *  token 即从注册表去除;切群恢复时同步基线,不误删其他群草稿的在途 token。 */
   const draftTokensRef = useRef<Set<string>>(new Set());
+  /** 片段私有账本（2026-11-28 十一轮「参考普通会话的文本片段选中」）：token→全文,插入即写、
+   *  删除即清;芯片 hover/发送展开读它（不再依赖跨面共享的全局注册表,避免与主对话同键串内容） */
+  const refLedgerRef = useRef<Map<string, string>>(new Map());
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchRef = useRef<HTMLElement | null>(null);
   const nodeBySeq = useRef(new Map<number, HTMLDivElement>());
@@ -311,6 +314,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const draft = groupDrafts.get(groupId);
     setInput(draft?.input ?? '');
     setImages(draft?.images ?? []);
+    refLedgerRef.current = new Map(draft?.contents ?? []); // 账本随草稿回场
     draftTokensRef.current = new Set([...(draft?.input ?? '').matchAll(/⟦[^⟧]{1,120}⟧/g)].map((m) => m[0]));
     void loadInitial();
     void conn.commands().then(
@@ -345,7 +349,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 
   // 草稿保活（与上行恢复配对）：输入/图片变化即落驻留表（切群/关页再回不丢）
   useEffect(() => {
-    groupDrafts.set(groupId, { input, images });
+    groupDrafts.set(groupId, { input, images, contents: [...refLedgerRef.current] });
   }, [groupId, input, images]);
   // 片段缓存随删随清（2026-11-28 八轮「主动删除也从缓存去除,不单是发出后」）：输入变化差集
   // 比对,消失的 ⟦token⟧ 即从注册表去除（退格整删/圈删/清空全盖）;重命名(registry 迁移)的
@@ -354,7 +358,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const cur = new Set([...input.matchAll(/⟦[^⟧]{1,120}⟧/g)].map((m) => m[0]));
     const prev = draftTokensRef.current;
     for (const tok of prev) {
-      if (!cur.has(tok)) refContentConsume(tok);
+      if (!cur.has(tok)) {
+        refLedgerRef.current.delete(tok); // 私有账本随删随清（普通会话同口径）
+        refContentConsume(tok);
+      }
     }
     draftTokensRef.current = cur;
   }, [input]);
@@ -558,7 +565,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     // 发送期展开链（2026-11-28 五轮移植主对话全链尾环）：$/# 名称→id（expandRefNames）+
     // ⟦片段⟧→正文/终端围栏（expandRefContents,注册表兜底）——圈选「添加到会话」的内容随
     // token 送达成员,不再以字面 ⟦文本片段N⟧ 占位符出站
-    const expanded = expandRefContents(expandRefNames(input, refEntries), new Map());
+    const expanded = expandRefContents(expandRefNames(input, refEntries), refLedgerRef.current);
     if ((expanded.trim() === '' && images.length === 0) || sending) return;
     const text = expanded;
     // 命令令牌（2026-11-28 八轮「显示不去,@ 真正发出时才去」）：跳过行首 @提及 后的首个令牌,
@@ -841,18 +848,18 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
    *  会话（@全体成员 无跳转面,点击无害）。纯文本段不包 span（层与 textarea 同为逐字排版）。 */
   const renderGroupHighlight = useCallback((text: string): ReactNode => {
     const rest = (seg: string, key: React.Key, overlap: boolean): ReactNode => (
-      <Fragment key={key}>{!overlap && hasMentionTokens(seg) ? renderMentionSpans(seg, undefined, undefined, undefined, true, compRange) : seg}</Fragment>
+      <Fragment key={key}>{!overlap && hasMentionTokens(seg) ? renderMentionSpans(seg, undefined, refLedgerRef.current, undefined, true, compRange) : seg}</Fragment>
     );
     const presentAll = ALL_MENTION_TOKENS.filter((tk) => text.includes(tk));
     const tokens = [...presentAll, ...members.map((m) => `@${m.name}`)]
       .sort((a, b) => b.length - a.length);
     if (tokens.length === 0) {
-      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true, compRange) : undefined;
+      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, refLedgerRef.current, undefined, true, compRange) : undefined;
     }
     const escaped = tokens.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const parts = text.split(new RegExp(`(${escaped.join('|')})`, 'g'));
     if (!parts.some((p) => tokens.includes(p))) {
-      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true, compRange) : undefined;
+      return hasMentionTokens(text) ? renderMentionSpans(text, undefined, refLedgerRef.current, undefined, true, compRange) : undefined;
     }
     let off = 0;
     return parts.map((part, i) => {
@@ -1292,6 +1299,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
             className="chat-composer"
             label={t('Use @ to pick members; @all dispatches to everyone.', '使用 @ 选择成员，@全体成员 进行分派')}
             inputRef={inputRef}
+            refLedger={refLedgerRef}
             value={input}
             placeholder={t('Use @ to pick members; @all dispatches to everyone.', '使用 @ 选择成员，@全体成员 进行分派')}
             rows={1}
@@ -1750,8 +1758,14 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       <SelActionsOverlay
         containerRef={scrollRef}
         insertLabel={t('Add to chat', '添加到会话')}
-        onInsert={(token) => {
-          // token 落群 composer 折芯片（注册表已由 overlay 记账,chip hover 预览可取）
+        onInsert={(token, content) => {
+          // 片段入群 composer（2026-11-28 十一轮沿普通会话链路）：token→私有账本,全局注册表
+          // 落地即清（内容只存本面账本,跨面同键不再串内容）,再追加进输入
+          if (content !== undefined && content !== '') {
+            refLedgerRef.current.set(token, content);
+            refContentRegister(token, content);
+            refContentConsume(token);
+          }
           setInput((v) => (v.trim() === '' ? token : `${v.replace(/\s+$/, '')} ${token}`));
           window.setTimeout(() => inputRef.current?.focus(), 0);
         }}

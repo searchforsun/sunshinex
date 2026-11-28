@@ -5200,6 +5200,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-ask-who:hover { text-decoration: underline; text-underline-offset: 2px; }
 /* 内嵌 AskCard 与弹窗一体(2026-11-28 十轮「选择题不要有第二个边框」):去卡自身描边/底/内距 */
 .sx-group-ask-body .pending-card { border: none; background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
+/* 普通会话多题（2026-11-28 十一轮）：来源行上移（问题行之上）——图标+名称可点跳转录,右侧分页;
+   无来源行时分页落「问题？」行最右（AskCard headRight 槽,margin-left:auto 顶右） */
+.ask-source-above { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 6px; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); }
+.ask-source-who { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.ask-dock .card-head .sx-group-ask-pager { margin-left: auto; }
 /* 底部动作行留行距,不贴边（2026-11-28 十轮） */
 .sx-group-ask-dock .ask-actions { padding: 6px 12px 12px; }
 /* 正文+选项限高（弹窗有最大高度,内部滚动;动作行恒在视口内） */

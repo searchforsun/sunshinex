@@ -138,6 +138,8 @@ function connect(): void {
     // 建立=基线清零+投影重置+全量重放：上层先清各会话投影（onReset），随后到达的补发帧
     // （daemon 连接即发全部会话缓冲）各会话依序全过，上层重拉 snapshot 重建权威态
     lastSeqBySession.clear();
+    // 挂起 pid 去重表**不随连接清**（G4：重连重发幂等契约）——跨 daemon 重启的撞号风险改由
+    // daemon 侧 pid 进程盐消解（2026-11-28 十一轮「双发 ask 只出一张卡」根修在 mintPid）
     failures = 0; // 完全建立才清退避计数
     cb.onReset();
     setState('open');

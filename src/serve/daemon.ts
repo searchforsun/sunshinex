@@ -184,6 +184,10 @@ export function assembleGuiModel(
  * 广播全部连接 + 各会话 512 环形缓冲，连接建立即补发全部会话缓冲（会话序 s1..sN，各内缓冲序——
  * T1 裁定：全部会话，客户端按 sessionId 过滤）；升级同走 Bearer 头鉴权。
  */
+/** 挂起 pid 进程盐（8 位随机；2026-11-28 十一轮「双发 ask 只出一张卡」）：pid 跨重启不撞号——
+ *  GUI 挂起帧按 pid 幂等去重,裸序号重启从头编会被旧代次残留误判为重发丢弃 */
+const pidSalt = Math.random().toString(36).slice(2, 10);
+
 export class GuiDaemon {
   private readonly model: ModelAdapter;
   private readonly sessions = new Map<string, SessionRuntime>();
@@ -452,9 +456,11 @@ export class GuiDaemon {
         this.seqCounter += 1;
         return this.seqCounter;
       },
+      // pid 带进程随机盐（2026-11-28 十一轮）：跨 daemon 重启不撞号——GUI 端挂起帧按 pid 幂等去重，
+      // 裸序号（p1..）重启后从头编号会被旧代次残留误判为重发而丢弃
       mintPid: () => {
         this.pendingSeq += 1;
-        return `p${this.pendingSeq}`;
+        return `p${pidSalt}${this.pendingSeq}`;
       },
       broadcast: (frame) => this.broadcastFrame(frame),
       setActive: (id) => {
