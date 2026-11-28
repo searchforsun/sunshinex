@@ -403,18 +403,25 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   /** 等待模型待态(2026-10-27):idle 提交被接受→run-open 落地之间的空窗计时——上游首 token
    *  延迟实测 29-60s 且此间零反馈(用户「卡住 1 分钟不显示计时」)。run 条出现/error 条即收 */
   const [awaitModelSince, setAwaitModelSince] = useState<number | null>(null);
+  const prevRunningRef = useRef(false);
   useEffect(() => {
     setAwaitModelSince(null);
   }, [sessionId]);
   useEffect(() => {
-    if (awaitModelSince === null) return;
+    if (awaitModelSince === null) { prevRunningRef.current = running; return; }
     // running 即收(2026-11-28 抖动防御):run-open 落地晚于提交回执 resolve 时(onAccepted 重置
     // 时间戳),此后若条目不再以 run/error/tool 收尾(慢端点零反馈窗),拦截会滞留吞掉后续发送——
     // 会话已在跑=等待待态定义上结束,running 翻真一律解除
-    if (running) { setAwaitModelSince(null); return; }
+    if (running) { setAwaitModelSince(null); prevRunningRef.current = true; return; }
+    // run 完成(true→false)即收(2026-11-28 二修):极载下提交回执可在整轮收束后才 resolve——
+    // onAccepted 晚到重置时轮已收尾,尾条目形态不定(assistant 终答/notice 说明行)——按转换清,
+    // 不赌尾条目形态
+    if (prevRunningRef.current) { setAwaitModelSince(null); prevRunningRef.current = false; return; }
+    prevRunningRef.current = false;
     const last = chat.entries[chat.entries.length - 1];
-    // tool 条亦收(命令三态行无 run-open;防御:任何非 user 新条即表示 daemon 已响应)
-    if (last !== undefined && (last.kind === 'run' || last.kind === 'error' || last.kind === 'tool')) setAwaitModelSince(null);
+    // tool 条亦收(命令三态行无 run-open;防御:任何非 user 新条即表示 daemon 已响应;assistant 亦收
+    // ——sealed run 尾条目=终答,非 user 新条同义)
+    if (last !== undefined && (last.kind === 'run' || last.kind === 'error' || last.kind === 'tool' || last.kind === 'assistant')) setAwaitModelSince(null);
   }, [chat.entries, awaitModelSince, running]);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
