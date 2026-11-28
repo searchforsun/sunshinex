@@ -177,6 +177,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [askPicks, setAskPicks] = useState<Record<string, AskPick>>({});
   /** ask 分页游标（2026-11-28 九轮）：多条 ask_question 单卡轮显,1/N 切换;集合缩小时钳回末项 */
   const [askIdx, setAskIdx] = useState(0);
+  /** ask 弹窗高度（2026-11-28 十轮「ask 卡覆盖正文」）：实测高度回填滚动区底部内距,
+   *  正文不再被弹窗盖住（量不到=0,不改变原内距） */
+  const [askH, setAskH] = useState(0);
+  const askDockRef = useRef<HTMLDivElement | null>(null);
   /** 「/」面板（2026-11-27 二轮裁定「换成主对话的，分命令/技能，命令带说明」）：复用
    *  useCommandPalette 数据面 + CommandPalette 渲染件；群控制命令并入、/plan 排除。 */
   const { cmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn);
@@ -287,6 +291,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     // 房间缓存优先（2026-11-28 九轮「不走内存吗」）：重进/切群即用缓存渲染(无过渡态),
     // 无缓存才落装载态;loadInitial/轮询随后刷新,daemon 变化经 poll reset 自纠
     const cached = groupRoomCache.get(groupId);
+    // 回场定位（2026-11-28 十轮「每次进入群聊还是回到底部」根因）：有滚动快照时先关掉贴底跟随，
+    // 否则缓存消息首帧的 [messages] 跟随 effect 抢先跳底并触发 scroll → onScroll 距底<80 把快照删了,
+    // loadInitial 再读已无存档=恒回底部。先立非贴底旗，快照才活到恢复时刻。
+    if (groupScrolls.get(groupId) !== undefined) atBottomRef.current = false;
     setDetail(cached?.detail ?? null);
     setMessages(cached?.messages ?? []);
     setCursor(cached?.cursor ?? 0);
@@ -948,6 +956,20 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     () => members.flatMap((member) => (member.asks ?? []).map((a) => ({ pid: a.pid, req: a.req, member }))),
     [members],
   );
+  // ask 弹窗高度让位（2026-11-28 十轮）：挂载/内容变化即量高,滚区底部内距=基础+弹窗高
+  useEffect(() => {
+    const el = askDockRef.current;
+    if (el === null) {
+      setAskH(0);
+      return;
+    }
+    const apply = (): void => setAskH(Math.ceil(el.getBoundingClientRect().height) + 8);
+    apply();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(apply) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, [askItems.length]);
+
   const setAskPick = useCallback((pid: string, patch: Partial<AskPick>): void => {
     setAskPicks((prev) => ({ ...prev, [pid]: { ...(prev[pid] ?? { labels: [], custom: '' }), ...patch } }));
   }, []);
@@ -1130,7 +1152,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
           </div>
         </header>
 
-        <div className="chat sx-group-chat" ref={scrollRef} onScroll={onScroll}>
+        <div
+          className="chat sx-group-chat"
+          ref={scrollRef}
+          onScroll={onScroll}
+          style={askH > 0 ? { paddingBottom: `calc(var(--thread-gutter) + 176px + ${askH}px)` } : undefined}
+        >
           {/* 刻度导航条（2026-11-28 六轮「对齐普通会话的样式和逻辑」）：主对话 ChatRail 同件——
               群主消息与成员回复各一枚刻度,hover 预览首行内容;跳转直落 DOM 锚不走 revealSeq=无高亮 */}
           <ChatRail entries={railEntries} chatScrollRef={scrollRef} activeKeyAt={railActiveKeyAt} />
@@ -1235,12 +1262,15 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
             const item = askItems[idx]!;
             const pick = askPicks[item.pid] ?? { labels: [], custom: '' };
             return (
-              <div className="ask-dock sx-group-ask-dock">
+              <div className="ask-dock sx-group-ask-dock" ref={askDockRef}>
                 <div className="sx-group-ask-head">
                   <span className="sx-group-ask-source">
                     <span>{t('From', '来自')}</span>
-                    <SunxIcon size={14} strokeWidth={1.75} />
-                    <span className="sx-group-ask-who">{item.member.name}</span>
+                    {/* 来源=图标+名称,蓝色可点跳成员会话（2026-11-28 十轮） */}
+                    <button type="button" className="sx-group-ask-who" onClick={() => onOpenMember(item.member.id)}>
+                      <SunxIcon size={14} strokeWidth={1.75} />
+                      <span>{item.member.name}</span>
+                    </button>
                   </span>
                   <span className="sx-group-ask-pager">
                     <button type="button" className="sx-iconbtn" aria-label="previous ask" disabled={askItems.length < 2} onClick={() => setAskIdx((i) => (i - 1 + askItems.length) % askItems.length)}><ChevronLeft size={14} strokeWidth={2} aria-hidden="true" /></button>

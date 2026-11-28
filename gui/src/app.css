@@ -5190,11 +5190,18 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* ask 卡：沿用会话 .ask-dock / .ask-actions，只补群来源行 */
 /* ask 弹窗（2026-11-28 九轮「来自 sunx 的 ask_question 显示在弹窗内部」）：头行(From+成员 左 /
    1/N 分页 右)+限高正文区+动作行;圆角与输入卡一致,卡面沿用 .ask-dock 内部件 */
-.sx-group-ask-dock { border-radius: var(--radius-composer); background: var(--surface-elevated); border: 1px solid var(--border); overflow: hidden; }
-.sx-group-ask-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+/* 2026-11-28 十轮细化：头行下分割线退役（来自行与正文一体）;与下方输入卡留呼吸缝 */
+.sx-group-ask-dock { border-radius: var(--radius-composer); background: var(--surface-elevated); border: 1px solid var(--border); overflow: hidden; margin-bottom: 8px; }
+.sx-group-ask-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px 2px; }
 .sx-group-ask-pager { display: inline-flex; align-items: center; gap: 2px; color: var(--fg-secondary); }
 .sx-group-ask-count { font-size: calc(14px * var(--fz)); font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }
-.sx-group-ask-who { color: var(--accent); font-weight: 600; }
+/* 来自成员=图标+名称,蓝色可点跳会话（2026-11-28 十轮） */
+.sx-group-ask-who { display: inline-flex; align-items: center; gap: 4px; border: none; background: transparent; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.sx-group-ask-who:hover { text-decoration: underline; text-underline-offset: 2px; }
+/* 内嵌 AskCard 与弹窗一体(2026-11-28 十轮「选择题不要有第二个边框」):去卡自身描边/底/内距 */
+.sx-group-ask-body .pending-card { border: none; background: transparent; padding: 0; border-radius: 0; box-shadow: none; }
+/* 底部动作行留行距,不贴边（2026-11-28 十轮） */
+.sx-group-ask-dock .ask-actions { padding: 6px 12px 12px; }
 /* 正文+选项限高（弹窗有最大高度,内部滚动;动作行恒在视口内） */
 .sx-group-ask-body { max-height: min(46vh, 420px); padding: 8px 10px 0; overflow-y: auto; }
 .sx-group-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

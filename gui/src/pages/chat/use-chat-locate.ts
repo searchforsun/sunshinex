@@ -60,12 +60,18 @@ export function useChatLocate({
     const el = chatScrollRef.current;
     if (el === null) return;
     const norm = (x: string): string => x.replace(/\s+/g, ' ').trim();
-    const needle = norm(f.text).slice(0, 60);
+    // 2026-11-28 十轮「群主气泡 @sunx chip 点击定位不到」：目标会话里的 @提及 渲染成 chip（textContent
+    // 只有名字、无 @ 前缀），群页 needle 带 @ ——剥掉 @令牌 再比;原文与剥后双针,任一命中即可
+    const stripAt = (x: string): string => x.replace(/(^|\s)@[^\s@]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const needles = [norm(f.text).slice(0, 60), stripAt(f.text).slice(0, 60)].filter((x) => x !== '');
     const find = (): HTMLElement | undefined =>
-      needle === ''
+      needles.length === 0
         ? undefined
         : [...el.querySelectorAll<HTMLElement>('.entry-user[data-entry-key]')]
-            .filter((n) => norm(n.querySelector('.user-md-plain')?.textContent ?? '').includes(needle))
+            .filter((n) => {
+              const body = norm(n.querySelector('.user-md-plain')?.textContent ?? '');
+              return needles.some((nd) => body.includes(nd));
+            })
             .at(-1);
     const land = (node: HTMLElement): void => {
       chatStickRef.current = false;

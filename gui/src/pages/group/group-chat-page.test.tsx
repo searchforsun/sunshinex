@@ -288,6 +288,10 @@ describe('GroupChatPage', () => {
     const head = container.querySelector('.sx-group-ask-head')!;
     expect(head.querySelector('.sx-group-ask-source')?.textContent).toContain('A'); // 左=来自谁
     expect(head.querySelector('.sx-group-ask-count')?.textContent).toBe('1/2'); // 右=位置/数量
+    // 来源=图标+名称按钮（2026-11-28 十轮：蓝色可点跳成员会话）
+    const who = head.querySelector('.sx-group-ask-who') as HTMLElement;
+    expect(who.tagName).toBe('BUTTON');
+    expect(who.querySelector('svg')).not.toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'next ask' }));
     expect(await screen.findByText('第二问?')).toBeDefined();
     expect(container.querySelector('.sx-group-ask-count')?.textContent).toBe('2/2');
