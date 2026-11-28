@@ -321,6 +321,9 @@ function AppShell(): JSX.Element {
   /** kindHint(2026-11-17):打开链已知会话形态(sunx attach 应答/新建链)——首帧即定格欢迎面,免 title GET 竞态 */
   const openSession = (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft = false, kindHint?: string): void => {
     setSchedulesMain(false); // 任何会话导航都关定时任务层(记录打开会话/侧栏点会话同路)
+    // 同点关群聊页（2026-11-28 五轮复裁定「点击群组没有去掉会话的选中,再次点击该会话无法回到
+    // 这个会话,还显示在群聊中」根修）：openSessionId 同值时关群 effect 不触发,必须在导航点关
+    setGroupChatId(null);
     // 临时会话思想(2026-10-29 用户设计定版):欢迎页=临时会话,发出去(欢迎页输入建席)时临时座
     // 变真座——草稿整座继承到新会话,欢迎页重获新空临时座;开既有会话不继承(全隔离——8d83fa5
     // 前的泄漏=迁移对开既有会话同样生效,本门即边界:仅 inheritWelcomeDraft 路径放行)
