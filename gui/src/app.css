@@ -5071,6 +5071,12 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-shell.sx-group-open .sx-session-row.active { background: transparent; color: var(--fg-secondary); }
 /* 菜单关闭态呼出簇（2026-11-28 五轮裁定）：群顶栏内《》导航+【|】重开菜单,欢迎页 sx-welcome-nav 同构 */
 .sx-group-nav { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+/* 运行中成员速览（2026-11-28 七轮「顶部 ⋯ 右侧显示正在运行的 sunx:转圈图标+名称,点击跳转」）：
+   胶囊=转圈+名称,悬浮微亮;转圈 12px(run-spinner 同件缩小) */
+.sx-group-runpill { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 3px 10px; border: none; border-radius: 999px; background: transparent; color: var(--fg-secondary); font-size: calc(14px * var(--fz)); cursor: pointer; }
+.sx-group-runpill:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.sx-group-runpill .run-spinner { width: 12px; height: 12px; border-width: 2px; }
+.sx-group-runpill-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-group-main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }
 .sx-shell.sx-desktop .sx-group-page .sx-group-topbar { padding-right: 126px; }
 .sx-shell:not(.sx-desktop) .sx-group-page .sx-group-topbar { padding-right: 44px; }
@@ -5146,16 +5152,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    左右满出血抵泡 padding,顶缘弧度随泡(radius-composer);滚动条只在正文区 */
 .entry-user .user-bubble.user-bubble-headered { display: flex; flex-direction: column; }
 .user-bubble.user-bubble-headered .user-bubble-scroll { min-height: 0; }
-/* 下侧留行距（2026-11-28 六轮复裁定「下侧渲染要有一定行距,不要把下侧和分割线挤在一起」）：
-   固定槽下边距 6→12px——表格等正文首元素自身无上边距,不垫会贴死槽底 */
-.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 12px; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
 /* 2026-11-28 六轮复裁定「不要分割线区分,去掉;跳转图标保持一致,不要一大一小」：分割线退役;
    svg 锁 flex:none——flex 行内长文本会把未锁宽的图标挤到 6px(实测),恒 14 原寸 */
+.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 0; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
 .sx-group-quote-line > svg { flex: none; }
-/* 下侧留行距（2026-11-28 六轮复裁定「下侧渲染要有一定行距,不要把下侧和分割线挤在一起」）：
-   行1791「.user-bubble :last-child margin-bottom 收口」把固定槽下边距清零了(槽=头的末子)——
-   同特异性更晚一条压回 12px,表格等正文首元素不贴死槽底 */
-.entry-user .user-bubble .sx-group-quote-line { margin-bottom: 12px; }
+/* 间距归正文上边界（2026-11-28 七轮复裁定「不是固定槽下边距,是下侧信息的上边界;当前固定槽
+   行距太高了,退回」）：槽恢复紧凑(margin-bottom 0,行1791 收口规则不再打架,12px 高的透明
+   空段不再挂在槽上);间隙改由正文区 padding-top 10px 承担 */
+.user-bubble.user-bubble-headered .user-bubble-scroll { padding-top: 10px; }
+.entry-user .user-bubble .sx-group-quote-line { margin-bottom: 0; }
 .sx-group-quote-line.clickable { cursor: pointer; }
 .sx-group-quote-line.clickable:hover { color: var(--fg-secondary); }
 .sx-group-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -79,7 +79,9 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
       base.push({ id, name, isDefault, members: [] });
     };
     if (groups !== null && groups.length > 0) {
-      for (const g of groups) add(g.id, g.isDefault === true && g.name === '默认群组' ? t('Default group', '默认群组') : g.name, g.isDefault === true);
+      // 默认群名显示层中文化（2026-11-28 七轮「每次重启后群聊名称怎么回到英文了」）：daemon
+      // 存档名为英文 'Default group',显示层按 isDefault 直接本地化（用户自定义改名不在此列）
+      for (const g of groups) add(g.id, g.isDefault === true && (g.name === '默认群组' || g.name === 'Default group') ? t('Default group', '默认群组') : g.name, g.isDefault === true);
     } else {
       add(DEFAULT_GROUP_ID, t('Default group', '默认群组'), true);
     }

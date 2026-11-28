@@ -467,9 +467,11 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
               menuClosed={menuClosed}
               onToggleMenu={toggleMenuStable}
               nav={navControls}
-              onOpenMember={(journalId) => {
+              onOpenMember={(journalId, runSeq) => {
                 onCloseSunxGroupChat();
-                openSunxInstance({ journalId, root: '' });
+                // 定位跳转（2026-11-28 七轮「点击 sunx 跳转后定位到发/收消息位置」）：
+                // 走归因定位通道（runSeq 在场=Chat 播种后定位该轮;缺席=只打开会话）
+                openSunxPeerStable(journalId, runSeq);
               }}
               onOpenSession={(sessionId, root) => {
                 onCloseSunxGroupChat();

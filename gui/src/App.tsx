@@ -106,8 +106,24 @@ function AppShell(): JSX.Element {
   const [welcomeGoal, setWelcomeGoal] = useState<WelcomeGoal | null>(null);
   const [page, setPage] = useState<'welcome' | 'chat'>('welcome');
   /** 群聊页（2026-11-26 群组规格）：单层覆盖，groupId=null 关闭；打开新会话时自动关闭。
-   *  2026-11-27 用户裁定：打开动作恒定（再点不再 toggle 关闭，无主动退出钮）。 */
-  const [groupChatId, setGroupChatId] = useState<string | null>(null);
+   *  2026-11-27 用户裁定：打开动作恒定（再点不再 toggle 关闭，无主动退出钮）。
+   *  2026-11-28 七轮「重启后定位到欢迎页了,群聊页面不在 gui 持久化状态内吗」：groupId 落
+   *  localStorage,重启即回群聊页（effect 单点同步,任意关闭路径都清档）。 */
+  const [groupChatId, setGroupChatId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('sunshinex.group-chat');
+    } catch {
+      return null;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (groupChatId === null) localStorage.removeItem('sunshinex.group-chat');
+      else localStorage.setItem('sunshinex.group-chat', groupChatId);
+    } catch {
+      // 本地持久化失败只影响重启回位
+    }
+  }, [groupChatId]);
   const openSunxGroupChat = useCallback((groupId: string): void => {
     setGroupChatId(groupId);
   }, []);
