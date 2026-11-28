@@ -337,7 +337,7 @@ test('⑦ snapshot.pending 段:acceptEdits 挂起中含本会话 {pid,kind:"appr
         await ctx.post('写个文件', sid);
         await waitFor(() => frames.some((f) => f.kind === 'approval'), 10_000);
         const pid = frames.find((f) => f.kind === 'approval')!.pid!;
-        assert.ok(/^p\d+$/.test(pid), 'pid 形态 p<n>(daemon 级铸造)');
+        assert.ok(/^p[a-z0-9]+\d+$/.test(pid), 'pid 形态 p<盐><n>(daemon 级铸造,盐随进程随机防跨重启撞号)');
         // 挂起中:本会话 snapshot.pending 含该条目(daemon 侧合并 + sessionId 过滤);G7 增 req——
         // 挂起表 entry.req 直序列化(ApprovalRequest 字面),GUI reseed 重建卡的内容面
         const snapOf = async (target: string): Promise<{ pending: Array<{ pid: string; kind: string; req?: Record<string, unknown> }> }> => {
