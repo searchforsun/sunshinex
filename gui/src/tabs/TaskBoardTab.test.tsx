@@ -173,6 +173,43 @@ describe('TaskBoardTab 队卡', () => {
   });
 });
 
+describe('跳转定位蓝亮（2026-11-28 八轮「打开智能体团队要高亮显示蓝色的」）', () => {
+  const waitHl = async (sel: string): Promise<Element | null> => {
+    for (let i = 0; i < 30; i += 1) {
+      const hit = document.querySelector(`${sel}.jump-hl`);
+      if (hit !== null) return hit;
+      await new Promise((r) => setTimeout(r, 32));
+    }
+    return null;
+  };
+  it('#团队 focus=team：目标队卡加 jump-hl（开签首帧未渲染由重试窗兜住）', async () => {
+    render(
+      <TaskBoardTab
+        board={boardOf([task('t1', { teamId: 'alpha' })])}
+        delegations={[]}
+        teams={teams}
+        focus={{ ref: 'alpha', nonce: 1, kind: 'team' }}
+      />,
+    );
+    expect(await waitHl('.tb-card')).not.toBeNull();
+  });
+
+  it('$子智能体 focus=agent：成员行加 jump-hl（大小写不敏感匹配）', async () => {
+    render(
+      <TaskBoardTab
+        board={boardOf([task('t1', { teamId: 'alpha' })])}
+        delegations={[]}
+        teams={teams}
+        members={[{ name: 'Planner', busy: false, teamId: 'alpha' }]}
+        focus={{ ref: 'planner', nonce: 2, kind: 'agent' }}
+      />,
+    );
+    const hit = await waitHl('.tb-task-main[data-member-name]');
+    expect(hit).not.toBeNull();
+    expect(hit?.getAttribute('data-member-name')).toBe('Planner');
+  });
+});
+
 describe('智能体团队点色 class', () => {
   it('running 转圈、success 蓝点、cancelled 黄点规则挂在 task-status-* 上', () => {
     const cssPath = [resolve(process.cwd(), 'src/app.css'), resolve(process.cwd(), 'gui/src/app.css')].find((p) => {

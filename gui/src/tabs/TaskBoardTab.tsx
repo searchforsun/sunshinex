@@ -40,7 +40,7 @@ interface TaskBoardTabProps {
   /** pending|running 停止（App 注入 conn.boardStop） */
   readonly onStopTask?: (taskId: string) => void;
   /** 工具行点开的定位信号：kind=task 高亮任务行并切到任务栏；kind=team 高亮队卡（ref=teamId 或队名） */
-  readonly focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
+  readonly focus?: { ref: string; nonce: number; kind?: 'task' | 'team' | 'agent' } | null;
   /** 顶部刷新：sessionSnapshot 拉权威 board/teams/team。返回 Promise 期间钮转圈 */
   readonly onRefresh?: () => Promise<void>;
   /** 正文/顶栏打开侧栏时 App 递增——主动刷一次 */
@@ -163,7 +163,7 @@ function TaskCard({
   teamCreatedAt?: number;
   onOpenAgent?: (label: string, agentTitle: string, task?: string, focusTaskId?: string) => void;
   onStopTask?: (taskId: string) => void;
-  focus?: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
+  focus?: { ref: string; nonce: number; kind?: 'task' | 'team' | 'agent' } | null;
 }): JSX.Element {
   const [view, setView] = useState<CardView>('tasks');
   /** 停止二段确认武装态(2026-11-02 用户裁定「点击按钮变红边框」):首击红边武装,3s 内再击执行 */
@@ -192,6 +192,14 @@ function TaskCard({
     () => membersOfTeam(group.teamId, members, group.tasks, teamCount),
     [group.teamId, group.tasks, members, teamCount],
   );
+  // 成员定位（2026-11-28 八轮 $ 子智能体点击）：成员行只挂 Members 视图,先切视图
+  // （命中判定在父层 findHit；不命中本队成员也无害——该卡只是展示成员名册）
+  useEffect(() => {
+    if (focus === undefined || focus === null || focus.kind !== 'agent' || focus.ref === '') return;
+    const want = focus.ref.toLowerCase().replace(/^\$/, '');
+    const hit = teamMembers.some((m) => m.name.toLowerCase().replace(/^\$/, '') === want);
+    if (hit) setView('members');
+  }, [focus?.nonce, focus?.kind, focus?.ref, teamMembers]);
   const openTaskAgent = (task: BoardTask): void => {
     const d = agentOfTask(task, delegations);
     const agentName = agentDisplayName(task, d);
@@ -383,30 +391,49 @@ export function TaskBoardTab({ board, delegations, teams = [], members = [], onO
   );
   useEffect(() => {
     if (focus === undefined || focus === null || focus.ref === '') return;
-    // 定位共体（team/task 两分型仅选择器与判别面不同,滚动单点承载;瞬跳到位。2026-11-24 用户
-    // 推翻「撤闪光」裁定:落点加蓝色高亮 markJumpHighlight(8s 常驻自动解除)——确认点击生效+对应关系）
+    // 定位共体（team/agent/task 三分型仅选择器与判别面不同,滚动单点承载;瞬跳到位。2026-11-24
+    // 用户裁定:落点加蓝色高亮 markJumpHighlight 自动解除——确认点击生效+对应关系）
     const flashAndScroll = (hit: Element): (() => void) => {
       hit.scrollIntoView({ block: 'center' }); // 2026-11-08 用户裁定「去掉滑动」:瞬跳到位
       markJumpHighlight(hit);
       return () => undefined;
     };
-    if (focus.kind === 'team') {
-      const cards = [...(rootRef.current?.querySelectorAll('.tb-card') ?? [])];
-      const hit = cards.find((card) => {
-        const id = card.getAttribute('data-team-id') ?? '';
-        const name = card.querySelector('.tb-team-name')?.textContent ?? '';
-        return id === focus.ref || name === focus.ref;
+    // 取数重试（2026-11-28 八轮「打开智能体团队要高亮蓝色」根修）：新开页签首帧卡面未渲染,
+    // 一次匹配必落空——rAF 轮询 ≤1.5s,命中即闪;期间 focus 变更由 cleanup 取消
+    const findHit = (): Element | undefined => {
+      if (focus.kind === 'team') {
+        return [...(rootRef.current?.querySelectorAll('.tb-card') ?? [])].find((card) => {
+          const id = card.getAttribute('data-team-id') ?? '';
+          const name = card.querySelector('.tb-team-name')?.textContent ?? '';
+          return id === focus.ref || name === focus.ref;
+        });
+      }
+      if (focus.kind === 'agent') {
+        // 成员行（$ 子智能体点击）：优先名字精确；label/title 大小写兜底
+        const rows = [...(rootRef.current?.querySelectorAll('.tb-task-main[data-member-name]') ?? [])];
+        const want = focus.ref.toLowerCase();
+        return rows.find((r) => {
+          const nm = (r.getAttribute('data-member-name') ?? '').toLowerCase();
+          return nm === want || nm.replace(/^\$/, '') === want.replace(/^\$/, '');
+        });
+      }
+      const norm = focus.ref.replace(/^task-/, '');
+      return [...(rootRef.current?.querySelectorAll('.tb-task-main') ?? [])].find((r) => {
+        const id = r.getAttribute('data-task-id') ?? '';
+        const title = r.getAttribute('data-task-title') ?? '';
+        return id === focus.ref || id === norm || title === focus.ref;
       });
-      return hit === undefined ? undefined : flashAndScroll(hit);
-    }
-    const norm = focus.ref.replace(/^task-/, '');
-    const rows = [...(rootRef.current?.querySelectorAll('.tb-task-main') ?? [])];
-    const hit = rows.find((r) => {
-      const id = r.getAttribute('data-task-id') ?? '';
-      const title = r.getAttribute('data-task-title') ?? '';
-      return id === focus.ref || id === norm || title === focus.ref;
-    });
-    return hit === undefined ? undefined : flashAndScroll(hit);
+    };
+    let raf = 0;
+    const deadline = performance.now() + 1500;
+    const tick = (): void => {
+      const hit = findHit();
+      if (hit !== undefined) { flashAndScroll(hit); return; }
+      if (performance.now() > deadline) return;
+      raf = window.requestAnimationFrame(tick);
+    };
+    tick();
+    return () => window.cancelAnimationFrame(raf);
   }, [focus?.nonce, focus?.ref, focus?.kind]);
   const tasks = useMemo(() => Object.values(board.tasks), [board]);
   const groups = useMemo(() => groupByTeam(tasks, teams), [tasks, teams]);

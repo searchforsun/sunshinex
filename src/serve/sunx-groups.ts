@@ -609,6 +609,9 @@ export interface GroupSendPrepared {
   images?: string[];
   targets: SunxRoomTarget[];
   command?: string;
+  /** fan-out 投递文本（2026-11-28 八轮「显示不去,@ 真正发出时才去」）：前置 @提及 段剥除后的
+   *  命令/正文;缺省=原样投 text（房间留全文,本字段只管成员侧）。 */
+  fanoutText?: string;
   replyPreview?: SunxReplyPreview;
   model?: string;
   effort?: string;
@@ -635,13 +638,30 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
   if (input.model !== undefined && input.model.trim() === '') return { ok: false, status: 400, error: 'invalid model' };
   if (input.effort !== undefined && input.effort.trim() === '') return { ok: false, status: 400, error: 'invalid effort' };
 
-  const first = input.text.trim().split(/\s+/)[0] ?? '';
+  // @ 前缀过滤（2026-11-28 八轮「显示不去,@ 真正发出时才去」）：首令牌=@提及(目标名/全体)
+  // 且次令牌=命令 → 命令生效;房间留全文(appendRoomHuman 原文),fan-out 投递剥前缀段
+  // (fanoutText)。GUI 手动键入与面板选人殊途同归,门在服务端单点。
+  const trimmedText = input.text.trim();
+  const parts0 = trimmedText.split(/\s+/);
+  const mentionTokens = new Set(['@全体成员', ...members.filter((m) => m.archived !== true).map((m) => `@${m.name}`)]);
+  let lead = 0;
+  while (lead < parts0.length && mentionTokens.has(parts0[lead] ?? '')) lead += 1;
+  const first = parts0[lead] ?? '';
   const command = ((COMMAND_SUPPORT as readonly string[]).includes(first) || isGroupControlCommand(first))
     ? first
     : undefined;
+  let fanoutText: string | undefined;
+  if (lead > 0 && command !== undefined) {
+    let rest = trimmedText;
+    for (const tok of parts0.slice(0, lead)) {
+      rest = rest.replace(new RegExp(`^${tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`), '');
+    }
+    fanoutText = rest;
+  }
   if (command !== undefined && images !== undefined) return { ok: false, status: 400, error: 'commands do not accept images' };
   if (command === '/plan') return { ok: false, status: 400, error: 'plan mode is not supported for Sunx' };
-  const mentionAll = input.mentionAll === true;
+  // @全体成员 前缀剥除等价 mentionAll（2026-11-28 八轮:手动键入 @全体成员 /命令 无面板旗标也能全员）
+  const mentionAll = input.mentionAll === true || (lead > 0 && parts0.slice(0, lead).includes('@全体成员'));
   let targets: SunxRoomTarget[] = [];
   let mentions: SunxRoomTarget[] | undefined;
   if (mentionAll) {
@@ -693,6 +713,7 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
       targets,
       ...(command !== undefined ? { command } : {}),
       ...(replyPreview !== undefined ? { replyPreview } : {}),
+      ...(fanoutText !== undefined ? { fanoutText } : {}),
       ...(input.model !== undefined && input.model.trim() !== '' ? { model: input.model.trim() } : {}),
       ...(input.effort !== undefined && input.effort.trim() !== '' ? { effort: input.effort.trim() } : {}),
       ...(input.mode !== undefined ? { mode: input.mode } : {}),

@@ -223,10 +223,16 @@ export function setRefLabels(
   }
 }
 /** 点击跳转句柄(2026-11-20 用户裁定「点击能跳转到指定团队/成员,和页面蓝色超链接一致」):
- *  宿主注入;未注入=普通文本(欢迎页等无跳转面) */
-let refOpenHandler: ((sym: '$' | '#', id: string) => void) | null = null;
-export function setRefOpenHandler(fn: ((sym: '$' | '#', id: string) => void) | null): void {
+ *  宿主注入;未注入=普通文本(欢迎页等无跳转面)。
+ *  2026-11-28 八轮「$/# 气泡点不开侧栏」根修:返回**身份守卫**卸载函数——热切换驻留座多实例
+ *  并存,旧实现卸载无条件置 null,后台座退场即把前台座注册的句柄抹掉(此后点击全变普通文本)。 */
+type RefOpenFn = (sym: '$' | '#', id: string) => void;
+let refOpenHandler: RefOpenFn | null = null;
+export function setRefOpenHandler(fn: RefOpenFn | null): () => void {
   refOpenHandler = fn;
+  return () => {
+    if (refOpenHandler === fn) refOpenHandler = null; // 只清自己的注册
+  };
 }
 
 /** G14.85 工具体用无链接版(输出面不需要文件交互) */

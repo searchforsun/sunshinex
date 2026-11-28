@@ -2262,7 +2262,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
             let result: 'ok' | 'busy' | 'unsupported' | 'error' = 'error';
             let errText = '';
             try {
-              result = await runCommand(rt, prepared.text, (t) => captured.push(t), prepared.owner);
+              result = await runCommand(rt, prepared.fanoutText ?? prepared.text, (t) => captured.push(t), prepared.owner);
             } catch (e) {
               errText = e instanceof Error ? e.message : String(e);
             }
@@ -2284,7 +2284,7 @@ const PTY_PERSIST_INTERVAL_MS = 5_000;
             }
           }
         } else {
-          const r = deliverToTarget(this.sessions, prepared.owner, target.id, prepared.text, {
+          const r = deliverToTarget(this.sessions, prepared.owner, target.id, prepared.fanoutText ?? prepared.text, {
             ensureLive: (jid) => this.attachSunxRuntime(jid).ok,
             ...(prepared.replyPreview !== undefined
               ? { quote: { name: prepared.replyPreview.from.name, text: prepared.replyPreview.text } }

@@ -38,7 +38,7 @@ export function useAppServices({ connRef, sessionRef, chatSinkRef, sideParentRef
   todoBatches: TodoBatch[];
   seededTodoBatches: TodoBatch[];
   setTodoBatches: Dispatch<SetStateAction<TodoBatch[]>>;
-  taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
+  taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' | 'agent' } | null;
   openTaskFocus: (ref: string) => void;
   todoLocateSig: { sig: string; nonce: number } | null;
   openLeaderBubble: (m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }) => void;

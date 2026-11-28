@@ -4809,7 +4809,10 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-deadline-day.is-selected { background: var(--fg); color: var(--fg-on-solid); }
 .sx-deadline-day:disabled { color: var(--fg-tertiary); opacity: 0.45; }
 .sx-deadline-day.is-blank { visibility: hidden; }
-.sx-deadline-time-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 96px; padding-left: 10px; border-left: 1px solid var(--border-subtle); }
+/* 2026-11-28 八轮「英文下时间选择弹窗宽度,不至于换行」：96→124px——EN 'No deadline' 超列宽
+   折行叠字;clear 钮 nowrap 防折 */
+.sx-deadline-time-col { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 124px; padding-left: 10px; border-left: 1px solid var(--border-subtle); }
+.sx-deadline-clear { white-space: nowrap; }
 .sx-deadline-time-head { display: flex; align-items: center; justify-content: center; height: 24px; }
 /* 与星期行同基线：24px 表头 + 6px 栏间距（日历侧是表头 + 6px 上边距） */
 .sx-deadline-time-label { color: var(--fg-tertiary); font-size: var(--sx-font); }
@@ -5088,7 +5091,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 顶栏（2026-11-27 二轮裁定）：⋯ 紧贴群名右侧；Sunx 面板/查询两钮固定窗控「—」左侧
    （fixed 视口定位，面板开合不随动）；菜单锚 ⋯ 下方左对齐。 */
 .sx-group-more-wrap { flex: none; }
-.sx-group-more-pop { top: calc(100% + 4px); left: 0; right: auto; }
+/* 2026-11-28 八轮「编辑弹窗宽度要和普通会话对齐,不然会换行」：锚=pill-anchor(24px 小容器),
+   绝对定位 shrink-to-fit 被钳到 min-content=英文菜单项逐词换行——width:max-content+行内 nowrap
+   对齐会话菜单的内容自适应宽度(EN 'Copy owner ID' 恒单行) */
+.sx-group-more-pop { top: calc(100% + 4px); left: 0; right: auto; width: max-content; }
+.sx-group-more-pop .sx-menuitem { white-space: nowrap; }
 .sx-group-topbar-right { position: fixed; top: 7px; right: 98px; z-index: 62; display: inline-flex; align-items: center; gap: 8px; flex: none; }
 .sx-shell:not(.sx-desktop) .sx-group-page .sx-group-topbar-right { right: 12px; } /* web 群页无窗控簇，贴右缘 */
 /* 面板头行顶置（2026-11-28 三轮裁定「SUNX/查询标题在顶栏同位显示,X 紧跟标题,下侧分割线」）：
@@ -5119,8 +5126,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 /* 成员 chip 可点击跳成员会话（2026-11-28 五轮放行指针）+ 常显下划线标可跳（2026-11-28 七轮
    「蓝色 @ sunx 要显示下划线,可跳转的显示」:gradient 线不随透明 @ 子串断,与 user-from-sunx 同式;
    @全体成员 不可跳,不上 link 类无线） */
+/* 2026-11-28 八轮「不要常驻下划线」:改 hover 显线(gradient 同式),常态无线 */
 .sx-group-page .sx-composer-highlight .hn-file.sx-group-chip-link {
   pointer-events: auto; cursor: pointer;
+}
+.sx-group-page .sx-composer-highlight .hn-file.sx-group-chip-link:hover {
   background-image: linear-gradient(currentColor, currentColor);
   background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat;
 }
@@ -5132,15 +5142,23 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-page .sx-composer-highlight .hn-agent, .sx-group-page .sx-composer-highlight .hn-team { cursor: default; }
 /* 气泡 @ 成员/全体 chip（2026-11-28 三轮裁定「上下居中对齐,左右留缝,全体成员蓝色」）：
    inline-flex 中线对齐+左右 3px 缝,accent 单色（成员/全体同件,不再 .hn-team warn） */
-.sx-group-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; margin: 0 3px; color: var(--accent); background: none; padding: 0; }
-.sx-group-mention-ico { display: inline-flex; align-items: center; justify-content: center; }
-/* 成员 chip 可点击跳成员会话（2026-11-28 六轮）+ 常显下划线标可跳（2026-11-28 七轮） */
-.sx-group-mention.clickable {
-  cursor: pointer;
+/* 2026-11-28 八轮「气泡用户消息相较 @sunx 偏上,要和输入框一致」+「前缀 sunx 图标又靠下了,
+   下划线要带上图标」:名字走文字基线(display:inline),图标回流行内(inline-block)并按基线
+   微调 vertical-align(-3px)——图标盒=14px,底边落基线下 3px 即字形中线;下划线改整 chip
+   渐变底线(padding box,含图标),hover 才显 */
+.sx-group-mention { display: inline; color: var(--accent); margin: 0 3px 0 0; }
+.sx-group-mention-ico { display: inline-block; width: 14px; height: 14px; vertical-align: -3px; margin-right: 3px; }
+.sx-group-mention-ico svg { width: 14px; height: 14px; }
+/* 成员 chip 可点击跳成员会话（2026-11-28 六轮）;下划线改 hover 显（2026-11-28 八轮） */
+.sx-group-mention.clickable { cursor: pointer; }
+.sx-group-mention.clickable:hover, .sx-group-mention.clickable:focus-visible {
+  outline: none;
   background-image: linear-gradient(currentColor, currentColor);
   background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat;
 }
-.sx-group-mention.clickable:focus-visible { outline: none; }
+/* 跳转定位蓝亮加强（2026-11-28 八轮「打开智能体团队要高亮显示蓝色的」）：团队卡/成员行/
+   任务行落点=accent 14% 底+accent 45% 内描边（原全局 .jump-hl 仅 10% 底,卡片上不够醒目） */
+.tb-card.jump-hl, .tb-task-main.jump-hl { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
 /* @ 面板键盘活行（2026-11-28 六轮「@ 支持上下选择」）：与 .sx-menu-pop 活行同底色 */
 .sx-group-palette .sx-menuitem.sx-menuitem-active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距（2026-11-28 四轮裁定「气泡距离输入框

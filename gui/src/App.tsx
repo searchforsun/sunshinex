@@ -188,7 +188,7 @@ function AppShell(): JSX.Element {
   /** 记忆/学习技能清单变点(catalog-changed 递增 → 对应页签重拉) */
   const [catalogTick, setCatalogTick] = useState({ memory: 0, learned: 0 });
   /** G14.176 create_agent_team_task 行点开的定位信号(任务板滚动高亮对应卡) */
-  const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' } | null>(null);
+  const [taskFocus, setTaskFocus] = useState<{ ref: string; nonce: number; kind?: 'task' | 'team' | 'agent' } | null>(null);
   /** 2026-11-04 待办行点击定位信号(Chat 待办字样→开待办页签+定位对应卡) */
   const [todoLocateSig, setTodoLocateSig] = useState<{ sig: string; nonce: number; title?: string } | null>(null);
   const connRef = useRef<Connection | null>(null);

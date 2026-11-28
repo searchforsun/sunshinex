@@ -61,7 +61,7 @@ export interface TabServices {
   /** 成员转录 leader 链接点击(App 注入):主对话定位对应消息位置(2026-11-08;nonce 变更即滚动高亮) */
   readonly onOpenLeader?: (m: { member: string; text: string; dir: 'toLeader' | 'fromLeader' }) => void;
   /** 工具行点开的定位信号(App 注入;nonce 变更即滚动高亮;kind=team 定位队卡) */
-  readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' } | null;
+  readonly taskFocus: { ref: string; nonce: number; kind?: 'task' | 'team' | 'agent' } | null;
   /** 2026-11-04 待办行点击定位信号:待办页签滚到同签名卡并闪光 */
   readonly todoLocateSig: { sig: string; nonce: number; title?: string } | null;
   /** G14.2xx b create_agent_team_task 行任务名点击 → 开智能体团队页签并定位高亮(App 注入 openBoardTab+setTaskFocus;

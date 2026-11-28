@@ -36,10 +36,10 @@ const PATTERNS: ReadonlyArray<{ re: RegExp; zh: string }> = [
   { re: /^Context compacted \(ctx (\d+) → (\d+) tokens\)$/, zh: '上下文已压缩（水位 $1 → $2 tokens）' },
   { re: /^Compacting context…?$/, zh: '上下文压缩中' },
   { re: /^Context compaction interrupted$/, zh: '上下文压缩已中断' },
-  // —— /context：整块匹配保正文（明细行=语言中性标识符+数字），仅头与尾总量本地化——
-  //    旧「裸前缀命中即整替」会吞掉明细正文，先整块后前缀兜底
-  { re: /^Context breakdown:([\s\S]*?)\ntotal (\d+) \/ (\d+)$/, zh: '上下文构成：$1\n总量 $2 / $3' },
-  { re: /^Context breakdown:([\s\S]*)$/, zh: '上下文构成：$1' },
+  // —— /context：整块匹配保正文；2026-11-28 八轮「命令返回 i18n,不要一边英文一边中文」：
+  //    明细标签也随语言（daemon 恒英文 'stable segment: …'，此前只换头尾=中文界面露出英文标签）
+  //    具体整块映射在 localizeNotice 的 contextBlockZh 单点（逐行标签替换+头尾回填）
+  { re: /^Context breakdown:[\s\S]*$/, zh: '' },
   // —— /skills-rm ——
   { re: /^Learned skill removed: (.+)$/, zh: '已删除学习技能：$1' },
   { re: /^No learned skill '(.+)' in this workspace$/, zh: '本工作区没有学习技能 "$1"' },
@@ -63,10 +63,33 @@ const PATTERNS: ReadonlyArray<{ re: RegExp; zh: string }> = [
   { re: /^(\/[\w-]+) interrupted$/, zh: '$1 已中断' },
 ];
 
+/** /context 明细标签中英对照（2026-11-28 八轮）：daemon 恒英文、整块本地化时逐行替换行首标签，
+ *  数字/占比原样（行格式 `label: tokens (pct)`）。 */
+const CTX_LABELS: ReadonlyArray<[string, string]> = [
+  ['stable segment', '稳定段'], ['instructions', '指令'], ['skills', '技能'],
+  ['subagents', '子智能体'], ['teams', '团队'], ['memory', '记忆'],
+  ['compacted', '压缩块'], ['chain', '主链'],
+];
+
+/** /context 整块中文渲染（头+逐行标签+尾总量）：未命中 total 行=原样接尾不丢内容 */
+function contextBlockZh(md: string): string {
+  const body = md.slice('Context breakdown:'.length).replace(/^\n/, '');
+  const totalM = /\ntotal (\d+) \/ (\d+)\s*$/.exec(`\n${body}`);
+  const detailRaw = (totalM === null ? body : body.slice(0, body.length - (totalM[0].length - 1))).replace(/\n+$/, '');
+  const detail = detailRaw.split('\n').map((line) => {
+    const hit = CTX_LABELS.find(([en]) => line.startsWith(`${en}:`));
+    return hit === undefined ? line : `${hit[1]}${line.slice(hit[0].length)}`;
+  }).join('\n');
+  return totalM === null
+    ? `上下文构成：\n${detail}`
+    : `上下文构成：\n${detail}\n合计 ${totalM[1]} / ${totalM[2]}`;
+}
+
 /** 命令回执本地化单点：GUI 英文整行透传（en 用户看 en——强翻中文即 e2e 'resolved: allow' 断言
  *  撕裂的根因）；中文时逐一试模式，命中按捕获组回填中文模板，未命中原样返回 */
 export function localizeNotice(md: string): string {
   if (getLanguage() !== 'zh') return md;
+  if (md.startsWith('Context breakdown:')) return contextBlockZh(md); // 整块单点(标签逐行)
   for (const { re, zh } of PATTERNS) {
     const m = re.exec(md);
     if (m === null) continue;

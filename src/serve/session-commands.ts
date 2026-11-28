@@ -110,19 +110,19 @@ export function contextBreakdownNotice(s: SessionRuntime): string {
     chainFrom: ctx.chainFromView(),
   });
   const LABELS: Record<string, string> = {
-    stableSegment: t('stable segment', '稳定段'),
-    instructions: t('instructions', '指令'),
-    skills: t('skills', '技能'),
-    agents: t('subagents', '子智能体'),
-    teams: t('teams', '团队'),
-    memory: t('memory', '记忆'),
-    compacted: t('compacted', '压缩块'),
-    chain: t('chain', '主链'),
+    stable: 'stable segment',
+    instructions: 'instructions',
+    skills: 'skills',
+    agents: 'subagents',
+    teams: 'teams',
+    memory: 'memory',
+    compacted: 'compacted',
+    chain: 'chain',
   };
   return (
-    `${t('Context breakdown', '上下文构成')}:\n` +
+    'Context breakdown:\n' +
     b.parts.map((p) => `${LABELS[p.id] ?? p.id}: ${p.tokens} (${Math.round((p.tokens / Math.max(1, b.total)) * 100)}%)`).join('\n') +
-    `\n${t(`total ${b.total} / ${b.window}`, `合计 ${b.total} / ${b.window}`)}`
+    `\ntotal ${b.total} / ${b.window}`
   );
 }
 
@@ -138,6 +138,8 @@ async function runCommandBody(s: SessionRuntime, line: string, cmd: string, noti
 
   if (cmd === '/status') {
     const snap = s.snapshotResponse();
+    // daemon 恒规范英文产出（2026-11-28 用户裁定「daemon 返回英文,gui 层按设置渲染」）:
+    // 显示侧本地化=i18n-notice PATTERNS(/status 会话行已在表),此处不再做 daemon 侧翻译
     notice(`session ${s.id} · ${snap.status} · model ${snap.model ?? 'default'} · mode ${snap.mode}`);
     return 'ok';
   }

@@ -29,7 +29,7 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
   openSession: (sessionId: string, root: string, journalId?: string, inheritWelcomeDraft?: boolean, kindHint?: string) => void;
   openTabInSession: (type: TabTypeId, params?: TabParams) => void;
   openBoardTab: () => void;
-  setTaskFocus: (v: { ref: string; nonce: number; kind?: 'task' | 'team' } | null) => void;
+  setTaskFocus: (v: { ref: string; nonce: number; kind?: 'task' | 'team' | 'agent' } | null) => void;
   setMenuClosed: (v: boolean) => void;
   showOpError: (err: unknown) => void;
 }): {
@@ -185,7 +185,8 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
     if (id !== '') setBgFocus({ id, nonce: Date.now() });
   }, [openTabInSession]);
   /** 工具行定位:开任务板页签 + focus。`bg:` 前缀=后台任务账本行(task_wait);
-   *  `team:` 前缀=队卡定位；其余=板任务行高亮(create_agent_team_task/agent_team_task_wait 等) */
+   *  `team:` 前缀=队卡定位；`member:` 前缀=队卡成员行定位（2026-11-28 八轮「$ 打开智能体团队
+   *  要高亮显示蓝色」）；其余=板任务行高亮(create_agent_team_task/agent_team_task_wait 等) */
   const openTaskFocus = useCallback((ref: string): void => {
     if (ref.startsWith('bg:')) {
       openBgTaskFocus(ref.slice(3));
@@ -193,6 +194,7 @@ export function useAppLinks({ connInstance, connRef, openRoot, openSessionId, op
     }
     openBoardTab();
     if (ref.startsWith('team:')) setTaskFocus({ ref: ref.slice(5), nonce: Date.now(), kind: 'team' });
+    else if (ref.startsWith('member:')) setTaskFocus({ ref: ref.slice(7), nonce: Date.now(), kind: 'agent' });
     else setTaskFocus({ ref, nonce: Date.now(), kind: 'task' });
   }, [openBoardTab, openBgTaskFocus, setTaskFocus]);
   return {

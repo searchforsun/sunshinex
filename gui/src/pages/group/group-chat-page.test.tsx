@@ -73,7 +73,7 @@ describe('GroupChatPage', () => {
     expect(screen.queryByRole('button', { name: 'delivery receipt' })).toBeNull();
     const source = document.querySelector('[data-entry-key="m2"] .user-from-sunx button') as HTMLElement;
     fireEvent.click(source);
-    expect(onOpenMember).toHaveBeenCalledWith('jid_a');
+    expect(onOpenMember).toHaveBeenCalledWith('jid_a', 2); // runSeq 随归因行定位该轮（七轮半）
   });
 
   it('composer 发送：@ 面板选成员（@ 按钮已退役）→ sunxGroupSend（无文件/上下文/终端入口）', async () => {
@@ -173,14 +173,15 @@ describe('GroupChatPage', () => {
     // @ + / 触发命令+技能面板（行首等价）
     fireEvent.change(input, { target: { value: '@A /st' } });
     expect(await screen.findByRole('option', { name: /\/status/ })).toBeDefined();
-    // 发送:剥 @ 前缀,命令直发,mentions 保留目标
+    // 发送:全文出站(2026-11-28 八轮「显示不去,@ 真正发出时才去」——剥前缀单点在服务端
+    // fanoutText),mentions 保留目标
     fireEvent.change(input, { target: { value: '@A /status' } });
     fireEvent.click(screen.getByRole('button', { name: 'send' }));
     await waitFor(() => expect(conn.sunxGroupSend).toHaveBeenCalled());
     const [, body1] = (conn.sunxGroupSend as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { text: string; mentions?: string[] }];
-    expect(body1.text).toBe('/status');
+    expect(body1.text).toBe('@A /status');
     expect(body1.mentions).toEqual(['jid_a']);
-    // 次令牌非命令(skills/普通词)→原样发出,不剥
+    // 次令牌非命令(skills/普通词)→同样全文发出
     fireEvent.change(input, { target: { value: '@A /notacmd' } });
     fireEvent.click(screen.getByRole('button', { name: 'send' }));
     await waitFor(() => expect(conn.sunxGroupSend).toHaveBeenCalledTimes(2));

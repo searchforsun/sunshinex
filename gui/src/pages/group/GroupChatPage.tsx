@@ -42,14 +42,19 @@ import type { RefItem, RefPal } from '../chat/ref-palette';
 import { useRefCatalog } from '../chat/use-chat-ref-entries';
 import { SelActionsOverlay } from '../chat/SelActionsOverlay';
 import { EffortChip, EffortSlider } from '../../effort-slider';
-import { chaseScrollBottom, insertRefPick } from '../../ui-util';
+import { chaseScrollBottom, insertRefPick, rAFConverge } from '../../ui-util';
 import { PlusAddIcon } from '../../sidebar/project-menu-util';
 import { MAX_IMAGES, loadImages } from '../../images';
+import { localizeNotice } from '../../i18n-notice';
 import { MIN_TAB_WIDTH } from '../../tabs/tab-state';
 import { MAIN_MIN_WIDTH, chatMaxFor } from '../../thread-width';
 import { zoomScale } from '../../ui-zoom';
 
 const GROUPS_CHANGED_EVENT = 'sunx-groups-changed';
+/** 群聊滚动位置驻留（2026-11-28 七轮「上次显示到哪里,再切回时定位到哪里,不要一直定位到底部」）：
+ *  模块级按 groupId 存「锚消息 seq+视口内偏移+scrollTop 兜底」（群草稿驻留同口径）——群条目带
+ *  content-visibility 估算高度,裸 scrollTop 回放会被水合顶偏,恢复走锚节点对齐+rAFConverge 收敛。 */
+const groupScrolls = new Map<string, { seq: number; rel: number; top: number }>();
 /** 群草稿驻留（2026-11-28 五轮移植主对话「切会话草稿不丢」）：模块级按 groupId 存 input/images
  *  （App 生命周期内,驻留座同口径）；切群/关页再回不丢草稿，提交通后由保活 effect 落空值。 */
 const groupDrafts = new Map<string, { input: string; images: string[] }>();
@@ -70,7 +75,9 @@ interface GroupChatPageProps {
   conn: Connection;
   groupId: string;
   onClose: () => void;
-  onOpenMember: (journalId: string) => void;
+  /** 跳成员会话（2026-11-28 七轮「点击 sunx 跳转后定位到发/收消息位置」）：runSeq 在场=
+     openSunxPeerStable 下发该轮定位信号（缺席=只打开会话,成员消息来源行携带） */
+  onOpenMember: (journalId: string, runSeq?: number) => void;
   onOpenSession: (sessionId: string, root: string) => void;
   onError: (message: string) => void;
   searchOpen: boolean;
@@ -165,6 +172,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const messagesRef = useRef<SunxRoomMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  /** 草稿内在场 ⟦token⟧ 集（2026-11-28 八轮「主动删除也从缓存去除」）：差集消费——删除的
+   *  token 即从注册表去除;切群恢复时同步基线,不误删其他群草稿的在途 token。 */
+  const draftTokensRef = useRef<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const searchRef = useRef<HTMLElement | null>(null);
   const nodeBySeq = useRef(new Map<number, HTMLDivElement>());
@@ -216,10 +226,34 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         conn.sunxGroupMessages(groupId, { limit: 200 }),
       ]);
       setDetail(d);
+      // 滚动位置恢复（2026-11-28 七轮）：上次离开时的 scrollTop 初载回放（内容高度基本同构）；
+      // 无存档=贴底跟随（atBottomRef 缺省 true,跟随 effect 兜底）。有存档先落非贴底——
+      // 否则首帧 [messages] 跟随 effect 抢先跳底,rAF 恢复被顶掉
+      const saved = groupScrolls.get(groupId);
+      if (saved !== undefined) atBottomRef.current = false;
       setMessages(r.messages);
       setCursor(r.cursor);
       cursorRef.current = r.cursor;
       setHasMore(r.hasMore);
+      if (saved !== undefined) {
+        // 锚节点对齐恢复:先按 saved.top 粗落,再按「锚消息视口偏移=saved.rel」rAFConverge 收敛
+        // （群条目 content-visibility 估算高度会被水合顶偏,裸 scrollTop 必漂）
+        window.requestAnimationFrame(() => {
+          const el = scrollRef.current;
+          if (el === null) return;
+          el.scrollTop = saved.top;
+          const node = saved.seq > 0
+            ? el.querySelector<HTMLElement>(`.sx-group-msg[data-seq="${saved.seq}"]`)
+            : null;
+          if (node !== null) {
+            const align = (): number => node.getBoundingClientRect().top - el.getBoundingClientRect().top - saved.rel;
+            el.scrollTop += align();
+            rAFConverge(el, align, (delta) => { el.scrollTop += delta; }, 2);
+          }
+          atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          setAtBottom(atBottomRef.current);
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -242,18 +276,53 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const draft = groupDrafts.get(groupId);
     setInput(draft?.input ?? '');
     setImages(draft?.images ?? []);
+    draftTokensRef.current = new Set([...(draft?.input ?? '').matchAll(/⟦[^⟧]{1,120}⟧/g)].map((m) => m[0]));
     void loadInitial();
     void conn.commands().then(
       (r) => setSupported([...new Set([...r.supported, ...SUNX_GROUP_COMMANDS])].filter((c) => c !== '/plan')),
       () => setSupported([...SUNX_GROUP_COMMANDS]),
     );
     void conn.models().then((r) => setModels(r.choices), () => setModels([]));
+    // 滚动位置离场存档（2026-11-28 七轮,与初载恢复配对）：锚=视口下缘上 40px 的最后一条消息
+    // （seq+视口内偏移）+scrollTop 兜底;贴底(距底<80)不存档,回场自然贴底。
+    // 元素在 effect 体捕获——卸载序里 ref 先于 passive cleanup 置 null,cleanup 读 ref 恒 null
+    // （实测存档从未执行=回场恒贴底的根因）
+    const scrollEl = scrollRef.current;
+    return () => {
+      if (scrollEl === null) return;
+      const dist = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+      if (dist < 80) return;
+      const rect = scrollEl.getBoundingClientRect();
+      let seq = 0;
+      let rel = 0;
+      for (const node of scrollEl.querySelectorAll<HTMLElement>('.sx-group-msg[data-seq]')) {
+        const r = node.getBoundingClientRect();
+        if (r.top <= rect.bottom - 40) {
+          seq = Number(node.dataset.seq);
+          rel = r.top - rect.top;
+        } else {
+          break;
+        }
+      }
+      groupScrolls.set(groupId, { seq, rel, top: scrollEl.scrollTop });
+    };
   }, [conn, groupId, loadInitial]);
 
   // 草稿保活（与上行恢复配对）：输入/图片变化即落驻留表（切群/关页再回不丢）
   useEffect(() => {
     groupDrafts.set(groupId, { input, images });
   }, [groupId, input, images]);
+  // 片段缓存随删随清（2026-11-28 八轮「主动删除也从缓存去除,不单是发出后」）：输入变化差集
+  // 比对,消失的 ⟦token⟧ 即从注册表去除（退格整删/圈删/清空全盖）;重命名(registry 迁移)的
+  // 旧键同路清出,内容已随新键在册
+  useEffect(() => {
+    const cur = new Set([...input.matchAll(/⟦[^⟧]{1,120}⟧/g)].map((m) => m[0]));
+    const prev = draftTokensRef.current;
+    for (const tok of prev) {
+      if (!cur.has(tok)) refContentConsume(tok);
+    }
+    draftTokensRef.current = cur;
+  }, [input]);
 
   // 成员状态（running/awaiting）刷新：ask_question 挂起在成员会话，群页据此弹同一张 ask 卡并跳转
   useEffect(() => {
@@ -317,13 +386,44 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     if (atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  /** 滚动快照存档（2026-11-28 七轮「上次显示到哪里,再切回时定位到哪里」）：滚动时节流 500ms
+   *  落锚快照（视口下缘上 40px 的最后一条消息 seq+视口内偏移+scrollTop 兜底）——卸载清理里
+   *  ref 已被 React 置 null 且 DOM 已脱离（实测存档从未执行）,活滚动面才是可靠存档点 */
+  const lastSnapRef = useRef(0);
+  const saveScrollSnapshot = useCallback((): void => {
+    const el = scrollRef.current;
+    if (el === null) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (dist < 80) {
+      groupScrolls.delete(groupId); // 贴底不存档,回场自然贴底
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    let seq = 0;
+    let rel = 0;
+    for (const node of el.querySelectorAll<HTMLElement>('.sx-group-msg[data-seq]')) {
+      const r = node.getBoundingClientRect();
+      if (r.top <= rect.bottom - 40) {
+        seq = Number(node.dataset.seq);
+        rel = r.top - rect.top;
+      } else {
+        break;
+      }
+    }
+    groupScrolls.set(groupId, { seq, rel, top: el.scrollTop });
+  }, [groupId]);
   const onScroll = useCallback((): void => {
     const el = scrollRef.current;
     if (el === null) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     atBottomRef.current = near;
     setAtBottom(near);
-  }, []);
+    const now = Date.now();
+    if (now - lastSnapRef.current >= 500) {
+      lastSnapRef.current = now;
+      saveScrollSnapshot();
+    }
+  }, [saveScrollSnapshot]);
 
   const loadOlder = useCallback(async (): Promise<void> => {
     const first = messagesRef.current[0];
@@ -425,38 +525,18 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     // token 送达成员,不再以字面 ⟦文本片段N⟧ 占位符出站
     const expanded = expandRefContents(expandRefNames(input, refEntries), new Map());
     if ((expanded.trim() === '' && images.length === 0) || sending) return;
-    // @ 前缀过滤（2026-11-28 七轮「发给 sunx 时如果是命令,剔除前缀 @ 直接执行;skills 原样」）：
-    // 首令牌=@成员/@全体成员 且次令牌=命令 → 剥 @ 前缀按命令直发（目标仍走 mentions 通道）
-    let text = expanded;
-    let strippedAll = false;
-    const strippedIds: string[] = [];
-    // 手动键入 @令牌（不经面板）不从 mentions 态记账——命令门从文本派生兜底目标
-    const textMentions = members
-      .filter((m) => expanded.includes(`@${m.name}`))
-      .map((m) => ({ id: m.id, name: m.name }));
-    {
-      const parts = expanded.trim().split(/\s+/);
-      const first = parts[0] ?? '';
-      const second = parts[1] ?? '';
-      const member = first === '@全体成员' ? undefined : members.find((m) => `@${m.name}` === first);
-      const isLeadingMention = first.startsWith('@') && (first === '@全体成员' || member !== undefined);
-      if (isLeadingMention && second !== '' && supported.includes(second)) {
-        const at = text.indexOf(first);
-        text = (text.slice(0, at) + text.slice(at + first.length)).replace(/^\s+/, '');
-        if (member !== undefined) strippedIds.push(member.id);
-        else strippedAll = true;
-      }
-    }
-    const effectiveMentions = mentions.length > 0 ? mentions : textMentions;
-    // 未知引用提示（五轮移植主对话 R5,不拦截不改写原文照发）：目录已拉过且有候选才对照
-    if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
-      const unknown = unknownRefTokens(text, refEntries);
-      if (unknown.length > 0) {
-        setHint(t('No registered match for {tokens} — sent as-is', '{tokens} 未匹配到在册条目——已按原文发送').replace('{tokens}', unknown.join(' ')));
-      }
-    }
-    const token = text.trim().split(/\s+/)[0] ?? '';
+    const text = expanded;
+    // 命令令牌（2026-11-28 八轮「显示不去,@ 真正发出时才去」）：跳过行首 @提及 后的首个令牌,
+    // 仅作客户端 UX 预检;真正剥 @ 与命令生效单点在服务端（prepareGroupSend fanoutText）
+    const parts = text.trim().split(/\s+/);
+    const mentionTokens = new Set(['@全体成员', ...members.map((m) => `@${m.name}`)]);
+    let lead = 0;
+    while (lead < parts.length && mentionTokens.has(parts[lead] ?? '')) lead += 1;
+    const token = parts[lead] ?? '';
     const isCommand = supported.includes(token);
+    const effectiveMentions = mentions.length > 0
+      ? mentions
+      : members.filter((m) => text.includes(`@${m.name}`)).map((m) => ({ id: m.id, name: m.name }));
     if (isCommand && images.length > 0) {
       setError(t('Commands do not accept images', '命令不能附带图片'));
       return;
@@ -469,9 +549,15 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       setError(t('Select at least one member to run a command', '选择至少一个成员执行命令'));
       return;
     }
-    // @ 前缀被剥的成员/全体仍算活目标（目标通道不因剥前缀而丢）
-    const liveMentions = effectiveMentions.filter((m) => text.includes(`@${m.name}`) || strippedIds.includes(m.id));
-    const liveAll = (mentionAll && text.includes('@全体成员')) || strippedAll;
+    const liveMentions = effectiveMentions.filter((m) => text.includes(`@${m.name}`));
+    const liveAll = mentionAll && text.includes('@全体成员');
+    // 未知引用提示（五轮移植主对话 R5,不拦截不改写原文照发）：目录已拉过且有候选才对照
+    if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
+      const unknown = unknownRefTokens(text, refEntries);
+      if (unknown.length > 0) {
+        setHint(t('No registered match for {tokens} — sent as-is', '{tokens} 未匹配到在册条目——已按原文发送').replace('{tokens}', unknown.join(' ')));
+      }
+    }
     setSending(true);
     setError('');
     try {
@@ -519,6 +605,13 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   }, [conn, groupId, nameDraft, onError]);
 
   const members = detail?.members ?? [];
+  /** 群名显示层本地化（2026-11-28 七轮「重启后群聊名称回到英文」）：daemon 存档默认群名为
+   *  英文 'Default group',isDefault 且未自定义改名时显示层直接本地化（侧栏同口径） */
+  const groupName = detail === null
+    ? t('Group', '群组')
+    : detail.group.isDefault === true && (detail.group.name === 'Default group' || detail.group.name === '默认群组')
+      ? t('Default group', '默认群组')
+      : detail.group.name;
   const mentionCandidates = useMemo(() => {
     const q = mentionQuery.trim().toLowerCase();
     return members.filter((m) => q === '' || m.name.toLowerCase().includes(q));
@@ -767,7 +860,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     ts: m.ts,
     ...(m.images !== undefined && m.images.length > 0 ? { images: m.images } : {}),
     ...(m.kind !== 'human' || m.from.kind === 'sunx'
-      ? { fromSunx: { id: m.from.id, name: m.from.name } }
+      // runSeq 随归因行（2026-11-28 七轮「群聊点击 sunx 跳转后定位到发/收消息位置」）：
+      // UserEntryView 来源行点击回传 (id, runSeq)→openSunxPeerStable 定位该轮
+      ? { fromSunx: { id: m.from.id, name: m.from.name, ...(m.from.runSeq !== undefined ? { runSeq: m.from.runSeq } : {}) } }
       : {}),
   }), []);
   const messageById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
@@ -938,7 +1033,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
             <span className="sx-ws-folder" aria-hidden="true">
               <MessagesSquare size={16} strokeWidth={1.75} />
             </span>
-            <span className="chat-title-text">{detail?.group.name ?? t('Group', '群组')}</span>
+            <span className="chat-title-text">{groupName}</span>
           </span>
           <span className="pill-anchor sx-group-more-wrap">
             <button type="button" className="sx-iconbtn sx-group-more-btn" aria-label="group menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
@@ -955,18 +1050,30 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 {/* 复制群主 ID（2026-11-28 四轮裁定「不要下方 toast,和项目风格一样,前缀图标原地显√」）：
                     点击复制,前缀图标 Copy→Check 原地回执 1.2s */}
                 <button type="button" role="menuitem" className="sx-menuitem" onClick={() => {
-                  setMenuOpen(false);
+                  // √ 先显后收（2026-11-28 八轮「√产生后再关掉弹窗」）：复制成功图标转 √ 1.2s,
+                  // 回执可见后菜单才收(点外收口仍随时生效)
                   const p = navigator.clipboard?.writeText(groupId);
                   if (p !== undefined) p.then(() => {
                     setOwnerCopied(true);
-                    window.setTimeout(() => setOwnerCopied(false), 1200);
-                  }, () => undefined);
+                    window.setTimeout(() => {
+                      setOwnerCopied(false);
+                      setMenuOpen(false);
+                    }, 1200);
+                  }, () => setMenuOpen(false));
                 }}>
                   {ownerCopied ? <Check size={14} strokeWidth={2} /> : <Copy size={14} />} {t('Copy owner ID', '复制群主 ID')}
                 </button>
               </div>
             )}
           </span>
+          {/* 运行中成员速览（2026-11-28 七轮「顶部 ⋯ 右侧显示正在运行的 sunx:转圈图标+名称,点击跳转」）：
+              数据=成员 1.5s 轮询的 running 位;点击跳该 sunx 会话 */}
+          {members.filter((m) => m.running === true).map((m) => (
+            <button key={m.id} type="button" className="sx-group-runpill" data-tip={t('Open session', '打开会话')} onClick={() => onOpenMember(m.id)}>
+              <span className="run-spinner" aria-hidden="true" />
+              <span className="sx-group-runpill-name">{m.name}</span>
+            </button>
+          ))}
           <div className="sx-group-topbar-right">
             <button
               type="button"
@@ -1009,7 +1116,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   两行构图,@ 用法与群命令说明移居输入框占位 */}
               <MessagesSquare size={44} strokeWidth={1.5} aria-hidden="true" className="sx-group-empty-ico" />
               <div className="chat-empty-title">
-                {t('Assign tasks to members of {group}', '给 {group} 群成员分派任务').replace('{group}', detail?.group.name ?? t('Group', '群组'))}
+                {t('Assign tasks to members of {group}', '给 {group} 群成员分派任务').replace('{group}', groupName)}
               </div>
             </div>
           )}
@@ -1036,7 +1143,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               ? (md: string) => (
                 <div className="entry-md">
                   <div className="entry-md-body">
-                    <MarkdownCached md={md} components={mdComponentsPlain} />
+                    {/* 成员回执/系统行随 GUI 语言渲染（2026-11-28 八轮「daemon 恒英文,gui 按设置
+                        渲染」规范）：localizeNotice 固定头模式表,动态内容透传 */}
+                    <MarkdownCached md={localizeNotice(md)} components={mdComponentsPlain} />
                   </div>
                 </div>
               )
@@ -1062,7 +1171,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   {...(fromMember ? { bubbleMaxHeight: 480 } : {})}
                   {...(quoteNode !== null ? { bubbleHeader: quoteNode } : {})}
                   onOpenImage={setLightbox}
-                  onOpenSunx={(journalId) => onOpenMember(journalId)}
+                  onOpenSunx={(journalId, runSeq) => onOpenMember(journalId, runSeq)}
                   renderBody={body}
                   sourceSuffix={fromMember && m.to !== undefined ? (
                     <GroupTarget target={m.to} onOpenMember={onOpenMember} />
@@ -1624,7 +1733,9 @@ function GroupMentions({ text, mentions = [], mentionAll = false, onOpenMember }
             <span className="sx-group-mention-ico" aria-hidden="true">
               {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
             </span>
-            {part.slice(1)}
+            {/* 2026-11-28 八轮「英文下用一个单词标识全体成员」：气泡 chip 显示层本地化
+                （EN=Everyone 单词;底层令牌与输入框 chip 恒原文——输入框高亮层有字宽对齐硬约束） */}
+            {part === '@全体成员' ? t('Everyone', '全体成员') : part.slice(1)}
           </span>
         );
       })}

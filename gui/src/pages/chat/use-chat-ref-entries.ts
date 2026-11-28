@@ -101,11 +101,18 @@ export function useChatRefEntries(opts: {
     setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? [], liveRefEntries.liveMembers ?? []);
   }, [liveRefEntries]);
   useEffect(() => {
-    setRefOpenHandler((sym, id) => {
-      if (sym === '#') onOpenTask?.(refKindOf('#' + id) === 'task' ? id : `team:${id}`);
-      else onOpenAgent?.(id, id);
+    // 身份守卫卸载（mention.tsx setRefOpenHandler 返回清理函数）：多驻留座并存时后台座退场
+    // 不再抹掉前台座的注册（2026-11-28 八轮「$/# 点不开侧栏」根因）
+    return setRefOpenHandler((sym, id) => {
+      if (sym === '#') {
+        onOpenTask?.(refKindOf('#' + id) === 'task' ? id : `team:${id}`);
+        return;
+      }
+      // $ 子智能体（2026-11-28 八轮「打开智能体团队要高亮显示蓝色」）：打开转录页签之外,
+      // 同步定位智能体团队页签的成员行（蓝色闪光）——群聊无侧栏,此路只在会话面生效
+      onOpenAgent?.(id, id);
+      onOpenTask?.(`member:${id}`);
     });
-    return () => setRefOpenHandler(null);
   }, [onOpenTask, onOpenAgent]);
   return { refPal, setRefPal, refActive, setRefActive, refEntries, liveRefEntries, loadRefEntries, refEntriesLoadedRef };
 }

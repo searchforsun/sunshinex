@@ -83,13 +83,13 @@ describe('localizeNotice 挂起裁决与压缩/构成回执', () => {
     expect(localizeNotice('Compacting context…')).toBe('上下文压缩中');
   });
 
-  it('/context 整块:头与尾总量本地化,明细正文原样保留(旧裸前缀命中即整替吞正文,回归钉)', () => {
-    const md = 'Context breakdown:\nstable: 1200 (30%)\nchain: 2800 (70%)\ntotal 4000 / 200000';
-    expect(localizeNotice(md)).toBe('上下文构成：\nstable: 1200 (30%)\nchain: 2800 (70%)\n总量 4000 / 200000');
+  it('/context 整块:头/明细标签/尾总量全本地化(2026-11-28 八轮「不要一边英文一边中文」)', () => {
+    const md = 'Context breakdown:\nstable segment: 1200 (30%)\ninstructions: 10 (1%)\nsubagents: 5 (0%)\nchain: 2800 (69%)\ntotal 4000 / 200000';
+    expect(localizeNotice(md)).toBe('上下文构成：\n稳定段: 1200 (30%)\n指令: 10 (1%)\n子智能体: 5 (0%)\n主链: 2800 (69%)\n合计 4000 / 200000');
   });
 
-  it('/context 无 total 尾行的形态:前缀兜底保正文不吞', () => {
-    expect(localizeNotice('Context breakdown:\nstable: 10 (100%)')).toBe('上下文构成：\nstable: 10 (100%)');
+  it('/context 无 total 尾行的形态:前缀兜底保正文不吞(标签仍映射)', () => {
+    expect(localizeNotice('Context breakdown:\nstable segment: 10 (100%)')).toBe('上下文构成：\n稳定段: 10 (100%)');
   });
 });
 
