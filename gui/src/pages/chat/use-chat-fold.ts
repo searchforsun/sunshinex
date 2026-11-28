@@ -24,14 +24,26 @@ function isFoldNotice(e: ChatEntry): boolean {
   return isMemoryOrSkillNotice(e);
 }
 
-/** 轮内插入判定:当前位置之后、下一 run/user 之前还有本轮工作条目(非斜杠工具/思考/正文/折叠旁白)。
- *  插入气泡本身不上折叠行、走紧凑边距(entry-user-insert 上下 10px),且不得复位 hide */
+/** 轮内插入判定:当前位置之后、下一 run/user 边界之前还有本轮工作条目(非斜杠工具/思考/正文/折叠旁白)。
+ *  插入气泡本身不上折叠行、走紧凑边距(entry-user-insert 上下 10px),且不得复位 hide。
+ *  边界判据(2026-11-28 抖动根修):内核 run 条惰性落座——首个 pump 若是工具条,run 条排在工具之后
+ *  ([user, tool, run] 形态),旧「见内容条即真」会把新轮首误判成插入档(气泡错位+编辑钮消失)。
+ *  改为内容条后继续找最近边界:先遇 run=该内容归它(非插入);先遇 user 或到尾=内容续接旧轮(插入);
+ *  紧邻双用户条仍=连发两轮首(非插入)。 */
 export function isMidRunInsert(entries: readonly ChatEntry[], from: number): boolean {
   for (let j = from + 1; j < entries.length; j += 1) {
     const n = entries[j]!;
-    if (n.kind === 'run' || n.kind === 'user') return false;
+    if (n.kind === 'run') return false;
+    if (n.kind === 'user') return j > from + 1;
     if (n.kind === 'tool' && typeof n.name === 'string' && n.name.startsWith('/')) continue;
-    if (n.kind === 'tool' || n.kind === 'thinking' || n.kind === 'assistant' || isFoldNotice(n) || isAgentMessageNotice(n)) return true;
+    if (n.kind === 'tool' || n.kind === 'thinking' || n.kind === 'assistant' || isFoldNotice(n) || isAgentMessageNotice(n)) {
+      for (let q = j + 1; q < entries.length; q += 1) {
+        const f = entries[q]!;
+        if (f.kind === 'run') return false;
+        if (f.kind === 'user') return true;
+      }
+      return true;
+    }
   }
   return false;
 }

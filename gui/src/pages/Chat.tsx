@@ -408,10 +408,14 @@ export function Chat({ conn, active = true, sessionId, connState, sinkRef, onSee
   }, [sessionId]);
   useEffect(() => {
     if (awaitModelSince === null) return;
+    // running 即收(2026-11-28 抖动防御):run-open 落地晚于提交回执 resolve 时(onAccepted 重置
+    // 时间戳),此后若条目不再以 run/error/tool 收尾(慢端点零反馈窗),拦截会滞留吞掉后续发送——
+    // 会话已在跑=等待待态定义上结束,running 翻真一律解除
+    if (running) { setAwaitModelSince(null); return; }
     const last = chat.entries[chat.entries.length - 1];
     // tool 条亦收(命令三态行无 run-open;防御:任何非 user 新条即表示 daemon 已响应)
     if (last !== undefined && (last.kind === 'run' || last.kind === 'error' || last.kind === 'tool')) setAwaitModelSince(null);
-  }, [chat.entries, awaitModelSince]);
+  }, [chat.entries, awaitModelSince, running]);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 

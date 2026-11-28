@@ -37,6 +37,18 @@ function userTexts(container: HTMLElement): string[] {
   return [...fgSeat(container).querySelectorAll('.entry-user .user-md-plain')].map((n) => n.textContent ?? '');
 }
 
+/** daemon 权威 idle 等待(2026-11-28 抖动根修):UI 帧时序与 Chat 内部状态翻转存在跨帧窗——
+ *  run 条已收线但 running/awaitModelSince 尚未落定的窗口内提交,会按产品语义走 steer 排队
+ *  (落插入档气泡,无编辑钮)或被发送拦截静默保留输入,后续编辑/回退链全盘错位。/sessions 行的
+ *  liveSessionId 仅运行中在座(sessions-list liveSessionByJournal 谓词 status==='running'),
+ *  圆点熄灭=daemon 权威 idle;测试等它熄灭再触发提交/编辑,不赌渲染帧时序。 */
+async function waitDaemonIdle(port: number, root: string): Promise<void> {
+  await waitFor(async () => {
+    const rows = (await (await fetch(`http://127.0.0.1:${port}/sessions?root=${encodeURIComponent(root)}`)).json()) as Array<{ liveSessionId?: string }>;
+    if (rows[0]?.liveSessionId !== undefined) throw new Error('status=running');
+  }, { timeout: 15_000, interval: 200 });
+}
+
 /** 模型响应留出真实间隔:提交回执须先于 run 收束到达(Chat 的等待待态只认 run-open 之后的条目) */
 class PacedAdapter {
   readonly provider = 'paced-e2e';
@@ -88,6 +100,7 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       await waitFor(() => expect(fgSeat(container).textContent).toContain('答一'), { timeout: 15_000 });
       await waitFor(() => expect(fgSeat(container).querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
       await waitFor(() => expect(container.querySelector('button[aria-label="send"]')).not.toBeNull(), { timeout: 15_000 });
+      await waitDaemonIdle(s.port, root); // 权威 idle 落定再提交问二(防 steer 排队/发送拦截竞窗)
 
       const input = screen.getByLabelText('message input');
       fireEvent.change(input, { target: { value: '问二' } });
@@ -96,6 +109,7 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       expect(fs.readFileSync(path.join(root, 'a.txt'), 'utf8')).toBe('v2');
       expect(fs.existsSync(path.join(root, 'b.txt'))).toBe(true);
       await waitFor(() => expect(fgSeat(container).querySelector('.run-live-line')).toBeNull(), { timeout: 15_000 });
+      await waitDaemonIdle(s.port, root); // 编辑/回退链同样等权威 idle(同上竞窗)
 
       // 被丢弃轮打开的 Diff 页签:回退后应随时间线消失
       // 2026-11-26 简洁折叠轮末段只挂折叠头一行——先展开封段轮,工具行才挂载
@@ -106,6 +120,8 @@ describe('编辑发送全链路:真 daemon + App(2026-11-05)', () => {
       fireEvent.click(fgSeat(container).querySelector('.tool-path[aria-label="b.txt"]')!);
       await waitFor(() => expect([...container.querySelectorAll('.sx-tab')].some((t) => (t.textContent ?? '').includes('b.txt'))).toBe(true), { timeout: 15_000 });
 
+      // 问二气泡须以常规(非插入)档落座才有编辑钮——等两枚 Edit 齐了再点末条(防竞窗内点中问一)
+      await waitFor(() => expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(2), { timeout: 15_000 });
       fireEvent.click(screen.getAllByRole('button', { name: 'Edit' }).at(-1)!);
       fireEvent.change(screen.getByRole('textbox', { name: 'edit message' }), { target: { value: '改后的问二' } });
       fireEvent.click(screen.getByRole('button', { name: 'send edit' }));
