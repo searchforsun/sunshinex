@@ -249,7 +249,7 @@ export function splitMentionTokens(text: string): MentionToken[] {
   // 2026-11-20 名称支(用户裁定「# $ 后面只跟上名称」):`#`/`$` + 中文起手名(群 5/6)——名称插入后
   // 在输入框/气泡里同样是整枚 token(高亮/整删/跳转);英文小写名已被既有 id 支覆盖,大写/含空格名
   // 插入侧回退 id(refPickLabel),故此处不放大写臂(#Title 行锚仍不误伤)
-  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s|(?<=[⟧】]))(\/[a-zA-Z][\w-]*)|(^|\s|(?<=[⟧】]))([$#][a-z][a-zA-Z0-9-]*)|(^|\s|(?<=[⟧】]))([$#][\u4e00-\u9fa5][^\s#@/⟦⟧]{0,40})/g;
+  const re = /\[[^\]\n]+\]\([^()\s]+\)|@[\w./:\\-]+|⟦[^⟧]{1,120}⟧|(^|\s|(?<=[⟧】]))(\/[a-zA-Z][\w-]*)|(^|\s|(?<=[⟧】]))([$][A-Za-z][a-zA-Z0-9-]*|[#][a-z][a-zA-Z0-9-]*)|(^|\s|(?<=[⟧】]))([$#][\u4e00-\u9fa5][^\s#@/⟦⟧]{0,40})/g;
   const out: MentionToken[] = [];
   let last = 0;
   for (const m of text.matchAll(re)) {
@@ -797,9 +797,13 @@ export function canonicalizeRefTokens(value: string): { text: string; at: number
 const snippetSeq: { body: number; term: number } = { body: 0, term: 0 };
 export function mintSnippetToken(kind: 'body' | 'term'): string {
   const base = kind === 'body' ? '文本片段' : '终端片段';
-  snippetSeq[kind] += 1;
   // 2026-11-07 用户裁定「直接用 文本片段1」:恒带数字后缀,消灭无后缀特殊形(裸名键跨会话
   // 全局注册表回退歧义的最后一扇门)
+  // 2026-11-28 七轮「再次框选显示文本片段1,是老内容」:重载后计数器归零、注册表却从 localStorage
+  // 回灌了旧键——跳过注册表已占编号,新框选永不落进旧内容键(配合发送落地即删,编号保持紧凑)
+  do {
+    snippetSeq[kind] += 1;
+  } while (refContentRegistry.has(`⟦   ${base}${snippetSeq[kind]}⟧`));
   return `⟦   ${base}${snippetSeq[kind]}⟧`;
 }
 

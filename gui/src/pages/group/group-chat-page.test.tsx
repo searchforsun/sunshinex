@@ -165,6 +165,29 @@ describe('GroupChatPage', () => {
     expect(container.querySelector('.chat-dock .chat-composer')).not.toBeNull();
   });
 
+  it('@ 前缀过滤：@成员 /命令 剥 @ 直发命令(skills/普通消息原样)，@成员 / 触发命令+技能面板（2026-11-28 七轮）', async () => {
+    const conn = makeConn();
+    render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
+    // @ + / 触发命令+技能面板（行首等价）
+    fireEvent.change(input, { target: { value: '@A /st' } });
+    expect(await screen.findByRole('option', { name: /\/status/ })).toBeDefined();
+    // 发送:剥 @ 前缀,命令直发,mentions 保留目标
+    fireEvent.change(input, { target: { value: '@A /status' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+    await waitFor(() => expect(conn.sunxGroupSend).toHaveBeenCalled());
+    const [, body1] = (conn.sunxGroupSend as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { text: string; mentions?: string[] }];
+    expect(body1.text).toBe('/status');
+    expect(body1.mentions).toEqual(['jid_a']);
+    // 次令牌非命令(skills/普通词)→原样发出,不剥
+    fireEvent.change(input, { target: { value: '@A /notacmd' } });
+    fireEvent.click(screen.getByRole('button', { name: 'send' }));
+    await waitFor(() => expect(conn.sunxGroupSend).toHaveBeenCalledTimes(2));
+    const [, body2] = (conn.sunxGroupSend as ReturnType<typeof vi.fn>).mock.calls[1] as [string, { text: string }];
+    expect(body2.text).toBe('@A /notacmd');
+  });
+
   it('查询侧栏复用项目右栏 sx-sidebar/sx-resizer（可拖宽，--sb-w 落宽）', async () => {
     const conn = makeConn();
     const onToggleSearch = vi.fn();

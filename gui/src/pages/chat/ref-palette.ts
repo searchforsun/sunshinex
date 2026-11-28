@@ -58,10 +58,14 @@ export interface RefItem extends RefEntry {
  *  注：任务面给的正则 /([$#])([a-z][a-z0-9-]*)$/ 是词法核，词边界与空 query 两条件
  *  （测试规格 a$b 不触发 / 刚敲 $ 触发）由 (^|\s) 前导 + 可选 query 组补齐。 */
 export function refTokenAt(text: string, caret: number): RefPal | null {
-  const m = /(^|\s)([$#])([a-z][a-zA-Z0-9-]*)?$/.exec(text.slice(0, Math.max(0, caret)));
+  // $ 域放开大写首字符(2026-11-28 七轮「普通会话输入框 $ 没有高亮」同源:在册 id 允许大写,
+  // Developer 型 id 触发/高亮/对照三面一致);# 域保持小写首字符(#L30/#Title 不误伤,代码校验)
+  const m = /(^|\s)([$#])([A-Za-z][a-zA-Z0-9-]*)?$/.exec(text.slice(0, Math.max(0, caret)));
   if (m === null) return null;
-  const from = (m.index ?? 0) + (m[1]?.length ?? 0);
-  return { query: m[3] ?? '', from, sym: m[2] === '#' ? '#' : '$' };
+  const sym = m[2] === '#' ? '#' : '$';
+  const query = m[3] ?? '';
+  if (sym === '#' && query !== '' && /[A-Z]/.test(query[0] ?? '')) return null;
+  return { query, from: (m.index ?? 0) + (m[1]?.length ?? 0), sym };
 }
 
 /** 条目展示名/插入名（2026-11-20 用户裁定「# $ 后面只跟上名称,用户不感知 id」）：名称优先，
@@ -159,7 +163,8 @@ export function unknownRefTokens(text: string, entries: RefEntries): string[] {
     if (t.title !== '' && t.title !== t.id && !/\s/.test(t.title)) names.add(t.title);
   }
   const out: string[] = [];
-  for (const m of text.matchAll(/(^|\s)([$#][a-z][a-z0-9-]*)/g)) {
+  // $ 域放开大写首字符(与 splitMentionTokens/refTokenAt 七轮同源):Developer 型 id 也纳入对照
+  for (const m of text.matchAll(/(^|\s)(\$[A-Za-z][a-zA-Z0-9-]*|[#][a-z][a-z0-9-]*)/g)) {
     const tok = m[2] ?? '';
     if (ids.has(tok.slice(1)) || names.has(tok.slice(1))) continue;
     if (!out.includes(tok)) out.push(tok);

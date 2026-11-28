@@ -5110,16 +5110,31 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    (~10px),15px 图标居中悬置（@ 中心对齐,不再右压名称首字）；全体成员不再 warn 分色 */
 .sx-group-page .sx-composer-highlight .hn-file .hn-file-ico { width: 10px; }
 .sx-group-page .sx-composer-highlight .hn-file .hn-file-ico svg { width: 15px; height: 15px; flex: none; }
-/* 成员 chip 可点击跳成员会话（2026-11-28 五轮移植主对话 @file 点击语义）：高亮层整体
-   pointer-events:none,群芯片单独放行 */
-.sx-group-page .sx-composer-highlight .hn-file { pointer-events: auto; cursor: pointer; }
+/* 成员 chip 可点击跳成员会话（2026-11-28 五轮放行指针）+ 常显下划线标可跳（2026-11-28 七轮
+   「蓝色 @ sunx 要显示下划线,可跳转的显示」:gradient 线不随透明 @ 子串断,与 user-from-sunx 同式;
+   @全体成员 不可跳,不上 link 类无线） */
+.sx-group-page .sx-composer-highlight .hn-file.sx-group-chip-link {
+  pointer-events: auto; cursor: pointer;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat;
+}
+/* 群聊无侧边栏,/$# 引用芯片不做跳转语义（2026-11-28 七轮「这两个不需要有下划线」）:
+   去 hn-ref-link 的 hover 下划线与 pointer 手势 */
+.sx-group-page .hn-agent, .sx-group-page .hn-team { text-decoration: none; }
+.sx-group-page .hn-agent.hn-ref-link, .sx-group-page .hn-team.hn-ref-link { cursor: default; }
+.sx-group-page .hn-agent.hn-ref-link:hover, .sx-group-page .hn-team.hn-ref-link:hover { text-decoration: none; }
+.sx-group-page .sx-composer-highlight .hn-agent, .sx-group-page .sx-composer-highlight .hn-team { cursor: default; }
 /* 气泡 @ 成员/全体 chip（2026-11-28 三轮裁定「上下居中对齐,左右留缝,全体成员蓝色」）：
    inline-flex 中线对齐+左右 3px 缝,accent 单色（成员/全体同件,不再 .hn-team warn） */
 .sx-group-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; margin: 0 3px; color: var(--accent); background: none; padding: 0; }
 .sx-group-mention-ico { display: inline-flex; align-items: center; justify-content: center; }
-/* 成员 chip 可点击跳成员会话（2026-11-28 六轮「发出的 @ chip 也要蓝色点击跳转」） */
-.sx-group-mention.clickable { cursor: pointer; }
-.sx-group-mention.clickable:hover, .sx-group-mention.clickable:focus-visible { text-decoration: underline; text-underline-offset: 2px; outline: none; }
+/* 成员 chip 可点击跳成员会话（2026-11-28 六轮）+ 常显下划线标可跳（2026-11-28 七轮） */
+.sx-group-mention.clickable {
+  cursor: pointer;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat;
+}
+.sx-group-mention.clickable:focus-visible { outline: none; }
 /* @ 面板键盘活行（2026-11-28 六轮「@ 支持上下选择」）：与 .sx-menu-pop 活行同底色 */
 .sx-group-palette .sx-menuitem.sx-menuitem-active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距（2026-11-28 四轮裁定「气泡距离输入框
@@ -5131,10 +5146,16 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    左右满出血抵泡 padding,顶缘弧度随泡(radius-composer);滚动条只在正文区 */
 .entry-user .user-bubble.user-bubble-headered { display: flex; flex-direction: column; }
 .user-bubble.user-bubble-headered .user-bubble-scroll { min-height: 0; }
-.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 6px; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
+/* 下侧留行距（2026-11-28 六轮复裁定「下侧渲染要有一定行距,不要把下侧和分割线挤在一起」）：
+   固定槽下边距 6→12px——表格等正文首元素自身无上边距,不垫会贴死槽底 */
+.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 12px; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
 /* 2026-11-28 六轮复裁定「不要分割线区分,去掉;跳转图标保持一致,不要一大一小」：分割线退役;
    svg 锁 flex:none——flex 行内长文本会把未锁宽的图标挤到 6px(实测),恒 14 原寸 */
 .sx-group-quote-line > svg { flex: none; }
+/* 下侧留行距（2026-11-28 六轮复裁定「下侧渲染要有一定行距,不要把下侧和分割线挤在一起」）：
+   行1791「.user-bubble :last-child margin-bottom 收口」把固定槽下边距清零了(槽=头的末子)——
+   同特异性更晚一条压回 12px,表格等正文首元素不贴死槽底 */
+.entry-user .user-bubble .sx-group-quote-line { margin-bottom: 12px; }
 .sx-group-quote-line.clickable { cursor: pointer; }
 .sx-group-quote-line.clickable:hover { color: var(--fg-secondary); }
 .sx-group-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

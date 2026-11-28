@@ -33,8 +33,9 @@ import { ModeMenu, sessionModeLabel } from '../../composer/mode-menu';
 import { CommandPalette, type CmdItem } from '../../CommandPalette';
 import { useCommandPalette, slashItemsFor } from '../chat/use-command-palette';
 import {
-  RefPalette, atomicRangeOver, expandRefContents, groupMentionTokenSpans, hasMentionTokens, renderMentionSpans,
-  slashTokenAt, splitMentionTokenSpans, tokenDeleteRangeOver, tokenGuardVerdictOver, tokenSpanAtOver,
+  RefPalette, RefTokenChip, atomicRangeOver, expandRefContents, groupMentionTokenSpans, hasMentionTokens,
+  refContentConsume, renderMentionSpans, slashTokenAt, splitBrowserFences, splitMentionTokenSpans,
+  tokenDeleteRangeOver, tokenGuardVerdictOver, tokenSpanAtOver,
 } from '../chat/mention';
 import { refTokenAt, refPanelItems as buildRefPanelItems, refPickLabel, expandRefNames, unknownRefTokens } from '../chat/ref-palette';
 import type { RefItem, RefPal } from '../chat/ref-palette';
@@ -422,8 +423,31 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     // 发送期展开链（2026-11-28 五轮移植主对话全链尾环）：$/# 名称→id（expandRefNames）+
     // ⟦片段⟧→正文/终端围栏（expandRefContents,注册表兜底）——圈选「添加到会话」的内容随
     // token 送达成员,不再以字面 ⟦文本片段N⟧ 占位符出站
-    const text = expandRefContents(expandRefNames(input, refEntries), new Map());
-    if ((text.trim() === '' && images.length === 0) || sending) return;
+    const expanded = expandRefContents(expandRefNames(input, refEntries), new Map());
+    if ((expanded.trim() === '' && images.length === 0) || sending) return;
+    // @ 前缀过滤（2026-11-28 七轮「发给 sunx 时如果是命令,剔除前缀 @ 直接执行;skills 原样」）：
+    // 首令牌=@成员/@全体成员 且次令牌=命令 → 剥 @ 前缀按命令直发（目标仍走 mentions 通道）
+    let text = expanded;
+    let strippedAll = false;
+    const strippedIds: string[] = [];
+    // 手动键入 @令牌（不经面板）不从 mentions 态记账——命令门从文本派生兜底目标
+    const textMentions = members
+      .filter((m) => expanded.includes(`@${m.name}`))
+      .map((m) => ({ id: m.id, name: m.name }));
+    {
+      const parts = expanded.trim().split(/\s+/);
+      const first = parts[0] ?? '';
+      const second = parts[1] ?? '';
+      const member = first === '@全体成员' ? undefined : members.find((m) => `@${m.name}` === first);
+      const isLeadingMention = first.startsWith('@') && (first === '@全体成员' || member !== undefined);
+      if (isLeadingMention && second !== '' && supported.includes(second)) {
+        const at = text.indexOf(first);
+        text = (text.slice(0, at) + text.slice(at + first.length)).replace(/^\s+/, '');
+        if (member !== undefined) strippedIds.push(member.id);
+        else strippedAll = true;
+      }
+    }
+    const effectiveMentions = mentions.length > 0 ? mentions : textMentions;
     // 未知引用提示（五轮移植主对话 R5,不拦截不改写原文照发）：目录已拉过且有候选才对照
     if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
       const unknown = unknownRefTokens(text, refEntries);
@@ -437,16 +461,17 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       setError(t('Commands do not accept images', '命令不能附带图片'));
       return;
     }
-    if (isCommand && DESTRUCTIVE.has(token) && (mentionAll || mentions.length !== 1)) {
+    if (isCommand && DESTRUCTIVE.has(token) && (mentionAll || effectiveMentions.length !== 1)) {
       setError(t('Destructive commands require exactly one member (not @all)', '破坏性命令只允许单个成员执行（不能 @全体/多选）'));
       return;
     }
-    if (isCommand && mentions.length === 0 && !mentionAll) {
+    if (isCommand && effectiveMentions.length === 0 && !mentionAll) {
       setError(t('Select at least one member to run a command', '选择至少一个成员执行命令'));
       return;
     }
-    const liveMentions = mentions.filter((m) => text.includes(`@${m.name}`));
-    const liveAll = mentionAll && text.includes('@全体成员');
+    // @ 前缀被剥的成员/全体仍算活目标（目标通道不因剥前缀而丢）
+    const liveMentions = effectiveMentions.filter((m) => text.includes(`@${m.name}`) || strippedIds.includes(m.id));
+    const liveAll = (mentionAll && text.includes('@全体成员')) || strippedAll;
     setSending(true);
     setError('');
     try {
@@ -466,6 +491,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       setMentionAll(false);
       setImages([]);
       setReplyTo(null);
+      // 片段落地即删（2026-11-28 七轮移植主对话 refContentConsume 口径）：token 已随围栏进消息,
+      // 注册表在途条目即清——再次框选重新从 文本片段1 起编,不再命中旧缓存
+      for (const m of expanded.matchAll(/⟦[^⟧]{1,120}⟧/g)) refContentConsume(m[0]);
       atBottomRef.current = true;
       window.setTimeout(() => { void poll(); }, 80);
     } catch (e) {
@@ -566,6 +594,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   /** 「/」面板项（主对话同件）：群支持集 = daemon supported ∪ 群控制命令 − /plan；
    *  2026-11-28 五轮移植 caret 级触发——slashTokenAt(input, caret)（行首=命令+技能,行中=技能池,
    *  主对话同式）；@ 令牌在场即收口（同一 caret 前缀互斥）。
+   *  2026-11-28 七轮「@智能体后面 支持 /」：atStart 判定放过 @ 前缀——token 之前只有行首
+   *  @成员/@全体成员 与空白时仍按行首（命令+技能）;命令行解析同口径由 send 侧剥 @ 直发。
    *  2026-11-28 三轮实机排查「/stop 不弹面板」：daemon /commands 清单（SLASH_COMMANDS）无群控制
    *  三条，仅并 supported 不够——commands 清单一并并入（jsdom 桩含清单曾遮住此洞）。 */
   const slashItems = useMemo<CmdItem[] | null>(() => {
@@ -573,6 +603,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const atMatch = /(^|\s)@([^\s@]*)$/.exec(input.slice(0, caret));
     const token = atMatch === null ? slashTokenAt(input, caret) : null;
     if (token === null) return null;
+    // @ 前缀放行（七轮）：token 前缀剥掉行首 @令牌序列后为空 = 等效行首
+    const before = input.slice(0, token.from);
+    const memberAlt = ['全体成员', ...members.map((m) => m.name)].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const atStart = before.trim() === '' || before.replace(new RegExp(`^(\\s*@(?:${memberAlt})\\s*)+`, 'u'), '').trim() === '';
     const excluded = SUNX_EXCLUDED_COMMANDS as readonly string[];
     const merged: typeof cmdData = cmdData === null ? null : {
       commands: [...new Set([...cmdData.commands, ...SUNX_GROUP_COMMANDS])].filter((c) => !excluded.includes(c)),
@@ -580,9 +614,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       descriptions: cmdData.descriptions,
       supported: [...new Set([...cmdData.supported, ...SUNX_GROUP_COMMANDS])].filter((c) => !excluded.includes(c)),
     };
-    const items = slashItemsFor(merged, token, skills);
+    const items = slashItemsFor(merged, { query: token.query, atStart }, skills);
     return items.length > 0 ? items : null;
-  }, [cmdData, input, skills]);
+  }, [cmdData, input, skills, members]);
   const slashActive = Math.min(cmdActive, Math.max(0, (slashItems?.length ?? 1) - 1));
   const pickSlash = useCallback((item: CmdItem): void => {
     if (!item.ok) return;
@@ -701,7 +735,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         return (
           <span
             key={i}
-            className="hn hn-file sx-group-chip-link"
+            className={`hn hn-file${member !== undefined ? ' sx-group-chip-link' : ''}`}
             onClick={(e) => {
               e.stopPropagation();
               if (member !== undefined) onOpenMember(member.id);
@@ -849,6 +883,35 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     setMentionQuery('');
   }, [mentionFrom, mentionQuery]);
 
+  /** 气泡段渲染（2026-11-28 七轮「文本片段还是没有 chip 显示」）：发送期展开落档的
+   *  body-snippet/text-selection 全文围栏在显示侧折回 ⟦token⟧ 芯片（splitBrowserFences,
+   *  主对话用户气泡同手法）,文本段交 GroupMentions（@chip+其余 token 着色）。 */
+  const GroupBodySegments = useCallback(({ md, mentions: segMentions, mentionAll: segAll }: {
+    md: string;
+    mentions?: SunxRoomTarget[];
+    mentionAll?: boolean;
+  }): JSX.Element => (
+    <>
+      {splitBrowserFences(md).map((seg, i) => (
+        'fence' in seg ? (
+          <RefTokenChip key={i} inner={seg.label} isTerm={seg.kind === 'text-selection'} content={seg.fence} />
+        ) : (
+          <GroupMentions key={i} text={seg.text} mentions={segMentions} mentionAll={segAll} onOpenMember={onOpenMember} />
+        )
+      ))}
+    </>
+  ), [onOpenMember]);
+  /** $/# id→名称 显示替换（2026-11-28 七轮「用户气泡显示的也是 id?」）：气泡显示层按目录把
+   *  id 形态换成名称（发送仍是 id,模型契约不变）;长 id 先换防前缀吞并（expandRefNames 同式）。 */
+  const displayRefNames = useCallback((md: string): string => {
+    let out = md;
+    const subs = [
+      ...refEntries.agents.map((a) => ({ sym: '$', id: a.id, label: refPickLabel(a) })),
+      ...refEntries.teams.map((g) => ({ sym: '#', id: g.id, label: refPickLabel(g) })),
+    ].filter((x) => x.label !== x.id).sort((x, y) => y.id.length - x.id.length);
+    for (const x of subs) out = out.split(`${x.sym}${x.id}`).join(`${x.sym}${x.label}`);
+    return out;
+  }, [refEntries]);
   return (
     <div className={`sx-group-page${searchOpen ? ' searching' : ''}${sunxPanelOpen ? ' paneled' : ''}`} aria-label={t('Group chat', '群聊')}>
       <div className="sx-group-main" ref={mainRef}>
@@ -979,7 +1042,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               )
               : (md: string) => (
                 <div className="user-md-plain">
-                  <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} onOpenMember={onOpenMember} />
+                  {/* 围栏折回芯片 + $/# id→名称 显示替换（2026-11-28 七轮） */}
+                  <GroupBodySegments md={displayRefNames(md)} mentions={m.mentions} mentionAll={m.mentionAll === true} />
                 </div>
               );
             return (
@@ -1520,12 +1584,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   );
 }
 
-/** 群消息 @ 成员/全体 chip（2026-11-28 三轮裁定「全体成员也显示成蓝色,chip 与消息上下居中对齐,
- *  左右留缝不挤」）：成员/全体同一件——图标+accent 名（.sx-group-mention inline-flex 中线对齐）；
- *  不再走 .hn-ref pill/.hn-team warn 分色。其余段交 renderMentionSpans——/命令·$成员·#团队
- *  蓝分色、⟦文本片段⟧ 芯片（hover 预览+复制）与主对话气泡同口径。
- *  2026-11-28 六轮「发出的 @ chip 也要支持蓝色点击跳转」：成员 chip 可点击跳成员会话
- *  （与输入框 chip 同语义;全体=无目标不跳转）。 */
+  /** 群消息 @ 成员/全体 chip（2026-11-28 三轮裁定「全体成员也显示成蓝色,chip 与消息上下居中对齐,
+   *  左右留缝不挤」）：成员/全体同一件——图标+accent 名（.sx-group-mention inline-flex 中线对齐）；
+   *  不再走 .hn-ref pill/.hn-team warn 分色。其余段交 renderMentionSpans——/命令·$成员·#团队
+   *  蓝分色、⟦文本片段⟧ 芯片（hover 预览+复制）与主对话气泡同口径。
+   *  2026-11-28 六轮「发出的 @ chip 也要支持蓝色点击跳转」：成员 chip 可点击跳成员会话
+   *  （与输入框 chip 同语义;全体=无目标不跳转）。 */
 function GroupMentions({ text, mentions = [], mentionAll = false, onOpenMember }: {
   text: string;
   mentions?: SunxRoomTarget[];
