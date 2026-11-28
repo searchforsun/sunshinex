@@ -214,7 +214,9 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
   useEffect(() => {
     setGroupSearchOpen(false);
   }, [groupChatId]);
-  const groupChatVisible = groupChatId !== null && !settingsOpen && !schedulesMain;
+  // 群聊页可叠定时任务层（2026-11-28 五轮裁定「在定时任务页面不能进入群聊页面?」:原
+  // !schedulesMain 把群页挡住——层 z66 高于 schedules 层 z60,开群页盖定时任务,关闭回落）
+  const groupChatVisible = groupChatId !== null && !settingsOpen;
   return (
     <DirOpenerContext.Provider value={openDirectoryPath}>
     <div
@@ -457,6 +459,11 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
               conn={connInstance}
               groupId={groupChatId}
               onClose={onCloseSunxGroupChat}
+              /* 菜单关闭态呼出簇（2026-11-28 五轮裁定「群组[页开]左侧菜单关闭没有《》【|】」）:
+                 群页盖住会话顶栏的导航/菜单钮,页内自备同簇 */
+              menuClosed={menuClosed}
+              onToggleMenu={toggleMenuStable}
+              nav={navControls}
               onOpenMember={(journalId) => {
                 onCloseSunxGroupChat();
                 openSunxInstance({ journalId, root: '' });

@@ -8,8 +8,10 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { ClipboardEvent, CompositionEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, Search, Users, X,
+  ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, PanelLeft, Search, Users, X,
 } from 'lucide-react';
+import { NavButtons } from '../../NavButtons';
+import type { NavControls } from '../../nav-history';
 import type { Connection } from '../../connection';
 import type {
   SunxGroupDetail, SunxGroupMemberRow, SunxGroupSearchHit, SunxRoomMessage, SunxRoomPeerRef, SunxRoomTarget,
@@ -73,11 +75,16 @@ interface GroupChatPageProps {
   onSearchClose: () => void;
   /** 群聊顶栏查询入口（⋯ 右侧，避开顶栏覆盖窗控簇的点击区） */
   onToggleSearch?: () => void;
+  /** 菜单关闭态呼出簇（2026-11-28 五轮裁定「群组[页开]左侧菜单关闭没有《》【|】」）：群页盖住
+   *  会话顶栏的导航/菜单钮,页内自备同簇——nav=导航钮对,onToggleMenu=【|】重开菜单 */
+  menuClosed?: boolean;
+  onToggleMenu?: () => void;
+  nav?: NavControls;
 }
 
 export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   useLanguage();
-  const { conn, groupId, onClose, onOpenMember, onOpenSession, onError, searchOpen, onSearchClose, onToggleSearch } = props;
+  const { conn, groupId, onClose, onOpenMember, onOpenSession, onError, searchOpen, onSearchClose, onToggleSearch, menuClosed, onToggleMenu, nav } = props;
   const [detail, setDetail] = useState<SunxGroupDetail | null>(null);
   const [messages, setMessages] = useState<SunxRoomMessage[]>([]);
   const [cursor, setCursor] = useState(0);
@@ -777,6 +784,22 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     <div className={`sx-group-page${searchOpen ? ' searching' : ''}${sunxPanelOpen ? ' paneled' : ''}`} aria-label={t('Group chat', '群聊')}>
       <div className="sx-group-main" ref={mainRef}>
         <header className="chat-topbar sx-group-topbar" data-drag-band>
+          {/* 菜单关闭态呼出簇（2026-11-28 五轮裁定）：《》导航钮对+【|】重开菜单——群页盖住
+              会话顶栏（menu-occ=0 时连呼出钮簇一并盖住）,页内自备同簇（欢迎页 sx-welcome-nav 同构） */}
+          {menuClosed === true && onToggleMenu !== undefined && nav !== undefined && (
+            <span className="sx-group-nav">
+              <NavButtons nav={nav} />
+              <button
+                type="button"
+                className="sx-winbtn sx-menu-reopen"
+                aria-label="toggle menu"
+                data-tip={t('Open menu', '打开菜单')}
+                onClick={onToggleMenu}
+              >
+                <PanelLeft size={16} strokeWidth={1.75} />
+              </button>
+            </span>
+          )}
           {/* 顶栏（2026-11-27 用户裁定）：群图标+群名，⋯ 紧贴群名右侧；Sunx 面板/查询两钮
               固定窗控「—」左侧（.sx-group-topbar-right fixed），不随主列宽流动。 */}
           <span className="chat-title">

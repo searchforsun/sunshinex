@@ -222,6 +222,8 @@ interface SessionRowInfo {
   readonly rootPath?: string;
   readonly chatId?: string;
   readonly chatTitle?: string;
+  /** SUNX 所属群组名（2026-11-28 五轮裁定「sunx hover 信息增加群组信息,群组图标+名称」） */
+  readonly group?: string;
 }
 
 /** 会话行悬浮卡(2026-10-26 用户裁定,文本 data-tip 退役):固定宽 280,仅应用宽度不够时收缩
@@ -242,7 +244,7 @@ function SessionHoverCard(props: {
   // 低应用宽度不越视口:余量不足时收缩,下限 120(2026-10-27 用户裁定「不要超出视口」)
   const avail = (window.innerWidth - props.anchor.menuRight - 12) / z;
   const width = Math.max(120, Math.min(280, avail));
-  const { branch, runs, steps, createdAt, rootPath, chatId, chatTitle } = props.info;
+  const { branch, runs, steps, createdAt, rootPath, chatId, chatTitle, group } = props.info;
   // 聊天名称行(2026-11-24 用户裁定「会话 id 换成显示聊天名称」):chatTitle 在场=显示名称
   // (截断风险 data-tip 全名;id 复制走行 ⋯ 菜单不设复制钮);缺席=回落 chatId 旧行(带复制)
   const chatName = chatTitle !== undefined && chatTitle !== '' ? chatTitle : chatId;
@@ -269,6 +271,17 @@ function SessionHoverCard(props: {
           复制——「既要显示会话 id,也要显示工作目录」),非通道行回落单根路径行;
           2026-11-24 用户裁定:聊天行显示**聊天名称**(chatTitle,单聊人名/群聊群名),缺席回落
           chatId+复制钮旧行(旧会话兜底) */}
+      {/* SUNX 所属群组行（2026-11-28 五轮裁定「hover 信息增加群组信息,群组图标+名称」）：
+          群组图标+群名,紧随会话名,通道行/普通行不传不显 */}
+      {group !== undefined && group !== '' && (
+        <>
+          <div className="sx-sess-card-divider" role="separator" />
+          <div className="sx-sess-card-path">
+            <MessagesSquare size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{group}</span>
+          </div>
+        </>
+      )}
       {chatName !== undefined && chatName !== '' && (
         <>
           <div className="sx-sess-card-divider" role="separator" />

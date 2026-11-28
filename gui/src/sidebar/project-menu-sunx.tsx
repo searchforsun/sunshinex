@@ -247,7 +247,8 @@ export const SunxSection = memo(function SunxSection(props: SunxSectionProps): J
                         key={sr.id}
                         rowId={sr.id}
                         label={label}
-                        info={{ runs: sr.runs, steps: sr.steps, createdAt: sr.createdAt, rootPath: sr.root }}
+                        /* 群组随卡（2026-11-28 五轮裁定「sunx hover 信息增加群组信息,群组图标+名称」） */
+                        info={{ runs: sr.runs, steps: sr.steps, createdAt: sr.createdAt, rootPath: sr.root, group: g.name }}
                         updatedAt={sr.updatedAt}
                         active={active}
                         running={running}
