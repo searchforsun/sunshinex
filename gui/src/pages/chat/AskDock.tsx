@@ -57,6 +57,23 @@ export function AskDock(props: AskDockProps): JSX.Element {
     </span>
   ) : null;
   const askedBy = card.req.askedBy;
+  // 顶带（2026-11-28 十二轮复裁定「在？上侧单独一行放置<1/n>,来自子智能体的 ask 也进同一集合」）：
+  // 左=来源（有子智能体归因才显示图标+名称,可点跳转录）,右=分页;同一行统管「本轮并发工具 /
+  // 子智能体投递」进来的全部 ask——不再把分页塞进问题行
+  const topLine = (askCards.length > 1 || askedBy !== undefined) ? (
+    <div className="ask-top-line">
+      {askedBy !== undefined ? (
+        <span className="ask-source-who">
+          <span>{t('From', '来自')}</span>
+          <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
+          <button type="button" className="ask-card-agent-link" data-tip={t('Open sub-agent transcript', '打开子智能体转录')} onClick={() => onOpenAgent?.(askedBy.label, askedBy.label)}>
+            {askedBy.label}
+          </button>
+        </span>
+      ) : <span />}
+      {pager}
+    </div>
+  ) : null;
   return (
     <div
       className="ask-dock sx-group-ask-dock"
@@ -67,20 +84,8 @@ export function AskDock(props: AskDockProps): JSX.Element {
         submit();
       }}
     >
+      {topLine}
       <div className="ask-scroll sx-group-ask-body">
-        {askedBy !== undefined && (
-          // 来源行上移（问题行之上）：图标+名称可点跳转录;右侧同槽放分页——混合来源逐题各归其位
-          <div className="ask-source-above">
-            <span className="ask-source-who">
-              <span>{t('From', '来自')}</span>
-              <Bot size={14} strokeWidth={1.75} aria-hidden="true" />
-              <button type="button" className="ask-card-agent-link" data-tip={t('Open sub-agent transcript', '打开子智能体转录')} onClick={() => onOpenAgent?.(askedBy.label, askedBy.label)}>
-                {askedBy.label}
-              </button>
-            </span>
-            {pager}
-          </div>
-        )}
         <AskCard
           key={card.pid}
           req={card.req}
@@ -90,7 +95,6 @@ export function AskDock(props: AskDockProps): JSX.Element {
             return { ...m, [card.pid]: { ...base, ...patch } };
           })}
           onOpenAgent={onOpenAgent}
-          headRight={askedBy === undefined ? pager : undefined}
           hideSource={askedBy !== undefined}
         />
       </div>

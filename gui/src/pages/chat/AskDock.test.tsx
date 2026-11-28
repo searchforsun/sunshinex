@@ -13,16 +13,18 @@ const card = (pid: string, question: string): { pid: string; req: { question: st
 });
 
 describe('AskDock 单卡分页', () => {
-  it('多卡:分页在「问题？」行右侧(无来源行),逐题提交只发当前 pid', () => {
+  it('多卡:分页在问题行上侧独立一行(左来源/右 1/N),逐题提交只发当前 pid', () => {
     const sendAsk = vi.fn();
     const setAskPicks = vi.fn();
     const cards = [card('p1', '第一问?'), card('p2', '第二问?')];
     const { rerender } = render(<AskDock askCards={cards} askPicks={{ p1: { labels: ['是'], custom: '' } }} setAskPicks={setAskPicks} sendAsk={sendAsk} />);
     expect(screen.getByText('第一问?')).toBeDefined();
     expect(screen.getByLabelText('ask position').textContent).toBe('1/2');
-    // 2026-11-28 十一轮：分页挂在问题行（.card-head）内右侧，不再有独立「待答复」头行
-    expect(document.querySelector('.sx-group-ask-head')).toBeNull();
-    expect(document.querySelector('.card-head .sx-group-ask-pager')).not.toBeNull();
+    // 2026-11-28 十二轮：分页在问题行上侧独立一行（.ask-top-line 右端），不占问题行
+    const top = document.querySelector('.ask-top-line')!;
+    expect(top).not.toBeNull();
+    expect(top.querySelector('.sx-group-ask-pager')?.textContent).toContain('1/2');
+    expect(document.querySelector('.card-head .sx-group-ask-pager')).toBeNull();
     // 当前题已答 → 可直接提交,不被第二题未答卡住
     const submit = screen.getByRole('button', { name: '提交' }) as HTMLButtonElement;
     expect(submit.disabled).toBe(false);
@@ -47,7 +49,7 @@ describe('AskDock 单卡分页', () => {
     expect(sendAsk).toHaveBeenCalledWith('solo', { type: 'dismissed' });
   });
 
-  it('来源行上移：多题来自子智能体时「来自 图标 名称」在问题行之上,右侧同槽分页（混合逐题各归其位）', () => {
+  it('来源行上移：多题来自子智能体时顶带「来自 图标 名称」+右侧分页同集合（混合逐题各归其位）', () => {
     const asked = (pid: string, question: string, label: string): { pid: string; req: { question: string; options: Array<{ label: string }>; askedBy: { label: string } } } => ({
       pid,
       req: { question, options: [{ label: '是' }], askedBy: { label } },
@@ -55,7 +57,7 @@ describe('AskDock 单卡分页', () => {
     const cards = [asked('a1', '子代理问?', 'planner'), card('a2', '本地问?')];
     const { container } = render(<AskDock askCards={cards} askPicks={{}} setAskPicks={vi.fn()} sendAsk={vi.fn()} onOpenAgent={vi.fn()} />);
     // 第一题有来源行：位于问题行之上,右侧分页;卡内旧来源行隐藏
-    const src = container.querySelector('.ask-source-above')!;
+    const src = container.querySelector('.ask-top-line')!;
     expect(src).not.toBeNull();
     expect(src.textContent).toContain('来自');
     expect(src.textContent).toContain('planner');

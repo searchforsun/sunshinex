@@ -1839,6 +1839,23 @@ describe('G5 Chat 顶栏 Delete(daemon 会话 id 寻址)与 idle 清卡', () => 
     unmount();
   });
 
+  it('同一轮并发双 ask + 子智能体来源:两张卡同进集合,分页顶带 1/2（2026-11-28 十二轮）', async () => {
+    const { conn, unmount } = await enterChat();
+    openConn(conn);
+    // 第 1 张:本地问询;第 2 张:子智能体 fork 归因（同集合分页）
+    fireAsk(conn, 's1', 'p-dual-1', { question: '第一名?', options: [{ label: 'A' }] } as GuiAskReq);
+    fireAsk(conn, 's1', 'p-dual-2', { question: '第二名?', options: [{ label: 'B' }], askedBy: { label: 'planner' } } as GuiAskReq);
+    const top = document.querySelector('.ask-top-line');
+    expect(top).not.toBeNull();
+    expect(top!.querySelector('.sx-group-ask-pager')?.textContent).toContain('1/2');
+    // 顶带左端=来源(切到第二张时有「来自 planner」)
+    fireEvent.click(top!.querySelector('[aria-label="next ask"]') as HTMLElement);
+    await waitFor(() => expect(screen.getByText('第二名?')).toBeDefined());
+    expect(document.querySelector('.ask-top-line')?.textContent).toContain('planner');
+    expect(document.querySelector('.ask-top-line .sx-group-ask-pager')?.textContent).toContain('2/2');
+    unmount();
+  });
+
   it('重连(reseed 瞬态)不清卡:running 中挂起卡在场 → onReset → 播种落定卡仍保留;真 idle 转换仍清(G4 不变式)', async () => {
     const { conn, unmount } = await enterChat();
     openConn(conn);

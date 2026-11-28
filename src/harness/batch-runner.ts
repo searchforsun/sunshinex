@@ -64,9 +64,12 @@ export class BatchRunner {
     // 保证先到的调用完成后后者才开跑、副作用顺序与模型意图一致；仅超上限仍拒绝。单调用不限
     // （todo_write 不在独占集：毫秒级全量替换写、与调研/委派类调用无序依赖，独占会连带整批委派串行）
     const overLimit = calls.length > PARALLEL_TOOLS_LIMIT;
+    // ask 移出独占集（2026-11-28 十二轮「一次发两个 ask_question 只出一张卡」）：ask_question 是
+    // 纯等待、无副作用、无前后序依赖——串行会让第一题挂起后第二题根本不执行（daemon 挂起表恒 1 行,
+    // GUI 恒单卡无 1/2）;并发挂起后两题同时进挂起表,前端按集合分页（同批工具/子智能体投递同页）。
     const exclusive = (c: ToolCallSpec) => {
       const cat = this.deps.registry.get(c.name)?.category;
-      return cat === 'bash' || cat === 'ask' || cat === 'worktree' || cat === 'task' || cat === 'plan' || cat === undefined;
+      return cat === 'bash' || cat === 'worktree' || cat === 'task' || cat === 'plan' || cat === undefined;
     };
     const sequential = calls.length > 1 && calls.some(exclusive);
     const rejection = overLimit

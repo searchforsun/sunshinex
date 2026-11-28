@@ -54,7 +54,7 @@ const parseArgs = (calls: ToolCallSpec[]): (Record<string, unknown> | null)[] =>
   calls.map((c) => JSON.parse(c.argsJson) as Record<string, unknown>);
 
 /** 类别可控的执行探针（不发真实副作用；body 推迟到执行期运行） */
-function probe(name: string, category: 'read' | 'bash', body: () => Promise<string>) {
+function probe(name: string, category: 'read' | 'bash' | 'ask', body: () => Promise<string>) {
   return { name, description: `test-only ${category} probe`, category, executor: async () => ({ exitCode: 0, stdout: await body(), stderr: '', timedOut: false }) };
 }
 
@@ -134,6 +134,25 @@ test('串行条件：批内含独占类（bash）即整批按出牌顺序串行�
   const par = [call('slow_p', {}), call('fast_p', {})];
   await f2.runner.runBatch({ calls: par, argsOf: parseArgs(par), step: 1, ledger: f2.ledger });
   assert.ok(log2.indexOf('fast:start') < log2.indexOf('slow:end'), '纯并行批：fast 在 slow 执行期内开跑（整批并发）');
+
+  // 场景三（2026-11-28 十二轮）：ask 类不再独占——同批两题并发挂起,都开跑后才收口
+  //  （此前 ask 在独占集=第一题挂起后第二题不执行,daemon 挂起表恒 1 行,前端恒单卡无 1/2）
+  const log3: string[] = [];
+  const r3 = new ToolRegistry();
+  r3.register(probe('ask_one', 'ask', async () => {
+    log3.push('ask1:start');
+    await sleep(30);
+    log3.push('ask1:end');
+    return 'ask1-ok';
+  }));
+  r3.register(probe('ask_two', 'ask', async () => {
+    log3.push('ask2:start');
+    return 'ask2-ok';
+  }));
+  const f3 = makeFixture(r3);
+  const asks = [call('ask_one', {}), call('ask_two', {})];
+  await f3.runner.runBatch({ calls: asks, argsOf: parseArgs(asks), step: 1, ledger: f3.ledger });
+  assert.ok(log3.indexOf('ask2:start') < log3.indexOf('ask1:end'), 'ask 类并发：第二题在第一题挂起期内开跑（同批双题同集合）');
 });
 
 test('并发上限：批规模超 PARALLEL_TOOLS_LIMIT(16) 整批拒绝零执行，边界 16 照常放行', async () => {
