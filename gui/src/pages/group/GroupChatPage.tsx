@@ -23,6 +23,7 @@ import { t, useLanguage } from '../../i18n';
 import { SunxIcon } from '../../sunx-icon';
 import { MarkdownCached, mdComponentsPlain, ModeIcon } from '../Chat';
 import { UserEntryView, baseModelName } from '../chat/EntryViews';
+import { ChatRail } from '../chat/ChatRail';
 import { ImageLightbox } from '../../ImageLightbox';
 import { NewSunxDialog } from '../../welcome/NewSunxDialog';
 import { SunxBoardTab } from '../../tabs/SunxBoardTab';
@@ -736,6 +737,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       : {}),
   }), []);
   const messageById = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  /** 刻度条目（2026-11-28 六轮「群聊支持刻度,对齐普通会话」）：群消息全走会话用户条形
+   *  （entryOf kind='user'），刻度=每条消息一枚,hover 预览首行内容;DOM 锚 data-entry-key=m.id 同源 */
+  const railEntries = useMemo(() => messages.map(entryOf), [messages, entryOf]);
 
   /** 群页 ask 卡：来源成员 + 与成员会话同一 pid（回答走 /ask/:pid/reply，两边同步） */
   const askItems = useMemo<Array<{ pid: string; req: GuiAskReq; member: SunxGroupMemberRow }>>(
@@ -884,6 +888,9 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         </header>
 
         <div className="chat sx-group-chat" ref={scrollRef} onScroll={onScroll}>
+          {/* 刻度导航条（2026-11-28 六轮「对齐普通会话的样式和逻辑」）：主对话 ChatRail 同件——
+              群主消息与成员回复各一枚刻度,hover 预览首行内容;跳转直落 DOM 锚不走 revealSeq=无高亮 */}
+          <ChatRail entries={railEntries} chatScrollRef={scrollRef} />
           {loading && (
             <div className="chat-empty">
               <div className="chat-empty-hint">{t('Loading…', '加载中…')}</div>
@@ -920,18 +927,14 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
             ) : null;
             const body = fromMember
               ? (md: string) => (
-                <>
-                  {quoteNode}
-                  <div className="entry-md">
-                    <div className="entry-md-body">
-                      <MarkdownCached md={md} components={mdComponentsPlain} />
-                    </div>
+                <div className="entry-md">
+                  <div className="entry-md-body">
+                    <MarkdownCached md={md} components={mdComponentsPlain} />
                   </div>
-                </>
+                </div>
               )
               : (md: string) => (
                 <div className="user-md-plain">
-                  {quoteNode}
                   <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} onOpenMember={onOpenMember} />
                 </div>
               );
@@ -942,11 +945,14 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 data-seq={m.seq}
                 ref={(el) => { if (el !== null) nodeBySeq.current.set(m.seq, el); else nodeBySeq.current.delete(m.seq); }}
               >
+                {/* 引用区固定槽（2026-11-28 六轮「像折叠按钮一样开辟固定区域,不是浮层」）：
+                    渲染在气泡顶缘、滚动区之外——弧度随泡、滚动条不进入 */}
                 <UserEntryView
                   entry={entryOf(m)}
                   conn={conn}
                   alignLeft={fromMember}
                   {...(fromMember ? { bubbleMaxHeight: 480 } : {})}
+                  {...(quoteNode !== null ? { bubbleHeader: quoteNode } : {})}
                   onOpenImage={setLightbox}
                   onOpenSunx={(journalId) => onOpenMember(journalId)}
                   renderBody={body}

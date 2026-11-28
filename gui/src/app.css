@@ -5126,10 +5126,12 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    要增加一定距离」132→176px） */
 .sx-group-main > .chat.sx-group-chat { padding-bottom: calc(var(--thread-gutter) + 176px); }
 .sx-group-msg { position: relative; }
-/* 引用行：会话气泡内的次级行；点击跳回原气泡。
-   2026-11-28 四轮裁定「顶部一行常驻 1 行,特殊灰色标记,不进入滚动条」：sticky 钉在限高滚动区
-   顶沿（气泡底色垫底盖住滚过的正文,1 行 ellipsis 原有）,「跳到引用气泡」tip 随组件退役 */
-.sx-group-quote-line { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 0 6px; padding: 2px 0; background: var(--bubble-user); color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
+/* 引用区固定槽（2026-11-28 六轮裁定「像下方折叠按钮一样开辟固定区域,不是浮层;两侧弧度对齐
+   气泡;滚动条不可显示到该区域」）：引用行移出滚动区（user-bubble-head 槽,气泡转 flex 列）——
+   左右满出血抵泡 padding,顶缘弧度随泡(radius-composer),下缘 1px 分割;滚动条只在正文区 */
+.entry-user .user-bubble.user-bubble-headered { display: flex; flex-direction: column; }
+.user-bubble.user-bubble-headered .user-bubble-scroll { min-height: 0; }
+.sx-group-quote-line { flex: none; display: flex; align-items: center; gap: 4px; min-width: 0; margin: -8px -12px 6px; padding: 6px 12px; background: color-mix(in srgb, var(--fg) 4%, transparent); border-bottom: 1px solid var(--border); border-radius: var(--radius-composer) var(--radius-composer) 0 0; color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); line-height: 1.5; }
 .sx-group-quote-line.clickable { cursor: pointer; }
 .sx-group-quote-line.clickable:hover { color: var(--fg-secondary); }
 .sx-group-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -395,7 +395,7 @@ function UserImageStrip({ conn, root, images, onOpen }: { conn?: Connection | nu
  *  气泡内正文限高+纵向滚动条,气泡底部居中 V;展开=完整高度、滚动条消失,底部 ^ 收回;复制归各页自有动作行。
  *  量测走 useLayoutEffect+ResizeObserver:队友消息/子智能体任务带首帧常在 flex 未定宽时
  *  scrollHeight 偏小(一次 useEffect 钉死不折),布局收敛后须再量 */
-export function CollapsibleBubble({ text, render, maxHeight = BUBBLE_MAX_HEIGHT }: { text: string; render: (md: string) => ReactNode; /** 群聊 Sunx 消息沿用同件但放高到 480（缺省=会话用户气泡 168） */ maxHeight?: number }): JSX.Element {
+export function CollapsibleBubble({ text, render, header, maxHeight = BUBBLE_MAX_HEIGHT }: { text: string; render: (md: string) => ReactNode; /** 群聊引用区固定槽（2026-11-28 六轮「引用区开辟固定区域,不是浮层」）：渲染在滚动区外、气泡顶缘,弧度随泡 */ header?: ReactNode; /** 群聊 Sunx 消息沿用同件但放高到 480（缺省=会话用户气泡 168） */ maxHeight?: number }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [clamped, setClamped] = useState(false);
   const innerRef = useRef<HTMLDivElement | null>(null);
@@ -415,7 +415,8 @@ export function CollapsibleBubble({ text, render, maxHeight = BUBBLE_MAX_HEIGHT 
   useClampMotion(innerRef, open, maxHeight, 'maxHeight', clamped);
   return (
     <div className="user-bubble-wrap">
-      <div className={`user-bubble${open ? ' user-bubble-open' : ''}`}>
+      <div className={`user-bubble${open ? ' user-bubble-open' : ''}${header !== undefined ? ' user-bubble-headered' : ''}`}>
+        {header !== undefined && <div className="user-bubble-head">{header}</div>}
         <div
           ref={innerRef}
           className={`user-bubble-scroll${limited ? ' user-bubble-clamped' : ''}`}
@@ -486,7 +487,7 @@ function ChannelFromBadge({ from, userId, platform }: { from: string; userId?: s
   );
 }
 
-export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform, renderBody, sourceSuffix, alignLeft, bubbleMaxHeight }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string; /** 群聊页复用：正文渲染替代（主人纯文+@chip / Sunx md+@chip） */ renderBody?: (md: string) => ReactNode; /** 群聊页复用：来源行后缀（发送给 群主/成员） */ sourceSuffix?: ReactNode; /** 群聊页复用：左对齐（Sunx 消息；缺省右对齐=会话用户气泡原样） */ alignLeft?: boolean; /** 群聊页复用：气泡限高（Sunx=480；缺省=用户气泡 168） */ bubbleMaxHeight?: number } & UserEntryOpts): JSX.Element {
+export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend, rewindOps, composerEnv, onOpenImage, onOpenFile, onOpenSunx, conn, root, sideChat, platform, renderBody, sourceSuffix, alignLeft, bubbleMaxHeight, bubbleHeader }: { entry: ChatEntry; insert?: boolean; conn?: Connection | null; root?: string; sideChat?: boolean; platform?: string; /** 群聊页复用：正文渲染替代（主人纯文+@chip / Sunx md+@chip） */ renderBody?: (md: string) => ReactNode; /** 群聊页复用：来源行后缀（发送给 群主/成员） */ sourceSuffix?: ReactNode; /** 群聊页复用：左对齐（Sunx 消息；缺省右对齐=会话用户气泡原样） */ alignLeft?: boolean; /** 群聊页复用：气泡限高（Sunx=480；缺省=用户气泡 168） */ bubbleMaxHeight?: number; /** 群聊引用区固定槽（2026-11-28 六轮）：渲染在气泡顶缘滚动区外 */ bubbleHeader?: ReactNode } & UserEntryOpts): JSX.Element {
   const { status: copied, copy: copyText } = useCopyFeedback();
   /** 2026-11-06 用户裁定「fork 说明只进上下文不进气泡」:首条播种的注入前缀显示侧剥离
    *  (模型上下文原样,辅助会话转录只呈现用户真实请求;重启重放同径) */
@@ -659,6 +660,7 @@ export const UserEntryView = memo(function UserEntryView({ entry, insert, onSend
         <CollapsibleBubble
           text={displayMd}
           {...(bubbleMaxHeight !== undefined ? { maxHeight: bubbleMaxHeight } : {})}
+          {...(bubbleHeader !== undefined ? { header: bubbleHeader } : {})}
           render={(md) => (
             renderBody !== undefined ? renderBody(md) : (
             /* 2026-11-04 用户裁定:用户气泡不做任何 md 格式化渲染(标题/加粗/代码块/表格/链接
