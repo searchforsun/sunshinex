@@ -5156,9 +5156,9 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
   background-image: linear-gradient(currentColor, currentColor);
   background-size: 100% 1px; background-position: 0 100%; background-repeat: no-repeat;
 }
-/* 跳转定位蓝亮加强（2026-11-28 八轮「打开智能体团队要高亮显示蓝色的」）：团队卡/成员行/
-   任务行落点=accent 14% 底+accent 45% 内描边（原全局 .jump-hl 仅 10% 底,卡片上不够醒目） */
-.tb-card.jump-hl, .tb-task-main.jump-hl { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+/* 跳转定位蓝亮（2026-11-28 九轮用户裁定「之前侧栏中高亮是不带边框线的,怎么又加回去了,影响了
+   全局的」）：撤内描边,回到全局 .jump-hl 同款纯底色——卡片落点仅加深一档强调底(14%),无任何边框 */
+.tb-card.jump-hl, .tb-task-main.jump-hl { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; box-shadow: none; }
 /* @ 面板键盘活行（2026-11-28 六轮「@ 支持上下选择」）：与 .sx-menu-pop 活行同底色 */
 .sx-group-palette .sx-menuitem.sx-menuitem-active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距（2026-11-28 四轮裁定「气泡距离输入框

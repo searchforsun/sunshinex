@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Connection } from '../../connection';
 import type { BoardTeamRef, TaskBoardState } from '../../projection';
-import { refKindOf, setRefLabels, setRefOpenHandler } from './mention';
+import { setRefLabels } from './mention';
 import type { RefEntries, RefPal } from './ref-palette';
 
 /** 目录装载 conn 结构面（D85 参数化）：agentsView/teamsView 可缺（欢迎页 conn 桩未挂=装载器
@@ -74,7 +74,8 @@ export function useChatRefEntries(opts: {
   loadRefEntries: () => void;
   refEntriesLoadedRef: MutableRefObject<boolean>;
 } {
-  const { conn, root, teams, board, members, onOpenTask, onOpenAgent } = opts;
+  // onOpenTask/onOpenAgent 仅供旧注册面留位（现注册在 App 壳层）——解构保留会触发未用告警
+  const { conn, root, teams, board, members } = opts;
   /** agents-teams P1 §3.2 $/# 引用面板:触发态 + 单游标 + 目录装载（useRefCatalog 核,D85） */
   const { refEntries, loadRefEntries, refEntriesLoadedRef } = useRefCatalog({ conn, root });
   const [refPal, setRefPal] = useState<RefPal | null>(null);
@@ -100,23 +101,7 @@ export function useChatRefEntries(opts: {
   useEffect(() => {
     setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? [], liveRefEntries.liveMembers ?? []);
   }, [liveRefEntries]);
-  useEffect(() => {
-    // 缓存驻留座不抢注册（2026-11-28 九轮「普通会话 $/# 点不开侧栏」真根因）：热切换缓存座以
-    // active=false 且不传 onOpenTask/onOpenAgent 挂载,无条件注册会把共享句柄指向无回调实例,
-    // 此后点击全部静默。回调全缺席=该实例无跳转面,保持既有注册者。
-    if (onOpenTask === undefined && onOpenAgent === undefined) return;
-    // 身份守卫卸载（mention.tsx setRefOpenHandler 返回清理函数）：多驻留座并存时后台座退场
-    // 不再抹掉前台座的注册
-    return setRefOpenHandler((sym, id) => {
-      if (sym === '#') {
-        onOpenTask?.(refKindOf('#' + id) === 'task' ? id : `team:${id}`);
-        return;
-      }
-      // $ 子智能体（2026-11-28 八轮「打开智能体团队要高亮显示蓝色」）：打开转录页签之外,
-      // 同步定位智能体团队页签的成员行（蓝色闪光）——群聊无侧栏,此路只在会话面生效
-      onOpenAgent?.(id, id);
-      onOpenTask?.(`member:${id}`);
-    });
-  }, [onOpenTask, onOpenAgent]);
+  // 点击跳转注册已上移 App 壳层（2026-11-28 九轮「普通会话 $/# 仍点不开侧栏」）：座位级注册随
+  // 热切换/缓存座生命周期漂移（无回调实例覆盖共享句柄=点击静默），App 单点注册与座位解耦。
   return { refPal, setRefPal, refActive, setRefActive, refEntries, liveRefEntries, loadRefEntries, refEntriesLoadedRef };
 }

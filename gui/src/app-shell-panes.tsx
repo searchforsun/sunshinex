@@ -15,6 +15,7 @@ import { ProjectMenu } from './sidebar/ProjectMenu';
 import { SettingsShell } from './settings/SettingsShell';
 import { SchedulePage } from './schedules/SchedulePage';
 import { GroupChatPage } from './pages/group/GroupChatPage';
+import { refKindOf, setRefOpenHandler } from './pages/chat/mention';
 import { TabStrip } from './tabs/TabStrip';
 import { WebTabPool, poolKey, type WebPoolItem } from './tabs/WebTabPool';
 import { IS_SHELL, WindowControls } from './window-shell';
@@ -209,6 +210,20 @@ export function AppShellPanes(props: AppShellPanesProps): JSX.Element {
   const {
     openDirectoryPath, sidebarFloating, tabState, menuFloating, menuClosed, shellRef, menuRenderW, sidebarOccupied, settingsOpen, page, connInstance, settingsRoot, closeSettings, settingsPane, menuAnim, connState, openSessionId, openRoot, recentVersion, pins, persistPins, runningIds, menuNav, openSessionFromMenu, openLiveSeatStable, openProjectDirectoryStable, menuDir, closeDirViewStable, openFileFromTreeStable, openSettingsFromMenu, openSettingsPaneStable, searchActions, openSchedulesFromMenu, openScheduleFromSearchStable, newChatFromMenu, composeInFromMenu, collapseMenuStable, startMenuResize, mainRef, schedulesMain, cachedSeats, navControls, toggleMenuStable, openKind, openJournalId, ptyIdFor, handlePtyAllocated, closeDockTab, chatMem, backHome, chatSinkRef, chatSeededStable, openFileTab, openDiffTab, openTurndiffTab, openAgentTab, openWebTab, runInTerminalStable, openTaskFocus, openTabLit, openArtifactsTab, agentTeamsOn, bgRunningCount, projection, setTodoBatches, leaderFocus, startSideChat, todoLocateStable, welcomeGoal, setWelcomeGoal, setSessionTodos, bumpRecent, onForkStable, openParentSessionStable, showOpError, onRewindStable, setMenuClosed, composePreset, setWelcomePicked, openSession, scheduleFocus, createScheduleInChatStable, openJournalSessionStable, closeSchedulesStable, sidebarAnim, sidebarRef, sidebarRenderW, projectNameOfOpenRoot, tabSelectStable, tabReorderStable, tabCloseStable, tabOpenTypeStable, tabCycleStable, tabReopenClosedStable, hiddenMenuIds, tabCloseActiveStable, tabBodyRef, welcomePicked, startResize, isWelcome, services, openTabInSession, closeTabInSession, openMemoryTab, openLearnedTab, upgradeSideChat, sideGoals, setSideGoals, sideSinkFor, sideReleased, openSunxInstance, groupChatId, onOpenSunxGroupChat, onCloseSunxGroupChat, sunxPeerFocus, clearSunxPeerFocus, openSunxPeerStable, openSunxPeerBubbleStable, memoryFocus, learnedFocus, bgFocus, panelRefreshNonce, catalogTick, dev, opError, webPoolItems, curSeatRef, onTabMeta, onActivateTab, setTabStates, toggleRightSidebarStable,
   } = props;
+
+  /** $/# 点击跳转注册（2026-11-28 九轮「普通会话 $/# 仍点不开侧栏」根修）：注册上移 App 壳层,
+   *  与 Chat 座位生命周期解耦——热切换缓存座/后台座不再可能把共享句柄覆盖成无回调实例。
+   *  # = 智能体团队页签定位团队卡（'task' 型走任务行）;$ = 打开转录页签 + 定位团队成员行。 */
+  useEffect(() => {
+    return setRefOpenHandler((sym, id) => {
+      if (sym === '#') {
+        openTaskFocus(refKindOf('#' + id) === 'task' ? id : `team:${id}`);
+        return;
+      }
+      openAgentTab(id, id);
+      openTaskFocus(`member:${id}`);
+    });
+  }, [openTaskFocus, openAgentTab]);
   const activeTab = tabState.tabs.find((t2) => t2.uid === tabState.activeUid) ?? null;
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   useEffect(() => {
