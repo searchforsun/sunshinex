@@ -5117,6 +5117,11 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
    inline-flex 中线对齐+左右 3px 缝,accent 单色（成员/全体同件,不再 .hn-team warn） */
 .sx-group-mention { display: inline-flex; align-items: center; gap: 3px; vertical-align: middle; margin: 0 3px; color: var(--accent); background: none; padding: 0; }
 .sx-group-mention-ico { display: inline-flex; align-items: center; justify-content: center; }
+/* 成员 chip 可点击跳成员会话（2026-11-28 六轮「发出的 @ chip 也要蓝色点击跳转」） */
+.sx-group-mention.clickable { cursor: pointer; }
+.sx-group-mention.clickable:hover, .sx-group-mention.clickable:focus-visible { text-decoration: underline; text-underline-offset: 2px; outline: none; }
+/* @ 面板键盘活行（2026-11-28 六轮「@ 支持上下选择」）：与 .sx-menu-pop 活行同底色 */
+.sx-group-palette .sx-menuitem.sx-menuitem-active { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 /* 群聊主列不是 .sx-main，补会话流同款悬浮 dock 底距（2026-11-28 四轮裁定「气泡距离输入框
    要增加一定距离」132→176px） */
 .sx-group-main > .chat.sx-group-chat { padding-bottom: calc(var(--thread-gutter) + 176px); }

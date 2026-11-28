@@ -5,7 +5,7 @@
  * 查询侧栏=sx-sidebar + sx-resizer + sx-search-*（可拖宽）。房间数据靠 seq 游标轮询。
  */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { ClipboardEvent, CompositionEvent, CSSProperties, FormEvent, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
+import type { ClipboardEvent, CompositionEvent, CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, PanelLeft, Search, Users, X,
@@ -102,6 +102,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionFrom, setMentionFrom] = useState<number | null>(null);
+  /** @ 面板键盘游标（2026-11-28 六轮「@ 支持上下选择」）：0=全体成员行,1..n=成员;↑↓ 循环,
+   *  Enter 选中,hover 同步;行滚动跟游标(scrollIntoView nearest,RefPalette 同款)。 */
+  const [mentionActive, setMentionActive] = useState(0);
+  const mentionActiveRef = useRef<HTMLButtonElement | null>(null);
   /** Sunx 面板（2026-11-27 用户裁定「群隔离，只保留群聊顶栏这一个入口」）：右侧栏复用
    *  SunxBoardTab（groupId 过滤=本群成员），与查询侧栏互斥。 */
   const [sunxPanelOpen, setSunxPanelOpen] = useState(false);
@@ -490,6 +494,10 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const q = mentionQuery.trim().toLowerCase();
     return members.filter((m) => q === '' || m.name.toLowerCase().includes(q));
   }, [members, mentionQuery]);
+  // 键盘活行滚动跟随（游标变/候选集变即钉可视区,RefPalette 同款 nearest 最小滚动）
+  useEffect(() => {
+    mentionActiveRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [mentionActive, mentionCandidates.length]);
   /** 守卫区间双源（2026-11-28 五轮移植主对话 token 原子性/IME/归位链）：通用 token（/命令·$
    *  成员·#团队·⟦片段⟧）+ 群 @成员/@全体成员（CJK 名不在通用词法内），合并成一份有序区间。 */
   const guardSpans = useCallback((text: string): Array<{ s: number; e: number }> => [
@@ -612,6 +620,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       setMentionOpen(true);
       setMentionQuery(m[2] ?? '');
       setMentionFrom(caret - (m[2]?.length ?? 0) - 1);
+      setMentionActive(0);
       setRefPal(null);
       return;
     }
@@ -628,9 +637,12 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     setMentionFrom(null);
     setRefPal(null);
   }, [input, loadRefEntries]);
-  /** 弹层外点自关（2026-11-28 三轮裁定「点击其他地方应该自动关闭弹窗」）：+ / @ / / 命令 /
-   *  模型 / 权限 / ⋯ 菜单,点页面其它处一律收口。弹层本体与开关锚（foot pills、⋯、输入框）
-   *  内 mousedown 不接管——行点击与「再点开关收口」的原语义不受扰。 */
+  /** 弹层外点自关（2026-11-28 三轮裁定 + 六轮收紧「+ 点击除了弹窗以外任何地方都关闭,包括权限
+   *  和模型弹窗;# $ / @ 保持原样」）：③类弹层分域接管——
+   *  · +/权限/模型:弹层本体外任何处一律关(输入框、其他 pill 也算"外"),pill 开关钮 mousedown
+   *    放行给 click toggle(防先关后开竞态),点弹层本体不关;
+   *  · @ / / 命令 / # $:原语义保持——输入框与弹层内不接管(重开闸/活性锚照旧),页外才关;
+   *  · ⋯ 菜单:锚内不接管(toggle 自管)。 */
   const popsOpen = menuOpen || plusOpen || mentionOpen || settingsPop !== null
     || (slashItems !== null && !slashHidden)
     || refPal !== null;
@@ -639,11 +651,20 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const onDown = (e: MouseEvent): void => {
       const el = e.target as HTMLElement | null;
       if (el === null) return;
-      if (el.closest('.sx-menu-pop, .mode-pop, .proj-pop, .cmd-palette, .ref-palette, .sx-plus-panel, .sx-composer-foot, .sx-composer-inputwrap, .sx-group-more-wrap') !== null) return;
+      const inInputPal = el.closest('.proj-pop, .cmd-palette, .ref-palette, .sx-composer-inputwrap, .sx-group-more-wrap') !== null;
+      const onPillToggle = el.closest('[aria-label="add attachment"], [aria-label="权限"], [aria-label="模型"]') !== null;
+      if (inInputPal || onPillToggle) {
+        // 输入框/输入类面板内:只收卡片 pill 弹层(+/权限/模型),输入类面板保持原样
+        if (!onPillToggle) {
+          setPlusOpen(false);
+          setSettingsPop(null);
+        }
+        return;
+      }
+      if (!el.closest('.sx-plus-panel')) setPlusOpen(false);
+      if (!el.closest('.mode-pop, .sx-menu-pop.pill-pop')) setSettingsPop(null);
       setMenuOpen(false);
-      setPlusOpen(false);
       setMentionOpen(false);
-      setSettingsPop(null);
       setSlashHidden(true);
       setRefPal(null);
     };
@@ -894,6 +915,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 mentions={quoted?.mentions}
                 mentionAll={quoted?.mentionAll === true}
                 onOpen={quoted?.seq !== undefined ? () => { void revealSeq(quoted.seq); } : undefined}
+                onOpenMember={onOpenMember}
               />
             ) : null;
             const body = fromMember
@@ -910,7 +932,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               : (md: string) => (
                 <div className="user-md-plain">
                   {quoteNode}
-                  <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} />
+                  <GroupMentions text={md} mentions={m.mentions} mentionAll={m.mentionAll === true} onOpenMember={onOpenMember} />
                 </div>
               );
             return (
@@ -996,6 +1018,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 setMentionOpen(true);
                 setMentionQuery(match[2] ?? '');
                 setMentionFrom(caret - (match[2]?.length ?? 0) - 1);
+                setMentionActive(0); // 查询变更重置游标（残留箭头位防落空）
                 setRefPal(null);
               } else if (rt !== null) {
                 // $/# 引用面板（2026-11-28 三轮裁定）：与 @ 互斥（同一 caret 前缀不可能同时命中）
@@ -1051,6 +1074,24 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 }
               }
               if (e.key !== 'Process' && e.nativeEvent.isComposing !== true) composingRef.current = false;
+              // @ 成员面板键盘链（2026-11-28 六轮「@ 支持上下选择」）：↑↓ 循环(0=全体成员行) /
+              // Enter 选中 / Esc 收口;面板不在场或零候选时自然落下方分支
+              if (mentionOpen && mentionCandidates.length > 0) {
+                const rows = mentionCandidates.length + 1; // 首行=全体成员
+                if (e.key === 'ArrowDown') { e.preventDefault(); setMentionActive((a) => (a + 1) % rows); return; }
+                if (e.key === 'ArrowUp') { e.preventDefault(); setMentionActive((a) => (a - 1 + rows) % rows); return; }
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  const a = Math.min(mentionActive, rows - 1);
+                  if (a === 0) addAll();
+                  else {
+                    const c = mentionCandidates[a - 1];
+                    if (c !== undefined) addMention(c);
+                  }
+                  return;
+                }
+                if (e.key === 'Escape') { e.preventDefault(); setMentionOpen(false); setMentionFrom(null); return; }
+              }
               if (e.key === 'Backspace' || e.key === 'Delete') {
                 const ta = e.currentTarget as HTMLTextAreaElement;
                 const caret = ta.selectionStart ?? input.length;
@@ -1191,7 +1232,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   </button>
                   {settingsPop === 'model' && (
                     <div className="sx-menu-pop pill-pop pill-pop-right pill-pop-tall" role="menu" aria-label={t('Model', '模型')}>
-                      <button type="button" role="menuitem" className={`sx-menuitem${model === '' ? ' current' : ''}`} onClick={() => { setModel(''); }}>
+                      {/* 跟随成员=模型+强度一并回归各成员自档（2026-11-28 六轮「点击跟随成员,去掉强度标识」） */}
+                      <button type="button" role="menuitem" className={`sx-menuitem${model === '' ? ' current' : ''}`} onClick={() => { setModel(''); setEffort(''); }}>
                         {t('Follow members', '跟随成员')}
                       </button>
                       {models.map((m) => (
@@ -1235,11 +1277,28 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                     {/* 筛选行退役（2026-11-28 三轮裁定「去掉筛选成员行,有下侧通过 @ 后自动筛选」）：
                         mentionQuery 已由输入框 @ 令牌派生,行内输入即活滤 */}
                     <div className="proj-rows-scroll">
-                      <button type="button" role="menuitem" className="sx-menuitem" onClick={addAll}>
+                      {/* 键盘游标（2026-11-28 六轮「@ 支持上下选择」）：0=全体成员行,1..n=成员;
+                          活行高亮+hover 同步+nearest 滚动跟随 */}
+                      <button
+                        ref={mentionActive === 0 ? mentionActiveRef : undefined}
+                        type="button"
+                        role="menuitem"
+                        className={`sx-menuitem${mentionActive === 0 ? ' sx-menuitem-active' : ''}`}
+                        onMouseEnter={() => setMentionActive(0)}
+                        onClick={addAll}
+                      >
                         <Users size={14} strokeWidth={1.75} aria-hidden="true" /> {t('All members', '全体成员')}
                       </button>
-                      {mentionCandidates.map((member) => (
-                        <button key={member.id} type="button" role="menuitem" className="sx-menuitem" onClick={() => addMention(member)}>
+                      {mentionCandidates.map((member, i) => (
+                        <button
+                          key={member.id}
+                          ref={mentionActive === i + 1 ? mentionActiveRef : undefined}
+                          type="button"
+                          role="menuitem"
+                          className={`sx-menuitem${mentionActive === i + 1 ? ' sx-menuitem-active' : ''}`}
+                          onMouseEnter={() => setMentionActive(i + 1)}
+                          onClick={() => addMention(member)}
+                        >
                           <SunxIcon size={14} /> {member.name}
                           <span className="sx-group-muted">
                             {member.awaiting === true ? t('awaiting input', '等待回答') : member.running ? t('running', '运行中') : member.live ? t('idle', '空闲') : t('not open', '未打开')}
@@ -1414,11 +1473,14 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 /** 群消息 @ 成员/全体 chip（2026-11-28 三轮裁定「全体成员也显示成蓝色,chip 与消息上下居中对齐,
  *  左右留缝不挤」）：成员/全体同一件——图标+accent 名（.sx-group-mention inline-flex 中线对齐）；
  *  不再走 .hn-ref pill/.hn-team warn 分色。其余段交 renderMentionSpans——/命令·$成员·#团队
- *  蓝分色、⟦文本片段⟧ 芯片（hover 预览+复制）与主对话气泡同口径。 */
-function GroupMentions({ text, mentions = [], mentionAll = false }: {
+ *  蓝分色、⟦文本片段⟧ 芯片（hover 预览+复制）与主对话气泡同口径。
+ *  2026-11-28 六轮「发出的 @ chip 也要支持蓝色点击跳转」：成员 chip 可点击跳成员会话
+ *  （与输入框 chip 同语义;全体=无目标不跳转）。 */
+function GroupMentions({ text, mentions = [], mentionAll = false, onOpenMember }: {
   text: string;
   mentions?: SunxRoomTarget[];
   mentionAll?: boolean;
+  onOpenMember?: (journalId: string) => void;
 }): JSX.Element {
   const memberTokens = new Set(mentions.map((m) => `@${m.name}`));
   const tokens = [...(mentionAll ? ['@全体成员'] : []), ...memberTokens].sort((a, b) => b.length - a.length);
@@ -1427,19 +1489,31 @@ function GroupMentions({ text, mentions = [], mentionAll = false }: {
   const re = new RegExp(`(${escaped.join('|')})`, 'g');
   return (
     <>
-      {text.split(re).filter((part) => part !== '').map((part, i) => (
-        tokens.includes(part) ? (
-          <span key={i} className="sx-group-mention">
+      {text.split(re).filter((part) => part !== '').map((part, i) => {
+        if (!tokens.includes(part)) {
+          // 纯文本段保持原文字面（不包 span）——气泡文字节点语义不变（选择/复制/测试锚同旧）
+          return <Fragment key={i}>{hasMentionTokens(part) ? renderMentionSpans(part) : part}</Fragment>;
+        }
+        const target = part === '@全体成员' ? undefined : mentions.find((m) => `@${m.name}` === part);
+        const clickable = target !== undefined && onOpenMember !== undefined;
+        return (
+          <span
+            key={i}
+            className={`sx-group-mention${clickable ? ' clickable' : ''}`}
+            {...(clickable ? {
+              role: 'button',
+              tabIndex: 0,
+              onClick: (e: ReactMouseEvent) => { e.stopPropagation(); onOpenMember!(target!.id); },
+              onKeyDown: (e: ReactKeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenMember!(target!.id); } },
+            } : {})}
+          >
             <span className="sx-group-mention-ico" aria-hidden="true">
               {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
             </span>
             {part.slice(1)}
           </span>
-        ) : (
-          // 纯文本段保持原文字面（不包 span）——气泡文字节点语义不变（选择/复制/测试锚同旧）
-          <Fragment key={i}>{hasMentionTokens(part) ? renderMentionSpans(part) : part}</Fragment>
-        )
-      ))}
+        );
+      })}
     </>
   );
 }
@@ -1447,11 +1521,12 @@ function GroupMentions({ text, mentions = [], mentionAll = false }: {
 /** 引用行：复用用户气泡的既有次级文字/项目图标件；可点则跳到原气泡。
  *  2026-11-28 四轮裁定：常驻 1 行 sticky 钉气泡顶（不随限高滚动区滚走,灰标样式）,
  *  「跳到引用气泡」data-tip 去除。 */
-function GroupQuoteLine({ text, mentions, mentionAll, onOpen }: {
+function GroupQuoteLine({ text, mentions, mentionAll, onOpen, onOpenMember }: {
   text: string;
   mentions?: SunxRoomTarget[];
   mentionAll?: boolean;
   onOpen?: () => void;
+  onOpenMember?: (journalId: string) => void;
 }): JSX.Element {
   return (
     <div
@@ -1466,7 +1541,7 @@ function GroupQuoteLine({ text, mentions, mentionAll, onOpen }: {
     >
       <CornerUpLeft size={14} strokeWidth={1.75} aria-hidden="true" />
       <span className="sx-group-quote-text">
-        <GroupMentions text={text} mentions={mentions} mentionAll={mentionAll} />
+        <GroupMentions text={text} mentions={mentions} mentionAll={mentionAll} onOpenMember={onOpenMember} />
       </span>
     </div>
   );

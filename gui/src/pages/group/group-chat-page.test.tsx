@@ -265,6 +265,24 @@ describe('GroupChatPage', () => {
     expect(screen.queryByRole('menuitem', { name: '跟随成员' })).toBeNull();
   });
 
+  it('@ 面板上下选择：↑↓ 移活行（0=全体成员）、Enter 选中、活行高亮（2026-11-28 六轮）', async () => {
+    const conn = makeConn();
+    const onOpenMember = vi.fn();
+    render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={onOpenMember} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    await screen.findByText('研发群');
+    const input = screen.getByPlaceholderText('使用 @ 选择成员，@全体成员 进行分派') as HTMLTextAreaElement;
+    // 草稿驻留(五轮)可能带着上一用例的草稿——先清空再触发,保证 change 是真变更
+    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.change(input, { target: { value: '@' } });
+    const rows = await screen.findAllByRole('menuitem');
+    expect(rows[0].className).toContain('sx-menuitem-active'); // 初始活行=全体成员
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(rows[1].className).toContain('sx-menuitem-active'); // ↓ 移到成员行
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(input.value).toBe('@A ')); // Enter 选中成员 A
+    expect(screen.queryByRole('menuitem', { name: /全体成员/ })).toBeNull(); // 选中即收口
+  });
+
   it('「/」面板外点自关、再点输入框重现（slashHidden 闸,2026-11-28 三轮裁定）', async () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
