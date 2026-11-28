@@ -8,7 +8,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import type { ClipboardEvent, CompositionEvent, CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowDown, ArrowUp, Check, ChevronDown, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, PanelLeft, Search, Users, X,
+  ArrowDown, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, CornerUpLeft, KanbanSquare, MessagesSquare, MoreHorizontal, PanelLeft, Search, Users, X,
 } from 'lucide-react';
 import { NavButtons } from '../../NavButtons';
 import type { NavControls } from '../../nav-history';
@@ -51,6 +51,10 @@ import { MAIN_MIN_WIDTH, chatMaxFor } from '../../thread-width';
 import { zoomScale } from '../../ui-zoom';
 
 const GROUPS_CHANGED_EVENT = 'sunx-groups-changed';
+/** 群房间缓存（2026-11-28 九轮「为什么每次进入群聊都有加载的状态,不走内存吗」）：模块级按
+ *  groupId 存 detail/messages/cursor/hasMore（群草稿/滚动驻留同口径）——重进即用缓存渲染
+ *  （无「Group」过渡态）,轮询后台刷新;daemon 侧房间变化经 poll reset 自纠。 */
+const groupRoomCache = new Map<string, { detail: SunxGroupDetail; messages: SunxRoomMessage[]; cursor: number; hasMore: boolean }>();
 /** 群聊滚动位置驻留（2026-11-28 七轮「上次显示到哪里,再切回时定位到哪里,不要一直定位到底部」）：
  *  模块级按 groupId 存「锚消息 seq+视口内偏移+scrollTop 兜底」（群草稿驻留同口径）——群条目带
  *  content-visibility 估算高度,裸 scrollTop 回放会被水合顶偏,恢复走锚节点对齐+rAFConverge 收敛。 */
@@ -65,6 +69,12 @@ const DESTRUCTIVE = new Set(['/delete', '/skills-rm', '/memory-rm', '/memory-gc'
 /** Sunx 无计划模式闭环（2026-11-27 用户裁定）：/plan 不进群命令/面板 */
 const SUNX_EXCLUDED_COMMANDS = ['/plan'] as const;
 type AskAnswer = Parameters<Connection['replyAsk']>[1];
+/** 「@全体成员」令牌（2026-11-28 九轮「还是@全体成员？英文下？」）：插入用当前语言形
+ *  （英文 @all / 中文 @全体成员）,识别同时认两种历史形（旧档/旧草稿照常命中）。 */
+const ALL_MENTION_TOKENS = ['@全体成员', '@all'] as const;
+function allMentionToken(): string {
+  return t('@all', '@全体成员');
+}
 
 function fmtTime(ts: number): string {
   const d = new Date(ts);
@@ -77,7 +87,10 @@ interface GroupChatPageProps {
   onClose: () => void;
   /** 跳成员会话（2026-11-28 七轮「点击 sunx 跳转后定位到发/收消息位置」）：runSeq 在场=
      openSunxPeerStable 下发该轮定位信号（缺席=只打开会话,成员消息来源行携带） */
-  onOpenMember: (journalId: string, runSeq?: number) => void;
+  /** 跳成员会话（2026-11-28 九轮「点击 sunx 含用户气泡,跳转后定位到发/收消息位置」）：runSeq=
+   *  接收侧该轮定位（成员回复所属 run）;text=投递正文定位（主人气泡 @成员 / 成员消息的发送给目标
+   *  ——目标会话里按正文命中那条用户气泡）。两者皆缺=只打开会话。 */
+  onOpenMember: (journalId: string, runSeq?: number, text?: string) => void;
   onOpenSession: (sessionId: string, root: string) => void;
   onError: (message: string) => void;
   searchOpen: boolean;
@@ -94,11 +107,12 @@ interface GroupChatPageProps {
 export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   useLanguage();
   const { conn, groupId, onClose, onOpenMember, onOpenSession, onError, searchOpen, onSearchClose, onToggleSearch, menuClosed, onToggleMenu, nav } = props;
-  const [detail, setDetail] = useState<SunxGroupDetail | null>(null);
-  const [messages, setMessages] = useState<SunxRoomMessage[]>([]);
-  const [cursor, setCursor] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const cachedRoom = groupRoomCache.get(groupId);
+  const [detail, setDetail] = useState<SunxGroupDetail | null>(() => cachedRoom?.detail ?? null);
+  const [messages, setMessages] = useState<SunxRoomMessage[]>(() => cachedRoom?.messages ?? []);
+  const [cursor, setCursor] = useState(() => cachedRoom?.cursor ?? 0);
+  const [hasMore, setHasMore] = useState(() => cachedRoom?.hasMore ?? false);
+  const [loading, setLoading] = useState(() => cachedRoom === undefined);
   const [error, setError] = useState('');
   /** 瞬态提示（2026-11-28 五轮移植主对话 showImgHint 同语义）：未知引用等非阻断信息,4s 自隐 */
   const [hint, setHint] = useState('');
@@ -161,6 +175,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   );
   /** 群内 ask 卡（2026-11-27）：与成员会话同一 pending；选择态按 pid 收 */
   const [askPicks, setAskPicks] = useState<Record<string, AskPick>>({});
+  /** ask 分页游标（2026-11-28 九轮）：多条 ask_question 单卡轮显,1/N 切换;集合缩小时钳回末项 */
+  const [askIdx, setAskIdx] = useState(0);
   /** 「/」面板（2026-11-27 二轮裁定「换成主对话的，分命令/技能，命令带说明」）：复用
    *  useCommandPalette 数据面 + CommandPalette 渲染件；群控制命令并入、/plan 排除。 */
   const { cmdData, cmdActive, setCmdActive, skills, reloadSkills } = useCommandPalette(conn);
@@ -183,6 +199,11 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
 
   useEffect(() => { cursorRef.current = cursor; }, [cursor]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
+  // 房间缓存写入（与上行恢复配对）：装载/轮询刷新即落缓存,重进零过渡态
+  useEffect(() => {
+    if (detail === null) return;
+    groupRoomCache.set(groupId, { detail, messages, cursor, hasMore });
+  }, [groupId, detail, messages, cursor, hasMore]);
   // 瞬态提示自隐（4s）
   useEffect(() => {
     if (hint === '') return;
@@ -218,7 +239,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   }, [conn, groupId, mergeMessages, searchOpen]);
 
   const loadInitial = useCallback(async (): Promise<void> => {
-    setLoading(true);
+    // 有房间缓存不置装载态（2026-11-28 九轮「不走内存吗」）：缓存已在渲染,刷新静默进行
+    setLoading(groupRoomCache.get(groupId) === undefined);
     setError('');
     try {
       const [d, r] = await Promise.all([
@@ -262,11 +284,16 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   }, [conn, groupId]);
 
   useEffect(() => {
-    setDetail(null);
-    setMessages([]);
-    setCursor(0);
-    cursorRef.current = 0;
-    setHasMore(false);
+    // 房间缓存优先（2026-11-28 九轮「不走内存吗」）：重进/切群即用缓存渲染(无过渡态),
+    // 无缓存才落装载态;loadInitial/轮询随后刷新,daemon 变化经 poll reset 自纠
+    const cached = groupRoomCache.get(groupId);
+    setDetail(cached?.detail ?? null);
+    setMessages(cached?.messages ?? []);
+    setCursor(cached?.cursor ?? 0);
+    cursorRef.current = cached?.cursor ?? 0;
+    setHasMore(cached?.hasMore ?? false);
+    setLoading(cached === undefined);
+    setError('');
     setActiveSeq(null);
     nodeBySeq.current.clear();
     setPlusOpen(false);
@@ -529,7 +556,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     // 命令令牌（2026-11-28 八轮「显示不去,@ 真正发出时才去」）：跳过行首 @提及 后的首个令牌,
     // 仅作客户端 UX 预检;真正剥 @ 与命令生效单点在服务端（prepareGroupSend fanoutText）
     const parts = text.trim().split(/\s+/);
-    const mentionTokens = new Set(['@全体成员', ...members.map((m) => `@${m.name}`)]);
+    const mentionTokens = new Set([...ALL_MENTION_TOKENS, ...members.map((m) => `@${m.name}`)]);
     let lead = 0;
     while (lead < parts.length && mentionTokens.has(parts[lead] ?? '')) lead += 1;
     const token = parts[lead] ?? '';
@@ -550,7 +577,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       return;
     }
     const liveMentions = effectiveMentions.filter((m) => text.includes(`@${m.name}`));
-    const liveAll = mentionAll && text.includes('@全体成员');
+    const liveAll = mentionAll && ALL_MENTION_TOKENS.some((tk) => text.includes(tk));
     // 未知引用提示（五轮移植主对话 R5,不拦截不改写原文照发）：目录已拉过且有候选才对照
     if (refEntriesLoadedRef.current && (refEntries.agents.length > 0 || refEntries.teams.length > 0)) {
       const unknown = unknownRefTokens(text, refEntries);
@@ -698,7 +725,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     if (token === null) return null;
     // @ 前缀放行（七轮）：token 前缀剥掉行首 @令牌序列后为空 = 等效行首
     const before = input.slice(0, token.from);
-    const memberAlt = ['全体成员', ...members.map((m) => m.name)].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const memberAlt = ['全体成员', 'all', ...members.map((m) => m.name)].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     const atStart = before.trim() === '' || before.replace(new RegExp(`^(\\s*@(?:${memberAlt})\\s*)+`, 'u'), '').trim() === '';
     const excluded = SUNX_EXCLUDED_COMMANDS as readonly string[];
     const merged: typeof cmdData = cmdData === null ? null : {
@@ -808,7 +835,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
     const rest = (seg: string, key: React.Key, overlap: boolean): ReactNode => (
       <Fragment key={key}>{!overlap && hasMentionTokens(seg) ? renderMentionSpans(seg, undefined, undefined, undefined, true, compRange) : seg}</Fragment>
     );
-    const tokens = [...(text.includes('@全体成员') ? ['@全体成员'] : []), ...members.map((m) => `@${m.name}`)]
+    const presentAll = ALL_MENTION_TOKENS.filter((tk) => text.includes(tk));
+    const tokens = [...presentAll, ...members.map((m) => `@${m.name}`)]
       .sort((a, b) => b.length - a.length);
     if (tokens.length === 0) {
       return hasMentionTokens(text) ? renderMentionSpans(text, undefined, undefined, undefined, true, compRange) : undefined;
@@ -824,7 +852,8 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
       off += part.length;
       const overlap = compRange !== null && start < compRange.end && off > compRange.start;
       if (tokens.includes(part) && !overlap) {
-        const member = part === '@全体成员' ? undefined : members.find((m) => `@${m.name}` === part);
+        const isAll = (ALL_MENTION_TOKENS as readonly string[]).includes(part);
+        const member = isAll ? undefined : members.find((m) => `@${m.name}` === part);
         return (
           <span
             key={i}
@@ -836,7 +865,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
             onMouseDown={(e) => e.preventDefault()}
           >
             <span className="hn-file-ico" aria-hidden="true">
-              {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
+              {(ALL_MENTION_TOKENS as readonly string[]).includes(part) ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
             </span>
             <span className="hn-file-at" aria-hidden="true">@</span>
             {part.slice(1)}
@@ -968,7 +997,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
   const addAll = useCallback((): void => {
     setMentions([]);
     setMentionAll(true);
-    const token = '@全体成员 ';
+    const token = `${allMentionToken()} `;
     setInput((v) => {
       if (mentionFrom !== null) return `${v.slice(0, mentionFrom)}${token}${v.slice(mentionFrom + 1 + mentionQuery.length)}`;
       return `${v}${v === '' || v.endsWith(' ') ? '' : ' '}${token}`;
@@ -991,7 +1020,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
         'fence' in seg ? (
           <RefTokenChip key={i} inner={seg.label} isTerm={seg.kind === 'text-selection'} content={seg.fence} />
         ) : (
-          <GroupMentions key={i} text={seg.text} mentions={segMentions} mentionAll={segAll} onOpenMember={onOpenMember} />
+          <GroupMentions key={i} text={seg.text} mentions={segMentions} mentionAll={segAll} onOpenMember={(jid, txt) => onOpenMember(jid, undefined, txt)} />
         )
       ))}
     </>
@@ -1136,7 +1165,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                 mentions={quoted?.mentions}
                 mentionAll={quoted?.mentionAll === true}
                 onOpen={quoted?.seq !== undefined ? () => { void revealSeq(quoted.seq); } : undefined}
-                onOpenMember={onOpenMember}
+                onOpenMember={(jid, txt) => onOpenMember(jid, undefined, txt)}
               />
             ) : null;
             const body = fromMember
@@ -1174,7 +1203,7 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
                   onOpenSunx={(journalId, runSeq) => onOpenMember(journalId, runSeq)}
                   renderBody={body}
                   sourceSuffix={fromMember && m.to !== undefined ? (
-                    <GroupTarget target={m.to} onOpenMember={onOpenMember} />
+                    <GroupTarget target={m.to} onOpenMember={(jid, txt) => onOpenMember(jid, undefined, txt)} text={m.text} />
                   ) : undefined}
                 />
               </div>
@@ -1198,29 +1227,37 @@ export function GroupChatPage(props: GroupChatPageProps): JSX.Element {
               <ArrowDown size={16} strokeWidth={2} aria-hidden="true" />
             </button>
           )}
-          {askItems.length > 0 && (
-            <div className="ask-dock">
-              <div className="ask-scroll">
-                {askItems.map((item) => {
-                  const pick = askPicks[item.pid] ?? { labels: [], custom: '' };
-                  return (
-                    <div className="sx-group-ask" key={item.pid}>
-                      <div className="sx-group-ask-source">
-                        <span>{t('From', '来自')}</span>
-                        <SunxIcon size={14} strokeWidth={1.75} />
-                        <span>{item.member.name}</span>
-                      </div>
-                      <AskCard req={item.req} pick={pick} onPick={(patch) => setAskPick(item.pid, patch)} />
-                      <div className="ask-actions">
-                        <button type="button" onClick={() => { void answerAsk(item.pid, { type: 'dismissed' }); }}>{t('Skip', '跳过')}</button>
-                        <button type="button" className="primary" disabled={!pickAnswered(pick)} onClick={() => submitAsk(item)}>{t('Submit', '提交')}</button>
-                      </div>
-                    </div>
-                  );
-                })}
+          {askItems.length > 0 && (() => {
+            // ask 弹窗化（2026-11-28 九轮「来自 sunx 的 ask_question 显示在弹窗内部;顶栏左=来自哪里,
+            // 右=数量与位置 1/N 可切换;正文在上;弹窗有最大高度」）：单卡分页替代纵向堆叠——
+            // 头行 From+成员 与 1/N（‹ › 切换）,正文+选项在限高滚动区,底部 Skip/Submit 只针对当前条
+            const idx = Math.min(askIdx, askItems.length - 1);
+            const item = askItems[idx]!;
+            const pick = askPicks[item.pid] ?? { labels: [], custom: '' };
+            return (
+              <div className="ask-dock sx-group-ask-dock">
+                <div className="sx-group-ask-head">
+                  <span className="sx-group-ask-source">
+                    <span>{t('From', '来自')}</span>
+                    <SunxIcon size={14} strokeWidth={1.75} />
+                    <span className="sx-group-ask-who">{item.member.name}</span>
+                  </span>
+                  <span className="sx-group-ask-pager">
+                    <button type="button" className="sx-iconbtn" aria-label="previous ask" disabled={askItems.length < 2} onClick={() => setAskIdx((i) => (i - 1 + askItems.length) % askItems.length)}><ChevronLeft size={14} strokeWidth={2} aria-hidden="true" /></button>
+                    <span className="sx-group-ask-count" aria-label="ask position">{idx + 1}/{askItems.length}</span>
+                    <button type="button" className="sx-iconbtn" aria-label="next ask" disabled={askItems.length < 2} onClick={() => setAskIdx((i) => (i + 1) % askItems.length)}><ChevronRight size={14} strokeWidth={2} aria-hidden="true" /></button>
+                  </span>
+                </div>
+                <div className="ask-scroll sx-group-ask-body">
+                  <AskCard req={item.req} pick={pick} onPick={(patch) => setAskPick(item.pid, patch)} />
+                </div>
+                <div className="ask-actions">
+                  <button type="button" onClick={() => { void answerAsk(item.pid, { type: 'dismissed' }); }}>{t('Skip', '跳过')}</button>
+                  <button type="button" className="primary" disabled={!pickAnswered(pick)} onClick={() => submitAsk(item)}>{t('Submit', '提交')}</button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
           <ComposerCard
             className="chat-composer"
             label={t('Use @ to pick members; @all dispatches to everyone.', '使用 @ 选择成员，@全体成员 进行分派')}
@@ -1703,10 +1740,14 @@ function GroupMentions({ text, mentions = [], mentionAll = false, onOpenMember }
   text: string;
   mentions?: SunxRoomTarget[];
   mentionAll?: boolean;
-  onOpenMember?: (journalId: string) => void;
+  /** 跳成员会话并按其正文定位（2026-11-28 九轮）：点击 @成员 chip = 定位目标会话里收到的这条 */
+  onOpenMember?: (journalId: string, text?: string) => void;
 }): JSX.Element {
   const memberTokens = new Set(mentions.map((m) => `@${m.name}`));
-  const tokens = [...(mentionAll ? ['@全体成员'] : []), ...memberTokens].sort((a, b) => b.length - a.length);
+  const tokens = [
+    ...(mentionAll ? ALL_MENTION_TOKENS.filter((tk) => text.includes(tk)) : []),
+    ...memberTokens,
+  ].sort((a, b) => b.length - a.length);
   if (tokens.length === 0) return <>{renderMentionSpans(text)}</>;
   const escaped = tokens.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const re = new RegExp(`(${escaped.join('|')})`, 'g');
@@ -1717,7 +1758,8 @@ function GroupMentions({ text, mentions = [], mentionAll = false, onOpenMember }
           // 纯文本段保持原文字面（不包 span）——气泡文字节点语义不变（选择/复制/测试锚同旧）
           return <Fragment key={i}>{hasMentionTokens(part) ? renderMentionSpans(part) : part}</Fragment>;
         }
-        const target = part === '@全体成员' ? undefined : mentions.find((m) => `@${m.name}` === part);
+        const isAll = (ALL_MENTION_TOKENS as readonly string[]).includes(part);
+        const target = isAll ? undefined : mentions.find((m) => `@${m.name}` === part);
         const clickable = target !== undefined && onOpenMember !== undefined;
         return (
           <span
@@ -1726,16 +1768,16 @@ function GroupMentions({ text, mentions = [], mentionAll = false, onOpenMember }
             {...(clickable ? {
               role: 'button',
               tabIndex: 0,
-              onClick: (e: ReactMouseEvent) => { e.stopPropagation(); onOpenMember!(target!.id); },
-              onKeyDown: (e: ReactKeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenMember!(target!.id); } },
+              onClick: (e: ReactMouseEvent) => { e.stopPropagation(); onOpenMember!(target!.id, text); },
+              onKeyDown: (e: ReactKeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onOpenMember!(target!.id, text); } },
             } : {})}
           >
             <span className="sx-group-mention-ico" aria-hidden="true">
-              {part === '@全体成员' ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
+              {(ALL_MENTION_TOKENS as readonly string[]).includes(part) ? <Users size={14} strokeWidth={1.75} /> : <SunxIcon size={14} strokeWidth={1.75} />}
             </span>
             {/* 2026-11-28 八轮「英文下用一个单词标识全体成员」：气泡 chip 显示层本地化
                 （EN=Everyone 单词;底层令牌与输入框 chip 恒原文——输入框高亮层有字宽对齐硬约束） */}
-            {part === '@全体成员' ? t('Everyone', '全体成员') : part.slice(1)}
+            {isAll ? t('all', '全体成员') : part.slice(1)}
           </span>
         );
       })}
@@ -1751,7 +1793,7 @@ function GroupQuoteLine({ text, mentions, mentionAll, onOpen, onOpenMember }: {
   mentions?: SunxRoomTarget[];
   mentionAll?: boolean;
   onOpen?: () => void;
-  onOpenMember?: (journalId: string) => void;
+  onOpenMember?: (journalId: string, text?: string) => void;
 }): JSX.Element {
   return (
     <div
@@ -1773,9 +1815,11 @@ function GroupQuoteLine({ text, mentions, mentionAll, onOpen, onOpenMember }: {
 }
 
 /** 成员消息来源行的「发送给」后缀：目标=群主用既有 SUNX badge，目标=成员用既有 Sunx 名称件。 */
-function GroupTarget({ target, onOpenMember }: {
+function GroupTarget({ target, onOpenMember, text }: {
   target: SunxRoomPeerRef;
-  onOpenMember: (journalId: string) => void;
+  onOpenMember: (journalId: string, text?: string) => void;
+  /** 成员消息正文（2026-11-28 九轮）：点击发送给目标 → 目标会话按此正文定位收到的消息 */
+  text?: string;
 }): JSX.Element {
   const isGroup = target.kind === 'group' || target.id.startsWith('grp_');
   return (
@@ -1784,7 +1828,7 @@ function GroupTarget({ target, onOpenMember }: {
       {isGroup ? (
         <span className="sx-sunx-badge">{t('Owner', '群主')}</span>
       ) : (
-        <button type="button" className="user-from-sunx-btn" onClick={() => onOpenMember(target.id)}>
+        <button type="button" className="user-from-sunx-btn" onClick={() => onOpenMember(target.id, text)}>
           <SunxIcon size={16} strokeWidth={1.75} aria-hidden="true" />
           <span>{target.name}</span>
         </button>

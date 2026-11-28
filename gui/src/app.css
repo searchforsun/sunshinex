@@ -5188,6 +5188,15 @@ html[data-theme='light'][data-bubble-dark='1'] .entry-user .user-bubble {
 .sx-group-reply .pill-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sx-group-dock .sx-group-palette { left: 0; right: 0; width: auto; }
 /* ask 卡：沿用会话 .ask-dock / .ask-actions，只补群来源行 */
+/* ask 弹窗（2026-11-28 九轮「来自 sunx 的 ask_question 显示在弹窗内部」）：头行(From+成员 左 /
+   1/N 分页 右)+限高正文区+动作行;圆角与输入卡一致,卡面沿用 .ask-dock 内部件 */
+.sx-group-ask-dock { border-radius: var(--radius-composer); background: var(--surface-elevated); border: 1px solid var(--border); overflow: hidden; }
+.sx-group-ask-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+.sx-group-ask-pager { display: inline-flex; align-items: center; gap: 2px; color: var(--fg-secondary); }
+.sx-group-ask-count { font-size: calc(14px * var(--fz)); font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }
+.sx-group-ask-who { color: var(--accent); font-weight: 600; }
+/* 正文+选项限高（弹窗有最大高度,内部滚动;动作行恒在视口内） */
+.sx-group-ask-body { max-height: min(46vh, 420px); padding: 8px 10px 0; overflow-y: auto; }
 .sx-group-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .sx-group-ask-source { display: flex; align-items: center; gap: 4px; font-size: calc(14px * var(--fz)); color: var(--fg-secondary); padding: 0 2px; min-width: 0; }
 .sx-group-muted { color: var(--fg-tertiary); font-size: calc(14px * var(--fz)); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

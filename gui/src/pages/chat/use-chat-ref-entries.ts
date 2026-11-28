@@ -101,8 +101,12 @@ export function useChatRefEntries(opts: {
     setRefLabels(liveRefEntries.agents, liveRefEntries.teams, liveRefEntries.liveTeams ?? [], liveRefEntries.liveTasks ?? [], liveRefEntries.liveMembers ?? []);
   }, [liveRefEntries]);
   useEffect(() => {
+    // 缓存驻留座不抢注册（2026-11-28 九轮「普通会话 $/# 点不开侧栏」真根因）：热切换缓存座以
+    // active=false 且不传 onOpenTask/onOpenAgent 挂载,无条件注册会把共享句柄指向无回调实例,
+    // 此后点击全部静默。回调全缺席=该实例无跳转面,保持既有注册者。
+    if (onOpenTask === undefined && onOpenAgent === undefined) return;
     // 身份守卫卸载（mention.tsx setRefOpenHandler 返回清理函数）：多驻留座并存时后台座退场
-    // 不再抹掉前台座的注册（2026-11-28 八轮「$/# 点不开侧栏」根因）
+    // 不再抹掉前台座的注册
     return setRefOpenHandler((sym, id) => {
       if (sym === '#') {
         onOpenTask?.(refKindOf('#' + id) === 'task' ? id : `team:${id}`);

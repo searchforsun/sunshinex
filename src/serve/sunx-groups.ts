@@ -643,7 +643,7 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
   // (fanoutText)。GUI 手动键入与面板选人殊途同归,门在服务端单点。
   const trimmedText = input.text.trim();
   const parts0 = trimmedText.split(/\s+/);
-  const mentionTokens = new Set(['@全体成员', ...members.filter((m) => m.archived !== true).map((m) => `@${m.name}`)]);
+  const mentionTokens = new Set(['@全体成员', '@all', ...members.filter((m) => m.archived !== true).map((m) => `@${m.name}`)]);
   let lead = 0;
   while (lead < parts0.length && mentionTokens.has(parts0[lead] ?? '')) lead += 1;
   const first = parts0[lead] ?? '';
@@ -661,7 +661,7 @@ export function prepareGroupSend(groupId: string, input: GroupSendInput, members
   if (command !== undefined && images !== undefined) return { ok: false, status: 400, error: 'commands do not accept images' };
   if (command === '/plan') return { ok: false, status: 400, error: 'plan mode is not supported for Sunx' };
   // @全体成员 前缀剥除等价 mentionAll（2026-11-28 八轮:手动键入 @全体成员 /命令 无面板旗标也能全员）
-  const mentionAll = input.mentionAll === true || (lead > 0 && parts0.slice(0, lead).includes('@全体成员'));
+  const mentionAll = input.mentionAll === true || (lead > 0 && parts0.slice(0, lead).some((tk) => tk === '@全体成员' || tk === '@all'));
   let targets: SunxRoomTarget[] = [];
   let mentions: SunxRoomTarget[] | undefined;
   if (mentionAll) {

@@ -270,6 +270,31 @@ describe('GroupChatPage', () => {
     await waitFor(() => expect(screen.queryByText('要发布吗?')).toBeNull());
   });
 
+  it('ask 弹窗化：头行 From+成员 左、1/2 分页右，‹› 切到第二题（2026-11-28 九轮）', async () => {
+    const conn = makeConn();
+    (conn.sunxGroupDetail as ReturnType<typeof vi.fn>).mockImplementation(async () => ({
+      group: { id: 'grp_x', name: '研发群' },
+      members: [{
+        id: 'jid_a', name: 'A', live: true, running: false, updatedAt: 2, root: 'D:/w',
+        asks: [
+          { pid: 'p1', req: { question: '要发布吗?', options: [{ label: '是' }, { label: '否' }] } },
+          { pid: 'p2', req: { question: '第二问?', options: [{ label: '好' }] } },
+        ],
+      }],
+      owner: { id: 'grp_x', name: '群主', kind: 'group' as const },
+    }));
+    const { container } = render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
+    expect(await screen.findByText('要发布吗?')).toBeDefined();
+    const head = container.querySelector('.sx-group-ask-head')!;
+    expect(head.querySelector('.sx-group-ask-source')?.textContent).toContain('A'); // 左=来自谁
+    expect(head.querySelector('.sx-group-ask-count')?.textContent).toBe('1/2'); // 右=位置/数量
+    fireEvent.click(screen.getByRole('button', { name: 'next ask' }));
+    expect(await screen.findByText('第二问?')).toBeDefined();
+    expect(container.querySelector('.sx-group-ask-count')?.textContent).toBe('2/2');
+    expect(screen.queryByText('要发布吗?')).toBeNull(); // 单卡分页:不同时堆叠
+    expect(container.querySelector('.sx-group-ask-body')).not.toBeNull(); // 限高正文区在位
+  });
+
   it('@ 面板无筛选行（输入 @ 即活滤）；模型弹层带强度滑条且选中不收口（2026-11-28 三轮）', async () => {
     const conn = makeConn();
     render(<GroupChatPage conn={conn} groupId="grp_x" onClose={vi.fn()} onOpenMember={vi.fn()} onOpenSession={vi.fn()} onError={vi.fn()} searchOpen={false} onSearchClose={vi.fn()} />);
